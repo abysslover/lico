@@ -112,6 +112,54 @@ def cmd_hostcmp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_p02(args: argparse.Namespace) -> int:
+    """Run every M01-P02 scenario once; the receipt is written first."""
+    from .bundle_p02 import collect_p02
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
+               "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
+               "binary_sha256": _p02_hashes()}
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    results = collect_p02(out)
+    (out / "p02.json").write_text(json.dumps(results, indent=1, ensure_ascii=False))
+    receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    return 0
+
+
+def _p02_hashes() -> dict:
+    import hashlib
+
+    from . import p02
+
+    hashes = {}
+    for name, path in (("lico-host", p02.HOSTD), ("lico", p02.LICO), ("lico-synth-agent", p02.AGENT)):
+        hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    hashes.update(_binary_hashes(["a2", "c2"]))
+    return hashes
+
+
+def cmd_p02_bundle(args: argparse.Namespace) -> int:
+    from .bundle_p02 import build
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    run = Path(args.p02)
+    results = json.loads((run / "p02.json").read_text())
+    raw_dirs = [Path(p) for p in args.raw]
+    receipts = [json.loads((d / "receipt.json").read_text()) for d in [run, *raw_dirs]]
+    build(raw_dirs, results, Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="lico_measure", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -130,6 +178,16 @@ def main() -> int:
     hostcmp.add_argument("--out", required=True)
     hostcmp.add_argument("--allow-dirty", action="store_true")
     hostcmp.set_defaults(func=cmd_hostcmp)
+    p02 = sub.add_parser("p02", help="run the M01-P02 scenarios and experiments")
+    p02.add_argument("--out", required=True)
+    p02.add_argument("--allow-dirty", action="store_true")
+    p02.set_defaults(func=cmd_p02)
+    p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
+    p02b.add_argument("--p02", required=True, help="output directory of the p02 command")
+    p02b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run command")
+    p02b.add_argument("--out", required=True)
+    p02b.add_argument("--allow-dirty", action="store_true")
+    p02b.set_defaults(func=cmd_p02_bundle)
     args = parser.parse_args()
     return args.func(args)
 

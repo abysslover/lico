@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
@@ -28,7 +29,7 @@ fn main() {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--http-port P --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--http-port P --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -41,6 +42,7 @@ fn main() {
         window: arg("--window", "64").parse::<usize>().expect("window").max(session::SNAPSHOT_LINES),
         queue_bytes: arg("--queue-bytes", "1048576").parse().expect("queue-bytes"),
         payload: arg("--payload", "1024").parse().expect("payload"),
+        max_sessions: arg("--max-sessions", "256").parse().expect("max-sessions"),
     };
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -80,8 +82,19 @@ fn main() {
     }
     println!("{}", json!({"ready": 1, "pid": std::process::id(), "sessions": ids}));
     let _ = std::io::stdout().flush();
-    for stream in listener.incoming().flatten() {
-        let shared = shared.clone();
-        thread::spawn(move || ipc::connection(stream, shared));
+    let cap: usize = arg("--max-connections", "256").parse().expect("max-connections");
+    let active = Arc::new(AtomicUsize::new(0));
+    for mut stream in listener.incoming().flatten() {
+        if active.load(Ordering::Relaxed) >= cap {
+            // a bounded number of local connections: the rest are told the host is busy and closed
+            let _ = stream.write_all(b"{\"v\":1,\"ok\":0,\"error\":\"busy\"}\n");
+            continue;
+        }
+        active.fetch_add(1, Ordering::Relaxed);
+        let (shared, active) = (shared.clone(), active.clone());
+        thread::spawn(move || {
+            ipc::connection(stream, shared);
+            active.fetch_sub(1, Ordering::Relaxed);
+        });
     }
 }

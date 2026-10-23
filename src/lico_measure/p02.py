@@ -379,3 +379,89 @@ def cli_transcript() -> dict:
             return {"steps": steps, "echoes": echoes(log, sid)}
         finally:
             host.stop()
+
+
+def input_states_demo() -> dict:
+    """An input's three states and an approval, as the wire shows them."""
+    with private_dir() as directory:
+        host, log = start(directory, sessions=1, producing=0, history=2)
+        try:
+            sid = host.sessions[0]
+            watcher, sender = ProtoConn(host.socket, timeout=3), ProtoConn(host.socket)
+            watcher.call(op="subscribe", session=sid, after=-1, snapshot=True)
+            exchanges: list[dict] = []
+
+            def collect(seconds: float) -> None:
+                end = time.monotonic() + seconds
+                watcher.sock.settimeout(0.3)
+                while time.monotonic() < end:
+                    try:
+                        message = watcher.read()
+                    except (socket.timeout, OSError):
+                        continue
+                    if message.get("ev") in ("input", "approval") or (message.get("ev") == "rec" and message["seq"] >= 2):
+                        if message.get("ev") == "rec":
+                            message = {**message, "data": message["data"][:24] + "…"}
+                        exchanges.append({"to_viewer": message})
+
+            request = dict(op="input", session=sid, generation=1, request_id="demo-1", text="hello agent")
+            exchanges.append({"request": request, "reply": sender.call(**request)})
+            collect(1.0)
+            request = dict(op="input", session=sid, generation=1, request_id="demo-1", text="hello agent")
+            exchanges.append({"request": request, "reply": sender.call(**request), "note": "the same request id again: not sent twice"})
+            request = dict(op="input", session=sid, generation=1, request_id="demo-2", text="ask to deploy the build")
+            exchanges.append({"request": request, "reply": sender.call(**request)})
+            collect(1.0)
+            status = sender.call(op="status")["sessions"][0]
+            approvals = status.get("approvals", [])
+            if approvals:
+                request = dict(op="approval.answer", session=sid, generation=1, approval_id=approvals[0]["approval_id"], answer="allow")
+                exchanges.append({"request": request, "reply": sender.call(**request)})
+                collect(1.0)
+            return {"exchanges": exchanges, "agent_saw": echoes(log, sid)}
+        finally:
+            host.stop()
+
+
+def gui_kill_shots(name: str, out: Path) -> dict[str, str]:
+    """Screens of a GUI before it is killed, with nothing shown, and after its replacement attaches."""
+    from .bundle import _shot
+
+    out.mkdir(parents=True, exist_ok=True)
+    shots: dict[str, str] = {}
+    with private_dir() as directory:
+        xvfb = Xvfb()
+        host = None
+        clients = []
+        try:
+            host, _log = start(directory, sessions=1, producing=1, rate=50, history=300)
+            sid = host.sessions[0]
+
+            def snap(label: str) -> None:
+                file = f"gui_kill_{name}_{label}.png"
+                _shot(xvfb.display, out / file)
+                shots[label] = file
+
+            first = Client(name, host.socket, xvfb.display)
+            clients.append(first)
+            first.send(f"show {sid}")
+            first.expect("state", "subscribed")
+            time.sleep(1.5)
+            snap("1_attached")
+            first.kill()
+            time.sleep(3.0)
+            snap("2_gui_killed_host_still_working")
+            second = Client(name, host.socket, xvfb.display)
+            clients.append(second)
+            second.send(f"show {sid}")
+            second.expect("state", "subscribed")
+            time.sleep(1.5)
+            snap("3_restarted_and_current")
+            return shots
+        finally:
+            for c in clients:
+                if c.proc.poll() is None:
+                    c.kill()
+            if host:
+                host.stop()
+            xvfb.stop()

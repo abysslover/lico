@@ -105,7 +105,8 @@ class Host:
             [*_host_command(impl), "--socket", self.socket, "--sessions", str(sessions),
              "--producing", str(producing), "--rate", str(rate), "--history", str(history),
              "--retain", str(retain), *(extra_args or [])],
-            stdout=subprocess.PIPE, text=True, env={k: v for k, v in env.items() if k != "PYTHONHOME"},
+            stdout=subprocess.PIPE, stderr=open(os.path.join(directory, "host.err"), "wb"), text=True,
+            env={k: v for k, v in env.items() if k != "PYTHONHOME"},
         )
         self.ready_line = self.proc.stdout.readline()
         ready = json.loads(self.ready_line)

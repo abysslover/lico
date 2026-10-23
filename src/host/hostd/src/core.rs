@@ -31,6 +31,7 @@ pub struct Config {
     pub window: usize,
     pub queue_bytes: usize,
     pub payload: usize,
+    pub max_sessions: usize,
 }
 
 pub struct ViewEntry {
@@ -200,6 +201,9 @@ pub fn session_list(shared: &Shared) -> Reply {
 }
 
 pub fn session_create(shared: &Arc<Shared>, rate: u64, history: u64, size: usize) -> Reply {
+    if shared.sessions.read().unwrap().len() >= shared.cfg.max_sessions {
+        return Err("busy"); // a bounded number of sessions, and so of agent processes
+    }
     let created = start_session(shared, rate > 0, rate, history, size, false);
     let id = created.lock().unwrap().id.clone();
     Ok(obj(json!({"session": id, "generation": 1})))
