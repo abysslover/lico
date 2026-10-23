@@ -1,0 +1,10 @@
+[project]
+name = "lico-measure"
+version = "0.0.0"
+description = "Measurement tooling for the Lico architecture experiment"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
