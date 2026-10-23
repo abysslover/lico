@@ -11,7 +11,9 @@ use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::Sender;
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
+use std::sync::mpsc::SyncSender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -19,7 +21,10 @@ use crate::payload::hex;
 
 pub const SNAPSHOT_LINES: usize = 40;
 const HEADER: usize = 12; // u32 length + u64 sequence
-const MAX_TRACKED_INPUTS: usize = 4096;
+/// Request ids remembered per session (as 64-bit hashes): a repeat inside this window is never
+/// dispatched twice; older ids are forgotten, which the protocol note states.
+pub const MAX_TRACKED_INPUTS: usize = 65536;
+const MAX_APPROVALS: usize = 64;
 
 pub fn obj(value: Value) -> serde_json::Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()
@@ -62,6 +67,14 @@ impl Sub {
     /// Queue a reply or notice regardless of the cap (replies are small and rare).
     pub fn push(&self, line: Arc<Vec<u8>>) {
         let mut queue = self.queue.lock().unwrap();
+        if queue.bytes > self.cap_bytes.saturating_mul(4) {
+            // a peer that never reads its replies is cut off instead of growing the host
+            self.closed.store(true, std::sync::atomic::Ordering::Relaxed);
+            queue.lines.clear();
+            queue.bytes = 0;
+            self.wake.notify_one();
+            return;
+        }
         queue.bytes += line.len();
         queue.lines.push_back(line);
         self.wake.notify_one();
@@ -162,9 +175,10 @@ impl Log {
     pub fn append(&mut self, seq: i64, data: &[u8]) -> std::io::Result<()> {
         let full = self.view.segments.last().map_or(true, |s| s.1 >= self.segment_records);
         if full || self.writer.is_none() {
-            self.view.segments.push((seq, 0));
+            let file = OpenOptions::new().create_new(true).append(true).mode(0o600).open(Self::path(&self.view, seq))?;
+            self.view.segments.push((seq, 0)); // bookkeeping only after the file exists
             self.sizes.push(0);
-            self.writer = Some(OpenOptions::new().create_new(true).append(true).mode(0o600).open(Self::path(&self.view, seq))?);
+            self.writer = Some(file);
             self.prune();
         }
         let mut record = Vec::with_capacity(HEADER + data.len());
@@ -265,12 +279,18 @@ pub struct Session {
     pub bytes_total: i64,
     log: Log,
     pub subs: Vec<Arc<Sub>>,
-    inputs: HashMap<String, InputState>,
-    input_order: VecDeque<String>,
+    hasher: RandomState,
+    inputs: HashMap<u64, InputState>,
+    input_order: VecDeque<u64>,
+    pub log_failed: bool,
     pub approvals: Vec<(i64, String)>,
     pub agent_pid: u32,
     /// lines for the agent's standard input; a writer thread owns the pipe
-    pub input_tx: Option<Sender<String>>,
+    pub input_tx: Option<SyncSender<String>>,
+}
+
+extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
 }
 
 pub fn rec_line(session: &str, seq: i64, data: &[u8]) -> Arc<Vec<u8>> {
@@ -290,8 +310,10 @@ impl Session {
             bytes_total: 0,
             log,
             subs: Vec::new(),
+            hasher: RandomState::new(),
             inputs: HashMap::new(),
             input_order: VecDeque::new(),
+            log_failed: false,
             approvals: Vec::new(),
             agent_pid: 0,
             input_tx: None,
@@ -319,9 +341,20 @@ impl Session {
     }
 
     pub fn append(&mut self, data: Vec<u8>) {
+        if self.log_failed {
+            return; // a session whose log cannot be written ends; nothing more is announced
+        }
         let seq = self.next_seq;
         if let Err(error) = self.log.append(seq, &data) {
+            // the record is not sequenced, shown or replayable without its log entry: end the session
+            self.log_failed = true;
+            self.state = State::Exited;
+            self.input_tx = None;
+            if self.agent_pid != 0 {
+                unsafe { kill(self.agent_pid as i32, 9) };
+            }
             eprintln!("log write failed for {}: {error}", self.id);
+            return;
         }
         self.next_seq += 1;
         self.bytes_total += data.len() as i64;
@@ -349,14 +382,19 @@ impl Session {
         obj(json!({"session": self.id, "generation": 1, "seq": self.last_seq(), "lines": lines}))
     }
 
-    // ---- input bookkeeping: a request id is dispatched at most once
+    // ---- input bookkeeping: a request id is dispatched at most once within the tracked window
+    fn key(&self, request_id: &str) -> u64 {
+        self.hasher.hash_one(request_id)
+    }
+
     pub fn input_state(&self, request_id: &str) -> Option<InputState> {
-        self.inputs.get(request_id).copied()
+        self.inputs.get(&self.key(request_id)).copied()
     }
 
     pub fn record_input(&mut self, request_id: &str) {
-        self.inputs.insert(request_id.to_string(), InputState::Accepted);
-        self.input_order.push_back(request_id.to_string());
+        let key = self.key(request_id);
+        self.inputs.insert(key, InputState::Accepted);
+        self.input_order.push_back(key);
         while self.input_order.len() > MAX_TRACKED_INPUTS {
             if let Some(old) = self.input_order.pop_front() {
                 self.inputs.remove(&old);
@@ -364,14 +402,22 @@ impl Session {
         }
     }
 
+    /// Add a subscriber once: a second subscription of one connection must not double delivery.
+    pub fn add_sub(&mut self, sub: &Arc<Sub>) {
+        if !self.subs.iter().any(|s| Arc::ptr_eq(s, sub)) {
+            self.subs.push(sub.clone());
+        }
+    }
+
     /// Advance an input to a later state (never backwards) and tell the viewers.
     pub fn advance_input(&mut self, request_id: &str, to: InputState) {
         let rank = |s: InputState| s as u8;
-        let Some(current) = self.inputs.get(request_id).copied() else { return };
+        let key = self.key(request_id);
+        let Some(current) = self.inputs.get(&key).copied() else { return };
         if rank(to) <= rank(current) {
             return;
         }
-        self.inputs.insert(request_id.to_string(), to);
+        self.inputs.insert(key, to);
         if to != InputState::Accepted {
             let line = encode(obj(json!({"ev": "input", "session": self.id, "request_id": request_id, "state": to.name()})));
             for sub in &self.subs {
@@ -381,6 +427,9 @@ impl Session {
     }
 
     pub fn add_approval(&mut self, number: i64, prompt: String) {
+        if self.approvals.len() >= MAX_APPROVALS {
+            return; // a bounded number of pending approvals
+        }
         let prompt: String = prompt.chars().take(200).collect();
         let line = encode(obj(json!({"ev": "approval", "session": self.id, "approval_id": number, "prompt": prompt})));
         self.approvals.push((number, prompt));

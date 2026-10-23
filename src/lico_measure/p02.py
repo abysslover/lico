@@ -17,7 +17,7 @@ import threading
 import time
 from pathlib import Path
 
-from .procscope import collect_scopes, tree_pids
+from .procscope import collect_scopes, cpu_seconds, tree_pids
 from .report import build_measurement
 from .rig import REPO, Client, Host, Xvfb, private_dir
 
@@ -221,13 +221,15 @@ def drain(conn: ProtoConn, stop: threading.Event) -> None:
 
 def host_resources(repetitions: int = 3) -> dict:
     """Host memory at 10 and 100 sessions, idle, producing, and with streaming views."""
-    rows = {"10 sessions": (10, 0, 0), "100 sessions": (100, 0, 0), "100 sessions, 5 producing, 10 streaming": (100, 5, 10)}
+    rows = {"10 sessions": (10, 0, 0, 500), "100 sessions": (100, 0, 0, 500),
+            "100 sessions, history 5000": (100, 0, 0, 5000),
+            "100 sessions, 5 producing, 10 streaming": (100, 5, 10, 500)}
     measurements, observations = [], {}
-    for label, (sessions, producing, streaming) in rows.items():
-        rss, pss, agent_rss, reported = [], [], [], []
+    for label, (sessions, producing, streaming, history) in rows.items():
+        rss, pss, agent_rss, reported, peak, cpu = [], [], [], [], [], []
         for _ in range(repetitions):
             with private_dir() as directory:
-                host, _log = start(directory, sessions=sessions, producing=producing, rate=100, history=500)
+                host, _log = start(directory, sessions=sessions, producing=producing, rate=100, history=history)
                 conns, stop = [], threading.Event()
                 try:
                     time.sleep(2.0)
@@ -236,8 +238,12 @@ def host_resources(repetitions: int = 3) -> dict:
                         conn.send(op="subscribe", session=host.sessions[k % producing], after=-1, snapshot=True)
                         conns.append(conn)
                         threading.Thread(target=drain, args=(conn, stop), daemon=True).start()
+                    pids = tree_pids(host.pid)
+                    c0, w0 = cpu_seconds([host.pid], strict=True), time.monotonic()
                     time.sleep(10.0 if streaming else 0.5)
+                    cpu.append((cpu_seconds([host.pid], strict=True) - c0) / (time.monotonic() - w0) * 100)
                     r, p = _host_rss(host)
+                    peak.append(_mib([x.hwm_kb for x in collect_scopes({"host": host.pid})["host"].processes if x.pid == host.pid][0] or 0))
                     report = ProtoConn(host.socket).call(op="resources")
                     rss.append(r), pss.append(p)
                     agent_rss.append(_mib(sum(a["rss_kb"] for a in report["agents"])))
@@ -247,9 +253,11 @@ def host_resources(repetitions: int = 3) -> dict:
                     for c in conns:
                         c.close()
                     host.stop()
-        scope = {"candidate": "host:hostd", "workload": f"{label}, history 500, window 64", "process_scope": "host process"}
+        scope = {"candidate": "host:hostd", "workload": f"{label}, history {history}, window 64", "process_scope": "host process"}
         measurements += [
             build_measurement("host_rss_mib", scope, rss), build_measurement("host_pss_mib", scope, pss),
+            build_measurement("host_peak_rss_mib", scope, peak),
+            build_measurement("host_cpu_percent", dict(scope, interval_s=10 if streaming else 0), cpu),
             build_measurement("host_reported_rss_mib", dict(scope, process_scope="host's own resource report"), reported),
             build_measurement("agents_total_rss_mib", dict(scope, process_scope="agent processes"), agent_rss),
         ]

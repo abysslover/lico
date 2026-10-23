@@ -5,6 +5,7 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QInputMethod>
+#include <QEventLoop>
 #include <QInputMethodEvent>
 #include <QLineEdit>
 #include <QLabel>
@@ -14,6 +15,7 @@
 #include <QSocketNotifier>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <QCoreApplication>
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +47,7 @@ static std::string view_id;
 static long long generation = 1;
 static unsigned long sent_count;
 static std::map<std::string, std::string> drafts;
+static std::map<std::string, std::pair<std::string, std::string>> pending_inputs; /* request id -> (session, text) until answered */
 static std::vector<std::string> meta_ids;
 static std::vector<long long> meta_cursor;
 static void emit_ime(const char *kind, const QString &text)
@@ -54,8 +57,9 @@ static void emit_ime(const char *kind, const QString &text)
 }
 
 static QString last_preedit;       /* what is composing right now */
-static QString stale_commit;       /* the composition handed to a reset; its late commit is ignored */
-static qint64 stale_until_ms;
+static bool stale_pending;         /* a composition of a session we left may still be committed by the input method */
+static bool stale_empty;
+static bool commit_seen;           /* a commit arrived (used to wait for the answer to a reset) */
 
 static qint64 now_ms()
 {
@@ -69,11 +73,16 @@ protected:
     void inputMethodEvent(QInputMethodEvent *e) override
     {
         last_preedit = e->preeditString();
+        if (stale_pending) {
+            if (e->preeditString().isEmpty()) stale_empty = true;           /* a commit usually follows an empty preedit */
+            else if (stale_empty && e->commitString().isEmpty()) stale_pending = false; /* a new composition began */
+        }
         emit_ime("preedit", e->preeditString());
         if (!e->commitString().isEmpty()) {
-            if (e->commitString() == stale_commit && now_ms() < stale_until_ms) {
-                emit_ime("ignored", e->commitString()); /* the input method echoing the reset, not new typing */
-                stale_commit.clear();
+            commit_seen = true;
+            if (stale_pending) {
+                emit_ime("ignored", e->commitString()); /* the old composition finishing, not new typing */
+                stale_pending = false;
                 e->setCommitString(QString());
             } else {
                 emit_ime("commit", e->commitString());
@@ -170,9 +179,10 @@ static void send_draft()
     std::string text = entry->text().toUtf8().constData();
     char request_id[64];
     snprintf(request_id, sizeof request_id, "gui-%d-%lu", (int)getpid(), ++sent_count);
-    char head[200];
-    snprintf(head, sizeof head, "{\"op\":\"input\",\"session\":\"%s\",\"generation\":%lld,\"request_id\":\"%s\",\"text\":\"",
-             cur_session.c_str(), generation, request_id);
+    char head[260];
+    snprintf(head, sizeof head, "{\"op\":\"input\",\"id\":\"%s\",\"session\":\"%s\",\"generation\":%lld,\"request_id\":\"%s\",\"text\":\"",
+             request_id, cur_session.c_str(), generation, request_id);
+    pending_inputs[request_id] = std::make_pair(cur_session, text);
     send_line(std::string(head) + json_escape(text) + "\"}");
     emit_ime("sent", QString::fromStdString(text));
     entry->clear();
@@ -227,12 +237,19 @@ static void hide_view()
     int known = cur_session.empty() ? -1 : meta_find(cur_session);
     if (known >= 0) meta_cursor[known] = cursor;
     if (view && entry && !cur_session.empty()) {
-        /* a composition in progress is committed to the session it was typed for */
+        /* a composition in progress is committed to the session it was typed for: reset the
+           input method and let its answer land in this entry before the entry goes away */
         QString pending = last_preedit;
+        if (!pending.isEmpty()) {
+            commit_seen = false;
+            QGuiApplication::inputMethod()->reset();
+            qint64 until = now_ms() + 250;
+            while (!commit_seen && now_ms() < until) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (commit_seen) pending.clear();      /* the text is in the entry now */
+            else { stale_pending = true; stale_empty = false; } /* no answer yet: its late commit is ignored */
+        }
         drafts[cur_session] = (entry->text() + pending).toUtf8().constData();
-        if (!pending.isEmpty()) { stale_commit = pending; stale_until_ms = now_ms() + 500; }
         last_preedit.clear();
-        QGuiApplication::inputMethod()->reset();
     }
     if (!view_id.empty()) {
         send_line("{\"op\":\"view.detach\",\"view\":\"" + view_id + "\"}");
@@ -292,10 +309,29 @@ static void on_snapshot_lines(const char *reply)
     }
 }
 
+/* a reply to one of our inputs carries its request id: a refused input returns to its draft */
+static bool on_input_reply(const char *line)
+{
+    std::string id;
+    if (!jstr(line, "id", &id) || id.rfind("gui-", 0) != 0) return false;
+    auto pending = pending_inputs.find(id);
+    if (pending != pending_inputs.end()) {
+        if (strstr(line, "\"ok\":0")) {
+            const std::string session = pending->second.first, text = pending->second.second;
+            if (entry && cur_session == session) entry->setText(QString::fromUtf8(text.c_str()) + entry->text());
+            else drafts[session] = text + drafts[session];
+            emit_ime("send_failed", QString::fromUtf8(text.c_str()));
+        }
+        pending_inputs.erase(pending);
+    }
+    return true;
+}
+
 static void handle_sock_line(const char *line)
 {
     std::string ev, sess, data;
     long long seq;
+    if (on_input_reply(line)) return;
     if (jstr(line, "ev", &ev) && ev == "rec") {
         if (!view || !jstr(line, "session", &sess) || sess != cur_session || !jint(line, "seq", &seq)) return;
         if (seq <= cursor) { dups++; return; }
@@ -304,6 +340,7 @@ static void handle_sock_line(const char *line)
         return;
     }
     if (jstr(line, "ev", &ev) && ev == "overflow") {
+        if (!view || !jstr(line, "session", &sess) || sess != cur_session) return; /* not our visible session */
         subscribed = false;
         resyncs++;
         emit_state("overflow");

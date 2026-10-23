@@ -195,6 +195,29 @@ def run_hostd_suite() -> list[dict]:
                 conn.close()
             case("ipc_connection_cap", busy >= 1 and alive, f"{busy} of {cap + 10} extra connections told busy; an existing one still served")
 
+            # a peer that sends requests and never reads the replies is cut off; the host does not grow
+            rss_before = ipc.call(op="resources")["rss_kb"]
+            flood = ProtoConn(host.socket)
+            flood.sock.settimeout(1)
+            for _ in range(60000):
+                try:
+                    flood.sock.sendall(b'{"op":"snapshot","session":"' + sid.encode() + b'"}\n')
+                except OSError:
+                    break
+            time.sleep(1.0)
+            grew = (ipc.call(op="resources")["rss_kb"] - rss_before) / 1024
+            flood.sock.settimeout(3)
+            cut = False
+            try:
+                while flood.sock.recv(1 << 20):
+                    pass
+                cut = True
+            except ConnectionResetError:
+                cut = True
+            except OSError:
+                pass
+            case("ipc_replies_never_read", cut and grew < 48, f"peer cut off: {cut}; host grew {grew:.1f} MiB")
+
             def http(name: str, expect: int, method: str, path: str, headers=None, body=b"", send_host=True) -> None:
                 status, parsed, text = http_request(port, method, path, headers, body, send_host)
                 sinks.append(text)
@@ -221,6 +244,27 @@ def run_hostd_suite() -> list[dict]:
             time.sleep(1.2)
             after = http_request(port, "GET", "/v1/status", auth)[0]
             case("http_throttle", 429 in statuses and after == 200, f"{statuses.count(429)} of 300 throttled; then HTTP {after}")
+            # a request that trickles in is cut off at an overall deadline, not held for hours
+            slow = socket.create_connection(("127.0.0.1", port), timeout=3)
+            started = time.monotonic()
+            cut_after = None
+            for byte in b"GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n" % port + b"X-Slow: " + b"a" * 200:
+                try:
+                    slow.sendall(bytes([byte]))
+                    time.sleep(0.2)
+                    if time.monotonic() - started > 14:
+                        break
+                except OSError:
+                    cut_after = time.monotonic() - started
+                    break
+            if cut_after is None:
+                try:
+                    slow.settimeout(1)
+                    cut_after = time.monotonic() - started if slow.recv(64).startswith(b"HTTP/1.1 400") else None
+                except OSError:
+                    cut_after = time.monotonic() - started
+            slow.close()
+            case("http_trickled_request", cut_after is not None and cut_after < 20, f"closed after {cut_after:.1f} s" if cut_after else "held open")
             # more idle connections than the HTTP cap: the extra ones are refused at once
             idle = [socket.create_connection(("127.0.0.1", port), timeout=2) for _ in range(40)]
             refused = 0

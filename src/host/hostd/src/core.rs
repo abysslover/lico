@@ -7,7 +7,8 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
@@ -34,6 +35,9 @@ pub struct Config {
     pub max_sessions: usize,
 }
 
+const MAX_AGENT_LINE: usize = 16 * 1024;
+const MAX_VIEWS_PER_CONNECTION: usize = 64;
+
 pub struct ViewEntry {
     pub session: String,
     pub conn: Option<Arc<Sub>>,
@@ -45,9 +49,38 @@ pub struct Shared {
     pub sessions: RwLock<Vec<Arc<Mutex<Session>>>>,
     pub views: Mutex<HashMap<String, ViewEntry>>,
     pub started: Instant,
+    pub pending_creates: AtomicUsize,
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;
+
+type SpawnJob = (Command, mpsc::Sender<std::io::Result<Child>>);
+static SPAWNER: std::sync::OnceLock<Mutex<mpsc::Sender<SpawnJob>>> = std::sync::OnceLock::new();
+
+/// Agents are all spawned from one long-lived thread: the parent-death signal follows the
+/// thread that created the child, so an agent created from a request thread would be killed
+/// when that thread (a closed connection) ends.
+pub fn init_spawner() {
+    let (tx, rx) = mpsc::channel::<SpawnJob>();
+    thread::spawn(move || {
+        for (mut command, reply) in rx {
+            let _ = reply.send(command.spawn());
+        }
+    });
+    let _ = SPAWNER.set(Mutex::new(tx));
+}
+
+fn spawn_agent(command: Command) -> std::io::Result<Child> {
+    let (reply, wait) = mpsc::channel();
+    SPAWNER
+        .get()
+        .expect("spawner")
+        .lock()
+        .unwrap()
+        .send((command, reply))
+        .map_err(|_| std::io::Error::other("spawner stopped"))?;
+    wait.recv().map_err(|_| std::io::Error::other("spawner stopped"))?
+}
 
 extern "C" {
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
@@ -69,7 +102,7 @@ pub fn state_name(s: &Session) -> &'static str {
 
 // ------------------------------------------------------------------- agents
 /// Start a synthetic agent owned by this host; it ends when the host does.
-pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: u64, size: usize, stay: bool) -> Arc<Mutex<Session>> {
+pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: u64, size: usize, stay: bool) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, producing, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     let mut command = Command::new(&shared.cfg.agent);
@@ -87,10 +120,10 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
             Ok(())
         });
     }
-    let mut child = command.spawn().expect("spawn the synthetic agent");
-    let stdout = child.stdout.take().expect("agent stdout");
-    let mut stdin = child.stdin.take().expect("agent stdin");
-    let (tx, rx) = mpsc::channel::<String>();
+    let mut child = spawn_agent(command).map_err(|_| "busy")?;
+    let stdout = child.stdout.take().ok_or("busy")?;
+    let mut stdin = child.stdin.take().ok_or("busy")?;
+    let (tx, rx) = mpsc::sync_channel::<String>(1024);
     {
         let mut s = session.lock().unwrap();
         s.agent_pid = child.id();
@@ -111,7 +144,7 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
     });
     let owner = session.clone();
     thread::spawn(move || {
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+        for line in bounded_lines(stdout) {
             let mut parts = line.splitn(3, ' ');
             match (parts.next(), parts.next(), parts.next()) {
                 (Some("R"), Some(data), None) => {
@@ -146,7 +179,37 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
         thread::sleep(Duration::from_millis(2));
     }
     shared.sessions.write().unwrap().push(session.clone());
-    session
+    Ok(session)
+}
+
+/// Lines of an agent's output with a length limit: a longer line is dropped whole, so an
+/// agent that never ends a line cannot grow the host.
+fn bounded_lines(stream: std::process::ChildStdout) -> impl Iterator<Item = String> {
+    let mut reader = BufReader::new(stream);
+    std::iter::from_fn(move || loop {
+        let mut buf = Vec::new();
+        let n = reader.by_ref().take(MAX_AGENT_LINE as u64).read_until(b'\n', &mut buf).ok()?;
+        if n == 0 {
+            return None;
+        }
+        if buf.last() != Some(&b'\n') {
+            // too long without a newline: skip to the end of this line
+            let mut skip = Vec::new();
+            loop {
+                skip.clear();
+                match reader.by_ref().take(MAX_AGENT_LINE as u64).read_until(b'\n', &mut skip) {
+                    Ok(0) | Err(_) => return None,
+                    Ok(_) if skip.last() == Some(&b'\n') => break,
+                    Ok(_) => continue,
+                }
+            }
+            continue;
+        }
+        buf.pop();
+        if let Ok(text) = String::from_utf8(buf) {
+            return Some(text);
+        }
+    })
 }
 
 pub fn find(shared: &Shared, wanted: &str) -> Option<Arc<Mutex<Session>>> {
@@ -201,10 +264,12 @@ pub fn session_list(shared: &Shared) -> Reply {
 }
 
 pub fn session_create(shared: &Arc<Shared>, rate: u64, history: u64, size: usize) -> Reply {
-    if shared.sessions.read().unwrap().len() >= shared.cfg.max_sessions {
-        return Err("busy"); // a bounded number of sessions, and so of agent processes
-    }
-    let created = start_session(shared, rate > 0, rate, history, size, false);
+    // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
+    let reserved = shared.pending_creates.fetch_add(1, Ordering::SeqCst);
+    let total = shared.sessions.read().unwrap().len() + reserved;
+    let created = if total >= shared.cfg.max_sessions { Err("busy") } else { start_session(shared, rate > 0, rate, history, size, false) };
+    shared.pending_creates.fetch_sub(1, Ordering::SeqCst);
+    let created = created?;
     let id = created.lock().unwrap().id.clone();
     Ok(obj(json!({"session": id, "generation": 1})))
 }
@@ -227,10 +292,11 @@ pub fn input(shared: &Shared, session: &str, generation: i64, request_id: &str, 
     if s.state == State::Exited || s.input_tx.is_none() {
         return Err("session_exited");
     }
-    s.record_input(request_id);
     let line = format!("I {request_id} {}", payload::hex(text.as_bytes()));
-    if s.input_tx.as_ref().map_or(true, |tx| tx.send(line).is_err()) {
-        return Err("session_exited");
+    match s.input_tx.as_ref().map(|tx| tx.try_send(line)) {
+        Some(Ok(())) => s.record_input(request_id),
+        Some(Err(mpsc::TrySendError::Full(_))) => return Err("busy"),
+        _ => return Err("session_exited"),
     }
     let state = s.input_state(request_id).unwrap_or(InputState::Accepted);
     Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": false})))
@@ -248,17 +314,26 @@ pub fn approval_answer(shared: &Shared, session: &str, generation: i64, approval
     check_generation(Some(generation))?;
     let mut s = found.lock().unwrap();
     let position = s.approvals.iter().position(|(n, _)| *n == approval_id).ok_or("unknown_approval")?;
-    if s.input_tx.as_ref().map_or(true, |tx| tx.send(format!("P {approval_id} {answer}")).is_err()) {
-        return Err("session_exited");
+    match s.input_tx.as_ref().map(|tx| tx.try_send(format!("P {approval_id} {answer}"))) {
+        Some(Ok(())) => {}
+        Some(Err(mpsc::TrySendError::Full(_))) => return Err("busy"),
+        _ => return Err("session_exited"),
     }
     s.approvals.remove(position);
     Ok(obj(json!({"session": s.id, "approval_id": approval_id, "state": "answered"})))
 }
 
 /// Attach a view: the latest screen now and, for a connected view, live records after it.
-pub fn view_attach(shared: &Shared, conn: Option<&Arc<Sub>>, session: &str, generation: Option<i64>, after: i64) -> Reply {
+/// For a connected view the reply is queued under the session lock, before the view can
+/// receive a record, so a record never overtakes its own attach reply.
+pub fn view_attach(shared: &Shared, conn: Option<(&Arc<Sub>, &Option<Value>)>, session: &str, generation: Option<i64>, after: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     check_generation(generation)?;
+    if let Some((sub, _)) = conn {
+        if shared.views.lock().unwrap().values().filter(|v| v.conn.as_ref().map_or(false, |c| Arc::ptr_eq(c, sub))).count() >= MAX_VIEWS_PER_CONNECTION {
+            return Err("busy");
+        }
+    }
     let mut s = found.lock().unwrap();
     let (oldest, last) = (s.oldest(), s.last_seq());
     let valid = oldest <= after + 1 && after <= last;
@@ -266,16 +341,22 @@ pub fn view_attach(shared: &Shared, conn: Option<&Arc<Sub>>, session: &str, gene
     let mut body = obj(json!({"view": view, "session": s.id, "generation": 1, "gap": !valid, "from": last + 1}));
     body.insert("snapshot".into(), Value::Object(s.snapshot()));
     body.insert("missed".into(), if valid { json!(last - after) } else { Value::Null });
-    if let Some(sub) = conn {
-        sub.clear_overflow(&s.id);
-        s.subs.push(sub.clone());
-    }
     {
         // a view that has no connection (the HTTP listener) expires if it is never detached
         let mut views = shared.views.lock().unwrap();
         views.retain(|_, v| v.conn.is_some() || v.created.elapsed() < Duration::from_secs(600));
     }
-    shared.views.lock().unwrap().insert(view, ViewEntry { session: s.id.clone(), conn: conn.cloned(), created: Instant::now() });
+    shared.views.lock().unwrap().insert(view, ViewEntry { session: s.id.clone(), conn: conn.map(|(sub, _)| sub.clone()), created: Instant::now() });
+    if let Some((sub, rid)) = conn {
+        let mut all = obj(json!({"ok": 1}));
+        if let Some(id) = rid {
+            all.insert("id".into(), id.clone());
+        }
+        all.extend(body.clone());
+        sub.push(crate::session::encode(all));
+        sub.clear_overflow(&s.id);
+        s.add_sub(sub);
+    }
     Ok(body)
 }
 
@@ -332,20 +413,29 @@ pub fn resources(shared: &Shared) -> Reply {
 /// at most one bounded page, or a gap with a snapshot when the cursor is unusable.
 pub fn events(shared: &Shared, session: &str, after: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let (oldest, last, mem_start, view, id): (i64, i64, i64, LogView, String) = {
-        let s = found.lock().unwrap();
-        (s.oldest(), s.last_seq(), s.mem_start(), s.log_view(), s.id.clone())
-    };
+    let s = found.lock().unwrap();
+    let (oldest, last, mem_start, id) = (s.oldest(), s.last_seq(), s.mem_start(), s.id.clone());
     let valid = oldest <= after + 1 && after <= last;
+    let gap = |s: &Session| {
+        Ok(obj(json!({"session": s.id, "generation": 1, "gap": true, "from": s.last_seq() + 1,
+                      "snapshot": Value::Object(s.snapshot()), "events": []})))
+    };
     if !valid {
-        let s = found.lock().unwrap();
-        return Ok(obj(json!({"session": id, "generation": 1, "gap": true, "from": last + 1,
-                              "snapshot": Value::Object(s.snapshot()), "events": []})));
+        return gap(&s);
     }
     let records: Vec<(i64, Vec<u8>)> = if after + 1 >= mem_start {
-        found.lock().unwrap().window_after(after).into_iter().take(MAX_EVENTS).collect()
+        s.window_after(after).into_iter().take(MAX_EVENTS).collect()
     } else {
-        view.read(after + 1, mem_start, MAX_EVENTS).map_err(|_| "unknown_session")?
+        let view = s.log_view();
+        drop(s);
+        match view.read(after + 1, mem_start, MAX_EVENTS) {
+            Ok(records) if !records.is_empty() => records,
+            _ => {
+                // pruned or unreadable while reading: the cursor is no longer usable
+                let s = found.lock().unwrap();
+                return gap(&s);
+            }
+        }
     };
     let events: Vec<Value> = records
         .iter()
@@ -368,7 +458,7 @@ pub fn replay(session: &Arc<Mutex<Session>>, sub: &Arc<Sub>, id: &str, mut curso
                         return;
                     }
                 }
-                s.subs.push(sub.clone()); // live records follow with no gap
+                s.add_sub(sub); // live records follow with no gap
                 return;
             }
             (mem_start, s.log_view())

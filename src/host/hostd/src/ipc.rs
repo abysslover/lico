@@ -156,7 +156,10 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "input" => core::input(shared, &session, generation.unwrap_or(0), text(&request, "request_id"), text(&request, "text")),
         "input.status" => core::input_status(shared, &session, text(&request, "request_id")),
         "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer")),
-        "view.attach" => core::view_attach(shared, Some(sub), &session, generation, int(&request, "after").unwrap_or(-1)),
+        "view.attach" => match core::view_attach(shared, Some((sub, &rid)), &session, generation, int(&request, "after").unwrap_or(-1)) {
+            Ok(_) => return, // the reply was queued under the session lock
+            Err(code) => Err(code),
+        },
         "view.detach" => core::view_detach(shared, text(&request, "view")),
         _ => return stream_op(shared, sub, &request, &op, &rid),
     };
@@ -197,7 +200,7 @@ fn stream_op(shared: &Arc<Shared>, sub: &Arc<Sub>, request: &Map<String, Value>,
         }
         reply(body);
         sub.clear_overflow(&id);
-        guard.subs.push(sub.clone());
+        guard.add_sub(sub);
     } else {
         body["gap"] = json!(false);
         body["from"] = json!(after + 1);
@@ -216,15 +219,18 @@ pub fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let writer = {
         let sub = sub.clone();
         let mut out = stream.try_clone().expect("clone");
+        let _ = out.set_write_timeout(Some(Duration::from_secs(30))); // a stalled peer is cut off
         thread::spawn(move || {
             while let Some(line) = sub.pop_wait() {
                 if line.is_empty() {
                     continue;
                 }
                 if out.write_all(&line).is_err() {
-                    return;
+                    break;
                 }
             }
+            sub.closed.store(true, Ordering::Relaxed);
+            let _ = out.shutdown(std::net::Shutdown::Both); // ends the reader too
         })
     };
     let mut input = stream;
@@ -249,6 +255,9 @@ pub fn connection(stream: UnixStream, shared: Arc<Shared>) {
                 break 'read;
             }
             handle(&shared, &sub, &raw[..raw.len() - 1]);
+            if sub.closed.load(Ordering::Relaxed) {
+                break 'read;
+            }
         }
         if pending.len() > MAX_REQUEST {
             too_large(&sub);
@@ -258,6 +267,7 @@ pub fn connection(stream: UnixStream, shared: Arc<Shared>) {
     core::drop_connection(&shared, &sub);
     thread::sleep(Duration::from_millis(20)); // let the writer flush a final error line
     sub.closed.store(true, Ordering::Relaxed);
+    let _ = input.shutdown(std::net::Shutdown::Both); // frees a writer stuck on a peer that never reads
     sub.wake.notify_one();
     let _ = writer.join();
 }

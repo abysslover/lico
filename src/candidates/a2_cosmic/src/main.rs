@@ -44,7 +44,9 @@ struct SessionMeta {
 }
 
 struct App {
-    stale_commit: Option<String>,
+    stale_pending: bool, // an input method still composing text that belonged to a session we left
+    stale_empty: bool,
+    pending_inputs: HashMap<String, (String, String)>,
     view_id: String,
     generation: i64,
     drafts: HashMap<String, String>,
@@ -156,8 +158,9 @@ impl App {
             self.drafts.insert(self.session.clone(), draft);
             if !pending.is_empty() {
                 // the input method keeps composing it (winit offers no reset without losing the
-                // input context); the commit it sends at the next key belongs to the old session
-                self.stale_commit = Some(pending);
+                // input context); the first commit it sends afterwards belongs to the old session
+                self.stale_pending = true;
+                self.stale_empty = false;
             }
         }
         if !self.view_id.is_empty() {
@@ -176,6 +179,7 @@ impl App {
         if self.view.take().is_some() {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines
         }
+        self.session.clear(); // nothing typed while no view is shown can be sent anywhere
     }
 
     fn show(&mut self, id: &str, after: Option<i64>) {
@@ -229,9 +233,10 @@ impl App {
         let request_id = format!("gui-{}-{}", std::process::id(), self.sent_count);
         let text = std::mem::take(&mut self.input);
         let msg = format!(
-            "{{\"op\":\"input\",\"session\":\"{}\",\"generation\":{},\"request_id\":\"{}\",\"text\":\"{}\"}}",
-            self.session, self.generation, request_id, json_escape(&text)
+            "{{\"op\":\"input\",\"id\":\"{}\",\"session\":\"{}\",\"generation\":{},\"request_id\":\"{}\",\"text\":\"{}\"}}",
+            request_id, self.session, self.generation, request_id, json_escape(&text)
         );
+        self.pending_inputs.insert(request_id.clone(), (self.session.clone(), text.clone()));
         self.send(&msg);
         emit_ime("sent", &text);
         emit_ime("text", &self.input);
@@ -265,7 +270,31 @@ impl App {
         self.meta = meta;
     }
 
+    /// A reply to one of our inputs carries its request id: a refused input returns to its draft.
+    fn on_input_reply(&mut self, line: &str) -> bool {
+        let Some(id) = jstr(line, "id").filter(|id| id.starts_with("gui-")) else { return false };
+        let id = id.to_string();
+        if line.contains("\"ok\":0") {
+            if let Some((session, text)) = self.pending_inputs.remove(&id) {
+                if self.session == session {
+                    self.input.insert_str(0, &text);
+                } else {
+                    let draft = self.drafts.entry(session).or_default();
+                    draft.insert_str(0, &text);
+                }
+                emit_ime("send_failed", &text);
+                self.dirty = true;
+            }
+        } else {
+            self.pending_inputs.remove(&id);
+        }
+        true
+    }
+
     fn on_sock_line(&mut self, line: &str) {
+        if self.on_input_reply(line) {
+            return;
+        }
         match jstr(line, "ev") {
             Some("rec") => {
                 if self.view.is_none() || jstr(line, "session") != Some(self.session.as_str()) {
@@ -283,6 +312,7 @@ impl App {
                     self.append_line(seq, data);
                 }
             }
+            Some("overflow") if jstr(line, "session") != Some(self.session.as_str()) || self.view.is_none() => {} // not our visible session
             Some("overflow") => {
                 // the host dropped this stream: fetch a fresh snapshot instead of guessing
                 self.subscribed = false;
@@ -457,11 +487,18 @@ impl ApplicationHandler<Ev> for App {
             WindowEvent::Ime(ime) => {
                 match ime {
                     Ime::Preedit(text, _) => {
+                        if self.stale_pending {
+                            if text.is_empty() {
+                                self.stale_empty = true; // a commit usually follows an empty preedit
+                            } else if self.stale_empty {
+                                self.stale_pending = false; // a new composition began: the old one ended without a commit
+                            }
+                        }
                         emit_ime("preedit", &text);
                         self.preedit = text;
                     }
-                    Ime::Commit(text) if self.stale_commit.as_deref() == Some(text.as_str()) => {
-                        self.stale_commit = None; // the old composition finishing, not new typing
+                    Ime::Commit(text) if self.stale_pending => {
+                        self.stale_pending = false; // the old composition finishing (whatever its text), not new typing
                         emit_ime("ignored", &text);
                     }
                     Ime::Commit(text) => {
@@ -524,7 +561,7 @@ fn main() {
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
     let mut app = App {
-        stale_commit: None, view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
+        stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,

@@ -129,8 +129,10 @@ REQUESTS = {
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096}}),
     "session.list": _obj({}, _COMMON_REQ),
     "input": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
-                   "request_id": {"type": STR, "max_length": 64}, "text": {"type": STR, "max_length": 512}}, _COMMON_REQ),
-    "input.status": _obj({"session": {"type": STR, "max_length": 64}, "request_id": {"type": STR, "max_length": 64}},
+                   "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+                   "text": {"type": STR, "min_length": 1, "max_bytes": 512, "no_control": True}}, _COMMON_REQ),
+    "input.status": _obj({"session": {"type": STR, "max_length": 64},
+                          "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}},
                          _COMMON_REQ),
     "approval.answer": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                              "approval_id": {"type": INT, "minimum": 1}, "answer": {"type": STR, "enum": ["allow", "deny"]}},
@@ -171,6 +173,14 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: above {spec['maximum']}")
     if isinstance(value, str) and "max_length" in spec and len(value) > spec["max_length"]:
         errors.append(f"{path}: longer than {spec['max_length']}")
+    if isinstance(value, str) and "max_bytes" in spec and len(value.encode()) > spec["max_bytes"]:
+        errors.append(f"{path}: longer than {spec['max_bytes']} bytes")
+    if isinstance(value, str) and spec.get("min_length", 0) > len(value):
+        errors.append(f"{path}: shorter than {spec['min_length']}")
+    if isinstance(value, str) and spec.get("charset") == "id" and not all(c.isascii() and (c.isalnum() or c in "-_") for c in value):
+        errors.append(f"{path}: only letters, digits, dash and underscore")
+    if isinstance(value, str) and spec.get("no_control") and any(ord(c) < 32 or ord(c) == 127 for c in value):
+        errors.append(f"{path}: control characters")
     if isinstance(value, list):
         if "length" in spec and len(value) != spec["length"]:
             errors.append(f"{path}: length {len(value)}")

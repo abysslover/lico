@@ -20,8 +20,33 @@ use std::time::Instant;
 
 use core::{Config, Shared};
 
+#[repr(C)]
+struct Rlimit {
+    cur: u64,
+    max: u64,
+}
+
 extern "C" {
     fn umask(mask: u32) -> u32;
+    fn getrlimit(resource: i32, limit: *mut Rlimit) -> i32;
+    fn setrlimit(resource: i32, limit: *const Rlimit) -> i32;
+    fn getuid() -> u32;
+}
+
+/// Raise the descriptor limit to its hard maximum: every session and connection holds a few.
+fn raise_descriptor_limit() {
+    let mut limit = Rlimit { cur: 0, max: 0 };
+    unsafe {
+        if getrlimit(7, &mut limit) == 0 && limit.cur < limit.max {
+            limit.cur = limit.max;
+            setrlimit(7, &limit);
+        }
+    }
+}
+
+fn refuse(message: &str) -> ! {
+    eprintln!("lico-host: {message}");
+    std::process::exit(2);
 }
 
 fn main() {
@@ -45,19 +70,36 @@ fn main() {
         max_sessions: arg("--max-sessions", "256").parse().expect("max-sessions"),
     };
     {
-        use std::os::unix::fs::DirBuilderExt;
-        let _ = std::fs::remove_dir_all(&log_dir); // a fresh log for each run of the synthetic host
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+        // the socket lives in a directory only its owner can enter
+        match std::fs::metadata(&socket_dir) {
+            Ok(meta) if meta.is_dir() && meta.mode() & 0o077 == 0 && meta.uid() == unsafe { getuid() } => {}
+            _ => refuse("the socket directory must exist, belong to this user and have mode 0700"),
+        }
+        // a fresh log for each run of the synthetic host, but never wipe a directory that holds anything else
+        if log_dir.exists() {
+            let foreign = std::fs::read_dir(&log_dir).map_or(true, |mut entries| entries.any(|e| e.map_or(true, |e| !e.file_name().to_string_lossy().ends_with(".seg"))));
+            if foreign || !log_dir.is_dir() {
+                refuse("the log directory holds files that are not session segments; refusing to clear it");
+            }
+            let _ = std::fs::remove_dir_all(&log_dir);
+        }
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
+        let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
+    raise_descriptor_limit();
+    core::init_spawner();
     let sessions: usize = arg("--sessions", "1").parse().expect("sessions");
     let producing: usize = arg("--producing", "1").parse().expect("producing");
     let rate: u64 = arg("--rate", "100").parse::<f64>().expect("rate") as u64;
     let history: u64 = arg("--history", "5000").parse().expect("history");
     let size = cfg.payload;
-    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now() });
+    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0) });
     for index in 0..sessions {
         let live = index < producing;
-        core::start_session(&shared, live, if live { rate } else { 0 }, history, size, !live);
+        if core::start_session(&shared, live, if live { rate } else { 0 }, history, size, !live).is_err() {
+            refuse("cannot start the first sessions");
+        }
     }
     let ids: Vec<String> = shared.sessions.read().unwrap().iter().map(|s| s.lock().unwrap().id.clone()).collect();
     let _ = std::fs::remove_file(&socket);
@@ -75,7 +117,8 @@ fn main() {
         let token_file = arg("--http-token-file", "");
         assert!(!token_file.is_empty(), "--http-token-file is required with --http-port");
         let token = core::random_hex(16);
-        let mut file = std::fs::OpenOptions::new().create(true).truncate(true).write(true).mode(0o600).open(&token_file).expect("token file");
+        let _ = std::fs::remove_file(&token_file); // never reuse an existing file or follow a link planted there
+        let mut file = std::fs::OpenOptions::new().create_new(true).write(true).mode(0o600).open(&token_file).expect("token file");
         file.write_all(token.as_bytes()).expect("token file");
         let shared = shared.clone();
         thread::spawn(move || http::serve(shared, port, token));
@@ -84,7 +127,11 @@ fn main() {
     let _ = std::io::stdout().flush();
     let cap: usize = arg("--max-connections", "256").parse().expect("max-connections");
     let active = Arc::new(AtomicUsize::new(0));
-    for mut stream in listener.incoming().flatten() {
+    for stream in listener.incoming() {
+        let Ok(mut stream) = stream else {
+            thread::sleep(std::time::Duration::from_millis(50)); // out of descriptors or a failed accept: do not spin
+            continue;
+        };
         if active.load(Ordering::Relaxed) >= cap {
             // a bounded number of local connections: the rest are told the host is busy and closed
             let _ = stream.write_all(b"{\"v\":1,\"ok\":0,\"error\":\"busy\"}\n");

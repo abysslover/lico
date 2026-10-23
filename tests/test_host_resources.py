@@ -5,6 +5,7 @@ from lico_measure.procscope import collect_scopes, tree_pids
 from lico_measure.rig import private_dir
 
 from lico_measure.p02 import ProtoConn as Conn, start
+from lico_protocol import v1
 
 
 def test_resource_report_matches_process_scope():
@@ -17,6 +18,7 @@ def test_resource_report_matches_process_scope():
             view = conn.call(op="view.attach", session=host.sessions[1], kind="cli")
             time.sleep(1.0)
             report = conn.call(op="resources")
+            assert v1.validate_response("resources", report) == []
             # read the same process independently from /proc
             scope = collect_scopes({"host": host.pid})["host"]
             host_proc = [p for p in scope.processes if p.pid == host.pid][0]
@@ -34,7 +36,7 @@ def test_resource_report_matches_process_scope():
             status = conn.call(op="status")["sessions"]
             assert report["sessions"] == len(status) == 3
             assert report["subscribers"] == sum(s["subscribers"] for s in status) == 2
-            assert report["views"] == 1 and view["ok"] == 1
+            assert report["views"] == 1 and view["ok"] == 1 and v1.validate_response("view.attach", view) == []
             on_disk = sum(os.path.getsize(log / name) for name in os.listdir(log))
             assert report["log_bytes"] == on_disk, (report["log_bytes"], on_disk)
             assert report["running_sessions"] == 3 - sum(1 for s in status if s["state"] == "exited")

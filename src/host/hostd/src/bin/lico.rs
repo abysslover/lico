@@ -15,7 +15,10 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session list                   list sessions\n\
   session create [--rate N] [--history N]\n\
   session show ID                one session\n\
-  session send ID TEXT           send input (one request id, never repeated)\n\
+  session send ID TEXT [--request-id RID]
+                                 send input; the request id is printed first, so after a timeout the
+                                 same command with --request-id RID cannot send the text twice
+  input status ID RID            state of an earlier request id\n\
   session watch ID [--after N] [--seconds S]\n\
   approval answer SESSION N allow|deny\n\
   view attach SESSION [--kind gui|cli]\n\
@@ -132,10 +135,14 @@ fn main() {
                 None => die(2, "unknown session"),
             }
         }
-        ["session", "send", id, text] => {
+        ["input", "status", id, rid] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "input.status", "session": id, "request_id": rid})));
+        }
+        ["session", "send", id, text, ..] => {
             let mut conn = connect(&socket);
             let generation = session_generation(&mut conn, id);
-            let request_id = format!("cli-{}", random_token());
+            let request_id = flag(&args, "--request-id").unwrap_or_else(|| format!("cli-{}", random_token()));
+            eprintln!("request id {request_id}");
             expect_ok(call(&mut conn, json!({"op": "input", "session": id, "generation": generation, "request_id": request_id, "text": text})));
         }
         ["session", "watch", id, ..] => {

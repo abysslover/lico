@@ -65,7 +65,7 @@ waits for it.
 A request id is at most 64 characters of letters, digits, dash and underscore, so
 it can be passed to an agent without any chance of injecting a line. The text is
 non-empty, at most 512 bytes and has no control characters. The host dispatches a
-request id to the agent **at most once**: a repeat of the same id (a client that
+request id to the agent **at most once within the last 65536 inputs of a session** (a window of 64-bit hashes; an older id is forgotten, answers `unknown_request` and would be dispatched again): a repeat of the same id (a client that
 lost the reply and reconnected) is answered with the current state and
 `duplicate: true` and is not sent again. A target of the wrong generation, an
 unknown session or an exited session is refused (`stale_generation`,
@@ -97,3 +97,18 @@ Anything else is 404, a known path with another method is 405. Errors map to
 statuses: `bad_request` 400, unknown targets 404, `stale_generation` and
 `session_exited` 409, `too_large` 413, `busy` 429 or 503; a missing or wrong
 credential is 401 and a wrong Host or Origin 403.
+
+## Bounds
+
+Per connection: a request line is at most 4096 bytes; unread replies are cut off at
+four times the subscriber queue (the peer is disconnected); a write that stalls for
+30 s ends the connection; at most 64 views. Per host: at most 256 local connections
+(`--max-connections`) and 256 sessions (`--max-sessions`) and the descriptor limit is
+raised to its hard maximum; an agent's output line is limited to 16 KiB; pending
+approvals are limited to 64 per session; the agent input channel holds 1024 lines
+(a full channel answers `busy`). HTTP: 32 connections, one 10 s deadline for a whole
+request, 200 authenticated requests per second (burst 50) and a separate budget of 20
+failed credentials per second. The log directory is only cleared if it holds nothing
+but session segments, and the socket directory must be owned by the user with mode
+0700 or the host refuses to start. The log is written but never fsynced: it survives
+a killed GUI or host process, not a power cut, and a write error ends that session.

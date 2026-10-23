@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from lico_measure.rig import private_dir
+from lico_protocol import v1
 
 from lico_measure.p02 import AGENT, LICO, ProtoConn as Conn, cli, echoes, read_log, start  # noqa: F401
 
@@ -18,6 +19,7 @@ def test_stale_target_input_is_refused_without_dispatch():
             conn = Conn(host.socket)
             good = conn.call(op="input", session=sid, generation=1, request_id="r-good", text="alpha")
             assert good["ok"] == 1 and good["state"] in ("accepted", "submitted", "observed")
+            assert v1.validate_response("input", good) == []
             refused = [
                 dict(op="input", session=sid, generation=99, request_id="r-stale", text="bravo"),
                 dict(op="input", session="s" + "0" * 16, generation=1, request_id="r-foreign", text="charlie"),
@@ -71,6 +73,16 @@ def test_reconnect_never_resends_ambiguous_input():
             probe = Conn(host.socket)
             state = probe.call(op="input.status", session=sid, request_id=ids[0])
             assert state["ok"] == 1 and state["state"] == "observed"
+            assert v1.validate_response("input.status", state) == []
+            # more inputs than the old tracking window of 4096: an early id is still not dispatched twice
+            for k in range(4200):
+                probe.send(op="input", session=sid, generation=1, request_id=f"bulk-{k:05d}", text="x")
+            replies = 0
+            while replies < 4200:
+                if "ok" in probe.read():
+                    replies += 1
+            again = probe.call(op="input", session=sid, generation=1, request_id="bulk-00000", text="x")
+            assert again["ok"] == 1 and again["duplicate"] is True, again
             assert probe.call(op="input.status", session=sid, request_id="never-sent")["error"] == "unknown_request"
         finally:
             host.stop()
@@ -118,6 +130,7 @@ def test_http_requires_credential_host_and_origin():
             assert token not in host.ready_line
             with open(f"/proc/{host.pid}/cmdline", "rb") as handle:
                 assert token not in handle.read().decode(errors="replace")
+            assert "Bearer" not in open(os.path.join(directory, "host.err"), errors="replace").read()
             # no or wrong credential
             assert _http(port, "GET", "/v1/status")[0] == 401
             assert _http(port, "GET", "/v1/status", {"Authorization": "Bearer nope"})[0] == 401

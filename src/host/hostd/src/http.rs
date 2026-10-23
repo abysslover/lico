@@ -19,6 +19,8 @@ const MAX_BODY: usize = 4096;
 const MAX_CONNECTIONS: usize = 32;
 const RATE_PER_SECOND: f64 = 200.0;
 const BURST: f64 = 50.0;
+const FAILED_AUTH_PER_SECOND: f64 = 20.0;
+const READ_DEADLINE: Duration = Duration::from_secs(10);
 
 struct Bucket {
     tokens: f64,
@@ -88,13 +90,14 @@ fn error(stream: &mut TcpStream, status: u16, code: &str) {
 
 /// Read the request head and a bounded body; Err carries the status to answer with.
 fn read_request(stream: &mut TcpStream) -> Result<Request, u16> {
+    let started = Instant::now(); // one deadline for the whole request, not one per read
     let mut data: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 2048];
     let head_end = loop {
         if let Some(pos) = data.windows(4).position(|w| w == b"\r\n\r\n") {
             break pos;
         }
-        if data.len() > MAX_HEAD {
+        if data.len() > MAX_HEAD || started.elapsed() > READ_DEADLINE {
             return Err(400);
         }
         match stream.read(&mut chunk) {
@@ -127,6 +130,9 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, u16> {
     }
     let mut body = data[head_end + 4..].to_vec();
     while body.len() < length {
+        if started.elapsed() > READ_DEADLINE {
+            return Err(400);
+        }
         match stream.read(&mut chunk) {
             Ok(0) | Err(_) => return Err(400),
             Ok(n) => body.extend_from_slice(&chunk[..n]),
@@ -230,7 +236,19 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
     result.map_err(|code| (status_of(code), code))
 }
 
-fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<String>, bucket: Arc<Mutex<Bucket>>) {
+fn take(bucket: &Mutex<Bucket>, per_second: f64, burst: f64) -> bool {
+    let mut b = bucket.lock().unwrap();
+    let now = Instant::now();
+    b.tokens = (b.tokens + now.duration_since(b.at).as_secs_f64() * per_second).min(burst);
+    b.at = now;
+    if b.tokens < 1.0 {
+        return false;
+    }
+    b.tokens -= 1.0;
+    true
+}
+
+fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<String>, buckets: Arc<(Mutex<Bucket>, Mutex<Bucket>)>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let request = match read_request(&mut stream) {
@@ -258,19 +276,16 @@ fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<S
     if !host_ok || !origin_ok {
         return error(&mut stream, 403, "bad_request");
     }
-    {
-        let mut b = bucket.lock().unwrap();
-        let now = Instant::now();
-        b.tokens = (b.tokens + now.duration_since(b.at).as_secs_f64() * RATE_PER_SECOND).min(BURST);
-        b.at = now;
-        if b.tokens < 1.0 {
-            return respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
-        }
-        b.tokens -= 1.0;
-    }
     let presented = header(&request, "authorization").and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
     if !constant_time_eq(presented.as_bytes(), token.as_bytes()) {
+        // failed attempts have their own small budget, so guessing is slow and cannot starve real callers
+        if !take(&buckets.1, FAILED_AUTH_PER_SECOND, FAILED_AUTH_PER_SECOND) {
+            return respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
+        }
         return respond(&mut stream, 401, obj(json!({"error": "bad_request"})), "WWW-Authenticate: Bearer\r\n");
+    }
+    if !take(&buckets.0, RATE_PER_SECOND, BURST) {
+        return respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
     }
     match route(&shared, &request) {
         Ok(body) => respond(&mut stream, 200, body, ""),
@@ -283,17 +298,21 @@ pub fn serve(shared: Arc<Shared>, port: u16, token: String) {
     let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind the loopback listener");
     let token = Arc::new(token);
     let active = Arc::new(AtomicUsize::new(0));
-    let bucket = Arc::new(Mutex::new(Bucket { tokens: BURST, at: Instant::now() }));
-    for stream in listener.incoming().flatten() {
+    let buckets = Arc::new((Mutex::new(Bucket { tokens: BURST, at: Instant::now() }), Mutex::new(Bucket { tokens: FAILED_AUTH_PER_SECOND, at: Instant::now() })));
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else {
+            thread::sleep(Duration::from_millis(50)); // out of descriptors or a failed accept: do not spin
+            continue;
+        };
         if active.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
             let mut stream = stream;
             error(&mut stream, 503, "busy");
             continue;
         }
         active.fetch_add(1, Ordering::Relaxed);
-        let (shared, token, bucket, active) = (shared.clone(), token.clone(), bucket.clone(), active.clone());
+        let (shared, token, buckets, active) = (shared.clone(), token.clone(), buckets.clone(), active.clone());
         thread::spawn(move || {
-            serve_one(stream, shared, port, token, bucket);
+            serve_one(stream, shared, port, token, buckets);
             active.fetch_sub(1, Ordering::Relaxed);
         });
     }
