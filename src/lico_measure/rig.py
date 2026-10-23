@@ -23,6 +23,8 @@ def candidate_command(name: str, sock: str) -> list[str]:
     if name == "a":
         return [str(build / "a_native" / "release" / "lico-candidate-a"), "--socket", sock,
                 "--font", FONT_PRIMARY, "--font2", FONT_FALLBACK]
+    if name == "a2":
+        return [str(build / "a2_cosmic" / "release" / "lico-candidate-a2"), "--socket", sock]
     if name in ("b", "b2", "b3"):
         return [str(build / "b_gtk" / "candidate-b"), "--socket", sock]
     if name == "d":
