@@ -45,6 +45,15 @@ CANDIDATE_ENV = {
 }
 
 
+def _client_home() -> Path:
+    """A private, persistent home for client processes (font caches survive between runs)."""
+    home = REPO / "private" / "scratch" / "clienthome"
+    for sub in ("", "config", "cache", "data", "run"):
+        (home / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(home / "run", 0o700)
+    return home
+
+
 def session_rgb(session_id: str) -> int:
     return int(session_id[1:7], 16)
 
@@ -110,8 +119,13 @@ class Client:
     """A candidate GUI process driven over stdin; its JSON lines are queued."""
 
     def __init__(self, name: str, host_socket: str, display: str, wait_ready: bool = True) -> None:
-        env = dict(os.environ, DISPLAY=display, GDK_BACKEND="x11", NO_AT_BRIDGE="1", **CANDIDATE_ENV.get(name, {}))
-        env.pop("WAYLAND_DISPLAY", None)
+        home = _client_home()
+        # an explicit environment: no inherited session bus, themes, input-method or user settings
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": os.environ.get("LANG", "C.UTF-8"),
+               "DISPLAY": display, "HOME": str(home), "XDG_CONFIG_HOME": str(home / "config"),
+               "XDG_CACHE_HOME": str(home / "cache"), "XDG_DATA_HOME": str(home / "data"),
+               "XDG_RUNTIME_DIR": str(home / "run"), "GDK_BACKEND": "x11", "NO_AT_BRIDGE": "1",
+               **CANDIDATE_ENV.get(name, {})}
         self.proc = subprocess.Popen(
             candidate_command(name, host_socket), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             text=True, env=env,

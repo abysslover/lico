@@ -21,6 +21,7 @@ RESTARTS = 100
 COLD_RESTARTS = 10
 IDLE_INTERVAL_S = 60
 TIMEOUT_MS = 2000.0
+RESTART_TIMEOUT_MS = 10000.0
 
 
 def _mib(kb: float) -> float:
@@ -82,56 +83,81 @@ class Rig:
         return {s["session"]: s["seq"] for s in self.conn.call(op="status")["sessions"]}
 
     def trees(self) -> dict:
-        return collect_scopes({"gui": self.client.proc.pid, "host": self.host.pid,
-                               "display": self.xvfb.proc.pid})
+        scopes = collect_scopes({"gui": self.client.proc.pid, "host": self.host.pid,
+                                 "display": self.xvfb.proc.pid})
+        if any(s.unreadable for s in scopes.values()):
+            raise RuntimeError("a process in scope could not be read")
+        return scopes
 
 
 def _load_info() -> dict:
     return {"loadavg": os.getloadavg(), "t": time.time()}
 
 
-def idle_memory(candidate: str) -> dict:
-    """PERF-01 and PERF-07: one visible synthetic session, idle."""
+IDLE_LAUNCHES = 3
+
+
+def _idle_once(candidate: str) -> dict:
+    """One launch: five reads of one idle process tree; each part reduced to its median."""
+    from .stats import median
+
     with Rig(candidate, sessions=1, producing=0) as rig:
         sid = rig.host.sessions[0]
         rig.client.send("load")
         rig.client.expect("state", "loaded")
         rig.show(sid)
         time.sleep(SETTLE_S)
-        gui_rss, gui_pss, host_rss, display_rss, peaks, anon, filed = [], [], [], [], [], [], []
+        reads: dict[str, list[float]] = {k: [] for k in ("rss", "pss", "anon", "file", "host", "display", "peak")}
         for _ in range(5):
             scopes = rig.trees()
-            if any(s.unreadable for s in scopes.values()):
-                raise RuntimeError("a process in scope could not be read")
-            gui_rss.append(_mib(scopes["gui"].rss_kb))
-            gui_pss.append(_mib(scopes["gui"].pss_kb))
-            host_rss.append(_mib(scopes["host"].rss_kb))
-            display_rss.append(_mib(scopes["display"].rss_kb))
-            peaks.append(_mib(sum(p.hwm_kb or 0 for p in scopes["gui"].processes)))
-            anon.append(_mib(sum(p.anon_kb for p in scopes["gui"].processes)))
-            filed.append(_mib(sum(p.file_kb for p in scopes["gui"].processes)))
+            gui = scopes["gui"].processes
+            if any(p.hwm_kb is None or p.anon_kb is None or p.file_kb is None for p in gui):
+                raise RuntimeError("a memory field could not be read")
+            reads["rss"].append(_mib(scopes["gui"].rss_kb))
+            reads["pss"].append(_mib(scopes["gui"].pss_kb))
+            reads["anon"].append(_mib(sum(p.anon_kb for p in gui)))
+            reads["file"].append(_mib(sum(p.file_kb for p in gui)))
+            reads["host"].append(_mib(scopes["host"].rss_kb))
+            reads["display"].append(_mib(scopes["display"].rss_kb))
+            reads["peak"].append(_mib(sum(p.hwm_kb for p in gui)))
             time.sleep(1.0)
-        gui_pids = [p.pid for p in scopes["gui"].processes]
         names = []
-        for pid in gui_pids:
-            with open(f"/proc/{pid}/comm") as handle:
+        for p in gui:
+            with open(f"/proc/{p.pid}/comm") as handle:
                 names.append(handle.read().strip())
-        scope = rig.scope("one visible session, idle", {"viewport": VIEWPORT, "settle_s": SETTLE_S})
-        return {
-            "measurements": [
-                build_measurement("gui_idle_rss_mib", scope, gui_rss),
-                build_measurement("gui_idle_pss_mib", scope, gui_pss),
-                build_measurement("gui_peak_rss_mib", scope, peaks),
-                build_measurement("gui_idle_rss_anon_mib", scope, anon),
-                build_measurement("gui_idle_rss_file_mib", scope, filed),
-                build_measurement("host_idle_rss_mib", dict(scope, process_scope="host process tree"), host_rss),
-                build_measurement("display_server_idle_rss_mib",
-                                  dict(scope, process_scope="virtual display server"), display_rss),
-            ],
-            "observations": {"gui_processes": names, "gui_process_count": len(names),
-                             "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process", "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
-                             "load": _load_info()},
-        }
+        out = {k: median(v) for k, v in reads.items()}
+        out["names"] = names
+        return out
+
+
+def idle_memory(candidate: str) -> dict:
+    """PERF-01 and PERF-07: one visible synthetic session, idle. Each sample is one
+    independent launch (median of five reads of that process)."""
+    launches = [_idle_once(candidate) for _ in range(IDLE_LAUNCHES)]
+    scope = {"candidate": candidate, "workload": "one visible session, idle",
+             "process_scope": "gui process tree", "viewport": VIEWPORT, "settle_s": SETTLE_S,
+             "sample_unit": "independent launch"}
+
+    def column(key: str) -> list[float]:
+        return [launch[key] for launch in launches]
+
+    return {
+        "measurements": [
+            build_measurement("gui_idle_rss_mib", scope, column("rss")),
+            build_measurement("gui_idle_pss_mib", scope, column("pss")),
+            build_measurement("gui_peak_rss_mib", scope, column("peak")),
+            build_measurement("gui_idle_rss_anon_mib", scope, column("anon")),
+            build_measurement("gui_idle_rss_file_mib", scope, column("file")),
+            build_measurement("host_idle_rss_mib", dict(scope, process_scope="host process tree"), column("host")),
+            build_measurement("display_server_idle_rss_mib",
+                              dict(scope, process_scope="virtual display server"), column("display")),
+        ],
+        "observations": {"gui_processes": launches[0]["names"], "gui_process_count": len(launches[0]["names"]),
+                         "launches": IDLE_LAUNCHES,
+                         "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process",
+                         "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+                         "load": _load_info()},
+    }
 
 
 def _cycle_and_measure(candidate: str, sessions: int) -> tuple[float, float]:
@@ -245,7 +271,9 @@ def _launch_and_time(rig: Rig, index: int) -> float:
         box["client"].send(f"show {sid}")
 
     try:
-        return measure_switch(issue, rig.reader.pixel, session_rgb(sid), min_seq, timeout_s=10.0)
+        return measure_switch(issue, rig.reader.pixel, session_rgb(sid), min_seq, timeout_s=RESTART_TIMEOUT_MS / 1000)
+    except TimeoutError:
+        return RESTART_TIMEOUT_MS   # counted at the cap, never dropped
     finally:
         client = box.get("client")
         if client:
@@ -285,13 +313,19 @@ def restart(candidate: str) -> dict:
         }
 
 
-def _cpu_percent(rig: Rig, seconds: int) -> tuple[float, float]:
+def _cpu_percent(rig: Rig, seconds: int, session_id: str) -> tuple[float, float]:
     gui = tree_pids(rig.client.proc.pid)
     display = tree_pids(rig.xvfb.proc.pid)
-    g0, d0, w0 = cpu_seconds(gui), cpu_seconds(display), time.monotonic()
+    g0, d0, w0 = cpu_seconds(gui, strict=True), cpu_seconds(display, strict=True), time.monotonic()
     time.sleep(seconds)
     wall = time.monotonic() - w0
-    return (cpu_seconds(gui) - g0) / wall * 100, (cpu_seconds(display) - d0) / wall * 100
+    g1, d1 = cpu_seconds(gui, strict=True), cpu_seconds(display, strict=True)
+    # a dead or replaced process also reads as zero ticks, so prove the tree is the same and alive
+    if rig.client.proc.poll() is not None or tree_pids(rig.client.proc.pid) != gui:
+        raise RuntimeError("the GUI process tree changed during the CPU interval")
+    if not rig.client.state()["view_resident"] or rig.reader.pixel(8, 8) != session_rgb(session_id):
+        raise RuntimeError("the view was not shown at the end of the CPU interval")
+    return (g1 - g0) / wall * 100, (d1 - d0) / wall * 100
 
 
 def idle_cpu(candidate: str) -> dict:
@@ -301,7 +335,7 @@ def idle_cpu(candidate: str) -> dict:
         with Rig(candidate, sessions=1, producing=producing, history=500) as rig:
             rig.show(rig.host.sessions[0])
             time.sleep(SETTLE_S)
-            gui, display = _cpu_percent(rig, IDLE_INTERVAL_S)
+            gui, display = _cpu_percent(rig, IDLE_INTERVAL_S, rig.host.sessions[0])
             scope = rig.scope(name, {"viewport": VIEWPORT, "interval_s": IDLE_INTERVAL_S})
             metric = "idle_cpu_percent" if producing == 0 else "noisy_cpu_percent"
             out.append(build_measurement(metric, scope, [gui]))
@@ -377,6 +411,7 @@ def inventory(candidate: str) -> dict:
         rig.show(rig.host.sessions[0])
         tree = subprocess.run(["xwininfo", "-display", rig.xvfb.display, "-root", "-tree"],
                               capture_output=True, text=True).stdout
+        windows_1200x800 = sum(1 for line in tree.splitlines() if "1200x800" in line)  # root plus the app window
         scopes = rig.trees()
         began = time.perf_counter_ns()
         for _ in range(500):
@@ -390,12 +425,13 @@ def inventory(candidate: str) -> dict:
                 "binary_bytes": os.path.getsize(exe),
                 "mapped_file_count": len(libs), "mapped_file_bytes_total": sum(sizes.values()),
                 "package_size": "unverified: no package is produced in this phase",
-                "window_1200x800_present": "1200x800" in tree,
+                "app_window_1200x800_present": windows_1200x800 >= 2,
+                "fonts_mapped": sorted({os.path.basename(p) for p in libs if p.endswith((".ttf", ".ttc", ".otf"))}),
                 "gui_process_count": len(scopes["gui"].processes),
-                "display": {"server": "Xvfb (X11, no compositor, software rendering)",
-                            "screen": f"{VIEWPORT}x24", "scale": 1, "wayland": "unverified"},
-                "gpu": "none observable under Xvfb; GPU allocation unverified",
-                "fonts": ["DejaVu Sans Mono (Latin)", "NanumSquare (Hangul fallback)"],
+                "declared_environment": {"server": "Xvfb (X11, no compositor, software rendering)",
+                                         "screen": f"{VIEWPORT}x24", "scale": "1 (declared, not observed)",
+                                         "wayland": "unverified"},
+                "gpu": "GPU allocation unverified (the virtual display does not use the GPU)",
                 "cpu_logical": os.cpu_count(),
                 "largest_resident_mappings": mapping_top(rig.client.proc.pid),
                 "screen_read_period_us": round(poll_us, 1),
@@ -422,7 +458,7 @@ def glyph_stress(candidate: str) -> dict:
                           {"viewport": VIEWPORT, "font_size_px": 14})
         return {
             "measurements": [build_measurement("gui_rss_after_glyph_stress_mib", scope, after),
-                             build_measurement("gui_rss_before_glyph_stress_mib", scope, [before] * 3)],
+                             build_measurement("gui_rss_before_glyph_stress_mib", scope, [before])],
             "observations": {"growth_mib": round(max(after) - before, 2),
                              "note": "fallback font coverage differs per candidate; missing glyphs are drawn as boxes",
                              "load": _load_info()},

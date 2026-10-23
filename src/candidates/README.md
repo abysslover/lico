@@ -1,12 +1,13 @@
 # Architecture candidates (M01-P01)
 
-Two minimal clients for the synthetic host in `src/lico_host`. Both take
+Minimal clients for the synthetic host in `src/lico_host`. Both take
 commands on stdin (`show ID [CURSOR]`, `hide`, `status`, `hoststatus`, `quit`)
 and print one JSON object per line. They exist to be measured, not shipped.
 
 | Directory | Candidate | Build |
 |---|---|---|
 | `a_native` | Rust with winit 0.30.13, softbuffer 0.4.8, fontdue 0.9.5 (versions pinned in `Cargo.lock`) | `cargo build --release --locked` |
+| `a2_cosmic` | `a_native` with cosmic-text 0.19.0 (pinned in `Cargo.lock`) for shaping and font fallback | `cargo build --release --locked` |
 | `b_gtk` | C with GTK 3 (`gtk+-3.0`, LGPL-2.1-or-later) | `gcc -O2 main.c $(pkg-config --cflags --libs gtk+-3.0)` |
 | `c_qt` | C++ with Qt 5 Widgets (LGPL-3.0 or GPL, as installed) | `g++ -O2 -fPIC main.cpp $(pkg-config --cflags --libs Qt5Widgets)` |
 | `d_webkit` | C with GTK 3 and WebKitGTK 4.1 (`webkit2gtk-4.1`, LGPL-2.1-or-later) | `gcc -O2 main.c $(pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1)` |
@@ -19,3 +20,11 @@ deployment) and `c2` (Qt with its XCB GL integration switched off).
 Candidate A resolves 81 crates for the Linux target. Every one declares a
 permissive license (MIT, Apache-2.0, Zlib, ISC, BSD-2-Clause, Unlicense or an
 OR/AND combination of these). Generated notices are produced before any release.
+
+The `b3` stub is built from `b_gtk/gl_stub.c`:
+`gcc -shared -o libGL.so.1 -Wl,-soname,libGL.so.1 gl_stub.c`, placed in a
+directory that is first on `LD_LIBRARY_PATH`.
+
+The tests under `tests/` start a virtual X server (`Xvfb`) and the candidate
+binaries, so they need the candidates built first; they are not unit tests that
+run on a bare clone.

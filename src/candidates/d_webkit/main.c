@@ -70,7 +70,7 @@ static gboolean jstr(const char *s, const char *key, char *out, size_t n)
 static const char *PAGE =
     "<!doctype html><meta charset='utf-8'><body style='margin:0;background:#101418;color:#e0e0e0;font:14px monospace'>"
     "<div id=m1 style='position:fixed;left:0;top:0;width:16px;height:16px'></div>"
-    "<div id=m2 style='position:fixed;left:16px;top:0;width:16px;height:16px'></div>"
+    "<div id=m2 style='position:fixed;left:16px;top:0;width:16px;height:16px;background:#000'></div>"
     "<div style='text-align:center;height:18px'>\xed\x95\x9c\xea\xb8\x80 Lico session view</div>"
     "<pre id=t style='margin:4px'></pre><script>var L=[];"
     "function hx(n){return ('000000'+(n&0xffffff).toString(16)).slice(-6)}"

@@ -40,9 +40,11 @@ def run_hostile_cases(host) -> list[dict]:
     raw.sendall(b"x" * 8192 + b"\n")
     raw.settimeout(5)
     try:
-        closed = raw.recv(64) == b""
-    except (ConnectionError, socket.timeout):
+        closed = raw.recv(64) == b""        # a real end-of-stream, not a receive timeout
+    except ConnectionResetError:
         closed = True
+    except socket.timeout:
+        closed = False
     raw.close()
     results.append(_case("oversize_request", closed, _subscribers(conn) == baseline,
                          "8192-byte line closes the connection"))
@@ -60,8 +62,12 @@ def run_hostile_cases(host) -> list[dict]:
 
     with open(f"/proc/{host.pid}/cmdline", "rb") as handle:
         argv = handle.read().decode(errors="replace")
-    sinks = [argv, host.ready_line, repr(conn.call(op="status")), repr(conn.call(op="snapshot", session=session))]
+    # the canary is sent in a request field and must not come back anywhere the host writes
+    replies = [repr(conn.call(op="snapshot", session=CANARY)), repr(conn.call(op="subscribe", session=CANARY, after=0)),
+               repr(conn.call(op="status")), repr(conn.call(op="snapshot", session=session))]
+    sinks = [argv, host.ready_line] + replies
     leaked = any(CANARY in sink for sink in sinks)
-    results.append(_case("canary_in_sinks", not leaked, True, "argv, ready line, status, snapshot scanned"))
+    results.append(_case("canary_in_sinks", not leaked, _subscribers(conn) == baseline,
+                         "canary sent in a request; argv, ready line and replies scanned"))
     conn.close()
     return results

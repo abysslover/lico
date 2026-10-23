@@ -26,6 +26,10 @@ def test_latency_uses_correct_frame_event():
     issued = []
     ms = measure_switch(lambda: issued.append(True), fake.pixel, new, 6100, clock_ns=fake.clock, timeout_s=1.0)
     assert issued == [True]
+    # a blank page whose sequence block shows a large unrelated colour is not content either
+    blank = Fake([(new, 1_053_720), (new, 1_053_720), (new, 6200)])
+    ms2 = measure_switch(lambda: None, blank.pixel, new, 6100, clock_ns=blank.clock, timeout_s=1.0)
+    assert ms2 >= 4.0
     # the first four 2 ms slots show a wrong or stale frame; only the fifth is correct
     assert 8.0 <= ms < 10.0
     never = Fake([(old, 5000)])

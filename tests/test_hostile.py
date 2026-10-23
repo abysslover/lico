@@ -16,6 +16,9 @@ def test_hostile_requests_rejected_without_effect():
                     "malformed_json", "unknown_op", "canary_in_sinks"} <= names
             assert all(r["rejected"] and r["no_effect"] for r in results), results
             assert stat.S_IMODE(os.stat(host.socket).st_mode) == 0o600
+            assert stat.S_IMODE(os.stat(os.path.dirname(host.socket)).st_mode) == 0o700
+            planted = [r for r in results if r["case"] == "canary_in_sinks"][0]
+            assert "request" in planted["detail"]       # the canary was sent, not just present in the environment
         finally:
             host.stop()
             os.environ.pop("LICO_CANARY_CREDENTIAL", None)

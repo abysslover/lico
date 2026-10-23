@@ -212,7 +212,11 @@ async def serve(path: str, sessions: int, producing: int, rate: float, history: 
 
     if os.path.exists(path):
         os.unlink(path)
-    server = await asyncio.start_unix_server(connection, path=path)
+    previous = os.umask(0o077)  # the socket is never group- or world-accessible, even briefly
+    try:
+        server = await asyncio.start_unix_server(connection, path=path)
+    finally:
+        os.umask(previous)
     os.chmod(path, 0o600)
     print(json.dumps({"ready": 1, "pid": os.getpid(), "sessions": [s.id for s in host.sessions]}), flush=True)
     async with server:

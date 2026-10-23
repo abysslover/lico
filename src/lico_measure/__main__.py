@@ -11,9 +11,12 @@ import sys
 import time
 from pathlib import Path
 
-from .experiments import EXPERIMENTS
+from .experiments import EXPERIMENTS, Rig
 from .report import build_report
 from .rig import REPO
+
+
+ONLY_FOR = {"glyph_stress": {"a", "a2"}}
 
 
 def _capture(*cmd: str) -> str:
@@ -30,8 +33,19 @@ def environment() -> dict:
         "kernel": platform.release(), "machine": platform.machine(), "python": platform.python_version(),
         "gtk": _capture("pkg-config", "--modversion", "gtk+-3.0"), "rustc": _capture("rustc", "--version"),
         "display": "Xvfb, X11, no compositor, software rendering", "cpu_logical": os.cpu_count(),
-        "memory_cap": "pri-heavy per-job cap (declared in receipt)",
     }
+
+
+def _binary_hashes(candidates: list[str]) -> dict:
+    import hashlib
+
+    from .rig import candidate_command
+
+    out = {}
+    for name in candidates:
+        with open(candidate_command(name, "x")[0], "rb") as handle:
+            out[name] = hashlib.sha256(handle.read()).hexdigest()
+    return out
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -47,13 +61,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         "command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
         "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "experiments": names,
         "candidates": args.candidates.split(","), "environment": environment(),
+        "binary_sha256": _binary_hashes(args.candidates.split(",")),
         "workload": {"record_bytes": 1024, "rate_per_second": 100, "stream_duration_s": 30,
                      "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60},
     }
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))  # kept even if a run aborts
     for candidate in receipt["candidates"]:
         results["candidates"][candidate] = {}
+        print(f"[{candidate}] warm-up (fills the private font caches, not measured)", flush=True)
+        with Rig(candidate, sessions=1, producing=0, history=100) as warm:
+            warm.show(warm.host.sessions[0])
         for name in names:
+            if candidate not in ONLY_FOR.get(name, {candidate}):
+                continue  # the stress command exists only in the owned clients
             began = time.monotonic()
             print(f"[{candidate}] {name} ...", flush=True)
             results["candidates"][candidate][name] = EXPERIMENTS[name](candidate)

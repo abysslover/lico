@@ -104,14 +104,20 @@ def _read_status(pid: int, proc_root: str) -> dict[str, int]:
     return found  # a field that is absent stays absent, never zero
 
 
-def cpu_seconds(pids: list[int], proc_root: str = "/proc") -> float:
-    """User plus system CPU seconds consumed so far by the given processes."""
+def cpu_seconds(pids: list[int], proc_root: str = "/proc", strict: bool = False) -> float:
+    """User plus system CPU seconds consumed so far by the given processes.
+
+    With ``strict`` a process that has exited is an error instead of being skipped,
+    so a dead process can never read as an idle one.
+    """
     ticks = 0
     for pid in pids:
         try:
             with open(f"{proc_root}/{pid}/stat") as handle:
                 stat = handle.read()
         except OSError:
+            if strict:
+                raise ScopeError(f"process {pid} exited during the measurement")
             continue
         fields = stat[stat.rindex(")") + 2 :].split()
         ticks += int(fields[11]) + int(fields[12])   # utime, stime

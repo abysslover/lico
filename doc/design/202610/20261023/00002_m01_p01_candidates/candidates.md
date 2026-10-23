@@ -43,7 +43,7 @@ Xvfb server provides software rendering and no compositor.
 |---|---|---|---|
 | Codex app-server | Default stdio JSONL; JSON-RPC style `thread/start`, `thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`; events such as `item/agentMessage/delta`; approvals are server-initiated requests | Credential store `file`, `keyring` (fails if unavailable), `auto` (falls back to a file) or `ephemeral`; browser, device code (beta), API key and access token logins | WebSocket transport is "experimental and unsupported"; the command is not supported for production workloads; several thread and process methods need an experimental opt-in; multiple-account isolation guidance was not found on the auth page |
 | Codex CLI installed | Version `codex-cli 0.163.0` read with a version flag only | Not exercised | App-server behavior of this exact version is unverified |
-| Claude Code CLI installed | Version **unverified**: this session is not permitted to run it | Delegate sign-in to the official CLI | Do not extract subscription credentials or misrepresent client identity; third-party integrations should use API-key or supported cloud authentication |
+| Claude Code CLI installed | Version **unverified**: it was not run for this survey | Delegate sign-in to the official CLI | Do not extract subscription credentials or misrepresent client identity; third-party integrations should use API-key or supported cloud authentication |
 | Anthropic API | Documented API key or supported cloud authentication | API key from the OS keyring in later phases | Subscription use by an independent client is a separate documented capability, not assumed |
 
 The app-server documentation page was read only in part (about 100000 of 143632
