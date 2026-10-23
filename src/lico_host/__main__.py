@@ -11,8 +11,9 @@ def main() -> None:
     parser.add_argument("--producing", type=int, default=1, help="sessions that emit output")
     parser.add_argument("--rate", type=float, default=100.0, help="records per second per producer")
     parser.add_argument("--history", type=int, default=5000, help="records seeded before start")
+    parser.add_argument("--retain", type=int, default=2048, help="records kept per session for replay")
     args = parser.parse_args()
-    asyncio.run(serve(args.socket, args.sessions, args.producing, args.rate, args.history))
+    asyncio.run(serve(args.socket, args.sessions, args.producing, args.rate, args.history, args.retain))
 
 
 main()

@@ -40,7 +40,9 @@ def run_hostile_cases(host) -> list[dict]:
     raw.sendall(b"x" * 8192 + b"\n")
     raw.settimeout(5)
     try:
-        closed = raw.recv(64) == b""        # a real end-of-stream, not a receive timeout
+        while raw.recv(4096):          # an error line may come first; the stream must then end
+            pass
+        closed = True
     except ConnectionResetError:
         closed = True
     except socket.timeout:

@@ -76,14 +76,32 @@ class Xvfb:
         self.proc.wait()
 
 
+HOST_BUILD = {"rust_std": "host_rust_std/release/lico-host-std", "rust_serde": "host_rust_serde/release/lico-host-serde",
+              "c": "host_c/lico-host-c"}
+
+
+def _host_command(impl: str) -> list[str]:
+    if impl == "oracle":
+        return [sys.executable, "-B", "-m", "lico_host"]
+    build = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
+    return [str(build / HOST_BUILD[impl])]
+
+
+def host_impls() -> list[str]:
+    """The reference oracle plus every conformance candidate that has been built."""
+    build = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
+    return ["oracle"] + [name for name, rel in HOST_BUILD.items() if (build / rel).exists()]
+
+
 class Host:
     def __init__(self, directory: str, sessions: int, producing: int, rate: float = 100.0,
-                 history: int = 5000) -> None:
+                 history: int = 5000, retain: int = 2048, impl: str = "oracle") -> None:
         self.socket = os.path.join(directory, "host.sock")
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")
         self.proc = subprocess.Popen(
-            [sys.executable, "-B", "-m", "lico_host", "--socket", self.socket, "--sessions", str(sessions),
-             "--producing", str(producing), "--rate", str(rate), "--history", str(history)],
+            [*_host_command(impl), "--socket", self.socket, "--sessions", str(sessions),
+             "--producing", str(producing), "--rate", str(rate), "--history", str(history),
+             "--retain", str(retain)],
             stdout=subprocess.PIPE, text=True, env={k: v for k, v in env.items() if k != "PYTHONHOME"},
         )
         self.ready_line = self.proc.stdout.readline()
