@@ -6,8 +6,8 @@ Updated: 2026-10-23
 |---|---|---|
 | Product direction | Selected | Lico; MIT; Linux first, Windows later |
 | Initial scaffold | Prepared | Documentation and empty source/test areas only |
-| M01 milestone | Proposed | Approval package to follow on a documentation branch |
-| M01-P01 architecture plan | Draft | No experiment has run |
+| [M01 milestone](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) | Proposed | G1 approval pending |
+| [M01-P01 architecture plan](doc/plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | Draft | G2 approval pending; no experiment has run |
 | Renderer and runtime | Undecided | Selection requires measured evidence |
 | Implementation | Not started | No product code or provider session was created |
 | Resource budgets | Unmeasured targets | No performance target is claimed as achieved |

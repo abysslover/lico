@@ -1,8 +1,15 @@
 # Documentation
 
-The product specification, proposed M01 milestone and draft first phase plan
-will be published together on a documentation branch for review. They are not
-yet approvals, results or implemented capabilities.
+These are proposed product and development documents for review. They are not
+approvals, results or implemented capabilities.
+
+| Document | Current meaning |
+|---|---|
+| [Product specification](product/202610/20261023/00001_product_spec/product_spec.md) | Requirements and unmeasured target budgets |
+| [M01 milestone](milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) | Proposed Linux milestone; G1 pending |
+| [M01-P01 plan](plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | Draft first architecture experiment; G2 pending |
+| [Repository layout](design/202610/20261023/00001_bootstrap_design/layout.md) | Five root/category groups and indexed date archives |
+| [Initial research](design/202610/20261023/00001_bootstrap_design/research.md) | Primary-source constraints checked before phase division |
 
 Documentation uses at most five categories: product, milestones, plans, reports
 and design. Categories appear when they contain actual material. Milestone,
