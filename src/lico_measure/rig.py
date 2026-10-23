@@ -60,7 +60,8 @@ class Host:
              "--producing", str(producing), "--rate", str(rate), "--history", str(history)],
             stdout=subprocess.PIPE, text=True, env={k: v for k, v in env.items() if k != "PYTHONHOME"},
         )
-        ready = json.loads(self.proc.stdout.readline())
+        self.ready_line = self.proc.stdout.readline()
+        ready = json.loads(self.ready_line)
         self.pid = ready["pid"]
         self.sessions: list[str] = ready["sessions"]
 

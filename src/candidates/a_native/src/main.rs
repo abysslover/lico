@@ -41,7 +41,15 @@ struct View {
     seq_rgb: u32,
 }
 
+struct SessionMeta {
+    id: String,
+    cursor: i64,
+}
+
 struct App {
+    meta: Vec<SessionMeta>,
+    pending_show: Option<(String, Option<i64>)>,
+    print_status: bool,
     window: Option<Arc<Window>>,
     context: Option<Context<Arc<Window>>>,
     view: Option<View>,
@@ -86,10 +94,10 @@ impl App {
 
     fn emit_state(&self, why: &str) {
         println!(
-            "{{\"ev\":\"state\",\"why\":\"{}\",\"session\":\"{}\",\"view_resident\":{},\"line_buffer_lines\":{},\"cursor\":{},\"subscribed\":{},\"dups\":{},\"gaps\":{}}}",
+            "{{\"ev\":\"state\",\"why\":\"{}\",\"session\":\"{}\",\"view_resident\":{},\"line_buffer_lines\":{},\"cursor\":{},\"subscribed\":{},\"dups\":{},\"gaps\":{},\"known_sessions\":{}}}",
             why, self.session, self.view.is_some(),
             self.view.as_ref().map_or(0, |v| v.lines.len()),
-            self.cursor, self.subscribed, self.dups, self.gaps
+            self.cursor, self.subscribed, self.dups, self.gaps, self.meta.len()
         );
         let _ = std::io::stdout().flush();
     }
@@ -126,15 +134,22 @@ impl App {
             self.send(&msg);
         }
         self.subscribed = false;
+        let cursor = self.cursor;
+        if let Some(m) = self.meta.iter_mut().find(|m| m.id == self.session) {
+            m.cursor = cursor; // navigation metadata survives; the view does not
+        }
         if self.view.take().is_some() {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines
         }
     }
 
     fn show(&mut self, id: &str, after: Option<i64>) {
+        let Some(window) = self.window.clone() else {
+            self.pending_show = Some((id.to_string(), after)); // applied once the window exists
+            return;
+        };
         self.hide();
         self.load_fonts();
-        let Some(window) = self.window.clone() else { return };
         let Some(context) = self.context.as_ref() else { return };
         let surface = Surface::new(context, window.clone()).expect("surface");
         let rgb = 0xFF00_0000 | (u32::from_str_radix(id.get(1..7).unwrap_or("0"), 16).unwrap_or(0) & 0xFF_FFFF);
@@ -142,7 +157,8 @@ impl App {
             lines: VecDeque::new(), surface, glyphs: HashMap::new(), session_rgb: rgb, seq_rgb: 0xFF00_0000,
         });
         self.session = id.to_string();
-        self.cursor = after.unwrap_or(-1);
+        let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).filter(|c| *c >= 0);
+        self.cursor = after.or(remembered).unwrap_or(-1);
         let msg = format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}}}", self.cursor);
         self.send(&msg);
         window.request_redraw();
@@ -175,6 +191,18 @@ impl App {
             self.append_line(seq, text.get(9..).unwrap_or(""));
             rest = &body[q1 + 1 + q2..];
         }
+    }
+
+    fn on_status(&mut self, line: &str) {
+        let mut rest = line;
+        let mut meta = Vec::new();
+        while let Some(i) = rest.find("\"session\":\"") {
+            let after = &rest[i + 11..];
+            let Some(end) = after.find('"') else { break };
+            meta.push(SessionMeta { id: after[..end].to_string(), cursor: -1 });
+            rest = &after[end..];
+        }
+        self.meta = meta;
     }
 
     fn on_sock_line(&mut self, line: &str) {
@@ -213,8 +241,13 @@ impl App {
                 self.emit_state("subscribed");
             }
             _ if line.contains("\"sessions\":[") => {
-                println!("{line}");
-                let _ = std::io::stdout().flush();
+                self.on_status(line);
+                if self.print_status {
+                    println!("{line}");
+                    let _ = std::io::stdout().flush();
+                }
+                self.print_status = false;
+                self.emit_state("loaded");
             }
             _ => {}
         }
@@ -234,7 +267,11 @@ impl App {
                 self.emit_state("hidden");
             }
             Some("status") => self.emit_state("status"),
-            Some("hoststatus") => self.send("{\"op\":\"status\"}"),
+            Some("hoststatus") => {
+                self.print_status = true;
+                self.send("{\"op\":\"status\"}");
+            }
+            Some("load") => self.send("{\"op\":\"status\"}"),
             Some("quit") => event_loop.exit(),
             _ => {}
         }
@@ -294,6 +331,9 @@ impl ApplicationHandler<Ev> for App {
         self.context = Some(Context::new(window.clone()).expect("context"));
         self.window = Some(window);
         self.present_neutral();
+        if let Some((id, after)) = self.pending_show.take() {
+            self.show(&id, after);
+        }
         println!("{{\"ev\":\"ready\",\"pid\":{}}}", std::process::id());
         let _ = std::io::stdout().flush();
     }
@@ -348,6 +388,7 @@ fn main() {
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
     let mut app = App {
+        meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, fonts: None, font_paths: (font, font2), sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, subscribed: false,
     };

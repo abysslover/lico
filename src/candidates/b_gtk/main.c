@@ -17,13 +17,17 @@ static gboolean subscribed;
 static GtkWidget *window, *root, *placeholder, *view, *textview, *mark_session, *mark_seq;
 static GtkTextBuffer *tbuf;
 static int lines_in_buf;
+static char **meta_ids;
+static gint64 *meta_cursor;
+static int meta_n;
+static gboolean print_status;
 
 static void emit_state(const char *why)
 {
     printf("{\"ev\":\"state\",\"why\":\"%s\",\"session\":\"%s\",\"view_resident\":%s,"
-           "\"line_buffer_lines\":%d,\"cursor\":%lld,\"subscribed\":%s,\"dups\":%lld,\"gaps\":%lld}\n",
+           "\"line_buffer_lines\":%d,\"cursor\":%lld,\"subscribed\":%s,\"dups\":%lld,\"gaps\":%lld,\"known_sessions\":%d}\n",
            why, cur_session, view ? "true" : "false", view ? lines_in_buf : 0,
-           (long long)cursor, subscribed ? "true" : "false", (long long)dups, (long long)gaps);
+           (long long)cursor, subscribed ? "true" : "false", (long long)dups, (long long)gaps, meta_n);
     fflush(stdout);
 }
 
@@ -123,8 +127,42 @@ static void build_view(void)
     gtk_widget_show_all(view);
 }
 
+static int meta_find(const char *id)
+{
+    for (int i = 0; i < meta_n; i++)
+        if (!strcmp(meta_ids[i], id)) return i;
+    return -1;
+}
+
+static void on_status_reply(const char *line)
+{
+    const char *p = line;
+    for (int i = 0; i < meta_n; i++) g_free(meta_ids[i]);
+    g_free(meta_ids);
+    g_free(meta_cursor);
+    meta_n = 0;
+    int cap = 0;
+    meta_ids = NULL;
+    meta_cursor = NULL;
+    while ((p = strstr(p, "\"session\":\"")) != NULL) {
+        p += 11;
+        const char *e = strchr(p, '"');
+        if (!e) break;
+        if (meta_n == cap) {
+            cap = cap ? cap * 2 : 16;
+            meta_ids = g_realloc(meta_ids, cap * sizeof *meta_ids);
+            meta_cursor = g_realloc(meta_cursor, cap * sizeof *meta_cursor);
+        }
+        meta_ids[meta_n] = g_strndup(p, e - p);
+        meta_cursor[meta_n++] = -1;
+        p = e;
+    }
+}
+
 static void hide_view(void)
 {
+    int known = cur_session[0] ? meta_find(cur_session) : -1;
+    if (known >= 0) meta_cursor[known] = cursor; /* navigation metadata survives; the view does not */
     if (subscribed && cur_session[0]) {
         char msg[128];
         snprintf(msg, sizeof msg, "{\"op\":\"unsubscribe\",\"session\":\"%s\"}", cur_session);
@@ -144,8 +182,10 @@ static void show_session(const char *id, gint64 after, gboolean has_after)
     char msg[160];
     hide_view();
     snprintf(cur_session, sizeof cur_session, "%s", id);
-    if (!has_after) cursor = -1;
-    else cursor = after;
+    int known = meta_find(id);
+    if (has_after) cursor = after;
+    else if (known >= 0 && meta_cursor[known] >= 0) cursor = meta_cursor[known];
+    else cursor = -1;
     build_view();
     char head[7] = {0};
     memcpy(head, id + 1, 6);
@@ -208,8 +248,13 @@ static void handle_sock_line(const char *line)
         }
         emit_state("subscribed");
     } else if (strstr(line, "\"sessions\":[")) {
-        printf("%s\n", line);
-        fflush(stdout);
+        on_status_reply(line);
+        if (print_status) {
+            printf("%s\n", line);
+            fflush(stdout);
+        }
+        print_status = FALSE;
+        emit_state("loaded");
     }
 }
 
@@ -236,7 +281,8 @@ static void handle_command(char *line)
     else if (sscanf(line, "show %39s", id) == 1) show_session(id, -1, FALSE);
     else if (!strncmp(line, "hide", 4)) { hide_view(); emit_state("hidden"); }
     else if (!strncmp(line, "status", 6)) emit_state("status");
-    else if (!strncmp(line, "hoststatus", 10)) send_line("{\"op\":\"status\"}");
+    else if (!strncmp(line, "hoststatus", 10)) { print_status = TRUE; send_line("{\"op\":\"status\"}"); }
+    else if (!strncmp(line, "load", 4)) send_line("{\"op\":\"status\"}");
     else if (!strncmp(line, "quit", 4)) gtk_main_quit();
 }
 
