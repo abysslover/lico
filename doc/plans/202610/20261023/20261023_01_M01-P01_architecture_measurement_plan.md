@@ -150,3 +150,9 @@ merges. M01-P02 through P05 require their own plans and approvals.
   measurement and wording defects; they were fixed and every experiment was
   re-run from the fixed commit. The inspection bundle is regenerated and its
   verdict is pending. Candidate selection is left to the owner.
+- 2026-10-23: Korean composition was verified through a real input method on X11
+  for four candidates (exact sentence, committed text never shrinks, also while
+  output streams); an owned-client defect that lost spaces was found and fixed.
+  Because the clients changed, every experiment was re-run once more at the
+  final commit; the report, decision and bundle use that run. Mid-composition
+  view switches, other input methods and Wayland remain untested.

@@ -13,12 +13,12 @@
 
 Every number comes from a synthetic session host, a private virtual X server
 (Xvfb: X11, no compositor, software rendering) and minimal clients that show 40
-lines of text at 1200x800. No real account, provider session or billable turn
-was involved. The clients are not products: the owned clients have no selection,
-scrollback, accessibility or real IME composition, and the toolkit clients use a
-plain text widget. The results are floors for the architecture choice, not
-forecasts of product memory. Wayland, a real compositor, GPU allocation, package
-size and real IME composition are **unverified**.
+lines of text and one input line at 1200x800. No real account, provider session
+or billable turn was involved. The clients are not products: the owned clients
+have no selection, scrollback or accessibility, and the toolkit clients use plain
+text widgets. The results are floors for the architecture choice, not forecasts
+of product memory. Wayland, a real compositor, GPU allocation, package size,
+accessibility and input methods other than ibus are **unverified**.
 
 Configuration that shapes the numbers (all candidates run with an explicit
 private environment: a private home, no inherited session bus, themes or
@@ -30,12 +30,12 @@ input-method settings):
   needs a private accessibility bus and was not done;
 - D (WebKitGTK) runs with compositing and the DMA-BUF renderer disabled, so it is
   not "as installed" defaults;
-- the host was shared with other work; the one-minute load average during
-  experiments ranged from about 6.5 to 20 on 24 logical CPUs and differed per
-  candidate, and nothing was pinned or governed. One restart run of candidate B
-  coincided with a load spike (26.7) and turned bimodal after 37 launches
-  (p95 257.7 ms); it was repeated once at normal load (below) and the first run
-  is preserved locally.
+- the host was shared with other work and nothing was pinned or governed; the
+  one-minute load average during experiments ranged from about 3 to 30 on 24
+  logical CPUs and differed per candidate (candidate D's last experiments ran at
+  loads of 28–30). An earlier run of candidate B's restart coincided with a load
+  spike (26.7), turned bimodal and was repeated; the earlier runs are preserved
+  locally and superseded by the single final run reported here.
 
 ## Candidates
 
@@ -60,27 +60,25 @@ and redistribution terms were not re-read here (unverified).
 
 Targets are copied from the product specification. "met", "missed" and
 "unverified" describe this scope only, and the latency rows carry the
-**X-server-pixel scope** described below. All values are from one final run at a
-clean commit (`42e1592`) unless noted.
+**X-server-pixel scope** described below. All values are from one run of every
+candidate at a clean commit (`46f271d`).
 
 | Target | A | A2 | B | B3 (exp.) | C | C2 | D |
 |---|---|---|---|---|---|---|---|
-| PERF-01 idle process-tree RSS ≤ 50 MiB (3 launches) | 31.1 met | 20.6 met | 90.4 **missed** | 36.1 met | 93.3 **missed** | 42.0 met | 396.4 **missed** |
-| same, PSS (reported separately) | 26.0 | 14.7 | 47.7 | 14.6 | 60.3 | 26.7 | 200.0 |
-| PERF-02 growth 10→100 sessions ≤ 10 MiB (3 pairs) | 0.1 met | 0.3 met | 0.2 met | 0.2 met | 0.1 met | 0.2 met | 49.4 **missed** |
-| PERF-03 activation p95 ≤ 100 ms (n=100, pixel scope) | 12.7 met | 25.2 met | 11.9 met | 11.5 met | 10.2 met | 9.7 met | 643.2 **missed** |
-| PERF-04 restart p95 ≤ 500 ms (n=100, pixel scope) | 74.4 met | 83.9 met | 89.2 met* | 91.9 met | 109.3 met | 74.0 met | 322.9 met |
+| PERF-01 idle process-tree RSS ≤ 50 MiB (3 launches) | 31.0 met | 20.5 met | 91.2 **missed** | 36.1 met | 93.0 **missed** | 41.8 met | 396.5 **missed** |
+| same, PSS (reported separately) | 26.0 | 14.9 | 49.2 | 15.4 | 60.1 | 28.2 | 203.8 |
+| PERF-02 growth 10→100 sessions ≤ 10 MiB (3 pairs) | 0.2 met | 0.0 met | 0.3 met | 0.0 met | −0.1 met | 0.1 met | 2.4 met (erratic, see below) |
+| PERF-03 activation p95 ≤ 100 ms (n=100, pixel scope) | 15.4 met | 33.7 met | 25.3 met | 14.7 met | 13.5 met | 16.5 met | 643.0 **missed** |
+| PERF-04 restart p95 ≤ 500 ms (n=100, pixel scope) | 58.8 met | 77.2 met | 101.5 met | 99.2 met | 97.6 met | 61.8 met | 324.1 met |
 | PERF-05 idle CPU ≤ 0.5% of a core (one 60 s window) | 0.00 met | 0.00 met | 0.00 met | 0.00 met | 0.00 met | 0.00 met | 0.20 met |
-| noisy case CPU (reported separately) | 13.9 | 70.9 | 10.8 | 10.7 | 7.9 | 7.9 | 49.8 |
-| cold start, best effort (median of 10, ms) | 84 | 111 | 125* | 101 | 172 | 114 | 715 |
+| noisy case CPU (reported separately) | 13.6 | 68.7 | 11.2 | 12.8 | 7.4 | 6.8 | 49.9 |
+| cold start, best effort (median of 10, ms) | 66 | 89 | 105 | 398 | 172 | 124 | 1072 |
 
-\* candidate B's restart was repeated once (89.2 ms); the first run, disturbed by
-host load, gave 257.7 ms. B2 (same binary as B, not shown) measured 90.4 MiB RSS
-and 89.8 ms restart.
+B2 (same binary as B, not shown) measured 90.5 MiB RSS and 93.3 ms restart p95.
 
 How many samples each row really has: PERF-01 is three independent launches (each
 the median of five reads of that process); the launches differed by at most
-0.2 MiB, so there is almost no run-to-run variance information. PERF-02 is three
+0.4 MiB, so there is almost no run-to-run variance information. PERF-02 is three
 paired repetitions. PERF-03 and PERF-04 are 100 observations each. PERF-05 is
 **one** 60 s window per candidate; before and after it the harness checked that
 the process tree was unchanged and alive and that the view was still shown.
@@ -89,7 +87,7 @@ Notes that change how the table reads:
 
 - **Idle CPU 0.00** means zero scheduler ticks over 60 s (resolution about
   0.017%), a bound rather than a measured zero. The noisy case is high for A2
-  (70.9%) because the first implementation reshapes all visible lines on every
+  (68.7%) because the first implementation reshapes all visible lines on every
   frame; an owned client needs incremental shaping.
 - **RSS composition.** B and C map the Mesa GL driver stack through libepoxy and
   libGL at start (libLLVM 43.6 MiB resident but only 25.1 MiB PSS, libgallium
@@ -98,24 +96,25 @@ Notes that change how the table reads:
   pages", so the miss is real for this host's driver stack, but it is inflated by
   page sharing and by the software GL driver used under Xvfb. Another driver stack
   changes it. B has no supported switch that avoids it (one attempt); only the
-  unsupported stub (B3) did. Qt has one (C2). WebKitGTK also mapped an NVIDIA
-  driver library; the GPU itself is not used by the virtual display.
-- **PSS** depends on what other processes share the same pages; it is reported,
-  not substituted for the RSS target.
+  unsupported stub (B3) did. Qt has one (C2). B's PSS (49.2 MiB) sits just under
+  the number but the target is RSS, so it stays missed. WebKitGTK also mapped an
+  NVIDIA driver library; the GPU itself is not used by the virtual display.
 - **PERF-02 is true by construction.** The clients keep only an id and a cursor
-  for hidden sessions (no sidebar or per-session widget), so a 0.1–0.4 MiB
-  delta says little about an architecture; it shows that views are released and
-  that nothing leaks across 100 show/hide cycles. D is the exception: its
-  web-process memory is not released (largest of three repetitions 49.4 MiB; the
-  cause was not isolated). "Large history" lives only in the host: the snapshot is
-  capped at 40 lines, so history size never reaches a GUI. Only 5 of 100
-  switches target sessions that produce output while hidden; their samples were
-  not slower than the rest, so that condition has no measurable effect here.
-- **D** creates a web view, and with it web-process work, each time a view is
-  shown; this is the likely reason activation misses by a wide margin (the cause
-  was not isolated). Its restart is bimodal (typically 264–310 ms, worst 789 ms).
+  for hidden sessions (no sidebar or per-session widget), so a delta near zero
+  says little about an architecture; it shows that views are released and that
+  nothing leaks across 100 show/hide cycles. "Large history" lives only in the
+  host: the snapshot is capped at 40 lines, so history size never reaches a GUI.
+  Only 5 of 100 switches target sessions that produce output while hidden; their
+  samples were not slower than the rest, so that condition has no measurable
+  effect here.
+- **D's hidden growth is erratic.** Across three full runs its largest repetition
+  was 28.6, 49.4 and 2.4 MiB, and in the last run one repetition was −30 MiB
+  (web-process memory dropped). The classification above is not trustworthy for D.
+  D also creates a web view, and with it web-process work, each time a view is
+  shown; this is the likely reason activation misses by a wide margin (not
+  isolated). Its restart is bimodal (typically 264–310 ms, worst 804 ms).
 - **Glyph variety** (two full pages: 2350 Hangul syllables, then 2360 ideographs
-  at 14 px): A grows from 30.9 to 32.2 MiB and A2 from 20.4 to 24.3 MiB. A's
+  at 14 px): A grows from 30.9 to 32.2 MiB and A2 from 20.4 to 24.2 MiB. A's
   fallback font lacks ideographs, so its second page is drawn as missing-glyph
   boxes (not pixel-checked), which makes "lowest memory" for A2 not like-for-like
   with A. Toolkit candidates were not stress-tested this way.
@@ -126,12 +125,36 @@ Notes that change how the table reads:
   shows the target session and a sequence value at least as new as the host's
   when the switch was issued and not implausibly far ahead of it (an earlier
   version accepted a blank page for D; fixed and re-measured). The screen read
-  takes about 21 µs.
+  takes about 21 µs. B's activation moved from about 12 ms to 25 ms when the input
+  line was added; the other candidates moved by a few ms.
 - Other resident memory is reported separately: the virtual display server is
   67–75 MiB and differs by candidate, and the host grows from 27.5 MiB (10
-  sessions) to 77.4 MiB (100 sessions). Shared-memory pages appear in both a client's and
-  the display server's RSS, and services activated over a session bus would sit
-  outside the process tree (the clients run without one).
+  sessions) to 77.4 MiB (100 sessions). Shared-memory pages appear in both a
+  client's and the display server's RSS, and services activated over a session
+  bus would sit outside the process tree (the clients run without one).
+
+### Korean composition through a real input method
+
+Setup: a private bus and a private ibus 1.5.29 daemon with the ibus-hangul engine
+(2-set keyboard), one per virtual display, sharing nothing with any desktop
+session; keys are sent as ordinary key events. Candidates A, A2, B and C2 each
+have an input line. The sentence "dkssudgktpdy gksrmf " (spelling 안녕하세요 한글
+and two spaces) was typed in four conditions: 80 ms between keys, 8 ms, with
+100 records/s streaming into the visible session, and 8 ms with that stream.
+Result: **all 16 runs ended with exactly "안녕하세요 한글 ", and in every run the
+committed text only ever grew** (nothing already committed was removed or
+rewritten). The test was also run repeatedly during development with the same
+outcome.
+
+What this found along the way: the first owned client lost every space
+("안녕하세요한글"), because a key the input method does not take reaches the
+client by a different path than the input method's own commits. Both paths must
+be handled. This is the class of defect behind "characters vanish" in other
+applications, and it is the main risk of an owned client. What is **not**
+covered: other input methods (fcitx5, kime), the Wayland text-input protocol,
+candidate popups, cursor-area placement, input drafts and composition state when
+a view is switched or hidden mid-composition, and composition while a real
+compositor is present.
 
 ### Not a number: continuity (PERF-06)
 
@@ -169,30 +192,32 @@ client. Hardware category: x86_64 with 24 logical CPUs.
 | Approval record | `c12c959` | none (documents) |
 | S01 survey, collector, workload | `5fb9e91`, `8b1b188` | 2 |
 | S02 host and clients | `f0ba964` | 2 test functions, run for each candidate |
-| S03 report, latency, hostile, runner, bundle, candidates, review fixes | `28a05ea` … `61d9a8f` (see the branch log) | 3 |
+| S03 report, latency, hostile, runner, bundle, candidates, review fixes, Korean input | `28a05ea` … `46f271d` (see the branch log) | 4 |
 | S04 decision rules and this report | `dad95d8` and the documentation commits | 1 |
 
-Test count: 8 test functions (2, 2, 3, 1) and 16 runs including the per-candidate
-parametrization; 16 passed in about 30 s on the final tree. The plan's "at most
+Test count: 9 test functions (2, 2, 4, 1) and 20 runs including the per-candidate
+parametrization; 20 passed in about 108 s on the final tree. The plan's "at most
 five" is read per step; read as a total it is exceeded, and that reading is left
 to the owner. Several assertions in the lifecycle tests are self-reports of the
 client under test (resident flag, line count, cursor, gap and duplicate
-counters); the externally observed checks are the screen pixels and the host's
-own subscriber and sequence counters.
+counters); the externally observed checks are the screen pixels, the host's own
+subscriber and sequence counters, and, for Korean input, the text each client
+reports after real key events through a real input method.
 
 Red evidence (`pytest -q -p no:cacheprovider`, run in a resource-limited job
 wrapper): S01 collection error for the missing `procscope` module; S03 collection
-errors for the missing report, latency and hostile modules; the memory-composition
-assertion failed with an attribute error before its code existed; S04 collection
-error for the missing decision module; the review-driven latency and hostile
-assertions failed before their fixes. **S02 has no red-before-code run**: the
-clients were drafted before the tests. Red was observed afterwards by mutation:
-hidden views that keep their resources and a host replay that skips a record both
-turned the tests red for every candidate. Every other test was also turned red by
-at least one mutation (descendants omitted, overlap allowed, content age ignored
-or unbounded, no sample minimum, stale generation accepted, claims unchecked,
-unverified accepted). The overflow-and-resync path and the peer-user check have
-no test.
+errors for the missing report, latency, hostile and input-method modules; the
+memory-composition assertion failed with an attribute error before its code
+existed; S04 collection error for the missing decision module; the review-driven
+latency and hostile assertions failed before their fixes; the Korean test failed
+first with Latin letters (input method not engaged), then with the lost spaces.
+**S02 has no red-before-code run**: the clients were drafted before the tests. Red
+was observed afterwards by mutation: hidden views that keep their resources and a
+host replay that skips a record both turned the tests red for every candidate.
+Every other test was also turned red by at least one mutation (descendants
+omitted, overlap allowed, content age ignored or unbounded, no sample minimum,
+stale generation accepted, claims unchecked, unverified accepted). The
+overflow-and-resync path and the peer-user check have no test.
 
 Deviations and corrections found by measuring and by the independent review:
 
@@ -206,9 +231,10 @@ Deviations and corrections found by measuring and by the independent review:
 - The independent review found D's latency accepting a blank page, idle CPU with
   no liveness proof, partly vacuous hostile cases, five reads of one process
   counted as five samples, and clients inheriting the user's environment. All were
-  fixed and every experiment was re-run from the fixed commit; earlier runs are
-  preserved locally and are superseded.
-- A run's receipt is now written before the first experiment and records binary
+  fixed and every experiment was re-run; the input line added afterwards for the
+  Korean test changed the clients again, so every experiment was re-run once more
+  from `46f271d`. A second review round was not run.
+- A run's receipt is written before the first experiment and records binary
   SHA-256 values. The binaries come from an ignored build directory, so a clean
   source tree does not by itself prove which binary ran; the hashes do.
 - One commit (`5871ac9`) was made while the test run had reported no free job
@@ -219,23 +245,25 @@ Deviations and corrections found by measuring and by the independent review:
 - The memory-composition test first used a 256 kB tolerance and failed
   intermittently; the status counters lag the smaps total by about 0.4 MiB per
   process, so the tolerance is 1024 kB and the record says so.
+- The private input-method session first failed silently: a socket path over the
+  Unix limit and a bus without a listen address; both were found by inspecting the
+  daemon, and the bus is configured with no service directories so nothing else is
+  activated on it.
 
 ## Measurement runs
 
 | Run | Commit | Candidates | Experiments |
 |---|---|---|---|
-| final | `42e1592` | A, A2, B, B2, B3, C, C2, D | all seven, plus the glyph-variety memory run for A and A2 |
-| inventory | `61d9a8f` | all | window-geometry check corrected |
-| B restart | `61d9a8f` | B | repeat of the restart experiment (see load note) |
+| final | `46f271d` | A, A2, B, B2, B3, C, C2, D | all seven timing and memory experiments, the glyph-variety run (A, A2) and Korean input (A, A2, B, C2) |
 
-All runs started from a clean tree. Raw samples (100 per latency metric) stay
-local until the review is done; the bundle's receipt lists every command, commit
-and the workload. p95 is nearest rank on a monotonic clock. A latency timeout is
-counted at its cap (2000 ms for activation, 10000 ms for restart), never dropped;
-there were none in the reported runs. Candidate asymmetries: A and A2 rebuild
-their glyph cache and shaped buffer on every show (pessimistic for them) and are
-much thinner than B, C and D; D batches updates on a 16 ms timer; A uses fixed
-font files while the others use system fonts.
+The run started from a clean tree. Raw samples (100 per latency metric) stay
+local until the review is done; the bundle's receipt lists the command, commit,
+binary hashes and workload. p95 is nearest rank on a monotonic clock. A latency
+timeout is counted at its cap (2000 ms for activation, 10000 ms for restart),
+never dropped; there were none. Candidate asymmetries: A and A2 rebuild their
+glyph cache and shaped buffer on every show (pessimistic for them) and are much
+thinner than B, C and D; D batches updates on a 16 ms timer; A uses fixed font
+files while the others use system fonts.
 
 ## Design choices (self-audited)
 
@@ -246,35 +274,40 @@ font files while the others use system fonts.
 | Hidden growth | RSS(100 sessions) minus RSS(10), paired per repetition, after every session was shown once then hidden | a client with a per-session UI element |
 | Targets | never relaxed | revising PERF-01 is listed as an option below |
 | Variants | env-only variants labelled; the stub variant is marked experiment-only | none |
+| Input method test | real ibus-hangul in a private session; exact text and no shrinking of committed text | other input methods and Wayland are open |
 
 ## Decision
 
 No candidate was selected automatically. Four candidates meet every measured
 target in this scope (A, A2, C2, and the experiment-only B3); B, C and D as
-configured here do not, and D misses three targets, two by a wide margin.
+configured here do not (D misses activation by a wide margin and its growth
+result is erratic). The four candidates that were given an input line (A, A2, B,
+C2) all composed Korean correctly through ibus on X11.
 
 | Option | Evidence | Trade-off |
 |---|---|---|
-| 1. Owned client on winit + softbuffer + cosmic-text (A2) | 20.6 MiB RSS, activation p95 25.2 ms, restart p95 83.9 ms, glyph pages +3.9 MiB | lowest memory; IME composition, accessibility, selection and incremental shaping are unbuilt and unmeasured (noisy-case CPU already 70.9%) |
-| 2. Qt 5 Widgets with its XCB GL integration off (C2) | 42.0 MiB RSS (8 MiB of margin, measured with accessibility off), restart p95 74.0 ms | built-in IME and accessibility; relies on a launch-time switch, Qt 5 support status and licensing unverified, the margin shrinks as features and accessibility are added |
-| 3. GTK 3 | 90.4 MiB RSS as installed, PSS 47.7 MiB | misses PERF-01 unless the target basis changes; no supported switch avoids the Mesa/LLVM mapping |
-| 4. WebKitGTK | 396.4 MiB RSS, activation p95 643 ms, growth 49.4 MiB | misses memory, growth and activation targets |
-| 5. Change PERF-01 to a PSS basis | B 47.7, C 60.3, C2 26.7 | weakens the product promise; an owner decision, not made here |
+| 1. Owned client on winit + softbuffer + cosmic-text (A2) | 20.5 MiB RSS, activation p95 33.7 ms, restart p95 77.2 ms, glyph pages +3.8 MiB, Korean composition exact | lowest memory; selection, accessibility, incremental shaping (noisy-case CPU 68.7%), mid-composition view switches and other input methods are unbuilt or untested; a lost-key class of defect was found once already |
+| 2. Qt 5 Widgets with its XCB GL integration off (C2) | 41.8 MiB RSS (8 MiB of margin, measured with accessibility off), restart p95 61.8 ms, Korean composition exact | built-in IME and accessibility; relies on a launch-time switch, Qt 5 support status and licensing unverified, the margin shrinks as features and accessibility are added |
+| 3. GTK 3 | 91.2 MiB RSS as installed, PSS 49.2 MiB, Korean composition exact | misses PERF-01 unless the target basis changes; no supported switch avoids the Mesa/LLVM mapping |
+| 4. WebKitGTK | 396.5 MiB RSS, activation p95 643 ms | misses memory and activation targets; input not tested |
+| 5. Change PERF-01 to a PSS basis | B 49.2, C 60.1, C2 28.2 | weakens the product promise; an owner decision, not made here |
 
 Recommendation: keep A2 as the primary candidate and C2 as the fallback into
 M01-P02. P02's host and control surface do not depend on the renderer, so the
-choice does not need to be locked now. Lock it at the end of M01-P03, when real
-Korean IME composition and accessibility are exercised on a real display; if the
-owned client cannot reach acceptable IME behaviour there, the Qt route remains
+choice does not need to be locked now. Lock it at the end of M01-P03, when the
+installed agent path is exercised with Korean input on a real display (other
+input methods, Wayland, view switches mid-composition, accessibility); if the
+owned client cannot reach acceptable behaviour there, the Qt route remains
 measured and ready. This recommendation depends on things this phase did not
-verify: IME composition on X11 and Wayland, behaviour under a real compositor and
-GPU, accessibility cost for any candidate, and the cost of the remaining
-owned-client features.
+verify: a real compositor and GPU, Wayland, input methods other than ibus,
+accessibility cost for any candidate, and the cost of the remaining owned-client
+features.
 
 ## Open items for the owner
 
 - Inspection of the local bundle (G3) and the decision above.
 - Whether "at most five tests" is per step or in total.
 - Whether PERF-01 stays on an RSS basis.
+- Whether a second review round of the fixes is wanted.
 - Publishing the branch and opening the phase pull request (the development
   session has no repository credentials).
