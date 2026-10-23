@@ -161,3 +161,13 @@ need their own plans and approvals.
   decision note), and host memory is governed by a bounded in-memory window plus a
   durable log. The conformance fixture was corrected once (a connection reset on an
   oversize request counts as closed).
+- 2026-10-23: S02 done. The Rust host (`hostd`) owns synthetic agent processes, keeps a
+  bounded in-memory window, writes every record to an owner-only segment log with a
+  retention policy, serves protocol v1 (including `session.create` and
+  `session.list`) and bounds subscriber queues. Three tests (output persists in
+  sequence with no GUI attached; a stalled subscriber cannot stall the host and is
+  told to resynchronise; the retention boundary reports a gap and a snapshot), each
+  checked with a mutation; the host also passes the S01 conformance suite. Records
+  of non-producing sessions come from a short-lived agent that exits after its
+  history. Pipes are used instead of a PTY for the synthetic agent; real terminal
+  emulation is out of scope.

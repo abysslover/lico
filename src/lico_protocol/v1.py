@@ -15,16 +15,17 @@ MAX_REQUEST = 4096
 ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "version_unsupported", "too_large")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
-# exist in the reference prototype and in every conformance candidate; the others
-# are defined here and arrive in later steps of the phase.
+# exist in the reference prototype and in every conformance candidate; "host"
+# operations are implemented by the owned host only; the others arrive in later
+# steps of the phase.
 INVENTORY = {
     "hello": {"state": "oracle", "mutates": False},
     "status": {"state": "oracle", "mutates": False},
     "snapshot": {"state": "oracle", "mutates": False},
     "subscribe": {"state": "oracle", "mutates": True},
     "unsubscribe": {"state": "oracle", "mutates": True},
-    "session.create": {"state": "planned S02", "mutates": True},
-    "session.list": {"state": "planned S02", "mutates": False},
+    "session.create": {"state": "host", "mutates": True},
+    "session.list": {"state": "host", "mutates": False},
     "input": {"state": "planned S03", "mutates": True},
     "approval.answer": {"state": "planned S03", "mutates": True},
     "view.attach": {"state": "planned S03", "mutates": True},
@@ -59,7 +60,16 @@ REPLIES = {
         "type": "object",
         "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": -1},
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
-                     "bytes_total": {"type": INT, "minimum": 0}}, "optional": {}}}}, COMMON_REPLY_OPTIONAL),
+                     "bytes_total": {"type": INT, "minimum": 0}},
+        "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited"]}}}}},
+                  COMMON_REPLY_OPTIONAL),
+    "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
+                           COMMON_REPLY_OPTIONAL),
+    "session.list": _obj({"v": _V, "ok": _OK, "sessions": {"type": "array", "items": {
+        "type": "object",
+        "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
+                     "state": {"type": STR, "enum": ["running", "exited"]}, "seq": {"type": INT, "minimum": -1}},
+        "optional": {}}}}, COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),
     "subscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
                        "gap": {"type": BOOL}, "from": {"type": INT, "minimum": 0}},
@@ -84,6 +94,11 @@ REQUESTS = {
     "subscribe": _obj({"session": {"type": STR, "max_length": 64}, "after": {"type": INT, "minimum": -1}},
                       {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "snapshot": {"type": BOOL}}),
     "unsubscribe": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
+    "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic"]}},
+                           {**_COMMON_REQ, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
+                            "history": {"type": INT, "minimum": 0, "maximum": 100000},
+                            "payload": {"type": INT, "minimum": 1, "maximum": 4096}}),
+    "session.list": _obj({}, _COMMON_REQ),
 }
 
 
@@ -112,6 +127,8 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: not one of {spec['enum']}")
     if isinstance(value, int) and not isinstance(value, bool) and "minimum" in spec and value < spec["minimum"]:
         errors.append(f"{path}: below {spec['minimum']}")
+    if isinstance(value, int) and not isinstance(value, bool) and "maximum" in spec and value > spec["maximum"]:
+        errors.append(f"{path}: above {spec['maximum']}")
     if isinstance(value, str) and "max_length" in spec and len(value) > spec["max_length"]:
         errors.append(f"{path}: longer than {spec['max_length']}")
     if isinstance(value, list):

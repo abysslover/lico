@@ -77,7 +77,7 @@ class Xvfb:
 
 
 HOST_BUILD = {"rust_std": "host_rust_std/release/lico-host", "rust_serde": "host_rust_serde/release/lico-host",
-              "c": "host_c/lico-host-c"}
+              "c": "host_c/lico-host-c", "hostd": "host_hostd/release/lico-host"}
 
 
 def _host_command(impl: str) -> list[str]:
@@ -95,13 +95,15 @@ def host_impls() -> list[str]:
 
 class Host:
     def __init__(self, directory: str, sessions: int, producing: int, rate: float = 100.0,
-                 history: int = 5000, retain: int = 2048, impl: str = "oracle") -> None:
+                 history: int = 5000, retain: int = 2048, impl: str = "oracle",
+                 extra_args: list[str] | None = None) -> None:
         self.socket = os.path.join(directory, "host.sock")
+        self.directory = directory
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")
         self.proc = subprocess.Popen(
             [*_host_command(impl), "--socket", self.socket, "--sessions", str(sessions),
              "--producing", str(producing), "--rate", str(rate), "--history", str(history),
-             "--retain", str(retain)],
+             "--retain", str(retain), *(extra_args or [])],
             stdout=subprocess.PIPE, text=True, env={k: v for k, v in env.items() if k != "PYTHONHOME"},
         )
         self.ready_line = self.proc.stdout.readline()

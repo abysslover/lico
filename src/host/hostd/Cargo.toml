@@ -1,0 +1,25 @@
+[package]
+name = "lico-host"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "lico-host"
+path = "src/main.rs"
+
+[[bin]]
+name = "lico-synth-agent"
+path = "src/bin/synth_agent.rs"
+
+[dependencies]
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

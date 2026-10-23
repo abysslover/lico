@@ -28,11 +28,12 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | Operation | State | Mutates | Meaning |
 |---|---|---|---|
 | `hello` | oracle | no | protocol version, limits, retain window, operation list |
-| `status` | oracle | no | per-session id, generation, last sequence, subscribers, bytes |
+| `status` | oracle | no | per-session id, generation, last sequence, subscribers, bytes (the host adds `oldest` retained sequence and `state`) |
 | `snapshot` | oracle | no | latest screen lines and last sequence of one session |
 | `subscribe` | oracle | yes | start the live stream; `after` is the client cursor; `snapshot: true` asks for the latest screen first |
 | `unsubscribe` | oracle | yes | stop the stream, keep the cursor |
-| `session.create`, `session.list` | planned S02 | | session registry |
+| `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) |
+| `session.list` | host | no | id, generation, state (`running` or `exited`) and last sequence of every session |
 | `input`, `approval.answer`, `view.attach`, `view.detach`, `resources` | planned S03 | | input with request id and generation, approvals, views, resource report |
 
 Anything not in this table is refused as `unknown_op`.
