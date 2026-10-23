@@ -64,6 +64,18 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bundle(args: argparse.Namespace) -> int:
+    from .bundle import build_bundle
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    build_bundle(Path(args.raw), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]),
+                 _git("rev-parse", "HEAD"))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="lico_measure", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -73,6 +85,11 @@ def main() -> int:
     run.add_argument("--only", default="")
     run.add_argument("--allow-dirty", action="store_true")
     run.set_defaults(func=cmd_run)
+    bundle = sub.add_parser("bundle", help="generate the inspection bundle from raw output")
+    bundle.add_argument("--raw", required=True)
+    bundle.add_argument("--out", required=True)
+    bundle.add_argument("--allow-dirty", action="store_true")
+    bundle.set_defaults(func=cmd_bundle)
     args = parser.parse_args()
     return args.func(args)
 
