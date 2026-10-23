@@ -122,4 +122,13 @@ merges. M01-P02 through P05 require their own plans and approvals.
   benchmark, report or inspection bundle had run.
 - 2026-10-23: G1 and G2 approved as written. Branch created from the reviewed
   documentation commit; this documentation-only commit records the approval.
-  No step has run: S01 to S04 are not started. G3 and G4 remain pending.
+  Steps start after this record. G3 and G4 remain pending.
+- 2026-10-23: S01 committed. Candidate survey recorded in the design notes; a
+  process-tree RSS/PSS collector and a deterministic sequenced workload exist.
+  Two tests, both mutation-checked.
+- 2026-10-23: S02 committed. A shared synthetic host and two clients (candidate A,
+  candidate B) exist; hidden views drop their presentation resources and the
+  host replays after a cursor with no gap or duplicate. Four parametrized test
+  runs (two tests, two candidates). The tests were written after the first
+  drafts of the clients, so no red-before-code run exists for S02; red was
+  observed afterwards with mutations. No resource measurement has run yet.

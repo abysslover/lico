@@ -1,0 +1,17 @@
+[package]
+name = "lico-candidate-a"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.71"
+license = "MIT"
+publish = false
+
+[dependencies]
+winit = { version = "=0.30.13", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"] }
+softbuffer = { version = "=0.4.8", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
+fontdue = "=0.9.5"
+
+[profile.release]
+opt-level = 2
+lto = false
+debug = false
