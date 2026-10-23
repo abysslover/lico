@@ -9,7 +9,7 @@ import threading
 import time
 
 from .latency import measure_switch
-from .procscope import collect_scopes, cpu_seconds, tree_pids
+from .procscope import collect_scopes, cpu_seconds, mapping_top, tree_pids
 from .report import build_measurement
 from .rig import Client, Host, HostConn, Xvfb, private_dir, session_rgb
 from .xpixel import PixelReader
@@ -397,6 +397,7 @@ def inventory(candidate: str) -> dict:
                 "gpu": "none observable under Xvfb; GPU allocation unverified",
                 "fonts": ["DejaVu Sans Mono (Latin)", "NanumSquare (Hangul fallback)"],
                 "cpu_logical": os.cpu_count(),
+                "largest_resident_mappings": mapping_top(rig.client.proc.pid),
                 "screen_read_period_us": round(poll_us, 1),
                 "latency_resolution_note": "two screen reads per poll; latency values cannot resolve below this period",
             },

@@ -135,3 +135,20 @@ def collect_scopes(roots: dict[str, int], proc_root: str = "/proc") -> dict[str,
                 unreadable.append(pid)
         scopes[name] = Scope(name, tuple(samples), tuple(unreadable))
     return scopes
+
+
+def mapping_top(pid: int, count: int = 12, proc_root: str = "/proc") -> list[dict]:
+    """The mappings that hold the most resident memory, grouped by backing file."""
+    totals: dict[str, list[int]] = {}
+    name = "[anonymous]"
+    with open(f"{proc_root}/{pid}/smaps") as handle:
+        for line in handle:
+            head = line.split(None, 5)
+            if len(head) >= 5 and "-" in head[0] and not line.startswith(("Rss", "Pss")):
+                name = head[5].strip() if len(head) == 6 else "[anonymous]"
+            elif line.startswith("Rss:"):
+                totals.setdefault(name, [0, 0])[0] += int(line.split()[1])
+            elif line.startswith("Pss:"):
+                totals.setdefault(name, [0, 0])[1] += int(line.split()[1])
+    ranked = sorted(totals.items(), key=lambda item: -item[1][0])[:count]
+    return [{"mapping": n, "rss_kb": v[0], "pss_kb": v[1]} for n, v in ranked]

@@ -7,7 +7,7 @@ from lico_measure.rig import (
 )
 from lico_measure.xpixel import PixelReader
 
-CANDIDATES = ["a", "b"]
+CANDIDATES = ["a", "b", "c", "d"]
 
 
 @pytest.fixture

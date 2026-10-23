@@ -23,9 +23,27 @@ def candidate_command(name: str, sock: str) -> list[str]:
     if name == "a":
         return [str(build / "a_native" / "release" / "lico-candidate-a"), "--socket", sock,
                 "--font", FONT_PRIMARY, "--font2", FONT_FALLBACK]
-    if name == "b":
+    if name in ("b", "b2", "b3"):
         return [str(build / "b_gtk" / "candidate-b"), "--socket", sock]
+    if name in ("d", "d3"):
+        return [str(build / "d_webkit" / "candidate-d"), "--socket", sock]
+    if name in ("c", "c3"):
+        return [str(build / "c_qt" / "candidate-c"), "--socket", sock]
     raise ValueError(name)
+
+
+# environment that distinguishes variants built from the same binary
+CANDIDATE_ENV = {
+    "b2": {"GDK_DEBUG": "gl-disable", "__GLX_VENDOR_LIBRARY_NAME": "none"},
+    # experiment only: an empty libGL stub first on the library path keeps the GL driver stack unmapped
+    "b3": {"GDK_DEBUG": "gl-disable", "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
+    "d": {"WEBKIT_DISABLE_COMPOSITING_MODE": "1", "WEBKIT_DISABLE_DMABUF_RENDERER": "1"},
+    "d3": {"WEBKIT_DISABLE_COMPOSITING_MODE": "1", "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
+           "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
+    "c": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0"},
+    "c3": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0",
+           "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
+}
 
 
 def session_rgb(session_id: str) -> int:
@@ -93,7 +111,7 @@ class Client:
     """A candidate GUI process driven over stdin; its JSON lines are queued."""
 
     def __init__(self, name: str, host_socket: str, display: str, wait_ready: bool = True) -> None:
-        env = dict(os.environ, DISPLAY=display, GDK_BACKEND="x11", NO_AT_BRIDGE="1")
+        env = dict(os.environ, DISPLAY=display, GDK_BACKEND="x11", NO_AT_BRIDGE="1", **CANDIDATE_ENV.get(name, {}))
         env.pop("WAYLAND_DISPLAY", None)
         self.proc = subprocess.Popen(
             candidate_command(name, host_socket), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
