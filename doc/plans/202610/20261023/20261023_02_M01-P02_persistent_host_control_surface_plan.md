@@ -201,3 +201,9 @@ need their own plans and approvals.
   from a clean commit and an inspection bundle was generated, its verdict pending. All
   measured targets were met for the primary and the fallback client. The report is in
   review; an independent review of the measurements has not run yet.
+- 2026-10-23: An independent review of the phase found no blocker and several major problems
+  (agents spawned from request threads, missing bounds, a request-id window of 4096, an attach
+  race, silent log write errors, client composition and input handling); all were fixed, the
+  affected tests were extended, and the experiments and scenarios were re-run at the fixed
+  commit with the same results. The report, the decision and the bundle use that run. A second
+  review round of the fixes has not run.
