@@ -20,12 +20,14 @@ class ProcessSample:
     pid: int
     rss_kb: int
     pss_kb: int
+    hwm_kb: int | None = None  # peak resident size; None when not readable
 
 
 @dataclass(frozen=True)
 class Scope:
     name: str
     processes: tuple[ProcessSample, ...] = field(default_factory=tuple)
+    unreadable: tuple[int, ...] = field(default_factory=tuple)  # visible pids whose memory could not be read
 
     @property
     def rss_kb(self) -> int:
@@ -80,7 +82,32 @@ def _read_rollup(pid: int, proc_root: str) -> ProcessSample | None:
         return None  # exited, or not readable: never recorded as zero
     if len(values) != 2:
         return None
-    return ProcessSample(pid, values["Rss"], values["Pss"])
+    return ProcessSample(pid, values["Rss"], values["Pss"], _read_hwm(pid, proc_root))
+
+
+def _read_hwm(pid: int, proc_root: str) -> int | None:
+    try:
+        with open(f"{proc_root}/{pid}/status") as handle:
+            for line in handle:
+                if line.startswith("VmHWM:"):
+                    return int(line.split()[1])
+    except OSError:
+        pass
+    return None
+
+
+def cpu_seconds(pids: list[int], proc_root: str = "/proc") -> float:
+    """User plus system CPU seconds consumed so far by the given processes."""
+    ticks = 0
+    for pid in pids:
+        try:
+            with open(f"{proc_root}/{pid}/stat") as handle:
+                stat = handle.read()
+        except OSError:
+            continue
+        fields = stat[stat.rindex(")") + 2 :].split()
+        ticks += int(fields[11]) + int(fields[12])   # utime, stime
+    return ticks / os.sysconf("SC_CLK_TCK")
 
 
 def collect_scopes(roots: dict[str, int], proc_root: str = "/proc") -> dict[str, Scope]:
@@ -88,7 +115,7 @@ def collect_scopes(roots: dict[str, int], proc_root: str = "/proc") -> dict[str,
     owner: dict[int, str] = {}
     scopes: dict[str, Scope] = {}
     for name, root_pid in roots.items():
-        samples = []
+        samples, unreadable = [], []
         for pid in tree_pids(root_pid, proc_root):
             if pid in owner:
                 raise ScopeError(f"process {pid} is in both {owner[pid]!r} and {name!r}")
@@ -96,5 +123,7 @@ def collect_scopes(roots: dict[str, int], proc_root: str = "/proc") -> dict[str,
             sample = _read_rollup(pid, proc_root)
             if sample is not None:
                 samples.append(sample)
-        scopes[name] = Scope(name, tuple(samples))
+            elif os.path.exists(f"{proc_root}/{pid}"):
+                unreadable.append(pid)
+        scopes[name] = Scope(name, tuple(samples), tuple(unreadable))
     return scopes

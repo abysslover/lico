@@ -12,7 +12,7 @@
 static int sock_fd = -1;
 static GString *sock_in, *cmd_in;
 static char cur_session[40];
-static gint64 cursor = -1, dups, gaps;
+static gint64 cursor = -1, dups, gaps, resyncs;
 static gboolean subscribed;
 static GtkWidget *window, *root, *placeholder, *view, *textview, *mark_session, *mark_seq;
 static GtkTextBuffer *tbuf;
@@ -25,9 +25,9 @@ static gboolean print_status;
 static void emit_state(const char *why)
 {
     printf("{\"ev\":\"state\",\"why\":\"%s\",\"session\":\"%s\",\"view_resident\":%s,"
-           "\"line_buffer_lines\":%d,\"cursor\":%lld,\"subscribed\":%s,\"dups\":%lld,\"gaps\":%lld,\"known_sessions\":%d}\n",
+           "\"line_buffer_lines\":%d,\"cursor\":%lld,\"subscribed\":%s,\"dups\":%lld,\"gaps\":%lld,\"resyncs\":%lld,\"known_sessions\":%d}\n",
            why, cur_session, view ? "true" : "false", view ? lines_in_buf : 0,
-           (long long)cursor, subscribed ? "true" : "false", (long long)dups, (long long)gaps, meta_n);
+           (long long)cursor, subscribed ? "true" : "false", (long long)dups, (long long)gaps, (long long)resyncs, meta_n);
     fflush(stdout);
 }
 
@@ -183,15 +183,17 @@ static void show_session(const char *id, gint64 after, gboolean has_after)
     hide_view();
     snprintf(cur_session, sizeof cur_session, "%s", id);
     int known = meta_find(id);
+    /* an explicit cursor replays after it; otherwise ask for the latest screen */
     if (has_after) cursor = after;
-    else if (known >= 0 && meta_cursor[known] >= 0) cursor = meta_cursor[known];
+    else if (known >= 0) cursor = meta_cursor[known];
     else cursor = -1;
     build_view();
     char head[7] = {0};
     memcpy(head, id + 1, 6);
     guint32 rgb = (guint32)strtoul(head, NULL, 16) & 0xffffff; /* first six hex digits */
     set_mark(mark_session, rgb);
-    snprintf(msg, sizeof msg, "{\"op\":\"subscribe\",\"session\":\"%s\",\"after\":%lld}", id, (long long)cursor);
+    snprintf(msg, sizeof msg, "{\"op\":\"subscribe\",\"session\":\"%s\",\"after\":%lld%s}", id,
+             (long long)cursor, has_after ? "" : ",\"snapshot\":true");
     send_line(msg);
 }
 
@@ -232,13 +234,19 @@ static void handle_sock_line(const char *line)
         return;
     }
     if (jstr(line, "ev", ev, sizeof ev) && !strcmp(ev, "overflow")) {
+        /* the host dropped this stream: fetch a fresh snapshot instead of guessing */
+        char again[160];
         subscribed = FALSE;
+        resyncs++;
         emit_state("overflow");
+        snprintf(again, sizeof again, "{\"op\":\"subscribe\",\"session\":\"%s\",\"after\":%lld,\"snapshot\":true}",
+                 cur_session, (long long)cursor);
+        send_line(again);
         return;
     }
     if (strstr(line, "\"ok\":1") && strstr(line, "\"gap\":")) {
         subscribed = TRUE;
-        if (strstr(line, "\"gap\":true") && view) {
+        if (strstr(line, "\"snapshot\":") && view) {
             gtk_text_buffer_set_text(tbuf, "", -1);
             lines_in_buf = 0;
             on_snapshot_lines(line);

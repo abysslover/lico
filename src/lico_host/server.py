@@ -20,7 +20,7 @@ from lico_measure.workload import record
 
 RETAIN = 2048        # records kept per session for replay after a cursor
 SNAPSHOT_LINES = 40  # lines in the latest-screen snapshot
-SUBSCRIBER_QUEUE = 1024
+SUBSCRIBER_QUEUE = RETAIN + 1024  # a full replay always fits; only a slow reader overflows
 MAX_REQUEST = 4096
 
 
@@ -151,6 +151,17 @@ class Host:
         after = request.get("after")
         oldest = session.ring[0][0] if session.ring else session.next_seq
         reply: dict = {"ok": 1, "session": session.id, "generation": session.generation}
+        if request.get("snapshot") is True:
+            # reactivation: the latest screen now, live records after it; the cursor only
+            # tells the client whether it missed anything the host still retains
+            snap = session.snapshot()
+            valid = isinstance(after, int) and oldest <= after + 1 and after <= session.last_seq
+            reply.update({"gap": not valid, "snapshot": snap, "from": snap["seq"] + 1,
+                          "missed": snap["seq"] - after if valid else None})
+            sub.send(reply)
+            sub.overflowed.discard(session.id)
+            session.subscribers.add(sub)
+            return
         if not isinstance(after, int) or after + 1 < oldest or after > session.last_seq:
             reply["gap"] = True                 # cursor unusable: client redraws from a snapshot
             reply["snapshot"] = session.snapshot()

@@ -92,7 +92,7 @@ class HostConn:
 class Client:
     """A candidate GUI process driven over stdin; its JSON lines are queued."""
 
-    def __init__(self, name: str, host_socket: str, display: str) -> None:
+    def __init__(self, name: str, host_socket: str, display: str, wait_ready: bool = True) -> None:
         env = dict(os.environ, DISPLAY=display, GDK_BACKEND="x11", NO_AT_BRIDGE="1")
         env.pop("WAYLAND_DISPLAY", None)
         self.proc = subprocess.Popen(
@@ -101,7 +101,8 @@ class Client:
         )
         self.lines: queue.Queue[dict] = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
-        self.expect("ready")
+        if wait_ready:
+            self.expect("ready")
 
     def _read(self) -> None:
         for line in self.proc.stdout:

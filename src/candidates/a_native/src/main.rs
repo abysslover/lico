@@ -47,6 +47,7 @@ struct SessionMeta {
 }
 
 struct App {
+    dirty: bool,
     meta: Vec<SessionMeta>,
     pending_show: Option<(String, Option<i64>)>,
     print_status: bool,
@@ -60,6 +61,7 @@ struct App {
     cursor: i64,
     dups: i64,
     gaps: i64,
+    resyncs: i64,
     subscribed: bool,
 }
 
@@ -94,10 +96,10 @@ impl App {
 
     fn emit_state(&self, why: &str) {
         println!(
-            "{{\"ev\":\"state\",\"why\":\"{}\",\"session\":\"{}\",\"view_resident\":{},\"line_buffer_lines\":{},\"cursor\":{},\"subscribed\":{},\"dups\":{},\"gaps\":{},\"known_sessions\":{}}}",
+            "{{\"ev\":\"state\",\"why\":\"{}\",\"session\":\"{}\",\"view_resident\":{},\"line_buffer_lines\":{},\"cursor\":{},\"subscribed\":{},\"dups\":{},\"gaps\":{},\"resyncs\":{},\"known_sessions\":{}}}",
             why, self.session, self.view.is_some(),
             self.view.as_ref().map_or(0, |v| v.lines.len()),
-            self.cursor, self.subscribed, self.dups, self.gaps, self.meta.len()
+            self.cursor, self.subscribed, self.dups, self.gaps, self.resyncs, self.meta.len()
         );
         let _ = std::io::stdout().flush();
     }
@@ -157,11 +159,13 @@ impl App {
             lines: VecDeque::new(), surface, glyphs: HashMap::new(), session_rgb: rgb, seq_rgb: 0xFF00_0000,
         });
         self.session = id.to_string();
-        let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).filter(|c| *c >= 0);
-        self.cursor = after.or(remembered).unwrap_or(-1);
-        let msg = format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}}}", self.cursor);
+        let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).unwrap_or(-1);
+        // an explicit cursor replays after it; otherwise ask for the latest screen
+        self.cursor = after.unwrap_or(remembered);
+        let snapshot = if after.is_none() { ",\"snapshot\":true" } else { "" };
+        let msg = format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}{snapshot}}}", self.cursor);
         self.send(&msg);
-        window.request_redraw();
+        self.dirty = true;
     }
 
     fn append_line(&mut self, seq: i64, hex: &str) {
@@ -173,9 +177,7 @@ impl App {
         }
         view.seq_rgb = 0xFF00_0000 | (seq as u32 & 0xFF_FFFF);
         self.cursor = seq;
-        if let Some(w) = &self.window {
-            w.request_redraw();
-        }
+        self.dirty = true; // drawn once when the event queue is drained
     }
 
     fn on_snapshot_lines(&mut self, reply: &str) {
@@ -224,12 +226,16 @@ impl App {
                 }
             }
             Some("overflow") => {
+                // the host dropped this stream: fetch a fresh snapshot instead of guessing
                 self.subscribed = false;
+                self.resyncs += 1;
                 self.emit_state("overflow");
+                let msg = format!("{{\"op\":\"subscribe\",\"session\":\"{}\",\"after\":{},\"snapshot\":true}}", self.session, self.cursor);
+                self.send(&msg);
             }
             _ if line.contains("\"ok\":1") && line.contains("\"gap\":") => {
                 self.subscribed = true;
-                if line.contains("\"gap\":true") && self.view.is_some() {
+                if line.contains("\"snapshot\":") && self.view.is_some() {
                     if let Some(v) = self.view.as_mut() {
                         v.lines.clear();
                     }
@@ -352,6 +358,15 @@ impl ApplicationHandler<Ev> for App {
         }
     }
 
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.dirty {
+            self.dirty = false;
+            if let Some(w) = &self.window {
+                w.request_redraw();
+            }
+        }
+    }
+
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Ev) {
         match event {
             Ev::Sock(line) => self.on_sock_line(&line),
@@ -388,9 +403,9 @@ fn main() {
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
     let mut app = App {
-        meta: Vec::new(), pending_show: None, print_status: false,
+        dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, fonts: None, font_paths: (font, font2), sock,
-        session: String::new(), cursor: -1, dups: 0, gaps: 0, subscribed: false,
+        session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
     };
     event_loop.run_app(&mut app).expect("run");
 }
