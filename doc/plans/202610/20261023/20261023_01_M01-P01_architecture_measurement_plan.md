@@ -145,3 +145,8 @@ merges. M01-P02 through P05 require their own plans and approvals.
   candidates: a memory-composition analysis, a trimmed B variant, an installed Qt
   and an installed WebKitGTK candidate, and candidate A with a real text
   stack. Targets are not relaxed. S04 follows these measurements.
+- 2026-10-23: S04 documents committed: the phase report with the decision and
+  alternatives, and decision rules with one test. An independent review found
+  measurement and wording defects; they were fixed and every experiment was
+  re-run from the fixed commit. The inspection bundle is regenerated and its
+  verdict is pending. Candidate selection is left to the owner.
