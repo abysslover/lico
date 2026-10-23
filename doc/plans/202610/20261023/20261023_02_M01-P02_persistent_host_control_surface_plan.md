@@ -1,10 +1,10 @@
 # M01-P02 — Persistent host, control surface and UI continuity (2026-10-23)
 
-> Status: draft
+> Status: in_progress
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
-> Branch: `phase/M01-P02-persistent-host` (not created)
+> Branch: `phase/M01-P02-persistent-host`
 > Motivation: turn the measured prototype into the owned session host and its canonical control surface, so a GUI can exit, crash or return while synthetic work continues.
-> Approval: G2 for this plan pending. M01-P01 gates: G3 pending, G4 pending.
+> Approval: G2 approved 2026-10-23 as written, including eleven tests (at most three per step). M01-P01 gates: G3 pending, G4 pending. G3 and G4 for this phase are pending.
 
 ## Basis recorded from M01-P01
 
@@ -149,5 +149,7 @@ need their own plans and approvals.
 ## Progress
 
 - 2026-10-23: Draft prepared from the P01 evidence. No branch, implementation,
-  test or experiment exists for this phase. G2 for this plan, and G3 and G4 for P01,
-  are pending.
+  test or experiment existed for this phase.
+- 2026-10-23: G2 approved as written. Branch created from the documentation
+  commit that carries the P01 phase work; this documentation-only commit records the
+  approval. No step has run: S01 to S05 are not started. G3 and G4 are pending.

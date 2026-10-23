@@ -50,7 +50,7 @@ informs this division; it does not establish runtime compatibility.
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M01-P01 | Bounded architecture comparison, raw resource table and a proposed renderer/host decision | [Plan](../../../plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | Not produced | Not produced | None | in_progress |
-| M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | [Draft plan](../../../plans/202610/20261023/20261023_02_M01-P02_persistent_host_control_surface_plan.md) | Not produced | Not produced | None | not_started |
+| M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | [Plan](../../../plans/202610/20261023/20261023_02_M01-P02_persistent_host_control_surface_plan.md) | Not produced | Not produced | None | in_progress |
 | M01-P03 | One real supported agent, explicit target/input/approval/reconnect and Unicode/IME evidence | Not drafted; depends on P02 | Not produced | Not produced | None | not_started |
 | M01-P04 | OS-keyring-only authentication, verified same-provider accounts and a second provider adapter | Not drafted; depends on P03 | Not produced | Not produced | None | not_started |
 | M01-P05 | Measured resources, failure recovery, public-clone Linux packaging and owner end-to-end use | Not drafted; depends on P04 | Not produced | Not produced | None | not_started |
@@ -64,7 +64,7 @@ is gated as unsupported, rather than advertised through simulated behavior.
 | Gate | State | Boundary |
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
-| G2 M01-P01 plan approval | Approved 2026-10-23 | M01-P01 implementation and experiments as written; not P02 to P05 |
+| G2 phase plan approval | Approved 2026-10-23 for M01-P01 and M01-P02 | Implementation and experiments of those two phases as written; not P03 to P05 |
 | G3 inspection acceptance | Pending | No output bundle or acceptance verdict exists |
 | G4 merge approval | Pending | No milestone or phase merge authorized |
 
@@ -77,7 +77,7 @@ inherited.
 
 - G3: owner inspection of the M01-P01 report and bundle once they exist.
 - G4: explicit owner approval is required before any milestone or phase merge.
-- M01-P02: owner approval (G2) of the attached draft plan; no implementation is authorized.
+- M01-P02: G2 approved 2026-10-23; its report and inspection (G3) and any merge (G4) are pending.
 - M01-P03 to P05: separate plans written from earlier evidence, each needing approval.
 
 ## Out of scope
