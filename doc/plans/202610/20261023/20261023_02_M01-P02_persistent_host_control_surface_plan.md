@@ -171,3 +171,14 @@ need their own plans and approvals.
   of non-producing sessions come from a short-lived agent that exits after its
   history. Pipes are used instead of a PTY for the synthetic agent; real terminal
   emulation is out of scope.
+- 2026-10-23: S03 done. The host now serves `input` (a request id is dispatched to the
+  agent at most once; accepted, submitted and observed are separate states),
+  `input.status`, `approval.answer`, `view.attach` and `view.detach` (views vanish with
+  their connection), `resources`, and an optional loopback HTTP listener (credential
+  in a private file, exact Host and Origin, bounded requests, connection cap and
+  throttle) over the same operations; `lico` is the command line client. Three tests
+  (a stale or foreign target never reaches the agent; 200 inputs with induced
+  reconnects are each dispatched exactly once; HTTP refuses a missing credential,
+  a wrong Host or Origin, unknown routes, wrong methods and oversize bodies without
+  dispatching anything), each checked with mutations. The peer-user check and the
+  HTTP throttle and connection cap exist but have no test of their own.

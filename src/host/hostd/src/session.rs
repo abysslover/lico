@@ -5,12 +5,13 @@
 //! Older replay is read from the segments, so memory does not grow with history.
 
 use serde_json::{json, Value};
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -18,6 +19,11 @@ use crate::payload::hex;
 
 pub const SNAPSHOT_LINES: usize = 40;
 const HEADER: usize = 12; // u32 length + u64 sequence
+const MAX_TRACKED_INPUTS: usize = 4096;
+
+pub fn obj(value: Value) -> serde_json::Map<String, Value> {
+    value.as_object().cloned().unwrap_or_default()
+}
 
 // ---------------------------------------------------------------- subscribers
 struct Queue {
@@ -70,7 +76,7 @@ impl Sub {
         let mut queue = self.queue.lock().unwrap();
         if queue.bytes + line.len() > self.cap_bytes {
             self.overflowed.lock().unwrap().insert(session.to_string());
-            let notice = encode(json!({"ev": "overflow", "session": session}).as_object().cloned().unwrap());
+            let notice = encode(obj(json!({"ev": "overflow", "session": session})));
             queue.bytes += notice.len();
             queue.lines.push_back(notice);
             self.wake.notify_one();
@@ -120,6 +126,7 @@ pub struct LogView {
 
 pub struct Log {
     view: LogView,
+    sizes: Vec<usize>, // bytes of each segment, parallel to view.segments
     segment_records: usize,
     retain: usize,
     writer: Option<File>,
@@ -129,6 +136,7 @@ impl Log {
     pub fn new(dir: &Path, id: &str, retain: usize) -> Log {
         Log {
             view: LogView { dir: dir.to_path_buf(), id: id.to_string(), segments: Vec::new() },
+            sizes: Vec::new(),
             segment_records: (retain / 4).clamp(16, 4096),
             retain,
             writer: None,
@@ -147,10 +155,15 @@ impl Log {
         self.view.clone()
     }
 
+    pub fn disk_bytes(&self) -> usize {
+        self.sizes.iter().sum()
+    }
+
     pub fn append(&mut self, seq: i64, data: &[u8]) -> std::io::Result<()> {
         let full = self.view.segments.last().map_or(true, |s| s.1 >= self.segment_records);
         if full || self.writer.is_none() {
             self.view.segments.push((seq, 0));
+            self.sizes.push(0);
             self.writer = Some(OpenOptions::new().create_new(true).append(true).mode(0o600).open(Self::path(&self.view, seq))?);
             self.prune();
         }
@@ -161,6 +174,9 @@ impl Log {
         self.writer.as_mut().expect("writer").write_all(&record)?;
         if let Some(last) = self.view.segments.last_mut() {
             last.1 += 1;
+        }
+        if let Some(last) = self.sizes.last_mut() {
+            *last += record.len();
         }
         Ok(())
     }
@@ -173,6 +189,7 @@ impl Log {
                 Some(first) if self.view.segments.len() > 1 && total - first.1 >= self.retain => {
                     let _ = std::fs::remove_file(Self::path(&self.view, first.0));
                     self.view.segments.remove(0);
+                    self.sizes.remove(0);
                 }
                 _ => break,
             }
@@ -221,6 +238,23 @@ pub enum State {
     Exited,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum InputState {
+    Accepted,
+    Submitted,
+    Observed,
+}
+
+impl InputState {
+    pub fn name(self) -> &'static str {
+        match self {
+            InputState::Accepted => "accepted",
+            InputState::Submitted => "submitted",
+            InputState::Observed => "observed",
+        }
+    }
+}
+
 pub struct Session {
     pub id: String,
     pub producing: bool,
@@ -231,16 +265,37 @@ pub struct Session {
     pub bytes_total: i64,
     log: Log,
     pub subs: Vec<Arc<Sub>>,
+    inputs: HashMap<String, InputState>,
+    input_order: VecDeque<String>,
+    pub approvals: Vec<(i64, String)>,
+    pub agent_pid: u32,
+    /// lines for the agent's standard input; a writer thread owns the pipe
+    pub input_tx: Option<Sender<String>>,
 }
 
 pub fn rec_line(session: &str, seq: i64, data: &[u8]) -> Arc<Vec<u8>> {
-    encode(json!({"ev": "rec", "session": session, "generation": 1, "seq": seq, "data": hex(data)}).as_object().cloned().unwrap())
+    encode(obj(json!({"ev": "rec", "session": session, "generation": 1, "seq": seq, "data": hex(data)})))
 }
 
 impl Session {
     pub fn new(id: String, producing: bool, dir: &Path, retain: usize, window_cap: usize) -> Session {
         let log = Log::new(dir, &id, retain);
-        Session { id, producing, state: State::Running, window: VecDeque::new(), window_cap, next_seq: 0, bytes_total: 0, log, subs: Vec::new() }
+        Session {
+            id,
+            producing,
+            state: State::Running,
+            window: VecDeque::new(),
+            window_cap,
+            next_seq: 0,
+            bytes_total: 0,
+            log,
+            subs: Vec::new(),
+            inputs: HashMap::new(),
+            input_order: VecDeque::new(),
+            approvals: Vec::new(),
+            agent_pid: 0,
+            input_tx: None,
+        }
     }
 
     pub fn last_seq(&self) -> i64 {
@@ -257,6 +312,10 @@ impl Session {
 
     pub fn log_view(&self) -> LogView {
         self.log.view()
+    }
+
+    pub fn disk_bytes(&self) -> usize {
+        self.log.disk_bytes()
     }
 
     pub fn append(&mut self, data: Vec<u8>) {
@@ -287,6 +346,46 @@ impl Session {
             .skip(skip)
             .map(|(seq, data)| json!([seq, format!("{:08} {}", seq, hex(&data[..data.len().min(44)]))]))
             .collect();
-        json!({"session": self.id, "generation": 1, "seq": self.last_seq(), "lines": lines}).as_object().cloned().unwrap()
+        obj(json!({"session": self.id, "generation": 1, "seq": self.last_seq(), "lines": lines}))
+    }
+
+    // ---- input bookkeeping: a request id is dispatched at most once
+    pub fn input_state(&self, request_id: &str) -> Option<InputState> {
+        self.inputs.get(request_id).copied()
+    }
+
+    pub fn record_input(&mut self, request_id: &str) {
+        self.inputs.insert(request_id.to_string(), InputState::Accepted);
+        self.input_order.push_back(request_id.to_string());
+        while self.input_order.len() > MAX_TRACKED_INPUTS {
+            if let Some(old) = self.input_order.pop_front() {
+                self.inputs.remove(&old);
+            }
+        }
+    }
+
+    /// Advance an input to a later state (never backwards) and tell the viewers.
+    pub fn advance_input(&mut self, request_id: &str, to: InputState) {
+        let rank = |s: InputState| s as u8;
+        let Some(current) = self.inputs.get(request_id).copied() else { return };
+        if rank(to) <= rank(current) {
+            return;
+        }
+        self.inputs.insert(request_id.to_string(), to);
+        if to != InputState::Accepted {
+            let line = encode(obj(json!({"ev": "input", "session": self.id, "request_id": request_id, "state": to.name()})));
+            for sub in &self.subs {
+                sub.push(line.clone());
+            }
+        }
+    }
+
+    pub fn add_approval(&mut self, number: i64, prompt: String) {
+        let prompt: String = prompt.chars().take(200).collect();
+        let line = encode(obj(json!({"ev": "approval", "session": self.id, "approval_id": number, "prompt": prompt})));
+        self.approvals.push((number, prompt));
+        for sub in &self.subs {
+            sub.push(line.clone());
+        }
     }
 }

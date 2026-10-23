@@ -11,6 +11,10 @@ name = "lico-host"
 path = "src/main.rs"
 
 [[bin]]
+name = "lico"
+path = "src/bin/lico.rs"
+
+[[bin]]
 name = "lico-synth-agent"
 path = "src/bin/synth_agent.rs"
 

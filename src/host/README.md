@@ -25,3 +25,10 @@ subscriber queue so a slow view is told to resynchronise and never stalls the ho
 Build: `cargo build --release --locked` in `src/host/hostd` (serde_json 1.0.154,
 pinned in its `Cargo.lock`). Log retention keeps at least `--retain` records,
 trimmed in whole segments.
+
+`lico` (same crate) is the command line client of the local socket: `status`,
+`resources`, `session list|create|show|send|watch`, `approval answer` and
+`view attach|detach`. It prints one JSON object per line and exits 0 on success,
+1 on a usage error, 2 when the host answers with an error, 3 when the host cannot
+be reached and 4 on a timeout. The loopback HTTP listener is enabled with
+`--http-port` and `--http-token-file`.

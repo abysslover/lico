@@ -34,7 +34,11 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `unsubscribe` | oracle | yes | stop the stream, keep the cursor |
 | `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) |
 | `session.list` | host | no | id, generation, state (`running` or `exited`) and last sequence of every session |
-| `input`, `approval.answer`, `view.attach`, `view.detach`, `resources` | planned S03 | | input with request id and generation, approvals, views, resource report |
+| `input` | host | yes | send text to a session's agent: needs the target generation and a client request id; the reply and later `input` events give the state `accepted`, `submitted` (written to the agent) and `observed` (the agent acted on it) separately |
+| `input.status` | host | no | the state of an earlier request id, so a client that lost a reply can ask instead of sending again |
+| `approval.answer` | host | yes | answer a pending approval request (`allow` or `deny`) of a session |
+| `view.attach`, `view.detach` | host | yes | register a view of a session (the latest screen now, live records after it); views vanish with their connection and never stop a session |
+| `resources` | host | no | host process memory (RSS and PSS), threads, sessions, subscribers, views, log bytes and the memory of each agent |
 
 Anything not in this table is refused as `unknown_op`.
 
@@ -55,3 +59,41 @@ latest screen and `missed` says how many records the client had not seen (null
 when the cursor is unusable), and live records follow it. A stalled subscriber
 gets an `overflow` event and must resubscribe with a snapshot; the host never
 waits for it.
+
+## Input integrity
+
+A request id is at most 64 characters of letters, digits, dash and underscore, so
+it can be passed to an agent without any chance of injecting a line. The text is
+non-empty, at most 512 bytes and has no control characters. The host dispatches a
+request id to the agent **at most once**: a repeat of the same id (a client that
+lost the reply and reconnected) is answered with the current state and
+`duplicate: true` and is not sent again. A target of the wrong generation, an
+unknown session or an exited session is refused (`stale_generation`,
+`unknown_session`, `session_exited`) before anything is written.
+
+## Loopback HTTP (optional)
+
+The listener is off unless started with a port and a token file; it binds
+127.0.0.1 only. The control credential is generated at start, written to the token
+file (mode 0600) and never printed or placed on a command line. Requests need
+`Authorization: Bearer <token>` (compared in constant time), a `Host` of exactly
+`127.0.0.1:<port>` or `localhost:<port>`, and no `Origin` or exactly the same
+origin; Host and Origin are checked before the credential so that rebinding and
+cross-site requests are refused outright. Heads are limited to 8 KiB, bodies to
+4 KiB, reads time out after 5 s, at most 32 connections are served at once and
+requests are throttled to 200 per second (burst 50, then 429).
+
+| Route | Operation |
+|---|---|
+| `GET /v1/status`, `GET /v1/resources` | `status`, `resources` |
+| `GET /v1/sessions`, `POST /v1/sessions` | `session.list`, `session.create` |
+| `GET /v1/sessions/{id}`, `GET /v1/sessions/{id}/snapshot` | one session, `snapshot` |
+| `GET /v1/sessions/{id}/events?after=N` | one bounded page of records after the cursor, or a gap with a snapshot |
+| `POST /v1/sessions/{id}/input` | `input` |
+| `POST /v1/approvals/{n}/response` | `approval.answer` (the body names the session) |
+| `POST /v1/views`, `DELETE /v1/views/{id}` | `view.attach`, `view.detach` (a view without a connection expires after 10 minutes) |
+
+Anything else is 404, a known path with another method is 405. Errors map to
+statuses: `bad_request` 400, unknown targets 404, `stale_generation` and
+`session_exited` 409, `too_large` 413, `busy` 429 or 503; a missing or wrong
+credential is 401 and a wrong Host or Origin 403.
