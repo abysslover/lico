@@ -2,7 +2,9 @@
 // No signals or slots are declared here, so no moc step is needed.
 #include <QApplication>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QInputMethod>
 #include <QInputMethodEvent>
 #include <QLineEdit>
 #include <QLabel>
@@ -16,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <string>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -38,6 +41,10 @@ static int sock_fd = -1;
 static std::string sock_in, cmd_in, cur_session;
 static long long cursor = -1, dups = 0, gaps = 0, resyncs = 0;
 static bool subscribed = false, print_status = false;
+static std::string view_id;
+static long long generation = 1;
+static unsigned long sent_count;
+static std::map<std::string, std::string> drafts;
 static std::vector<std::string> meta_ids;
 static std::vector<long long> meta_cursor;
 static void emit_ime(const char *kind, const QString &text)
@@ -46,12 +53,32 @@ static void emit_ime(const char *kind, const QString &text)
     fflush(stdout);
 }
 
+static QString last_preedit;       /* what is composing right now */
+static QString stale_commit;       /* the composition handed to a reset; its late commit is ignored */
+static qint64 stale_until_ms;
+
+static qint64 now_ms()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (qint64)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 class InputLine : public QLineEdit {
 protected:
     void inputMethodEvent(QInputMethodEvent *e) override
     {
+        last_preedit = e->preeditString();
         emit_ime("preedit", e->preeditString());
-        if (!e->commitString().isEmpty()) emit_ime("commit", e->commitString());
+        if (!e->commitString().isEmpty()) {
+            if (e->commitString() == stale_commit && now_ms() < stale_until_ms) {
+                emit_ime("ignored", e->commitString()); /* the input method echoing the reset, not new typing */
+                stale_commit.clear();
+                e->setCommitString(QString());
+            } else {
+                emit_ime("commit", e->commitString());
+            }
+        }
         QLineEdit::inputMethodEvent(e);
     }
 };
@@ -124,6 +151,33 @@ static void on_status_reply(const char *line)
     }
 }
 
+static std::string json_escape(const std::string &s)
+{
+    std::string out;
+    for (unsigned char c : s) {
+        if (c == '"') out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c < 0x20) { char b[8]; snprintf(b, sizeof b, "\\u%04x", c); out += b; }
+        else out += (char)c;
+    }
+    return out;
+}
+
+/* send the draft of the visible session as one input with its own request id */
+static void send_draft()
+{
+    if (!entry || cur_session.empty() || entry->text().isEmpty()) return;
+    std::string text = entry->text().toUtf8().constData();
+    char request_id[64];
+    snprintf(request_id, sizeof request_id, "gui-%d-%lu", (int)getpid(), ++sent_count);
+    char head[200];
+    snprintf(head, sizeof head, "{\"op\":\"input\",\"session\":\"%s\",\"generation\":%lld,\"request_id\":\"%s\",\"text\":\"",
+             cur_session.c_str(), generation, request_id);
+    send_line(std::string(head) + json_escape(text) + "\"}");
+    emit_ime("sent", QString::fromStdString(text));
+    entry->clear();
+}
+
 static void append_line(long long seq, const std::string &hex)
 {
     if (!view) return;
@@ -160,6 +214,7 @@ static void build_view()
     column->addWidget(edit, 1);
     entry = new InputLine;
     QObject::connect(entry, &QLineEdit::textChanged, [](const QString &t) { emit_ime("text", t); });
+    QObject::connect(entry, &QLineEdit::returnPressed, []() { send_draft(); });
     column->addWidget(entry);
     root->addWidget(view, 1);
     placeholder->hide();
@@ -171,7 +226,20 @@ static void hide_view()
 {
     int known = cur_session.empty() ? -1 : meta_find(cur_session);
     if (known >= 0) meta_cursor[known] = cursor;
-    if (subscribed && !cur_session.empty()) send_line("{\"op\":\"unsubscribe\",\"session\":\"" + cur_session + "\"}");
+    if (view && entry && !cur_session.empty()) {
+        /* a composition in progress is committed to the session it was typed for */
+        QString pending = last_preedit;
+        drafts[cur_session] = (entry->text() + pending).toUtf8().constData();
+        if (!pending.isEmpty()) { stale_commit = pending; stale_until_ms = now_ms() + 500; }
+        last_preedit.clear();
+        QGuiApplication::inputMethod()->reset();
+    }
+    if (!view_id.empty()) {
+        send_line("{\"op\":\"view.detach\",\"view\":\"" + view_id + "\"}");
+        view_id.clear();
+    } else if (subscribed && !cur_session.empty()) {
+        send_line("{\"op\":\"unsubscribe\",\"session\":\"" + cur_session + "\"}");
+    }
     subscribed = false;
     if (view) {
         delete view; // releases the view tree, text document and marker widgets
@@ -194,9 +262,13 @@ static void show_session(const std::string &id, long long after, bool has_after)
     else cursor = -1;
     build_view();
     mark_session->set((unsigned)strtoul(id.substr(1, 6).c_str(), nullptr, 16) & 0xffffff);
-    char msg[200];
-    snprintf(msg, sizeof msg, "{\"op\":\"subscribe\",\"session\":\"%s\",\"after\":%lld%s}", id.c_str(), cursor,
-             has_after ? "" : ",\"snapshot\":true");
+    auto draft = drafts.find(id);
+    if (draft != drafts.end()) { entry->setText(QString::fromUtf8(draft->second.c_str())); drafts.erase(draft); }
+    char msg[240];
+    if (has_after)
+        snprintf(msg, sizeof msg, "{\"op\":\"subscribe\",\"session\":\"%s\",\"after\":%lld}", id.c_str(), cursor);
+    else /* a view is registered with the host and gets the latest screen first */
+        snprintf(msg, sizeof msg, "{\"op\":\"view.attach\",\"session\":\"%s\",\"kind\":\"gui\",\"after\":%lld}", id.c_str(), cursor);
     send_line(msg);
 }
 
@@ -243,6 +315,10 @@ static void handle_sock_line(const char *line)
     }
     if (strstr(line, "\"ok\":1") && strstr(line, "\"gap\":")) {
         subscribed = true;
+        std::string vid;
+        if (jstr(line, "view", &vid)) view_id = vid;
+        long long gen;
+        if (jint(line, "generation", &gen)) generation = gen;
         if (strstr(line, "\"snapshot\":") && view) {
             edit->clear();
             lines_in_buf = 0;

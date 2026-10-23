@@ -182,3 +182,15 @@ need their own plans and approvals.
   a wrong Host or Origin, unknown routes, wrong methods and oversize bodies without
   dispatching anything), each checked with mutations. The peer-user check and the
   HTTP throttle and connection cap exist but have no test of their own.
+- 2026-10-23: S04 done. The primary (A2) and fallback (C2) clients register their view
+  with `view.attach`, release it with `view.detach`, keep a draft per session and send
+  input with a request id. Two tests, each run for both clients: a GUI killed with
+  SIGKILL leaves the same agent process alive, the host's output continuous, the dead
+  view removed and a restarted GUI current with no gap or duplicate; and a view
+  switched in the middle of a Korean composition never lets the composing text reach
+  the other session. The second test found two real defects before they were fixed
+  (the Qt client leaked the old composition into the new session through the input
+  method's late commit; the winit client lost its first key after an input-context
+  reset). The defined behavior: the composition in progress is committed to the
+  session it was typed for, and the input method's late echo of it is ignored. The
+  other candidate clients (A, B, D) still speak the earlier subscription form.

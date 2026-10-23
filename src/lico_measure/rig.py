@@ -95,8 +95,9 @@ def host_impls() -> list[str]:
 
 class Host:
     def __init__(self, directory: str, sessions: int, producing: int, rate: float = 100.0,
-                 history: int = 5000, retain: int = 2048, impl: str = "oracle",
+                 history: int = 5000, retain: int = 2048, impl: str | None = None,
                  extra_args: list[str] | None = None) -> None:
+        impl = impl or os.environ.get("LICO_HOST_IMPL") or ("hostd" if "hostd" in host_impls() else "oracle")
         self.socket = os.path.join(directory, "host.sock")
         self.directory = directory
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")

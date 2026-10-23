@@ -1,7 +1,7 @@
 //! Candidate A2: candidate A with a real text stack (cosmic-text: shaping, font fallback)
 //! for the synthetic host. Commands arrive on stdin, see `handle_command`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::num::NonZeroU32;
 use std::os::unix::net::UnixStream;
@@ -13,6 +13,7 @@ use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, WindowEvent};
+use winit::keyboard::{Key, NamedKey};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -43,6 +44,11 @@ struct SessionMeta {
 }
 
 struct App {
+    stale_commit: Option<String>,
+    view_id: String,
+    generation: i64,
+    drafts: HashMap<String, String>,
+    sent_count: u64,
     input: String,
     preedit: String,
     dirty: bool,
@@ -142,7 +148,23 @@ impl App {
     }
 
     fn hide(&mut self) {
-        if self.subscribed && !self.session.is_empty() {
+        if !self.session.is_empty() {
+            // a composition in progress is committed to the session it was typed for
+            let pending = std::mem::take(&mut self.preedit);
+            let mut draft = std::mem::take(&mut self.input);
+            draft.push_str(&pending);
+            self.drafts.insert(self.session.clone(), draft);
+            if !pending.is_empty() {
+                // the input method keeps composing it (winit offers no reset without losing the
+                // input context); the commit it sends at the next key belongs to the old session
+                self.stale_commit = Some(pending);
+            }
+        }
+        if !self.view_id.is_empty() {
+            let msg = format!("{{\"op\":\"view.detach\",\"view\":\"{}\"}}", self.view_id);
+            self.send(&msg);
+            self.view_id.clear();
+        } else if self.subscribed && !self.session.is_empty() {
             let msg = format!("{{\"op\":\"unsubscribe\",\"session\":\"{}\"}}", self.session);
             self.send(&msg);
         }
@@ -175,8 +197,13 @@ impl App {
         let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).unwrap_or(-1);
         // an explicit cursor replays after it; otherwise ask for the latest screen
         self.cursor = after.unwrap_or(remembered);
-        let snapshot = if after.is_none() { ",\"snapshot\":true" } else { "" };
-        let msg = format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}{snapshot}}}", self.cursor);
+        self.input = self.drafts.remove(id).unwrap_or_default();
+        let msg = if after.is_none() {
+            // a view is registered with the host and gets the latest screen first
+            format!("{{\"op\":\"view.attach\",\"session\":\"{id}\",\"kind\":\"gui\",\"after\":{}}}", self.cursor)
+        } else {
+            format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}}}", self.cursor)
+        };
         self.send(&msg);
         self.dirty = true;
     }
@@ -191,6 +218,24 @@ impl App {
         view.seq_rgb = 0xFF00_0000 | (seq as u32 & 0xFF_FFFF);
         self.cursor = seq;
         self.dirty = true; // drawn once when the event queue is drained
+    }
+
+    /// Send the draft of the visible session as one input with its own request id.
+    fn send_draft(&mut self) {
+        if self.session.is_empty() || self.input.is_empty() {
+            return;
+        }
+        self.sent_count += 1;
+        let request_id = format!("gui-{}-{}", std::process::id(), self.sent_count);
+        let text = std::mem::take(&mut self.input);
+        let msg = format!(
+            "{{\"op\":\"input\",\"session\":\"{}\",\"generation\":{},\"request_id\":\"{}\",\"text\":\"{}\"}}",
+            self.session, self.generation, request_id, json_escape(&text)
+        );
+        self.send(&msg);
+        emit_ime("sent", &text);
+        emit_ime("text", &self.input);
+        self.dirty = true;
     }
 
     fn on_snapshot_lines(&mut self, reply: &str) {
@@ -248,6 +293,12 @@ impl App {
             }
             _ if line.contains("\"ok\":1") && line.contains("\"gap\":") => {
                 self.subscribed = true;
+                if let Some(view) = jstr(line, "view") {
+                    self.view_id = view.to_string();
+                }
+                if let Some(generation) = jint(line, "generation") {
+                    self.generation = generation;
+                }
                 if line.contains("\"snapshot\":") && self.view.is_some() {
                     if let Some(v) = self.view.as_mut() {
                         v.lines.clear();
@@ -391,7 +442,9 @@ impl ApplicationHandler<Ev> for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 // keys the input method did not take (space, digits, Latin text) arrive here
-                if event.state == ElementState::Pressed {
+                if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::Enter) {
+                    self.send_draft();
+                } else if event.state == ElementState::Pressed {
                     if let Some(text) = &event.text {
                         if !text.chars().any(char::is_control) {
                             self.input.push_str(text);
@@ -406,6 +459,10 @@ impl ApplicationHandler<Ev> for App {
                     Ime::Preedit(text, _) => {
                         emit_ime("preedit", &text);
                         self.preedit = text;
+                    }
+                    Ime::Commit(text) if self.stale_commit.as_deref() == Some(text.as_str()) => {
+                        self.stale_commit = None; // the old composition finishing, not new typing
+                        emit_ime("ignored", &text);
                     }
                     Ime::Commit(text) => {
                         emit_ime("commit", &text);
@@ -467,6 +524,7 @@ fn main() {
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
     let mut app = App {
+        stale_commit: None, view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,

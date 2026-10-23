@@ -62,6 +62,10 @@ fn main() {
     let previous = unsafe { umask(0o077) }; // never group- or world-accessible, even briefly
     let listener = UnixListener::bind(&socket).expect("bind");
     unsafe { umask(previous) };
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).expect("socket mode");
+    }
     // the control credential for the loopback listener goes to a private file, never to a log, argv or the ready line
     let port: u16 = arg("--http-port", "0").parse().expect("http-port");
     if port != 0 {
