@@ -157,6 +157,10 @@ def cmd_p02_bundle(args: argparse.Namespace) -> int:
     raw_dirs = [Path(p) for p in args.raw]
     receipts = [json.loads((d / "receipt.json").read_text()) for d in [run, *raw_dirs]]
     build(raw_dirs, results, Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
+    import shutil
+
+    if (run / "screens").is_dir():
+        shutil.copytree(run / "screens", Path(args.out) / "screens", dirs_exist_ok=True)
     return 0
 
 
