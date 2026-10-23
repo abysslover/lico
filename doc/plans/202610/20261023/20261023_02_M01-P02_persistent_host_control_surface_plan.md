@@ -153,3 +153,11 @@ need their own plans and approvals.
 - 2026-10-23: G2 approved as written. Branch created from the documentation
   commit that carries the P01 phase work; this documentation-only commit records the
   approval. No step has run: S01 to S05 are not started. G3 and G4 are pending.
+- 2026-10-23: S01 done. Protocol v1 schemas and the operation inventory exist, the
+  Python oracle was rewritten to v1, and a conformance suite (two tests, run for
+  four implementations) passes for the oracle, Rust (standard library only), Rust
+  with serde_json and C. Measured at `b3b12ee`: the language floor is small in all
+  three native cases; the host language is decided as Rust with serde_json (see the
+  decision note), and host memory is governed by a bounded in-memory window plus a
+  durable log. The conformance fixture was corrected once (a connection reset on an
+  oversize request counts as closed).
