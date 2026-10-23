@@ -71,8 +71,10 @@ Notes that change how the table reads:
   not used by the virtual display.
 - **PSS** depends on what other processes share the same pages; it is reported,
   not substituted for the RSS target.
-- **D** starts a new web process per shown view, which is why activation and
-  restart miss by a wide margin, and hidden views leave web-process memory behind.
+- **D** creates a web view, and with it web-process work, each time a view is
+  shown; this is the likely reason activation and restart miss by a wide margin
+  (the cause was not isolated). Its hidden-growth miss (largest of three
+  repetitions 28.6 MiB, median 14.2) is also unexplained.
 - **Glyph variety** (two full pages: 2350 Hangul syllables, then 2360 ideographs
   at 14 px): A grows from 31.0 to 32.2 MiB and A2 from 20.5 to 24.3 MiB. A's
   fallback font lacks ideographs, so its second page is drawn as missing-glyph
