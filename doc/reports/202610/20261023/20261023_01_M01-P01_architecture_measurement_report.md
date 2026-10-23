@@ -75,7 +75,7 @@ clean commit (`42e1592`) unless noted.
 | cold start, best effort (median of 10, ms) | 84 | 111 | 125* | 101 | 172 | 114 | 715 |
 
 \* candidate B's restart was repeated once (89.2 ms); the first run, disturbed by
-host load, gave 257.7 ms. B2 (same binary as B, not shown) measured 90.1 MiB RSS
+host load, gave 257.7 ms. B2 (same binary as B, not shown) measured 90.4 MiB RSS
 and 89.8 ms restart.
 
 How many samples each row really has: PERF-01 is three independent launches (each
