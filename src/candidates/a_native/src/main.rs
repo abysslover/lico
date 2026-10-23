@@ -259,6 +259,20 @@ impl App {
         }
     }
 
+    /// Draw a full page of distinct Hangul and then of distinct ideographs so the
+    /// glyph caches reach a realistic worst case; the harness reads memory after.
+    fn stress(&mut self) {
+        for base in [0xAC00u32, 0x4E00u32] {
+            let lines: VecDeque<String> = (0..VISIBLE_LINES)
+                .map(|row| (0..59).filter_map(|col| char::from_u32(base + (row * 59 + col) as u32)).collect())
+                .collect();
+            let Some(view) = self.view.as_mut() else { return };
+            view.lines = lines;
+            self.draw();
+        }
+        self.emit_state("stressed");
+    }
+
     fn handle_command(&mut self, line: &str, event_loop: &ActiveEventLoop) {
         let mut words = line.split_whitespace();
         match words.next() {
@@ -273,6 +287,7 @@ impl App {
                 self.emit_state("hidden");
             }
             Some("status") => self.emit_state("status"),
+            Some("stress") => self.stress(),
             Some("hoststatus") => {
                 self.print_status = true;
                 self.send("{\"op\":\"status\"}");

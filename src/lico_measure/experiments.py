@@ -404,7 +404,33 @@ def inventory(candidate: str) -> dict:
         }
 
 
+def glyph_stress(candidate: str) -> dict:
+    """Resident memory after drawing full pages of distinct Hangul and ideographs."""
+    with Rig(candidate, sessions=1, producing=0, history=500) as rig:
+        rig.show(rig.host.sessions[0])
+        time.sleep(SETTLE_S)
+        before = _mib(rig.trees()["gui"].rss_kb)
+        rig.client.send("stress")
+        rig.client.expect("state", "stressed")
+        time.sleep(SETTLE_S)
+        scopes = rig.trees()
+        after = [_mib(scopes["gui"].rss_kb)]
+        for _ in range(4):
+            time.sleep(1.0)
+            after.append(_mib(rig.trees()["gui"].rss_kb))
+        scope = rig.scope("two full pages of distinct glyphs (2350 Hangul syllables, 2360 ideographs)",
+                          {"viewport": VIEWPORT, "font_size_px": 14})
+        return {
+            "measurements": [build_measurement("gui_rss_after_glyph_stress_mib", scope, after),
+                             build_measurement("gui_rss_before_glyph_stress_mib", scope, [before] * 3)],
+            "observations": {"growth_mib": round(max(after) - before, 2),
+                             "note": "fallback font coverage differs per candidate; missing glyphs are drawn as boxes",
+                             "load": _load_info()},
+        }
+
+
 EXPERIMENTS = {
     "idle_memory": idle_memory, "hidden_growth": hidden_growth, "activation": activation,
     "restart": restart, "idle_cpu": idle_cpu, "continuity": continuity, "inventory": inventory,
+    "glyph_stress": glyph_stress,
 }
