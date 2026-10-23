@@ -411,7 +411,7 @@ def inventory(candidate: str) -> dict:
         rig.show(rig.host.sessions[0])
         tree = subprocess.run(["xwininfo", "-display", rig.xvfb.display, "-root", "-tree"],
                               capture_output=True, text=True).stdout
-        windows_1200x800 = sum(1 for line in tree.splitlines() if "1200x800" in line)  # root plus the app window
+        windows_1200x800 = sum(1 for line in tree.splitlines() if "1200x800+" in line)  # the root line carries no geometry
         scopes = rig.trees()
         began = time.perf_counter_ns()
         for _ in range(500):
@@ -425,7 +425,7 @@ def inventory(candidate: str) -> dict:
                 "binary_bytes": os.path.getsize(exe),
                 "mapped_file_count": len(libs), "mapped_file_bytes_total": sum(sizes.values()),
                 "package_size": "unverified: no package is produced in this phase",
-                "app_window_1200x800_present": windows_1200x800 >= 2,
+                "app_window_1200x800_present": windows_1200x800 >= 1,
                 "fonts_mapped": sorted({os.path.basename(p) for p in libs if p.endswith((".ttf", ".ttc", ".otf"))}),
                 "gui_process_count": len(scopes["gui"].processes),
                 "declared_environment": {"server": "Xvfb (X11, no compositor, software rendering)",
