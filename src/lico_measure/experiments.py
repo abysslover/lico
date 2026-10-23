@@ -98,7 +98,7 @@ def idle_memory(candidate: str) -> dict:
         rig.client.expect("state", "loaded")
         rig.show(sid)
         time.sleep(SETTLE_S)
-        gui_rss, gui_pss, host_rss, display_rss, peaks = [], [], [], [], []
+        gui_rss, gui_pss, host_rss, display_rss, peaks, anon, filed = [], [], [], [], [], [], []
         for _ in range(5):
             scopes = rig.trees()
             if any(s.unreadable for s in scopes.values()):
@@ -108,6 +108,8 @@ def idle_memory(candidate: str) -> dict:
             host_rss.append(_mib(scopes["host"].rss_kb))
             display_rss.append(_mib(scopes["display"].rss_kb))
             peaks.append(_mib(sum(p.hwm_kb or 0 for p in scopes["gui"].processes)))
+            anon.append(_mib(sum(p.anon_kb for p in scopes["gui"].processes)))
+            filed.append(_mib(sum(p.file_kb for p in scopes["gui"].processes)))
             time.sleep(1.0)
         gui_pids = [p.pid for p in scopes["gui"].processes]
         names = []
@@ -120,12 +122,14 @@ def idle_memory(candidate: str) -> dict:
                 build_measurement("gui_idle_rss_mib", scope, gui_rss),
                 build_measurement("gui_idle_pss_mib", scope, gui_pss),
                 build_measurement("gui_peak_rss_mib", scope, peaks),
+                build_measurement("gui_idle_rss_anon_mib", scope, anon),
+                build_measurement("gui_idle_rss_file_mib", scope, filed),
                 build_measurement("host_idle_rss_mib", dict(scope, process_scope="host process tree"), host_rss),
                 build_measurement("display_server_idle_rss_mib",
                                   dict(scope, process_scope="virtual display server"), display_rss),
             ],
             "observations": {"gui_processes": names, "gui_process_count": len(names),
-                             "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+                             "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process", "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
                              "load": _load_info()},
         }
 

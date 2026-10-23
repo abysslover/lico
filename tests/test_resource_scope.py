@@ -47,6 +47,10 @@ def test_resource_process_tree_scope():
         assert scopes["gui"].rss_kb == sum(p.rss_kb for p in scopes["gui"].processes)
         assert scopes["gui"].pss_kb == sum(p.pss_kb for p in scopes["gui"].processes)
         assert all(0 < p.pss_kb <= p.rss_kb for p in scopes["gui"].processes)
+        # resident pages are split into anonymous, file-backed and shared-memory parts
+        for p in scopes["gui"].processes:
+            assert p.anon_kb is not None and p.file_kb is not None and p.shmem_kb is not None
+            assert abs(p.anon_kb + p.file_kb + p.shmem_kb - p.rss_kb) <= 1024  # status counters lag smaps by up to ~0.4 MiB
         # a process reachable from two categories is refused, not double counted
         with pytest.raises(ScopeError):
             collect_scopes({"gui": gui.pid, "overlap": gui_helper})

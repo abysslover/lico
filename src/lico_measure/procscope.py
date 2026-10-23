@@ -21,6 +21,9 @@ class ProcessSample:
     rss_kb: int
     pss_kb: int
     hwm_kb: int | None = None  # peak resident size; None when not readable
+    anon_kb: int | None = None   # resident anonymous memory (heap, stacks)
+    file_kb: int | None = None   # resident file-backed pages (libraries, mapped files)
+    shmem_kb: int | None = None  # resident shared memory
 
 
 @dataclass(frozen=True)
@@ -82,18 +85,23 @@ def _read_rollup(pid: int, proc_root: str) -> ProcessSample | None:
         return None  # exited, or not readable: never recorded as zero
     if len(values) != 2:
         return None
-    return ProcessSample(pid, values["Rss"], values["Pss"], _read_hwm(pid, proc_root))
+    status = _read_status(pid, proc_root)
+    return ProcessSample(pid, values["Rss"], values["Pss"], status.get("VmHWM"),
+                         status.get("RssAnon"), status.get("RssFile"), status.get("RssShmem"))
 
 
-def _read_hwm(pid: int, proc_root: str) -> int | None:
+def _read_status(pid: int, proc_root: str) -> dict[str, int]:
+    wanted = ("VmHWM", "RssAnon", "RssFile", "RssShmem")
+    found: dict[str, int] = {}
     try:
         with open(f"{proc_root}/{pid}/status") as handle:
             for line in handle:
-                if line.startswith("VmHWM:"):
-                    return int(line.split()[1])
+                key, _, rest = line.partition(":")
+                if key in wanted:
+                    found[key] = int(rest.split()[0])
     except OSError:
         pass
-    return None
+    return found  # a field that is absent stays absent, never zero
 
 
 def cpu_seconds(pids: list[int], proc_root: str = "/proc") -> float:
