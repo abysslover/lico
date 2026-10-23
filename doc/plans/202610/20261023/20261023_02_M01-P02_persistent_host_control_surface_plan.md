@@ -38,10 +38,21 @@ not stop the synthetic agent processes, and no output is lost or duplicated.
 
 The proposals below are decisions to approve together with this plan:
 
-- The host is written in Rust (the owned client is already Rust); dependencies are
-  a small, pinned set announced before download (candidates: a serialization
-  crate, a command-line parser, a minimal async runtime). Exact versions and
-  licenses are recorded at the first step.
+- The host language is **decided by measurement at the first step**, not now.
+  Rust is the working assumption (memory safety for a process that parses
+  authenticated input, shared code with the owned client). A minimal socket server
+  measured in P01 preparation gave a floor of 1.8 MiB RSS and 308 KB for Rust
+  (size-optimized) and 1.1 MiB and 14 KB for C, so the language floor is small
+  either way; the real host adds parsing, a runtime and a log. Dependencies are a
+  small, pinned set announced before download (candidates: a serialization crate,
+  a command-line parser, a minimal async runtime); exact versions and licenses
+  are recorded at the first step.
+- Host memory is governed by design, not language: per-session memory holds only
+  a bounded recent window of records, older output is read from the durable log,
+  subscriber queues and snapshots are bounded, and the host's RSS at 10 and at 100
+  sessions is reported. The product specification sets no host budget; none is
+  invented here. If the owner sets one before or during the phase it becomes a
+  target and a miss stops the phase like any other.
 - The synthetic agent is a small program under `src/` that emits sequenced
   records, answers input lines and raises synthetic approval prompts. No provider
   CLI, account, credential, billable turn or real user data is used.
@@ -52,7 +63,7 @@ The proposals below are decisions to approve together with this plan:
 
 | ID | Work after approval | Meaningful checks (proposed; not present yet) |
 |---|---|---|
-| S01 | Write protocol v1 (messages, opaque random ids, generations, cursors, snapshots, errors, size limits), explicit response schemas and the complete route inventory; a conformance suite run against the Python oracle | `test_protocol_rejects_unknown_fields_and_oversize`; `test_cursor_contract_no_gap_no_duplicate` (an extra or missing field, a gap or a duplicate makes them fail) |
+| S01 | Write protocol v1 (messages, opaque random ids, generations, cursors, snapshots, errors, size limits), explicit response schemas and the complete route inventory; a conformance suite run against the Python oracle; build the protocol core three ways (Rust with the standard library only, Rust with the proposed crates, C) and report binary size and idle and loaded RSS of each, then record the language decision with its evidence and any owner-set budget | `test_protocol_rejects_unknown_fields_and_oversize`; `test_cursor_contract_no_gap_no_duplicate` (an extra or missing field, a gap or a duplicate makes them fail) |
 | S02 | Rust host core: session registry, ownership of synthetic agent processes, bounded queues with backpressure, a durable sequenced log with a retention policy, snapshot generation | `test_output_persists_and_stays_sequenced_without_gui`; `test_slow_subscriber_cannot_stall_host`; `test_retention_boundary_reports_gap_and_snapshot` |
 | S03 | Control surface: owner-only local IPC, the `lico` CLI, optional loopback REST with a control credential and exact Host/Origin handling; input with request id and target generation (accepted, submitted, observed shown separately); approval responses; view attach and detach; resource report | `test_stale_target_input_is_refused_without_dispatch`; `test_reconnect_never_resends_ambiguous_input`; `test_http_requires_credential_host_and_origin` |
 | S04 | Client integration: both clients speak the real protocol; GUI exit, kill and restart against the real host; per-session input draft and composition state across view switches, defined and tested | `test_gui_kill_and_reattach_keeps_agent_and_sequence`; `test_view_switch_never_sends_composition_to_another_session` |
@@ -82,7 +93,7 @@ chosen automatically.
 | Backpressure | a deliberately slow subscriber while another view keeps up; host output rate unchanged | the host or another subscriber stalls |
 | Input integrity | at least 1000 synthetic inputs with induced reconnects and stale targets; zero duplicated, lost or misrouted | any ambiguous input resent or sent to a stale target |
 | Korean composition | the P01 composition test (four conditions, ibus-hangul in a private session) against the real host path, plus a defined behavior for a view switched mid-composition | text differs from the keys, committed text shrinks, or composition reaches another session |
-| Host resources | host idle and peak RSS and PSS reported separately; reported, no target is proposed here | a missing value shown as zero |
+| Host resources | host idle and peak RSS and PSS at 10 and at 100 sessions, with and without producing sessions, reported separately; the language comparison from the first step; no target is proposed (an owner-set budget becomes one) | a missing value shown as zero, or the host grows with the retained history instead of the bounded window |
 
 p95 uses a monotonic clock and nearest rank with the sample count published. GUI,
 host, agent and display-server costs are scoped separately. Raw samples stay local
