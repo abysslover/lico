@@ -1,11 +1,11 @@
 # M01 — Measured Linux foundation
 
-- Status: not_started
-- Approved: not recorded (G1 pending)
+- Status: in_progress
+- Approved: 2026-10-23 (G1, as written in the proposal)
 - Project: Lico
 - Updated: 2026-10-23
-- Implementation: not started
-- Next gate: owner review of this milestone and the attached draft M01-P01 plan
+- Implementation: M01-P01 measurement may start; no result exists yet
+- Next gate: G3 inspection of the M01-P01 report, then G4 for any merge
 
 ## Goal
 
@@ -49,7 +49,7 @@ informs this division; it does not establish runtime compatibility.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M01-P01 | Bounded architecture comparison, raw resource table and a proposed renderer/host decision | [Draft plan](../../../plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | Not produced | Not produced | None | not_started |
+| M01-P01 | Bounded architecture comparison, raw resource table and a proposed renderer/host decision | [Plan](../../../plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | Not produced | Not produced | None | in_progress |
 | M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | Not drafted; depends on P01 | Not produced | Not produced | None | not_started |
 | M01-P03 | One real supported agent, explicit target/input/approval/reconnect and Unicode/IME evidence | Not drafted; depends on P02 | Not produced | Not produced | None | not_started |
 | M01-P04 | OS-keyring-only authentication, verified same-provider accounts and a second provider adapter | Not drafted; depends on P03 | Not produced | Not produced | None | not_started |
@@ -63,20 +63,21 @@ is gated as unsupported, rather than advertised through simulated behavior.
 
 | Gate | State | Boundary |
 |---|---|---|
-| G1 milestone approval | Pending | No milestone execution authorized |
-| G2 M01-P01 plan approval | Pending | No implementation or experiment authorized |
+| G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
+| G2 M01-P01 plan approval | Approved 2026-10-23 | M01-P01 implementation and experiments as written; not P02 to P05 |
 | G3 inspection acceptance | Pending | No output bundle or acceptance verdict exists |
 | G4 merge approval | Pending | No milestone or phase merge authorized |
 
-The owner may review G1 and G2 together through the attached draft, but must
-explicitly approve each. Setup/publication permission is not phase or merge
-approval. No automatic-merge lane is inherited.
+G1 and G2 were approved together on 2026-10-23. Later phase plans need their own
+approval. Setup/publication permission is not phase or merge approval, and
+approval of one gate does not carry to the next. No automatic-merge lane is
+inherited.
 
 ## Blocked on
 
-- G1: owner approval of this proposed milestone; status remains `not_started`.
-- G2: owner approval of the attached draft M01-P01 plan; no code or benchmark is authorized.
+- G3: owner inspection of the M01-P01 report and bundle once they exist.
 - G4: explicit owner approval is required before any milestone or phase merge.
+- M01-P02 to P05: separate plans written from earlier evidence, each needing approval.
 
 ## Out of scope
 
@@ -88,4 +89,4 @@ real credentials are required for the architecture experiment.
 
 ## When done
 
-Not filled: this milestone is proposed and no phase has run.
+Not filled: M01-P01 has been approved and is starting; no phase has produced a result.

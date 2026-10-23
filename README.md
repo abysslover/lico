@@ -13,8 +13,9 @@ renderer, implementation language and integration strategy remain undecided.
 ## Current status
 
 This repository contains the initial scaffold, [product requirements](doc/product/202610/20261023/00001_product_spec/product_spec.md),
-a [proposed first milestone](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) and a
-[draft architecture experiment plan](doc/plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) for review. No application, provider adapter, benchmark result or release is
+the [first milestone](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) and the
+[architecture experiment plan](doc/plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md); both were approved on
+2026-10-23 and the measurement phase is starting. No application, provider adapter, benchmark result or release is
 available yet. Resource budgets are targets, and no target is claimed as met.
 
 There is no application build or run command at this stage. The future build

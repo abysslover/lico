@@ -1,10 +1,10 @@
 # M01-P01 — Architecture and resource measurement (2026-10-23)
 
-> Status: draft
+> Status: in_progress
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
-> Branch: `phase/M01-P01-architecture-measurement` (not created)
+> Branch: `phase/M01-P01-architecture-measurement`
 > Motivation: measure lifecycle and resource costs before committing to a renderer.
-> Approval: G1 pending; G2 pending; G4 pending. Setup is not implementation approval.
+> Approval: G1 approved 2026-10-23; G2 approved 2026-10-23; G3 pending; G4 pending.
 
 ## Proposed outcome
 
@@ -119,4 +119,7 @@ merges. M01-P02 through P05 require their own plans and approvals.
 ## Progress
 
 - 2026-10-23: Draft prepared only. No branch, implementation, test, experiment,
-  benchmark, report or inspection bundle has run. G1, G2 and G4 remain pending.
+  benchmark, report or inspection bundle had run.
+- 2026-10-23: G1 and G2 approved as written. Branch created from the reviewed
+  documentation commit; this documentation-only commit records the approval.
+  No step has run: S01 to S04 are not started. G3 and G4 remain pending.
