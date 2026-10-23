@@ -12,9 +12,9 @@ and print one JSON object per line. They exist to be measured, not shipped.
 | `d_webkit` | C with GTK 3 and WebKitGTK 4.1 (`webkit2gtk-4.1`, LGPL-2.1-or-later) | `gcc -O2 main.c $(pkg-config --cflags --libs gtk+-3.0 webkit2gtk-4.1)` |
 
 Variants measured from the same binaries: `b2` (GTK with GDK GL disabled and a
-GLX vendor override), and `b3`, `c3`, `d3` (experiment only: an empty `libGL.so.1`
-first on the library path so the GL driver stack is never mapped; not a
-supported deployment).
+GLX vendor override), `b3` (experiment only: an empty `libGL.so.1` first on the
+library path so the GL driver stack is never mapped; not a supported
+deployment) and `c2` (Qt with its XCB GL integration switched off).
 
 Candidate A resolves 81 crates for the Linux target. Every one declares a
 permissive license (MIT, Apache-2.0, Zlib, ISC, BSD-2-Clause, Unlicense or an

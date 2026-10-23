@@ -25,9 +25,9 @@ def candidate_command(name: str, sock: str) -> list[str]:
                 "--font", FONT_PRIMARY, "--font2", FONT_FALLBACK]
     if name in ("b", "b2", "b3"):
         return [str(build / "b_gtk" / "candidate-b"), "--socket", sock]
-    if name in ("d", "d3"):
+    if name == "d":
         return [str(build / "d_webkit" / "candidate-d"), "--socket", sock]
-    if name in ("c", "c3"):
+    if name in ("c", "c2"):
         return [str(build / "c_qt" / "candidate-c"), "--socket", sock]
     raise ValueError(name)
 
@@ -38,11 +38,8 @@ CANDIDATE_ENV = {
     # experiment only: an empty libGL stub first on the library path keeps the GL driver stack unmapped
     "b3": {"GDK_DEBUG": "gl-disable", "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
     "d": {"WEBKIT_DISABLE_COMPOSITING_MODE": "1", "WEBKIT_DISABLE_DMABUF_RENDERER": "1"},
-    "d3": {"WEBKIT_DISABLE_COMPOSITING_MODE": "1", "WEBKIT_DISABLE_DMABUF_RENDERER": "1",
-           "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
     "c": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0"},
-    "c3": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0",
-           "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
+    "c2": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0", "QT_XCB_GL_INTEGRATION": "none"},
 }
 
 
