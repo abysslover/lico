@@ -71,7 +71,7 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     if dirty and not args.allow_dirty:
         print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
         return 2
-    build_bundle(Path(args.raw), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]),
+    build_bundle([Path(p) for p in args.raw], Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]),
                  _git("rev-parse", "HEAD"))
     return 0
 
@@ -86,7 +86,7 @@ def main() -> int:
     run.add_argument("--allow-dirty", action="store_true")
     run.set_defaults(func=cmd_run)
     bundle = sub.add_parser("bundle", help="generate the inspection bundle from raw output")
-    bundle.add_argument("--raw", required=True)
+    bundle.add_argument("--raw", required=True, nargs="+", help="raw output directories, later ones win per candidate")
     bundle.add_argument("--out", required=True)
     bundle.add_argument("--allow-dirty", action="store_true")
     bundle.set_defaults(func=cmd_bundle)

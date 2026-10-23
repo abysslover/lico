@@ -149,9 +149,14 @@ sample. Open `index.html`.
 """
 
 
-def build_bundle(raw_dir: Path, out: Path, command: str, commit: str) -> None:
-    raw = json.loads((raw_dir / "raw.json").read_text())
-    run_receipt = json.loads((raw_dir / "receipt.json").read_text())
+def build_bundle(raw_dirs: list[Path], out: Path, command: str, commit: str) -> None:
+    """Later raw directories replace earlier ones per candidate (a changed candidate is re-measured)."""
+    raw: dict = {"candidates": {}}
+    receipts = []
+    for raw_dir in raw_dirs:
+        raw["candidates"].update(json.loads((raw_dir / "raw.json").read_text())["candidates"])
+        receipts.append(json.loads((raw_dir / "receipt.json").read_text()))
+    run_receipt = receipts[-1]
     out.mkdir(parents=True, exist_ok=True)
     shots = take_screenshots(out / "screens")
     with private_dir() as directory:
@@ -169,6 +174,6 @@ def build_bundle(raw_dir: Path, out: Path, command: str, commit: str) -> None:
     (out / "index.html").write_text(_render(raw, run_receipt, shots, hostile))
     (out / "README.md").write_text(README)
     (out / "receipt.json").write_text(json.dumps({
-        "bundle_command": command, "bundle_commit": commit, "measurement_receipt": run_receipt,
+        "bundle_command": command, "bundle_commit": commit, "measurement_receipts": receipts,
         "generated": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "verdict": "pending",
     }, indent=1))

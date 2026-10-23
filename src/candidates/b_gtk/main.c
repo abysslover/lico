@@ -125,6 +125,7 @@ static void build_view(void)
     gtk_box_pack_start(GTK_BOX(view), scroll, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(root), view, TRUE, TRUE, 0);
     gtk_widget_show_all(view);
+    gtk_widget_hide(placeholder); /* the placeholder belongs to the hidden state only */
 }
 
 static int meta_find(const char *id)
@@ -174,6 +175,7 @@ static void hide_view(void)
         view = textview = mark_session = mark_seq = NULL;
         tbuf = NULL;
         lines_in_buf = 0;
+        gtk_widget_show(placeholder);
     }
 }
 
