@@ -134,7 +134,7 @@ merges. M01-P02 through P05 require their own plans and approvals.
   observed afterwards with mutations. No resource measurement has run yet.
 - 2026-10-23: S03 committed. Seven experiments ran from clean commits (candidate A
   and candidate B at 01f7dc7; candidate B again at 304ee78 after a placeholder
-  fix, the earlier B run is preserved). Nine test runs (five test functions,
+  fix, the earlier B run is preserved). Nine test runs (seven test functions,
   three added in S03), each checked with a mutation. A local inspection bundle
   exists and its verdict is pending. Candidate B missed the idle RSS target
   under Xvfb; the resulting design decision is returned to the owner before S04.
