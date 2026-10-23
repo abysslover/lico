@@ -139,3 +139,9 @@ merges. M01-P02 through P05 require their own plans and approvals.
   exists and its verdict is pending. Candidate B missed the idle RSS target
   under Xvfb; the resulting design decision is returned to the owner before S04.
   S04 (comparison, decision, report, independent review) has not started.
+- 2026-10-23: After the first comparison the owner directed that candidate B is not
+  dropped on a single minimal-view measurement and that the work continues
+  step by step even if it takes longer. This widens the plan beyond two
+  candidates: a memory-composition analysis, a trimmed B variant, an installed Qt
+  and an installed WebKitGTK candidate, and candidate A with a real text
+  stack. Targets are not relaxed. S04 follows these measurements.
