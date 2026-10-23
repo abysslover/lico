@@ -76,7 +76,7 @@ class Xvfb:
         self.proc.wait()
 
 
-HOST_BUILD = {"rust_std": "host_rust_std/release/lico-host-std", "rust_serde": "host_rust_serde/release/lico-host-serde",
+HOST_BUILD = {"rust_std": "host_rust_std/release/lico-host", "rust_serde": "host_rust_serde/release/lico-host",
               "c": "host_c/lico-host-c"}
 
 

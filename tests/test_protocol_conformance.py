@@ -39,6 +39,8 @@ class Conn:
                 if not chunk:
                     return data, True
                 data += chunk
+        except ConnectionResetError:
+            return data, True          # the host closed with request bytes still unread
         except socket.timeout:
             return data, False
 

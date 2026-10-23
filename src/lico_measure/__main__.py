@@ -97,6 +97,21 @@ def cmd_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_hostcmp(args: argparse.Namespace) -> int:
+    from .hostcmp import compare
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    results = compare()
+    (out / "raw.json").write_text(json.dumps({"hosts": results, "commit": _git("rev-parse", "HEAD"),
+                                               "tree_dirty": bool(dirty), "environment": environment()}, indent=1))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="lico_measure", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -111,6 +126,10 @@ def main() -> int:
     bundle.add_argument("--out", required=True)
     bundle.add_argument("--allow-dirty", action="store_true")
     bundle.set_defaults(func=cmd_bundle)
+    hostcmp = sub.add_parser("hostcmp", help="compare host implementations by size and memory")
+    hostcmp.add_argument("--out", required=True)
+    hostcmp.add_argument("--allow-dirty", action="store_true")
+    hostcmp.set_defaults(func=cmd_hostcmp)
     args = parser.parse_args()
     return args.func(args)
 
