@@ -2,35 +2,12 @@ import json
 import os
 import random
 import socket
-import subprocess
 import time
-import urllib.request
 from pathlib import Path
 
-import pytest
+from lico_measure.rig import private_dir
 
-from lico_measure.rig import REPO, Host, private_dir
-
-from tests.test_host_core import AGENT, Conn, read_log  # noqa: F401  (shared helpers)
-
-BUILD = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
-LICO = BUILD / "host_hostd" / "release" / "lico"
-
-
-def start(directory, extra=None, **kw):
-    log = os.path.join(directory, "log")
-    args = ["--log-dir", log, "--agent", str(AGENT)] + (extra or [])
-    return Host(directory, impl="hostd", extra_args=args, **kw), Path(log)
-
-
-def echoes(log_dir, session_id):
-    """Texts the synthetic agent echoed, read from the durable log (independent of the host)."""
-    return [p[5:].decode() for _, p in read_log(log_dir, session_id) if p.startswith(b"echo ")]
-
-
-def cli(host, *args):
-    done = subprocess.run([str(LICO), "--socket", host.socket, *args], capture_output=True, text=True, timeout=20)
-    return done
+from lico_measure.p02 import AGENT, LICO, ProtoConn as Conn, cli, echoes, read_log, start  # noqa: F401
 
 
 def test_stale_target_input_is_refused_without_dispatch():

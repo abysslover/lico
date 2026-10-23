@@ -1,69 +1,11 @@
-import json
 import os
 import socket
 import stat
-import struct
 import time
-from pathlib import Path
 
-import pytest
+from lico_measure.rig import private_dir
 
-from lico_measure.rig import REPO, Host, private_dir
-
-BUILD = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
-HOSTD = BUILD / "host_hostd" / "release" / "lico-host"
-AGENT = BUILD / "host_hostd" / "release" / "lico-synth-agent"
-
-
-class Conn:
-    def __init__(self, path):
-        self.sock = socket.socket(socket.AF_UNIX)
-        self.sock.connect(path)
-        self.sock.settimeout(10)
-        self.buf = b""
-
-    def send(self, **request):
-        self.sock.sendall((json.dumps(request) + "\n").encode())
-
-    def read(self):
-        while b"\n" not in self.buf:
-            chunk = self.sock.recv(1 << 20)
-            if not chunk:
-                raise EOFError
-            self.buf += chunk
-        line, self.buf = self.buf.split(b"\n", 1)
-        return json.loads(line)
-
-    def call(self, **request):
-        self.send(**request)
-        while True:
-            message = self.read()
-            if "ok" in message:
-                return message
-
-    def close(self):
-        self.sock.close()
-
-
-def start(directory, **kw):
-    log = os.path.join(directory, "log")
-    extra = ["--log-dir", log, "--agent", str(AGENT)] + kw.pop("extra", [])
-    return Host(directory, impl="hostd", extra_args=extra, **kw), Path(log)
-
-
-def read_log(log_dir, session_id):
-    """Parse the durable log of one session directly from disk: (seq, payload) in file order."""
-    out = []
-    for path in sorted(log_dir.glob(f"{session_id}.*.seg")):
-        data = path.read_bytes()
-        at = 0
-        while at + 12 <= len(data):
-            length, seq = struct.unpack_from("<IQ", data, at)
-            if at + 12 + length > len(data):
-                break
-            out.append((seq, data[at + 12: at + 12 + length]))
-            at += 12 + length
-    return out
+from lico_measure.p02 import AGENT, HOSTD, ProtoConn as Conn, read_log, start  # noqa: F401
 
 
 def test_output_persists_and_stays_sequenced_without_gui():
