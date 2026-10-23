@@ -20,3 +20,5 @@ module or silently moves an existing link.
 
 Public documentation describes the product and contribution contract. Local
 operational bindings and private inspection evidence remain outside public source.
+
+More documents: [continued index](index_2.md).

@@ -58,3 +58,13 @@ local socket, no endpoint inventory beyond that socket and no stored user data.
 The plan's personal-data controls therefore apply as written; this survey does
 not trigger the plan re-check. If the socket grows beyond status, stream and
 snapshot messages, the plan is rechecked with the owner first.
+
+## Update after the first measurements
+
+The owner directed that candidate B is not dropped on a single minimal-view
+measurement, which widened the set beyond two. Measured in the end: A (as
+above), A2 (A with cosmic-text 0.19.0, MIT OR Apache-2.0), B (GTK 3.24.41), C (Qt
+5.15.13 Widgets as installed), D (WebKitGTK 2.52.3 as installed) and
+environment-only variants of B and C. Qt and WebKitGTK licenses and
+redistribution terms were not re-read and stay unverified. The results and the
+decision are in the [phase report](../../../../reports/202610/20261023/20261023_01_M01-P01_architecture_measurement_report.md).
