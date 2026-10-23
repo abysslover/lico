@@ -50,6 +50,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "workload": {"record_bytes": 1024, "rate_per_second": 100, "stream_duration_s": 30,
                      "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60},
     }
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))  # kept even if a run aborts
     for candidate in receipt["candidates"]:
         results["candidates"][candidate] = {}
         for name in names:
