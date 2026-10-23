@@ -194,3 +194,10 @@ need their own plans and approvals.
   reset). The defined behavior: the composition in progress is committed to the
   session it was typed for, and the input method's late echo of it is ignored. The
   other candidate clients (A, B, D) still speak the earlier subscription form.
+- 2026-10-23: S05 done. A resource-report test compares the host's own report with an
+  independent /proc reading and the log size on disk; a hostile suite of 32 cases over the
+  local socket and the HTTP listener (and a local connection cap and a session cap) was
+  run and found to fail against a mutated host; every scenario and experiment was run
+  from a clean commit and an inspection bundle was generated, its verdict pending. All
+  measured targets were met for the primary and the fallback client. The report is in
+  review; an independent review of the measurements has not run yet.
