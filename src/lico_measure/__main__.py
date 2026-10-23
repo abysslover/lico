@@ -16,7 +16,7 @@ from .report import build_report
 from .rig import REPO
 
 
-ONLY_FOR = {"glyph_stress": {"a", "a2"}}
+ONLY_FOR = {"glyph_stress": {"a", "a2"}, "korean_ime": {"a", "a2", "b", "c2"}}
 
 
 def _capture(*cmd: str) -> str:
@@ -73,7 +73,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             warm.show(warm.host.sessions[0])
         for name in names:
             if candidate not in ONLY_FOR.get(name, {candidate}):
-                continue  # the stress command exists only in the owned clients
+                continue  # the stress command and the input line exist only in some clients
             began = time.monotonic()
             print(f"[{candidate}] {name} ...", flush=True)
             results["candidates"][candidate][name] = EXPERIMENTS[name](candidate)

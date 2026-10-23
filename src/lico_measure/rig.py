@@ -118,14 +118,15 @@ class HostConn:
 class Client:
     """A candidate GUI process driven over stdin; its JSON lines are queued."""
 
-    def __init__(self, name: str, host_socket: str, display: str, wait_ready: bool = True) -> None:
+    def __init__(self, name: str, host_socket: str, display: str, wait_ready: bool = True,
+                 extra_env: dict | None = None) -> None:
         home = _client_home()
         # an explicit environment: no inherited session bus, themes, input-method or user settings
         env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": os.environ.get("LANG", "C.UTF-8"),
                "DISPLAY": display, "HOME": str(home), "XDG_CONFIG_HOME": str(home / "config"),
                "XDG_CACHE_HOME": str(home / "cache"), "XDG_DATA_HOME": str(home / "data"),
                "XDG_RUNTIME_DIR": str(home / "run"), "GDK_BACKEND": "x11", "NO_AT_BRIDGE": "1",
-               **CANDIDATE_ENV.get(name, {})}
+               **CANDIDATE_ENV.get(name, {}), **(extra_env or {})}
         self.proc = subprocess.Popen(
             candidate_command(name, host_socket), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             text=True, env=env,

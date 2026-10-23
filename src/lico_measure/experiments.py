@@ -465,8 +465,27 @@ def glyph_stress(candidate: str) -> dict:
         }
 
 
+def korean_ime(candidate: str) -> dict:
+    """Korean composition through a real input method (private bus and daemon)."""
+    from .ime import SENTENCE_KEYS, SENTENCE_TEXT, composition_run
+
+    runs = {}
+    for label, delay_ms, producing in (("normal", 80, 0), ("fast", 8, 0), ("under output", 40, 1),
+                                       ("fast under output", 8, 1)):
+        result = composition_run(candidate, delay_ms=delay_ms, producing=producing)
+        runs[label] = {"key_delay_ms": delay_ms, "output_while_typing": bool(producing),
+                       "final_text": result["final_text"], "expected": SENTENCE_TEXT,
+                       "exact": result["final_text"] == SENTENCE_TEXT,
+                       "committed_only_grows": result["committed_only_grows"],
+                       "ime_events": result["ime_events"], "trace_tail": result["trace"][-12:]}
+    return {"measurements": [], "observations": {
+        "keys": SENTENCE_KEYS, "input_method": "ibus 1.5.29 with the Hangul engine (2-set), private session",
+        "all_exact": all(r["exact"] and r["committed_only_grows"] for r in runs.values()), "runs": runs,
+        "not_covered": "preedit mid-switch, other input methods, Wayland text-input, candidate popups"}}
+
+
 EXPERIMENTS = {
     "idle_memory": idle_memory, "hidden_growth": hidden_growth, "activation": activation,
     "restart": restart, "idle_cpu": idle_cpu, "continuity": continuity, "inventory": inventory,
-    "glyph_stress": glyph_stress,
+    "glyph_stress": glyph_stress, "korean_ime": korean_ime,
 }

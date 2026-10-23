@@ -14,7 +14,7 @@ static GString *sock_in, *cmd_in;
 static char cur_session[40];
 static gint64 cursor = -1, dups, gaps, resyncs;
 static gboolean subscribed;
-static GtkWidget *window, *root, *placeholder, *view, *textview, *mark_session, *mark_seq;
+static GtkWidget *window, *root, *placeholder, *view, *textview, *mark_session, *mark_seq, *entry;
 static GtkTextBuffer *tbuf;
 static int lines_in_buf;
 static char **meta_ids;
@@ -78,6 +78,22 @@ static void set_mark(GtkWidget *w, guint32 rgb)
     gtk_widget_queue_draw(w);
 }
 
+static void emit_ime(const char *kind, const char *text)
+{
+    printf("{\"ev\":\"ime\",\"kind\":\"%s\",\"text\":\"%s\"}\n", kind, text ? text : "");
+    fflush(stdout);
+}
+
+static void on_entry_changed(GtkEditable *e, gpointer data)
+{
+    emit_ime("text", gtk_entry_get_text(GTK_ENTRY(e)));
+}
+
+static void on_preedit_changed(GtkEntry *e, const char *preedit, gpointer data)
+{
+    emit_ime("preedit", preedit);
+}
+
 static void append_line(gint64 seq, const char *hex)
 {
     char line[160];
@@ -123,9 +139,14 @@ static void build_view(void)
     gtk_box_pack_start(GTK_BOX(top), title, TRUE, TRUE, 4);
     gtk_box_pack_start(GTK_BOX(view), top, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(view), scroll, TRUE, TRUE, 0);
+    entry = gtk_entry_new();
+    g_signal_connect(entry, "changed", G_CALLBACK(on_entry_changed), NULL);
+    g_signal_connect(entry, "preedit-changed", G_CALLBACK(on_preedit_changed), NULL);
+    gtk_box_pack_end(GTK_BOX(view), entry, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), view, TRUE, TRUE, 0);
     gtk_widget_show_all(view);
     gtk_widget_hide(placeholder); /* the placeholder belongs to the hidden state only */
+    gtk_widget_grab_focus(entry);
 }
 
 static int meta_find(const char *id)
@@ -172,7 +193,7 @@ static void hide_view(void)
     subscribed = FALSE;
     if (view) {
         gtk_widget_destroy(view); /* releases the view tree, text buffer and marker widgets */
-        view = textview = mark_session = mark_seq = NULL;
+        view = textview = mark_session = mark_seq = entry = NULL;
         tbuf = NULL;
         lines_in_buf = 0;
         gtk_widget_show(placeholder);
@@ -291,6 +312,7 @@ static void handle_command(char *line)
     else if (sscanf(line, "show %39s", id) == 1) show_session(id, -1, FALSE);
     else if (!strncmp(line, "hide", 4)) { hide_view(); emit_state("hidden"); }
     else if (!strncmp(line, "status", 6)) emit_state("status");
+    else if (!strncmp(line, "text", 4)) emit_ime("text", entry ? gtk_entry_get_text(GTK_ENTRY(entry)) : "");
     else if (!strncmp(line, "hoststatus", 10)) { print_status = TRUE; send_line("{\"op\":\"status\"}"); }
     else if (!strncmp(line, "load", 4)) send_line("{\"op\":\"status\"}");
     else if (!strncmp(line, "quit", 4)) gtk_main_quit();

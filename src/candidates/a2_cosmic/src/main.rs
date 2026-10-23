@@ -12,7 +12,7 @@ use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Sw
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -43,6 +43,8 @@ struct SessionMeta {
 }
 
 struct App {
+    input: String,
+    preedit: String,
     dirty: bool,
     meta: Vec<SessionMeta>,
     pending_show: Option<(String, Option<i64>)>,
@@ -58,6 +60,24 @@ struct App {
     gaps: i64,
     resyncs: i64,
     subscribed: bool,
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::new();
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn emit_ime(kind: &str, text: &str) {
+    println!("{{\"ev\":\"ime\",\"kind\":\"{}\",\"text\":\"{}\"}}", kind, json_escape(text));
+    let _ = std::io::stdout().flush();
 }
 
 fn jint(s: &str, key: &str) -> Option<i64> {
@@ -280,6 +300,7 @@ impl App {
                 self.emit_state("hidden");
             }
             Some("status") => self.emit_state("status"),
+            Some("text") => emit_ime("text", &self.input),
             Some("stress") => self.stress(),
             Some("hoststatus") => {
                 self.print_status = true;
@@ -292,6 +313,7 @@ impl App {
     }
 
     fn draw(&mut self) {
+        let prompt = format!("> {}[{}]", self.input, self.preedit);
         let (Some(window), Some(view), Some(fs)) = (&self.window, self.view.as_mut(), self.font_system.as_mut()) else {
             return;
         };
@@ -306,6 +328,8 @@ impl App {
             text.push('\n');
             text.push_str(line);
         }
+        text.push('\n');
+        text.push_str(&prompt);
         view.buffer.set_size(Some(width as f32), Some(height as f32));
         view.buffer.set_text(&text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
         view.buffer.shape_until_scroll(fs, true);
@@ -365,7 +389,35 @@ impl ApplicationHandler<Ev> for App {
                     w.request_redraw();
                 }
             }
-            WindowEvent::Ime(ime) => println!("{{\"ev\":\"ime\",\"kind\":\"{}\"}}", format!("{ime:?}").split('(').next().unwrap_or("")),
+            WindowEvent::KeyboardInput { event, .. } => {
+                // keys the input method did not take (space, digits, Latin text) arrive here
+                if event.state == ElementState::Pressed {
+                    if let Some(text) = &event.text {
+                        if !text.chars().any(char::is_control) {
+                            self.input.push_str(text);
+                            emit_ime("text", &self.input);
+                            self.dirty = true;
+                        }
+                    }
+                }
+            }
+            WindowEvent::Ime(ime) => {
+                match ime {
+                    Ime::Preedit(text, _) => {
+                        emit_ime("preedit", &text);
+                        self.preedit = text;
+                    }
+                    Ime::Commit(text) => {
+                        emit_ime("commit", &text);
+                        self.input.push_str(&text);
+                        self.preedit.clear();
+                        emit_ime("text", &self.input);
+                    }
+                    Ime::Enabled => emit_ime("enabled", ""),
+                    Ime::Disabled => emit_ime("disabled", ""),
+                }
+                self.dirty = true;
+            }
             _ => {}
         }
     }
@@ -415,7 +467,7 @@ fn main() {
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
     let mut app = App {
-        dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
+        input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
     };

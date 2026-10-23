@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QHBoxLayout>
+#include <QInputMethodEvent>
+#include <QLineEdit>
 #include <QLabel>
 #include <QPaintEvent>
 #include <QPainter>
@@ -38,7 +40,24 @@ static long long cursor = -1, dups = 0, gaps = 0, resyncs = 0;
 static bool subscribed = false, print_status = false;
 static std::vector<std::string> meta_ids;
 static std::vector<long long> meta_cursor;
+static void emit_ime(const char *kind, const QString &text)
+{
+    printf("{\"ev\":\"ime\",\"kind\":\"%s\",\"text\":\"%s\"}\n", kind, text.toUtf8().constData());
+    fflush(stdout);
+}
+
+class InputLine : public QLineEdit {
+protected:
+    void inputMethodEvent(QInputMethodEvent *e) override
+    {
+        emit_ime("preedit", e->preeditString());
+        if (!e->commitString().isEmpty()) emit_ime("commit", e->commitString());
+        QLineEdit::inputMethodEvent(e);
+    }
+};
+
 static QWidget *window, *view;
+static InputLine *entry;
 static QVBoxLayout *root;
 static QLabel *placeholder;
 static QPlainTextEdit *edit;
@@ -139,9 +158,13 @@ static void build_view()
     lines_in_buf = 0;
     column->addLayout(top);
     column->addWidget(edit, 1);
+    entry = new InputLine;
+    QObject::connect(entry, &QLineEdit::textChanged, [](const QString &t) { emit_ime("text", t); });
+    column->addWidget(entry);
     root->addWidget(view, 1);
     placeholder->hide();
     view->show();
+    entry->setFocus();
 }
 
 static void hide_view()
@@ -154,6 +177,7 @@ static void hide_view()
         delete view; // releases the view tree, text document and marker widgets
         view = nullptr;
         edit = nullptr;
+        entry = nullptr;
         mark_session = mark_seq = nullptr;
         lines_in_buf = 0;
         placeholder->show();
@@ -244,6 +268,7 @@ static void handle_command(const std::string &line)
     else if (sscanf(line.c_str(), "show %39s", id) == 1) show_session(id, -1, false);
     else if (line.rfind("hide", 0) == 0) { hide_view(); emit_state("hidden"); }
     else if (line.rfind("status", 0) == 0) emit_state("status");
+    else if (line.rfind("text", 0) == 0) emit_ime("text", entry ? entry->text() : QString());
     else if (line.rfind("hoststatus", 0) == 0) { print_status = true; send_line("{\"op\":\"status\"}"); }
     else if (line.rfind("load", 0) == 0) send_line("{\"op\":\"status\"}");
     else if (line.rfind("quit", 0) == 0) QApplication::quit();
