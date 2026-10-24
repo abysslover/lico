@@ -234,7 +234,7 @@ def cmd_p05_bundle(args: argparse.Namespace) -> int:
     receipts = {name: json.loads((d / "receipt.json").read_text()) for name, d in runs.items()}
     raws = {"display scale 1": json.loads((Path(args.raw1) / "raw.json").read_text()), "display scale 2": json.loads((Path(args.raw2) / "raw.json").read_text())}
     build(raws, json.loads((Path(args.p02) / "p02.json").read_text()), json.loads((Path(args.p05) / "p05.json").read_text()),
-          Path(args.tests).read_text(), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
+          Path(args.tests).read_text(), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts, args.title)
     return 0
 
 
@@ -386,6 +386,7 @@ def main() -> int:
     p05b = sub.add_parser("p05-bundle", help="generate the M01-P05 inspection bundle")
     for name in ("p05", "p02", "raw1", "raw2", "tests", "out"):
         p05b.add_argument(f"--{name}", required=True)
+    p05b.add_argument("--title", default="M01-P05 workflow, recovery and the single executable")
     p05b.add_argument("--allow-dirty", action="store_true")
     p05b.set_defaults(func=cmd_p05_bundle)
     notices = sub.add_parser("notices", help="write the third-party notices of the single executable")

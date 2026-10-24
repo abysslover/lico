@@ -23,14 +23,14 @@ def _targets(raw: dict) -> str:
     return f"<table><tr><th>ID</th><th>Measurement</th><th>Target</th><th>{html.escape(LABELS['a2'])}</th></tr>{''.join(rows)}</table>"
 
 
-def render(raws: dict, p02: dict, p05: dict, tests: str, receipts: dict, bundle_commit: str) -> str:
+def render(raws: dict, p02: dict, p05: dict, tests: str, receipts: dict, bundle_commit: str, title: str) -> str:
     commits = ", ".join(f"{name} <code>{html.escape(r['commit'])}</code>" for name, r in receipts.items())
     gui = "".join(f"<h3>{html.escape(name)}</h3>{_targets(raw)}" for name, raw in raws.items())
-    return f"""<!doctype html><meta charset='utf-8'><title>M01-P05 inspection</title>
+    return f"""<!doctype html><meta charset='utf-8'><title>{html.escape(title)}</title>
 <style>body{{font:14px sans-serif;max-width:1300px;margin:2em auto}}table{{border-collapse:collapse;width:100%}}
 td,th{{border:1px solid #bbb;padding:3px 6px;vertical-align:top;font-size:12px}}.met{{background:#e6f4ea}}.missed{{background:#fce8e6}}
 .unverified{{background:#fff4d6}}pre{{background:#f4f4f4;padding:8px;overflow:auto;font-size:12px}}</style>
-<h1>M01-P05 workflow, recovery and the single executable - inspection bundle</h1>
+<h1>{html.escape(title)} - inspection bundle</h1>
 <p>Verdict: <b>pending</b>. Runs: {commits}; bundle <code>{html.escape(bundle_commit)}</code>. Provider results are from protocol
 <b>simulators</b> (test doubles); keyrings are throwaway private ones with canary values; no real account, login or provider turn was used by the
 development session. Xvfb (X11, no compositor, software rendering); Wayland, GPU, other input methods and accessibility are unverified.</p>
@@ -63,9 +63,9 @@ Open `index.html`. The owner's own end-to-end steps are in `doc/manual_end_to_en
 """
 
 
-def build(raws: dict, p02: dict, p05: dict, tests: str, out: Path, command: str, commit: str, receipts: dict) -> None:
+def build(raws: dict, p02: dict, p05: dict, tests: str, out: Path, command: str, commit: str, receipts: dict, title: str = "M01-P05 workflow, recovery and the single executable") -> None:
     out.mkdir(parents=True, exist_ok=True)
-    (out / "index.html").write_text(render(raws, p02, p05, tests, receipts, commit))
+    (out / "index.html").write_text(render(raws, p02, p05, tests, receipts, commit, title))
     (out / "report.json").write_text(json.dumps({"p02_text": p02, "p05": p05, "gui_experiments": {k: v["candidates"] for k, v in raws.items()}, "tests": tests}, indent=1, ensure_ascii=False))
     (out / "README.md").write_text(README)
     (out / "receipt.json").write_text(json.dumps({"bundle_command": command, "bundle_commit": commit, "measurement_receipts": receipts,
