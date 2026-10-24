@@ -174,6 +174,50 @@ def cmd_real_turn(args: argparse.Namespace) -> int:
     return real_turn.main(args)
 
 
+def cmd_p04(args: argparse.Namespace) -> int:
+    """The M01-P04 scenarios: credential store, accounts, the Claude adapter against its simulator; the receipt is written first."""
+    import hashlib
+
+    from .p04 import collect_p04
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
+               "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
+               "binary_sha256": {**_p02_hashes(), "lico-cred": hashlib.sha256(Path(_p02_hashes_path("lico-cred")).read_bytes()).hexdigest()},
+               "provider": "protocol simulators (test doubles) and a throwaway private keyring with canary values"}
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    (out / "p04.json").write_text(json.dumps(collect_p04(), indent=1, ensure_ascii=False))
+    receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    return 0
+
+
+def _p02_hashes_path(name: str) -> str:
+    from . import p02
+
+    return str(p02.HOSTD_DIR / name)
+
+
+def cmd_p04_bundle(args: argparse.Namespace) -> int:
+    from .bundle_p04 import build
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    runs = {"p04": Path(args.p04), "p03": Path(args.p03), "p02 --text": Path(args.p02), **{f"run --text {i}": Path(p) for i, p in enumerate(args.raw)}}
+    receipts = {name: json.loads((d / "receipt.json").read_text()) for name, d in runs.items()}
+    build([Path(p) for p in args.raw], json.loads((Path(args.p02) / "p02.json").read_text()), json.loads((Path(args.p03) / "p03.json").read_text()),
+          json.loads((Path(args.p04) / "p04.json").read_text()), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]),
+          _git("rev-parse", "HEAD"), receipts)
+    return 0
+
+
 def _p02_hashes() -> dict:
     import hashlib
 
@@ -268,6 +312,18 @@ def main() -> int:
     real.add_argument("--provider", choices=["codex", "claude"], default="codex")
     real.add_argument("--allow-unpinned-version", action="store_true", help="run although the installed version is not the one the adapter is pinned to")
     real.set_defaults(func=cmd_real_turn)
+    p04 = sub.add_parser("p04", help="run the M01-P04 scenarios (credential store, accounts, the Claude adapter)")
+    p04.add_argument("--out", required=True)
+    p04.add_argument("--allow-dirty", action="store_true")
+    p04.set_defaults(func=cmd_p04)
+    p04b = sub.add_parser("p04-bundle", help="generate the M01-P04 inspection bundle")
+    p04b.add_argument("--p04", required=True)
+    p04b.add_argument("--p03", required=True, help="output directory of the p03 command (the Codex scenario)")
+    p04b.add_argument("--p02", required=True, help="output directory of the p02 --text command")
+    p04b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run --text command")
+    p04b.add_argument("--out", required=True)
+    p04b.add_argument("--allow-dirty", action="store_true")
+    p04b.set_defaults(func=cmd_p04_bundle)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
     p02b.add_argument("--p02", required=True, help="output directory of the p02 command")
     p02b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run command")

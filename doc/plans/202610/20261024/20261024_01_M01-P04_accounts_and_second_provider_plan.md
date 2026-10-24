@@ -230,3 +230,7 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   unreachable. Two tests; mutations caught: the silent fallback, `detach` ending sessions, the home always
   removed, an issue never cleared. The failure categories come from the documented `api_retry` event; the
   mapping of a result's `api_error_status` is an assumption (unverified). Codex has no failure mapping yet.
+- 2026-10-24: S05 in progress: a hostile-provider test for the Claude adapter (a tenth test; the plan proposed nine) and the
+  runtime reuse test (each session has its own provider process and private workspace, an account's home is shared only
+  by that account's sessions, the permission context is never widened) pass with mutations; the measurement and bundle
+  commands (`p04`, `p04-bundle`) and the Claude path of the real-turn command exist. Runs, bundle, review and report follow.

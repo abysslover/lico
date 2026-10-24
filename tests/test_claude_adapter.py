@@ -168,3 +168,93 @@ def test_claude_input_and_approval_reach_the_provider_exactly_once_and_a_stale_t
                 assert secret.encode() not in path.read_bytes(), path
         finally:
             host.stop()
+
+
+def _hwm_kb(pid):
+    for line in open(f"/proc/{pid}/status"):
+        if line.startswith("VmHWM:"):
+            return int(line.split()[1])
+
+
+def test_claude_adapter_survives_malformed_oversize_and_hostile_provider_messages():
+    canary = "CANARY-claude-2f9a61c4"
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            base = _hwm_kb(host.pid)
+
+            def run(name, text, marker):
+                assert conn.call(op="input", session=sid, generation=generation, request_id=name, text=text)["ok"] == 1
+                wait_for(lambda: marker in records(log, sid), timeout=60)
+
+            run("bad", "bad", "still alive")                  # not JSON, a field of the wrong type, a forged status in a command, a 3 MB line
+            run("hostile", "hostile", "hostile survived")
+            run("canary", canary, "echo: " + canary)
+            entry = status_of(conn, sid)
+            assert entry["state"] == "running"                # the host did not drop the provider session
+            shown = records(log, sid)
+            assert all(len(r.encode()) <= 4096 for r in shown) and not any(c < " " or c == "\x7f" or c in "  " for r in shown for c in r)
+            # line breaks inside a command cannot forge status records
+            assert "$ echo [turn completed] [turn started][provider disconnected]" in shown and "[provider disconnected]" not in shown
+            # approvals stay bounded, prompts are short, plain and say when they are cut, a repeated id is one approval
+            approvals = entry.get("approvals", [])
+            assert len(approvals) == 64 and all(len(a["prompt"]) <= 200 and a["prompt"].endswith("…") and not any(c < " " for c in a["prompt"]) for a in approvals)
+            answers = [json.loads(l) for l in lines_of(received) if l.startswith("{") and json.loads(l).get("type") == "control_response"]
+            by_id = {a["response"]["request_id"]: a["response"] for a in answers}
+            assert not any(f"req-{k}" in by_id for k in range(64))                         # the pending ones wait for a person
+            assert all(by_id[f"req-{k}"]["subtype"] == "error" for k in range(64, 300))     # the rest are refused to the provider, not held
+            assert by_id["unknown-1"]["subtype"] == "error" and by_id["huge-1"]["subtype"] == "error"
+            assert not any(len(a["response"]["request_id"]) > 64 for a in answers)         # an oversize request id is never echoed
+            # memory grew by a small constant, not with what the provider sent
+            assert _hwm_kb(host.pid) - base < 24 * 1024, (base, _hwm_kb(host.pid))
+            # the canary reached the session log and the provider only
+            holders = sorted(f.suffix for f in Path(directory).rglob("*") if f.is_file() and canary.encode() in f.read_bytes())
+            assert holders == [".seg", ".txt"], holders
+        finally:
+            host.stop()
+
+
+def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
+    from tests.test_accounts import account, environ_of
+    from tests.test_codex_adapter import codex_host, sent
+
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            ca, cb = account(conn, "Work", "claude"), account(conn, "Personal", "claude")
+            plan = [("claude", ca), ("claude", ca), ("claude", cb), ("claude", cb)]
+            sessions = [(new_claude(conn, account=acc)[0], acc) for _, acc in plan]
+            pids = {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}
+            assert len({pids[s] for s, _ in sessions}) == 4                                     # no process serves two sessions
+            workspaces = {s: os.readlink(f"/proc/{pids[s]}/cwd") for s, _ in sessions}
+            assert len(set(workspaces.values())) == 4 and all(w.endswith("/workspaces/" + s) for s, w in workspaces.items())   # one private workspace each
+            envs = {s: environ_of(host, conn, s) for s, _ in sessions}
+            for s, acc in sessions:
+                assert f"/accounts/{acc}/" in envs[s]["CLAUDE_CONFIG_DIR"] and envs[s]["HOME"].startswith(str(Path(directory) / "accounts" / acc))
+            for (s1, a1) in sessions:
+                for (s2, a2) in sessions:
+                    if s1 != s2:
+                        assert (a1 == a2) == (envs[s1]["CLAUDE_CONFIG_DIR"] == envs[s2]["CLAUDE_CONFIG_DIR"])      # a home is shared only by the same account
+                        assert envs[s1]["HOME"] != envs[s2]["HOME"] or a1 == a2
+            # the permission context is the same for all and never widened: default mode, no skipped checks
+            for argv in argv_of(received):
+                assert "default" == argv[argv.index("--permission-mode") + 1] and "--dangerously-skip-permissions" not in argv
+        finally:
+            host.stop()
+    # the same for the Codex provider: each session's thread is started with its own workspace and the strict policy
+    with private_dir() as codex_dir:
+        host, log, received = codex_host(codex_dir)
+        try:
+            conn = Conn(host.socket)
+            ca, cb = account(conn, "Work"), account(conn, "Personal")
+            made = [conn.call(op="session.create", kind="codex", account=acc) for acc in (ca, cb, ca)]
+            starts = [m for m in sent(received) if m.get("method") == "thread/start"]
+            assert len(starts) == 3 and len({m["params"]["cwd"] for m in starts}) == 3
+            assert all(m["params"]["approvalPolicy"] == "untrusted" and m["params"]["sandbox"] == "read-only" for m in starts)
+            pids = {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}
+            assert len({pids[m["session"]] for m in made}) == 3
+        finally:
+            host.stop()

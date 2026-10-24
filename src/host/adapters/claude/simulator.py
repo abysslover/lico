@@ -10,6 +10,7 @@ user message:
   "env"       reports the names (never the values) of its environment
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
+  "hostile"   hundreds of permission requests (one id repeated, an unknown subtype, an oversize id, an oversize input)
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
@@ -132,6 +133,17 @@ def turn(message):
         res = result(ok=False, subtype="error_during_execution")
         res.update({"api_error_status": 401, "errors": ["authentication failed"]})
         out(res)
+    elif text == "hostile":
+        big = "A" * 5000
+        for k in range(300):                                   # hundreds of permission requests with long commands full of escapes
+            out({"type": "control_request", "request_id": f"req-{k}", "request": {"subtype": "can_use_tool", "tool_name": "Bash",
+                 "input": {"command": "rm -rf \x1b]0;pwned\x07\x1b[2J" + big}, "tool_use_id": f"toolu_{k}"}})
+        out({"type": "control_request", "request_id": "req-0", "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "same id again"}}})
+        out({"type": "control_request", "request_id": "unknown-1", "request": {"subtype": "hook_callback", "callback_id": "x"}})
+        out({"type": "control_request", "request_id": "i" * 100_000, "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "long id"}}})
+        out({"type": "control_request", "request_id": "huge-1", "request": {"subtype": "can_use_tool", "tool_name": "Write", "input": {"content": "z" * 20000}}})
+        say("hostile survived")
+        out(result())
     elif text == "bad":
         sys.stdout.write("this is not json\n")
         out({"type": "assistant", "message": "not an object"})
