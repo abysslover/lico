@@ -194,3 +194,13 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   failed as designed. The record was regenerated for 0.164.0 (one more client request, a changed notification
   schema; the server requests, which the adapter answers, are identical); the recorded fixtures are still valid
   against the new schema and the adapter tests pass. Real-provider behavior of 0.164.0 is unverified.
+- 2026-10-24: S02 done. Accounts have stable opaque ids, editable labels, a default per provider (a provider's
+  first account) and one private home per account (mode 0700): a session bound to an account runs its
+  provider with that account's own `HOME` and provider home (`CODEX_HOME`, `CLAUDE_CONFIG_DIR` for the later
+  adapter) and nothing of the host's. New operations `account.create`, `account.list`, `account.default`,
+  `session.rebind` (only for a session whose provider is gone) and an optional `account` on `session.create`;
+  an unknown account, or one of another provider, is refused before anything starts. Two tests; mutations
+  caught: a shared `HOME`, every session in the default account's home, and (after strengthening the test)
+  a rebind of a running session, which had been refused only by an accident (replacing the link closes the old
+  provider's input) that also flipped the session to `disconnected`. The credential generation is stored and
+  shown but nothing raises it yet (S04). Not covered: the Claude provider (S03), a removed account's sessions (S04).

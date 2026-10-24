@@ -177,7 +177,8 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 }
                 let kind = crate::ipc::text(&map, "kind").to_string();
                 core::session_create(shared, &kind, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
-                                     int(&map, "payload").unwrap_or(shared.cfg.payload as i64) as usize)
+                                     int(&map, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
+                                     map.get("account").and_then(|a| a.as_str()))
             }
             _ => return Err((405, "bad_request")),
         },

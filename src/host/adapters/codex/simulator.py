@@ -10,6 +10,8 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "endless"   forty megabytes of one line that never ends, then a normal message
   "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
   "escape"    terminal escapes (clear screen, clipboard write, hyperlink, title, backspaces, bidi override, bell) and a very long line
+  "home"      reports the values of HOME and CODEX_HOME (paths, never secrets)
+  "write:X"   writes X to auth.json in CODEX_HOME, as a provider keeps its own login there
   "env"       reports the names (never the values) of its environment, its working directory and its mode
   otherwise   echoes the text back, character for character
 """
@@ -112,6 +114,17 @@ def handle(message):
                     + "back" + chr(8) * 4 + "spoof\n" + "\u202etxet\u202c\n" + bel + "bell\n" + esc + "]0;pwned" + bel + "title\n"
                     + "x" * 10000 + "\nvisible after escapes\n")
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "esc", "delta": body})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
+        elif text == "home" or text.startswith("write:"):
+            iid = f"home-{turn_counter}"
+            if text == "home":
+                body = f"HOME {os.environ.get('HOME', '')}\nCODEX_HOME {os.environ.get('CODEX_HOME', '')}\n"
+            else:
+                with open(os.path.join(os.environ.get("CODEX_HOME", "."), "auth.json"), "w") as handle:
+                    handle.write(text[6:])
+                body = "wrote\n"
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": iid, "delta": body})
             notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
             active["turn"] = None
         elif text == "env":

@@ -18,9 +18,9 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 15] = [
+pub const OPS: [&str; 19] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "view.attach", "view.detach", "resources",
+    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -36,6 +36,7 @@ pub struct Config {
     pub codex: PathBuf,
     pub codex_args: Vec<String>,
     pub workspace_root: PathBuf,
+    pub accounts_dir: PathBuf,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
 }
 
@@ -54,6 +55,7 @@ pub struct Shared {
     pub views: Mutex<HashMap<String, ViewEntry>>,
     pub started: Instant,
     pub pending_creates: AtomicUsize,
+    pub accounts: Mutex<crate::accounts::Accounts>,
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;
@@ -260,6 +262,10 @@ fn status_entry(s: &Session) -> Value {
         "session": s.id, "generation": s.generation, "seq": s.last_seq(), "producing": s.producing,
         "subscribers": s.subs.len(), "bytes_total": s.bytes_total, "oldest": s.oldest(), "state": state_name(s),
     });
+    if let Some(account) = &s.account {
+        entry["account"] = json!(account);
+        entry["credential_generation"] = json!(s.credential_generation);
+    }
     if !s.approvals.is_empty() {
         entry["approvals"] = Value::Array(s.approvals.iter().map(|(n, p)| json!({"approval_id": n, "prompt": p})).collect());
     }
@@ -290,14 +296,18 @@ pub fn session_list(shared: &Shared) -> Reply {
     Ok(obj(json!({"sessions": entries})))
 }
 
-pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize) -> Reply {
+pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>) -> Reply {
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
+    let bound = match resolve_account(shared, kind, account) {
+        Ok(bound) => bound,
+        Err(code) => return Err(code), // refused before anything starts
+    };
     let reserved = shared.pending_creates.fetch_add(1, Ordering::SeqCst);
     let total = shared.sessions.read().unwrap().len() + reserved;
     let created = if total >= shared.cfg.max_sessions {
         Err("busy")
     } else if kind == "codex" {
-        start_codex_session(shared)
+        start_codex_session(shared, bound)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -310,11 +320,83 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     Ok(obj(json!({"session": id, "generation": generation})))
 }
 
+/// The account a new session is bound to: the one asked for, else the provider's default, else none
+/// (a session without an account runs with the host's own provider home, as before accounts existed).
+fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Result<Option<(String, u64)>, &'static str> {
+    let accounts = shared.accounts.lock().unwrap();
+    match (kind, requested) {
+        ("codex", Some(id)) => match accounts.get(id) {
+            Some(a) if a.provider == "codex" => Ok(Some((a.id.clone(), a.credential_generation))),
+            _ => Err("unknown_account"),
+        },
+        ("codex", None) => Ok(accounts.default_for("codex").map(|a| (a.id.clone(), a.credential_generation))),
+        (_, Some(_)) => Err("bad_request"),
+        (_, None) => Ok(None),
+    }
+}
+
+pub fn account_create(shared: &Shared, provider: &str, label: &str) -> Reply {
+    let account = shared.accounts.lock().unwrap().create(provider, label)?;
+    Ok(obj(json!({"account": account.id, "provider": account.provider, "label": account.label})))
+}
+
+pub fn account_list(shared: &Shared) -> Reply {
+    Ok(obj(json!({"accounts": shared.accounts.lock().unwrap().entries()})))
+}
+
+pub fn account_default(shared: &Shared, account: &str) -> Reply {
+    shared.accounts.lock().unwrap().set_default(account)?;
+    Ok(obj(json!({"account": account})))
+}
+
+/// Move a session whose provider is gone to another account: a new thread, a new generation. A
+/// session that is running (in a turn or idle) is never rebound: its provider holds its account's login.
+pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, account: &str) -> Reply {
+    let found = find(shared, session).ok_or("unknown_session")?;
+    let bound = {
+        let accounts = shared.accounts.lock().unwrap();
+        let wanted = accounts.get(account).ok_or("unknown_account")?;
+        (wanted.id.clone(), wanted.credential_generation, wanted.provider.clone())
+    };
+    let previous = {
+        let mut s = found.lock().unwrap();
+        check_generation(&s, Some(generation))?;
+        if s.state != State::Disconnected || s.codex_thread.is_none() {
+            return Err("busy");
+        }
+        if bound.2 != "codex" {
+            return Err("unknown_account");
+        }
+        let previous = (s.account.clone(), s.credential_generation, s.codex_thread.take());
+        s.account = Some(bound.0.clone());
+        s.credential_generation = bound.1;
+        s.generation += 1; // every target of the old execution is stale from now on
+        previous
+    };
+    if let Err(code) = crate::codex::start(shared, &found) {
+        let mut s = found.lock().unwrap();
+        s.generation -= 1;
+        s.account = previous.0;
+        s.credential_generation = previous.1;
+        s.codex_thread = previous.2;
+        s.state = State::Disconnected;
+        return Err(code);
+    }
+    let mut s = found.lock().unwrap();
+    crate::codex::note(&mut s, "[account changed]");
+    Ok(obj(json!({"session": s.id, "generation": s.generation})))
+}
+
 /// A session backed by the Codex app-server (or its simulator): one provider process, one thread.
-fn start_codex_session(shared: &Arc<Shared>) -> Result<Arc<Mutex<Session>>, &'static str> {
+fn start_codex_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     session.lock().unwrap().text_mode = true;
+    if let Some((account, credential_generation)) = bound {
+        let mut s = session.lock().unwrap();
+        s.account = Some(account);
+        s.credential_generation = credential_generation;
+    }
     if let Err(code) = crate::codex::start(shared, &session) {
         // nothing of a session that never became ready may remain: no process, no log, no workspace
         let mut s = session.lock().unwrap();

@@ -2,6 +2,7 @@
 //! the durable log independently of any GUI, and serves protocol v1 on an
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
+mod accounts;
 mod codex;
 mod core;
 mod http;
@@ -79,6 +80,7 @@ fn main() {
             if given.is_empty() { vec!["app-server".to_string()] } else { given }
         },
         workspace_root: socket_dir.join("workspaces"),
+        accounts_dir: PathBuf::from(arg("--accounts-dir", socket_dir.join("accounts").to_str().unwrap_or("accounts"))),
         text: args.iter().any(|a| a == "--text"),
     };
     {
@@ -107,7 +109,8 @@ fn main() {
     let rate: u64 = arg("--rate", "100").parse::<f64>().expect("rate") as u64;
     let history: u64 = arg("--history", "5000").parse().expect("history");
     let size = cfg.payload;
-    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0) });
+    let accounts_dir = cfg.accounts_dir.clone();
+    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir)) });
     for index in 0..sessions {
         let live = index < producing;
         if core::start_session(&shared, live, if live { rate } else { 0 }, history, size, !live).is_err() {

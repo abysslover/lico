@@ -306,6 +306,8 @@ pub struct Session {
     pub log_failed: bool,
     pub approvals: Vec<(i64, String)>,
     pub agent_pid: u32,
+    pub account: Option<String>, // the account this session is bound to for its whole life (until a rebind of a dead session)
+    pub credential_generation: u64,
     pub process_group: bool, // the process leads its own group (a provider and its helpers): stop the whole group
     pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
@@ -348,6 +350,8 @@ impl Session {
             log_failed: false,
             approvals: Vec::new(),
             agent_pid: 0,
+            account: None,
+            credential_generation: 0,
             process_group: false,
             approval_counter: 0,
             input_tx: None,

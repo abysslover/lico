@@ -133,6 +133,10 @@ fn clip(text: &str, max: usize) -> String {
     text[..end].to_string()
 }
 
+pub fn note(s: &mut Session, line: &str) {
+    record(s, line);
+}
+
 fn record(s: &mut Session, line: &str) {
     s.append(clip(&sanitize(line), MAX_RECORD).into_bytes());
 }
@@ -185,10 +189,25 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
     let mut command = Command::new(&shared.cfg.codex);
     command.args(&shared.cfg.codex_args).current_dir(&workspace).env_clear();
-    for key in ["PATH", "HOME", "LANG", "CODEX_HOME"] {
-        // the provider finds its own login state through these; nothing else of the host's environment is passed
+    for key in ["PATH", "LANG"] {
         if let Some(value) = std::env::var_os(key) {
             command.env(key, value);
+        }
+    }
+    let bound = session.lock().unwrap().account.clone();
+    match bound {
+        // a session bound to an account sees only that account's private home: its own HOME and its own provider home
+        Some(account) => {
+            let homes = shared.accounts.lock().unwrap().homes(&account).ok_or("busy")?;
+            command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
+        }
+        // a session without an account keeps the host's own provider home (the owner's, as before accounts existed)
+        None => {
+            for key in ["HOME", "CODEX_HOME"] {
+                if let Some(value) = std::env::var_os(key) {
+                    command.env(key, value);
+                }
+            }
         }
     }
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
