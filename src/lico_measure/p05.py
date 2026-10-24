@@ -85,5 +85,34 @@ def recovery(sessions: int = SESSIONS, inputs: int = INPUTS) -> dict:
     return out
 
 
+def login_memory() -> dict:
+    """The host's own memory before and during a sign-in (a test double for the provider's login command; the login process is counted apart)."""
+    from tests.test_login import FAKE
+
+    out: dict = {"provider": "test double of a login command (no real provider)"}
+    with private_dir() as directory:
+        extra = ["--login-bin", sys.executable, "--login-arg", "-I", "--login-arg", str(FAKE), "--login-arg", "hang"]
+        host, log = start(directory, extra=extra, sessions=0, producing=0, history=0)
+        try:
+            conn = ProtoConn(host.socket, timeout=30)
+            made = conn.call(op="account.create", provider="codex", label="Work")["account"]
+
+            def host_kib() -> int:
+                return next(p.rss_kb for p in collect_scopes({"host": host.pid})["host"].processes if p.pid == host.pid)
+
+            out["host_idle_rss_kib"] = host_kib()
+            conn.call(op="account.login.start", account=made)
+            deadline = time.monotonic() + 10
+            while conn.call(op="account.login.status", account=made).get("url") is None and time.monotonic() < deadline:
+                time.sleep(0.1)
+            out["host_during_login_rss_kib"] = host_kib()
+            scope = collect_scopes({"host": host.pid})["host"]
+            out["login_process_rss_kib"] = sum(p.rss_kb for p in scope.processes if p.pid != host.pid)
+            conn.call(op="account.login.cancel", account=made)
+        finally:
+            host.stop()
+    return out
+
+
 def collect_p05() -> dict:
-    return {"inventory": inventory(), "recovery": recovery(), "git_repository": str(REPO.name)}
+    return {"inventory": inventory(), "recovery": recovery(), "login_memory": login_memory(), "git_repository": str(REPO.name)}

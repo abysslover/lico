@@ -36,7 +36,7 @@ td,th{{border:1px solid #bbb;padding:3px 6px;vertical-align:top;font-size:12px}}
 development session. Xvfb (X11, no compositor, software rendering); Wayland, GPU, other input methods and accessibility are unverified.</p>
 <h2>The product is one file</h2>{_pre(p05['inventory'])}
 <h2>Restart recovery at scale (simulator provider, host killed without warning)</h2>{_pre(p05['recovery'])}
-<h2>GUI targets with agent-shaped UTF-8 output (10000-line transcripts, 10 accounts on the host)</h2>{gui}
+<h2>Host memory during a sign-in (test double)</h2>{_pre(p05.get('login_memory', 'not measured'))}\n<h2>GUI targets with agent-shaped UTF-8 output (10000-line transcripts, 10 accounts on the host)</h2>{gui}
 <h2>Host memory with agent-shaped transcripts</h2>
 <table><tr><th>Metric</th><th>Workload</th><th>Scope</th><th>Value</th><th>Samples</th></tr>{_table(p02['host_resources']['measurements'])}</table>
 <h2>Test suite, run on the same commit</h2><pre>{html.escape(tests)}</pre>
