@@ -183,3 +183,9 @@ approved. Windows is specification step 6 and needs its own milestone.
   software drawing (a burst such as an activation is still drawn at once). The measurement rig takes `--ui` and `--scale 1|2` (the X
   screen is scaled and the toolkit told the factor). One test: 100 agent-shaped lines a second keep the client under 55% of a core
   (99% without the cap) and the text stays within about a second of the host's newest. The measurement runs follow.
+- 2026-10-24: S03 first GUI run (commit 0a74709, first view, 10 accounts, both scales) **missed PERF-03**: activation p95 144.5 ms at
+  scale 1 and 154.4 ms at scale 2 (target 100 ms; 62 to 67 ms before the first view). Cause measured: a frame costs 39 ms, of which 37 ms is
+  shaping the mixed-script lines, and a switch drew two frames (one before its snapshot arrived). The repair kept lines whose text is
+  unchanged shaped between frames and skipped the empty first frame; the other targets were met (idle RSS 22.3 and 33.2 MiB, restart
+  p95 138 and 122 ms, idle CPU 0.02%, the noisy case 41 and 54% of a core). The run is repeated on the repaired commit; this is recorded
+  as found, not as an exception, and the first run's figures are kept.

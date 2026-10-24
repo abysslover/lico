@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
-use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap};
+use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color, Family, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache, Wrap};
 use serde_json::{json, Value};
 use softbuffer::Surface;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -515,16 +515,23 @@ impl App {
             text.push_str(&clean(b));
         }
         let base = 1 + bar.is_some() as usize;
+        // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its
+        // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
         let build = |first: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
-            let mut full = text.clone();
-            for l in &lines[first..end] {
-                full.push('\n');
-                full.push_str(&l.1);
+            let mut pool: HashMap<String, Vec<BufferLine>> = HashMap::new();
+            for line in std::mem::take(&mut buffer.lines) {
+                pool.entry(line.text().to_string()).or_default().push(line);
             }
-            full.push('\n');
-            full.push_str(&prompt);
+            let attrs = Attrs::new().family(Family::Monospace);
+            let mut wanted: Vec<&str> = text.split('\n').collect();
+            wanted.extend(lines[first..end].iter().map(|l| l.1.as_str()));
+            wanted.push(&prompt);
+            for line_text in wanted {
+                let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, AttrsList::new(&attrs), Shaping::Advanced));
+                buffer.lines.push(line);
+            }
+            buffer.set_scroll(Scroll::default());
             buffer.set_size(Some(main_w as f32), Some(height as f32));
-            buffer.set_text(&full, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
             buffer.shape_until_scroll(fs, true);
         };
         let view = self.view.get_or_insert_with(|| {

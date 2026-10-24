@@ -227,7 +227,8 @@ impl App {
             format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}}}", self.cursor)
         };
         self.send(&msg);
-        self.dirty = true;
+        // the first view waits for the snapshot before it draws: a frame without the lines is a frame thrown away
+        self.dirty = !self.ui.enabled;
     }
 
     fn append_line(&mut self, seq: i64, hex: &str) {
@@ -391,6 +392,7 @@ impl App {
                     }
                 }
                 self.emit_state("subscribed");
+                self.dirty = true;
             }
             _ if line.contains("\"accounts\":[") && self.ui.enabled => self.ui_accounts(line),
             _ if line.contains("\"oldest\":") && line.contains("\"lines\":[") && !line.contains("\"sessions\":[") && self.ui.enabled => self.ui_history(line),
