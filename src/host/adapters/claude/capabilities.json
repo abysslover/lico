@@ -87,5 +87,20 @@
  ],
  "exposure": [
   "an account with a registered credential gets the keyring's session bus address and runtime directory in its provider's environment so the key helper can reach the keyring; every process the provider starts, tools the model drives included, inherits them and can reach the whole Secret Service of the session (not only Lico's entries) over the plain transfer. A helper that talks to the host over a private socket instead would avoid this; it is an owner decision"
- ]
+ ],
+ "observed_in_an_owner_run": {
+  "when": "2026-10-24 15:34 (+0900), one turn, run by the owner with `real-turn --provider claude` at commit 854870a",
+  "version": "2.1.310 (Claude Code), binary sha256 b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56",
+  "observed": [
+   "a session of the owner's own login, found through the provider's config directory while its HOME was an empty private directory, completed a turn through the adapter",
+   "a user message written to standard input right after the process started was accepted (no wait for system/init)",
+   "system/init carried a `model` field; one assistant text block arrived and was recorded as one line; the result message with subtype success ended the turn",
+   "the three host records of the turn were `[session started] model=...`, the text line and `[turn completed]`"
+  ],
+  "not_observed": [
+   "any permission request (the turn needed none; 0 approvals were raised), so the subtype, the control_request shape and the response shape are still unverified",
+   "whether the provider replayed the user message (the input's final state was not read), so the acknowledgment by uuid is still unverified",
+   "resume after the process died, a failing or absent key helper, any failure or limit message, tool_result content"
+  ]
+ }
 }

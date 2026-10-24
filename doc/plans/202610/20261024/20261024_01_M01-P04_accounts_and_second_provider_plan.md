@@ -239,3 +239,6 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   throwaway keyring and protocol simulators only. The review's blocker (GUI rows claimed accounts that were not present) was
   fixed by re-measuring with 10 accounts on the host. Eleven tests in total, 64 runs passed. No real keyring, login or provider
   turn was used. G3 and G4 are pending.
+- 2026-10-24: The owner ran one real Claude Code turn (2.1.310) through the adapter with the real-turn command: it completed
+  (session started, one text line, turn completed; no permission request). Recorded in the capability record; the permission
+  flow, the replay acknowledgment, resume, the key helper and failures remain unverified.

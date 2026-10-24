@@ -207,7 +207,13 @@ open risks. M01-P05 (measured resources, failure recovery, packaging, owner end-
 
 ## Open items for the owner
 
-1. **Real turns (owner-run).** `cd src && PYTHONPATH=. python3 -m lico_measure real-turn --provider claude --accept-billing --turns 1 --out DIR`
+1. **First real Claude turn: done by you, 2026-10-24 15:34.** One turn through the adapter completed (3 records: session
+   started with the model name, one text line, turn completed; 0 approvals). It shows that the provider's own login found through
+   its config directory works while its `HOME` is an empty private directory, that a message written at process start is
+   accepted and that the init, assistant and result messages map as documented. It does not touch the permission flow, the
+   acknowledgment by replay, resume, the key helper or any failure; those stay unverified (the capability record has an
+   `observed_in_an_owner_run` section). The result and transcript are kept in the bundle's `owner_real_turn/`.
+   **Real turns (owner-run).** `cd src && PYTHONPATH=. python3 -m lico_measure real-turn --provider claude --accept-billing --turns 1 --out DIR`
    (and `--provider codex`). It refuses an installed version other than the pinned one (Claude Code 2.1.310, Codex 0.164.0), denies
    every approval, writes an owner-only transcript and receipt, runs the provider with an empty private `HOME` and the provider's
    own config directory passed as a path, and purges its session. Residual risk as in M01-P03: other files the account can read
