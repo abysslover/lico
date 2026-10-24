@@ -17,15 +17,17 @@ is used this way for a dry run that costs nothing).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 from .p02 import ProtoConn, read_log
-from .rig import Host, private_dir
+from .rig import REPO, Host, private_dir
 
 DEFAULT_PROMPT = "Reply with one short sentence in Korean and one in English saying the session works. Do not run any command."
 MAX_TURNS = 3
@@ -40,16 +42,31 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None) -> dict:
     binary = str(Path(provider_bin).resolve()) if provider_bin else shutil.which("codex")   # the provider runs in a private directory
     if not binary:
         raise SystemExit("the codex program was not found on PATH (use --provider-bin for another one)")
-    out.mkdir(parents=True, exist_ok=True)
+    os.umask(0o077)                                  # everything written here is the owner's alone
+    out.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(out, 0o700)
     result: dict = {"provider_program": Path(binary).name, "turns_requested": turns, "simulated": bool(provider_bin),
-                    "approvals_denied": 0, "turns": []}
+                    "approvals_denied": 0, "turns": [], "receipt": _receipt(binary)}
+    # The provider keeps its own sign-in in its own home (CODEX_HOME), which is passed on as a path and never
+    # read here. Its HOME is an empty private directory, so a command it runs does not find the owner's files
+    # (ssh keys, shell history, other tools' settings) under the real home. Other files the owner's account can
+    # read are still reachable by a command; the prompt asks for none and the sandbox is read-only (unverified).
     with private_dir() as directory:
+        provider_home = Path(directory) / "provider_home"
+        provider_home.mkdir(mode=0o700)
+        if provider_bin:                              # a dry run never points anything at the owner's provider home
+            codex_home = str(Path(directory) / "provider_codex_home")
+        else:
+            codex_home = os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
+        overrides = {"HOME": str(provider_home), "CODEX_HOME": codex_home}
         from .p02 import start
 
         program = ["--codex", binary]
         if binary.endswith(".py"):                  # a protocol simulator for a free dry run
             program = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", binary]
-        host, log = start(directory, extra=program, sessions=0, producing=0, history=0)
+        if binary.endswith(".py"):
+            program += ["--codex-arg", "--fixture", "--codex-arg", str(REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json")]
+        host, log = start(directory, extra=program, sessions=0, producing=0, history=0, env_overrides=overrides)
         try:
             conn = ProtoConn(host.socket, timeout=30.0)
             made = conn.call(op="session.create", kind="codex")
@@ -84,15 +101,23 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None) -> dict:
                 result["turns"].append(turn)
                 if turn.get("finished") not in FINISHED:
                     break
-            return _finish(out, result, log, sid)
+            finished = _finish(out, result, log, sid)
+            conn.call(op="session.purge", session=sid, generation=generation)    # ends the provider and every helper it started
+            return finished
         finally:
             host.stop()
 
 
+def _receipt(binary: str) -> dict:
+    version = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() if not binary.endswith(".py") else "simulator"
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
+    return {"commit": commit, "provider_version": version, "provider_binary_sha256": hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
+            "started": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+
+
 def _finish(out: Path, result: dict, log: Path, sid: str | None) -> dict:
     records = [p.decode(errors="replace") for _, p in read_log(log, sid)] if sid else []
-    (out / "transcript.txt").write_text("\n".join(records) + "\n", encoding="utf-8")
-    os.chmod(out / "transcript.txt", 0o600)       # conversation content: owner only
+    (out / "transcript.txt").write_text("\n".join(records) + "\n", encoding="utf-8")   # conversation content: owner only (umask 077)
     result["records"] = len(records)
     (out / "result.json").write_text(json.dumps(result, indent=1, ensure_ascii=False))
     return result

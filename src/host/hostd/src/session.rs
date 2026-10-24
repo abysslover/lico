@@ -306,6 +306,8 @@ pub struct Session {
     pub log_failed: bool,
     pub approvals: Vec<(i64, String)>,
     pub agent_pid: u32,
+    pub process_group: bool, // the process leads its own group (a provider and its helpers): stop the whole group
+    pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
     pub input_tx: Option<SyncSender<String>>,
 }
@@ -346,6 +348,8 @@ impl Session {
             log_failed: false,
             approvals: Vec::new(),
             agent_pid: 0,
+            process_group: false,
+            approval_counter: 0,
             input_tx: None,
         }
     }
@@ -384,9 +388,7 @@ impl Session {
             self.log_failed = true;
             self.state = State::Exited;
             self.input_tx = None;
-            if self.agent_pid != 0 {
-                unsafe { kill(self.agent_pid as i32, 9) };
-            }
+            self.stop_process();
             eprintln!("log write failed for {}: {error}", self.id);
             return;
         }
@@ -467,6 +469,16 @@ impl Session {
             for sub in &self.subs {
                 sub.push(line.clone());
             }
+        }
+    }
+
+    /// End the agent or provider process (the whole group for a provider); a pid that was already
+    /// reaped is zero and never signalled.
+    pub fn stop_process(&mut self) {
+        if self.agent_pid != 0 {
+            let target = if self.process_group { -(self.agent_pid as i32) } else { self.agent_pid as i32 };
+            unsafe { kill(target, 9) };
+            self.agent_pid = 0;
         }
     }
 

@@ -15,7 +15,7 @@ from lico_measure.xpixel import PixelReader
 from tests.test_codex_adapter import codex_host, new_session, sent, texts, wait_for
 
 CLIENTS = ["a2", "c2"]
-DANGEROUS = ["\x1b", "\x07", "\x08", "‮", "‬"]
+DANGEROUS = ["\x1b", "\x07", "\x08", "\r", "\x85", "‮", "‬", "\u2028", "\u2029", "\u200e", "\u200f"]
 
 
 def shown_lines(client):
@@ -23,7 +23,7 @@ def shown_lines(client):
     return client.expect("lines")["lines"]
 
 
-HOSTILE = "\x1b]52;c;cHduZWQ=\x07\x1b]0;pwned\x07\x1b[2J\x08\x08\r visible\u202e evil\u202c"
+HOSTILE = "\x1b]52;c;cHduZWQ=\x07\x1b]0;pwned\x07\x1b[2J\x08\x08\r\x85 visible\u202e\u2028\u2029\u200e\u200f evil\u202c"
 
 
 def compact(message):
@@ -88,7 +88,7 @@ def test_untrusted_output_cannot_act_on_the_display_or_clipboard(name):
             assert window_title(xvfb.display) == title_before and "pwned" not in window_title(xvfb.display)
             lines = shown_lines(client)
             assert any(line.endswith("visible after escapes") for line in lines), lines[-5:]
-            assert any(line.endswith("before") for line in lines) or len(lines) >= 5      # the screen was not cleared
+            assert any(line.endswith("before") for line in lines), lines[:12]      # the screen was not cleared
             assert not any(c in line for line in lines for c in DANGEROUS)
             # the client alone: raw control sequences straight from a peer are shown without their effect
             client.kill()

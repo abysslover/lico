@@ -57,8 +57,8 @@ def test_input_becomes_exactly_one_turn_and_an_ambiguous_one_is_never_resent():
             assert first["ok"] == 1 and first["duplicate"] is False
             wait_for(lambda: "echo: hello 한글 안녕" in texts(log, sid))
             turns = [m for m in sent(received) if m.get("method") == "turn/start"]
-            assert len(turns) == 1 and turns[0]["params"]["input"] == [{"type": "text", "text": "hello 한글 안녕", "text_elements": []}] \
-                or turns[0]["params"]["input"][0]["text"] == "hello 한글 안녕"
+            assert len(turns) == 1, turns
+            assert turns[0]["params"]["input"] == [{"type": "text", "text": "hello 한글 안녕", "text_elements": []}]
             assert conn.call(op="input.status", session=sid, request_id="r-1")["state"] in ("submitted", "observed")
             wait_for(lambda: conn.call(op="input.status", session=sid, request_id="r-1")["state"] == "observed")
             # replies lost and the same request sent again: still one turn each
@@ -75,6 +75,7 @@ def test_input_becomes_exactly_one_turn_and_an_ambiguous_one_is_never_resent():
                     probe.read()
                     probe.close()
             wait_for(lambda: all(f"echo: t{k}" in texts(log, sid) or f"steer: t{k}" in texts(log, sid) for k in range(30)))
+            time.sleep(0.5)                                           # a late duplicate would show up now
             seen = texts(log, sid)
             # each input was applied by the provider exactly once: as a turn of its own, or as a steer of
             # the turn that was running (a steer the provider refused falls back to a turn, never both)
@@ -149,6 +150,17 @@ def test_provider_exit_is_disconnected_not_idle():
         host, log, received = codex_host(directory)
         try:
             conn, sid, generation = new_session(host)
+
+            def pending():
+                return [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0].get("approvals", [])
+
+            conn.call(op="input", session=sid, generation=generation, request_id="fx", text="fixture")
+            first_ids = []
+            for _ in range(2):
+                found = wait_for(pending)
+                first_ids.append(found[0]["approval_id"])
+                assert conn.call(op="approval.answer", session=sid, generation=generation, approval_id=found[0]["approval_id"], answer="allow")["ok"] == 1
+            wait_for(lambda: conn.call(op="input.status", session=sid, request_id="fx")["state"] == "observed" and "[turn completed]" in texts(log, sid))
             conn.call(op="input", session=sid, generation=generation, request_id="boom", text="crash")
 
             def state():
@@ -166,6 +178,11 @@ def test_provider_exit_is_disconnected_not_idle():
             assert conn.call(op="input", session=sid, generation=generation, request_id="old", text="x")["error"] == "stale_generation"
             assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="new", text="안녕")["ok"] == 1
             wait_for(lambda: "echo: 안녕" in texts(log, sid))
+            # an approval id is never reused after a restart: the old number cannot approve a new request
+            conn.call(op="input", session=sid, generation=resumed["generation"], request_id="fx2", text="fixture")
+            again = wait_for(pending)
+            assert again[0]["approval_id"] > max(first_ids), (first_ids, again)
+            assert conn.call(op="approval.answer", session=sid, generation=resumed["generation"], approval_id=first_ids[0], answer="allow")["error"] == "unknown_approval"
             messages = sent(received)
             assert len([m for m in messages if m.get("method") == "turn/start" and m["params"]["input"][0]["text"] == "crash"]) == 1
             assert [m for m in messages if m.get("method") == "thread/resume"], "the thread was not resumed"
@@ -200,10 +217,17 @@ def test_adapter_survives_malformed_oversize_and_hostile_provider_messages():
             assert entry["state"] == "running"               # the host did not drop the provider session
             records = texts(log, sid)
             assert all(len(r.encode()) <= 4096 for r in records)
-            assert not any(c < " " or c == "\x7f" for r in records for c in r)
+            assert not any(c < " " or c == "\x7f" or c in "\u2028\u2029" for r in records for c in r)
+            # line breaks inside a command cannot forge status records: it stays one record, and no
+            # record says the provider disconnected (the log keeps only the newest records)
+            assert "$ echo [turn completed] [turn started][provider disconnected]" in records, [r for r in records if r.startswith("$")]
+            assert "[provider disconnected]" not in records
             # approvals stay bounded, prompts are short and plain, a repeated request id is one approval
             approvals = entry.get("approvals", [])
             assert len(approvals) == 64 and all(len(a["prompt"]) <= 200 and not any(c < " " for c in a["prompt"]) for a in approvals)
+            assert all(a["prompt"].endswith("…") for a in approvals), "a cut prompt says so"
+            # an oversize request id is never echoed back to the provider
+            assert not any(isinstance(m.get("id"), str) and len(m["id"]) > 64 for m in sent(received))
             replies = {m["id"]: m for m in sent(received) if "id" in m and "error" in m}
             assert all(replies[1000 + k]["error"]["code"] for k in range(64, 300)), "approvals beyond the bound are refused to the provider"
             assert not any(1000 + k in replies for k in range(64))

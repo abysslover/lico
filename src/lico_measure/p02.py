@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .procscope import collect_scopes, cpu_seconds, tree_pids
 from .report import build_measurement
+from . import rig as rig_module
 from .rig import REPO, Client, Host, Xvfb, effective_history, output_kind, private_dir
 
 BUILD = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
@@ -221,7 +222,10 @@ def drain(conn: ProtoConn, stop: threading.Event) -> None:
 
 def host_resources(repetitions: int = 3) -> dict:
     """Host memory at 10 and 100 sessions, idle, producing, and with streaming views."""
-    rows = {"10 sessions": (10, 0, 0, 500), "100 sessions": (100, 0, 0, 500),
+    # with the text workload every history of 100 or more becomes the long transcript, so the short
+    # contrast row is a real short history (50 records) and the others are 10000 records
+    short = 50 if rig_module.TEXT_WORKLOAD else 500
+    rows = {"10 sessions": (10, 0, 0, 500), f"100 sessions, short history {short}": (100, 0, 0, short),
             f"100 sessions, history {effective_history(5000)}": (100, 0, 0, 5000),
             "100 sessions, 5 producing, 10 streaming": (100, 5, 10, 500)}
     measurements, observations = [], {}
@@ -241,7 +245,7 @@ def host_resources(repetitions: int = 3) -> dict:
                         threading.Thread(target=drain, args=(conn, stop), daemon=True).start()
                     pids = tree_pids(host.pid)
                     c0, w0 = cpu_seconds([host.pid], strict=True), time.monotonic()
-                    time.sleep(10.0 if streaming else 0.5)
+                    time.sleep(10.0)
                     cpu.append((cpu_seconds([host.pid], strict=True) - c0) / (time.monotonic() - w0) * 100)
                     r, p = _host_rss(host)
                     peak.append(_mib([x.hwm_kb for x in collect_scopes({"host": host.pid})["host"].processes if x.pid == host.pid][0] or 0))
@@ -258,7 +262,7 @@ def host_resources(repetitions: int = 3) -> dict:
         measurements += [
             build_measurement("host_rss_mib", scope, rss), build_measurement("host_pss_mib", scope, pss),
             build_measurement("host_peak_rss_mib", scope, peak),
-            build_measurement("host_cpu_percent", dict(scope, interval_s=10 if streaming else 0), cpu),
+            build_measurement("host_cpu_percent", dict(scope, interval_s=10), cpu),
             build_measurement("host_reported_rss_mib", dict(scope, process_scope="host's own resource report"), reported),
             build_measurement("agents_total_rss_mib", dict(scope, process_scope="agent processes"), agent_rss),
         ]

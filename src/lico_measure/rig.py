@@ -109,7 +109,7 @@ def output_kind() -> str:
 class Host:
     def __init__(self, directory: str, sessions: int, producing: int, rate: float = 100.0,
                  history: int = 5000, retain: int = 2048, impl: str | None = None,
-                 extra_args: list[str] | None = None) -> None:
+                 extra_args: list[str] | None = None, env_overrides: dict | None = None) -> None:
         impl = impl or os.environ.get("LICO_HOST_IMPL") or ("hostd" if "hostd" in host_impls() else "oracle")
         self.socket = os.path.join(directory, "host.sock")
         self.directory = directory
@@ -118,12 +118,13 @@ class Host:
         if TEXT_WORKLOAD:
             extra_args += ["--text", "--payload", str(TEXT_WORKLOAD["payload"])]
             history = effective_history(history)
+            retain = max(retain, TEXT_WORKLOAD["history"] + 2000)   # the durable log really keeps the long transcripts
         self.proc = subprocess.Popen(
             [*_host_command(impl), "--socket", self.socket, "--sessions", str(sessions),
              "--producing", str(producing), "--rate", str(rate), "--history", str(history),
              "--retain", str(retain), *extra_args],
             stdout=subprocess.PIPE, stderr=open(os.path.join(directory, "host.err"), "wb"), text=True,
-            env={k: v for k, v in env.items() if k != "PYTHONHOME"},
+            env={k: v for k, v in {**env, **(env_overrides or {})}.items() if k != "PYTHONHOME"},
         )
         self.ready_line = self.proc.stdout.readline()
         ready = json.loads(self.ready_line)

@@ -90,7 +90,7 @@ def screens(out: Path) -> dict:
     return shots
 
 
-def render(raw: dict, p02: dict, p03: dict, shots: dict, receipt: dict) -> str:
+def render(raw: dict, p02: dict, p03: dict, shots: dict, receipts: list[dict], bundle_commit: str) -> str:
     names = [c for c in ("a2", "c2") if c in raw["candidates"]]
     head = "".join(f"<th>{html.escape(LABELS[c])}</th>" for c in names)
     rows = []
@@ -104,6 +104,7 @@ def render(raw: dict, p02: dict, p03: dict, shots: dict, receipt: dict) -> str:
 
     def table(measurements: list[dict]) -> str:
         return "".join(f"<tr><td>{html.escape(m['metric'])}</td><td>{html.escape(m['scope']['workload'])}</td>"
+                       f"<td>{html.escape(m['scope']['process_scope'])}</td>"
                        f"<td>{m['value']:.1f} {html.escape(m['unit'])}</td><td>n={m['n']}</td></tr>" for m in measurements)
 
     figures = []
@@ -118,15 +119,16 @@ def render(raw: dict, p02: dict, p03: dict, shots: dict, receipt: dict) -> str:
 td,th{{border:1px solid #bbb;padding:3px 6px;vertical-align:top;font-size:12px}}.met{{background:#e6f4ea}}.missed{{background:#fce8e6}}
 .unverified{{background:#fff4d6}}.shots{{display:flex;gap:8px;flex-wrap:wrap}}pre{{background:#f4f4f4;padding:8px;overflow:auto;font-size:12px}}</style>
 <h1>M01-P03 first real agent - inspection bundle</h1>
-<p>Verdict: <b>pending</b>. Targets are copied from the product specification. Commit: <code>{html.escape(receipt['commit'])}</code>.
+<p>Verdict: <b>pending</b>. Targets are copied from the product specification. Commits: adapter run <code>{html.escape(receipts[0]['commit'])}</code>, P02 run <code>{html.escape(receipts[1]['commit'])}</code>,
+GUI run <code>{html.escape(receipts[-1]['commit'])}</code>, bundle <code>{html.escape(bundle_commit)}</code> (each receipt is in <code>receipt.json</code>).
 Every provider result below comes from the protocol <b>simulator</b> (a test double), not from the real provider.
 Xvfb (X11, no compositor, software rendering); Wayland, a real compositor, GPU, other input methods and accessibility are unverified.</p>
 <h2>GUI targets with agent-shaped UTF-8 output (10000-line transcripts)</h2>
 <table><tr><th>ID</th><th>Measurement</th><th>Target</th>{head}</tr>{''.join(rows)}</table>
 <h2>Host memory with agent-shaped transcripts</h2>
-<table><tr><th>Metric</th><th>Workload</th><th>Value</th><th>Samples</th></tr>{table(p02['host_resources']['measurements'])}</table>
+<table><tr><th>Metric</th><th>Workload</th><th>Scope</th><th>Value</th><th>Samples</th></tr>{table(p02['host_resources']['measurements'])}</table>
 <h2>The provider process itself (real program, not signed in, idle; kept apart from Lico's budget)</h2>
-<table><tr><th>Metric</th><th>Workload</th><th>Value</th><th>Samples</th></tr>{table(p03['provider_memory']['measurements'])}</table>{_pre(p03['provider_memory']['observations'])}
+<table><tr><th>Metric</th><th>Workload</th><th>Scope</th><th>Value</th><th>Samples</th></tr>{table(p03['provider_memory']['measurements'])}</table>{_pre(p03['provider_memory']['observations'])}
 <h2>Escape sequences, mixed scripts and Korean on screen</h2>{''.join(figures)}
 <h2>One simulated session end to end (input, turn, approvals, a vanished provider, resume)</h2>{_pre(demo)}
 <h2>Input and approval integrity through the adapter (simulator)</h2>{_pre(p03['adapter_integrity']['observations'])}
@@ -174,7 +176,7 @@ def build(raw_dirs: list[Path], p02: dict, p03: dict, shots: dict, out: Path, co
         for candidate, experiments in json.loads((raw_dir / "raw.json").read_text())["candidates"].items():
             raw["candidates"].setdefault(candidate, {}).update(experiments)
     out.mkdir(parents=True, exist_ok=True)
-    (out / "index.html").write_text(render(raw, p02, p03, shots, receipts[-1]))
+    (out / "index.html").write_text(render(raw, p02, p03, shots, receipts, commit))
     (out / "report.json").write_text(json.dumps({"p02_text": p02, "p03": p03, "gui_experiments": raw["candidates"]}, indent=1, ensure_ascii=False))
     (out / "README.md").write_text(README)
     (out / "receipt.json").write_text(json.dumps({

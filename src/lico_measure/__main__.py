@@ -160,7 +160,7 @@ def cmd_p03(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
                "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
-               "binary_sha256": _p02_hashes(), "provider": "protocol simulator (a test double), not the real provider"}
+               "binary_sha256": _p02_hashes(), "provider": "scenarios: protocol simulator (a test double); provider_memory: the installed codex program, version and hash recorded in p03.json"}
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
     (out / "p03.json").write_text(json.dumps(collect_p03(), indent=1, ensure_ascii=False))
     receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")

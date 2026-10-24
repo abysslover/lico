@@ -209,7 +209,7 @@ static QString clean(const QString &text)
     QString out;
     for (QChar c : text) {
         ushort u = c.unicode();
-        if (u < 0x20 || (u >= 0x7f && u <= 0x9f) || (u >= 0x202a && u <= 0x202e) || (u >= 0x2066 && u <= 0x2069)) continue;
+        if (u < 0x20 || (u >= 0x7f && u <= 0x9f) || (u >= 0x202a && u <= 0x202e) || (u >= 0x2066 && u <= 0x2069) || u == 0x2028 || u == 0x2029 || u == 0x200e || u == 0x200f || u == 0x061c) continue;
         out.append(c);
         if (out.size() >= LINE_CHARS) break;
     }

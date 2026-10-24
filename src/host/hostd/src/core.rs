@@ -78,6 +78,7 @@ pub fn spawn_provider_process(mut command: Command) -> std::io::Result<Child> {
     unsafe {
         command.pre_exec(|| {
             prctl(1, 9, 0, 0, 0); // PR_SET_PDEATHSIG, SIGKILL: no provider outlives its host
+            setsid(); // its own process group, so a stop reaches the helpers it starts too
             Ok(())
         });
     }
@@ -98,7 +99,7 @@ fn spawn_agent(command: Command) -> std::io::Result<Child> {
 
 extern "C" {
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
-    fn kill(pid: i32, sig: i32) -> i32;
+    fn setsid() -> i32;
 }
 
 pub fn random_hex(bytes: usize) -> String {
@@ -314,7 +315,15 @@ fn start_codex_session(shared: &Arc<Shared>) -> Result<Arc<Mutex<Session>>, &'st
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     session.lock().unwrap().text_mode = true;
-    crate::codex::start(shared, &session)?;
+    if let Err(code) = crate::codex::start(shared, &session) {
+        // nothing of a session that never became ready may remain: no process, no log, no workspace
+        let mut s = session.lock().unwrap();
+        s.purged = true;
+        s.stop_process();
+        s.purge_log();
+        let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&s.id));
+        return Err(code);
+    }
     shared.sessions.write().unwrap().push(session.clone());
     Ok(session)
 }
@@ -332,9 +341,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         s.codex = None;
         s.approvals.clear();
         let pid = s.agent_pid;
-        if pid != 0 {
-            unsafe { kill(pid as i32, 9) };
-        }
+        s.stop_process();
         s.purge_log();
         let subs: Vec<Arc<Sub>> = s.subs.drain(..).collect();
         (s.id.clone(), pid, subs)

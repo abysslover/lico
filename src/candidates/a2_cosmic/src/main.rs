@@ -88,7 +88,7 @@ fn json_escape(s: &str) -> String {
 /// backspace, carriage return) and the bidirectional overrides are dropped.
 fn clean(text: &str) -> String {
     text.chars()
-        .filter(|c| !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'))
+        .filter(|c| !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{2028}' | '\u{2029}' | '\u{200E}' | '\u{200F}' | '\u{061C}'))
         .take(LINE_CHARS)
         .collect()
 }

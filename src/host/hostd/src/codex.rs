@@ -38,9 +38,12 @@ pub struct Link {
     next_rpc: i64,
     pending: HashMap<i64, Pending>,
     pub approval_map: HashMap<i64, Value>,
-    next_approval: i64,
     buffers: HashMap<String, String>,
     pub ready: bool,
+}
+
+extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
 }
 
 // ------------------------------------------------------------------ sanitizing
@@ -107,9 +110,10 @@ pub fn sanitize(text: &str) -> String {
             continue;
         }
         let code = c as u32;
-        if c == '\t' {
-            result.push(' ');
-        } else if !(code <= 8 || (0x0b..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
+        if c == '\t' || c == '\n' || c == '\r' {
+            result.push(' '); // a record is one line: a line break inside it would forge a second record
+        } else if !(code <= 8 || code == 0x0b || code == 0x0c || (0x0e..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
+            || code == 0x061c || code == 0x200e || code == 0x200f || code == 0x2028 || code == 0x2029
             || (0x202a..=0x202e).contains(&code) || (0x2066..=0x2069).contains(&code)) {
             result.push(c);
         }
@@ -189,15 +193,24 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     }
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     let mut child = core::spawn_provider_process(command).map_err(|_| "busy")?;
-    let stdout = child.stdout.take().ok_or("busy")?;
-    let mut stdin = child.stdin.take().ok_or("busy")?;
+    let pid = child.id();
+    let (Some(stdout), Some(mut stdin)) = (child.stdout.take(), child.stdin.take()) else {
+        unsafe { kill(-(pid as i32), 9) };
+        let _ = child.wait();
+        return Err("busy");
+    };
     let (tx, rx) = mpsc::sync_channel::<(String, Option<String>)>(1024);
-    let mut link = Link { tx, active_turn: None, next_rpc: 0, pending: HashMap::new(), approval_map: HashMap::new(), next_approval: 0, buffers: HashMap::new(), ready: false };
+    let mut link = Link { tx, active_turn: None, next_rpc: 0, pending: HashMap::new(), approval_map: HashMap::new(), buffers: HashMap::new(), ready: false };
     let init = json!({"clientInfo": {"name": "lico", "title": "Lico", "version": "0.0.0"}, "capabilities": {}});
-    rpc(&mut link, "initialize", init, Pending::Init, None)?;
+    if rpc(&mut link, "initialize", init, Pending::Init, None).is_err() {
+        unsafe { kill(-(pid as i32), 9) };
+        let _ = child.wait();
+        return Err("busy");
+    }
     {
         let mut s = session.lock().unwrap();
-        s.agent_pid = child.id();
+        s.agent_pid = pid;
+        s.process_group = true;
         s.codex = Some(link);
         s.state = State::Running;
         if let Some(thread) = &resume {
@@ -223,8 +236,12 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
                 handle_message(&reader_session, &message, &cwd);
             }
         }
+        unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
         let _ = child.wait();
         let mut s = reader_session.lock().unwrap();
+        if s.agent_pid == pid {
+            s.agent_pid = 0; // reaped: the number may now belong to another process
+        }
         if s.state == State::Running && s.codex.is_some() {
             s.state = State::Disconnected;
             s.codex = None; // its approvals and unanswered requests are stale now
@@ -242,6 +259,12 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         }
         thread::sleep(Duration::from_millis(5));
     }
+    // never ready: the process is stopped and the session is left as it was before (disconnected to resume, nothing to create)
+    let mut s = session.lock().unwrap();
+    s.stop_process();
+    s.codex = None;
+    s.approvals.clear();
+    s.state = if resume.is_some() { State::Disconnected } else { State::Exited };
     Err("busy")
 }
 
@@ -269,6 +292,10 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
 fn handle_message(session: &Arc<Mutex<Session>>, message: &Value, cwd: &str) {
     let mut s = session.lock().unwrap();
     let method = message.get("method").and_then(Value::as_str);
+    // an id is a number or a short string: it is echoed back to the provider, so it must stay small
+    if !message.get("id").map_or(true, |id| id.is_i64() || id.as_str().map_or(false, |s| s.len() <= 64)) {
+        return;
+    }
     match (method, message.get("id")) {
         (None, Some(id)) => response(&mut s, id, message, cwd),
         (Some(method), Some(id)) => server_request(&mut s, id.clone(), method, message.get("params").unwrap_or(&Value::Null)),
@@ -348,10 +375,12 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
             let _ = send(link, json!({"id": id, "error": {"code": -32000, "message": "too many pending approvals"}}), None);
             return;
         }
-        link.next_approval += 1;
-        let number = link.next_approval;
+        s.approval_counter += 1;
+        let number = s.approval_counter;
         link.approval_map.insert(number, id);
-        s.add_approval(number, clip(&sanitize(&prompt), MAX_PROMPT));
+        let shown = sanitize(&prompt);
+        let shown = if shown.chars().count() > MAX_PROMPT { format!("{}…", shown.chars().take(MAX_PROMPT - 1).collect::<String>()) } else { shown };
+        s.add_approval(number, shown);
     } else {
         // tokens, tools, attestations, elicitations and permission grants are not supplied by this client
         let _ = send(link, json!({"id": id, "error": {"code": -32601, "message": "unsupported by this client"}}), None);
@@ -359,6 +388,8 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
 }
 
 fn flush(s: &mut Session, item: &str) {
+    let item = clip(item, 128);
+    let item = item.as_str();
     let rest = s.codex.as_mut().and_then(|l| l.buffers.remove(item)).unwrap_or_default();
     if !rest.is_empty() {
         record(s, rest.trim_end_matches('\r'));
@@ -366,6 +397,8 @@ fn flush(s: &mut Session, item: &str) {
 }
 
 fn delta(s: &mut Session, item: &str, text: &str) {
+    let item = clip(item, 128);
+    let item = item.as_str();
     let Some(link) = s.codex.as_mut() else { return };
     let whole = format!("{}{}", link.buffers.get(item).map(String::as_str).unwrap_or(""), text);
     let mut parts: Vec<&str> = whole.split('\n').collect();

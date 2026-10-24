@@ -27,7 +27,7 @@ def _simulated_host(directory: str) -> tuple:
     received = Path(directory) / "received.jsonl"
     extra = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", str(SIMULATOR), "--codex-arg", "--received",
              "--codex-arg", str(received), "--codex-arg", "--fixture", "--codex-arg", str(FIXTURE)]
-    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0)
+    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000)   # nothing pruned while counting
     return host, log, received
 
 
@@ -62,7 +62,7 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
                 assert made["ok"] == 1, made
                 sessions.append({"id": made["session"], "generation": made["generation"]})
             expected: dict[str, list[str]] = {s["id"]: [] for s in sessions}
-            reconnects = refused = lost_replies = 0
+            reconnects = refused = lost_replies = attempts = 0
             for k in range(inputs):
                 s = sessions[k % 2]
                 if k and k % reconnect_every == 0:
@@ -94,9 +94,11 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
                 s = sessions[k % 2]
                 reply = control.call(op="input", session=s["id"], generation=s["generation"] + 50, request_id=f"stale-{k}", text="stale-target")
                 refused += reply.get("error") == "stale_generation"
+                attempts += 1
             for k in range(50):
                 reply = control.call(op="input", session="s" + "0" * 16, generation=1, request_id=f"foreign-{k}", text="foreign-target")
                 refused += reply.get("error") == "unknown_session"
+                attempts += 1
             _until(lambda: all(_settled(control, s["id"], f"in-{inputs - 1 - j:05d}") for j, s in enumerate(reversed(sessions))))
             time.sleep(1.5)
             # what the provider received and what the session recorded, both read independently of the host's replies
@@ -110,7 +112,7 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
             sent_twice = {t: [m["method"] for m in heard if m["params"]["input"][0]["text"] == t] for t in wanted if heard_texts.count(t) > 1}
             result = {
                 "inputs": inputs, "sessions": 2, "provider_restarts": reconnects, "retried_after_lost_reply": lost_replies,
-                "stale_and_foreign_attempts": 150, "refused_correctly": refused,
+                "stale_and_foreign_attempts": attempts, "refused_correctly": refused,
                 "applied_zero_times": sum(1 for t in wanted if applied[t] == 0),
                 "applied_more_than_once": sum(1 for t in wanted if applied[t] > 1),
                 "sent_to_provider_zero_times": sum(1 for t in wanted if heard_texts.count(t) == 0),
@@ -119,10 +121,13 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
                 "refused_inputs_that_reached_the_provider": sum(1 for t in heard_texts if "target" in t),
                 "misrouted": sum(1 for sid, texts in expected.items() for t in texts
                                  if not any(r.endswith(t) for r in records[sid]) or any(r.endswith(t) for o, rs in records.items() if o != sid for r in rs)),
-                "unobserved_inputs": 0,
             }
-            result["unobserved_inputs"] = sum(1 for k in range(0, inputs, 7)
-                                              if control.call(op="input.status", session=sessions[k % 2]["id"], request_id=f"in-{k:05d}").get("state") not in ("observed", "submitted"))
+            # the final state of every input, not a sample; a provider that vanished may leave an input unresolved
+            tally: dict[str, int] = {}
+            for k in range(inputs):
+                state = control.call(op="input.status", session=sessions[k % 2]["id"], request_id=f"in-{k:05d}").get("state", "unknown")
+                tally[state] = tally.get(state, 0) + 1
+            result["input_states"] = tally
             result["approvals"] = _approvals(control, host, received, sessions, turns_with_approvals)
             return {"measurements": [], "observations": result}
         finally:
@@ -140,7 +145,7 @@ def _settled(control: ProtoConn, sid: str, request_id: str) -> bool:
 
 def _approvals(control: ProtoConn, host, received: Path, sessions: list[dict], turns: int) -> dict:
     """Fixture turns raise two approvals each. Answers are sent with forged, stale and repeated attempts around them."""
-    answered = forged_refused = stale_refused = repeat_refused = 0
+    answered = forged_refused = stale_refused = repeat_refused = raised = 0
     base = len([m for m in _provider_messages(received) if "result" in m and m.get("id") in (7, 11)])
     for k in range(turns):
         s = sessions[k % 2]
@@ -149,6 +154,7 @@ def _approvals(control: ProtoConn, host, received: Path, sessions: list[dict], t
         for _ in range(2):
             prompt = _until(lambda: [a for a in _pending(control, s["id"])])
             number = prompt[0]["approval_id"]
+            raised += 1
             forged_refused += control.call(op="approval.answer", session=s["id"], generation=s["generation"], approval_id=number + 1000, answer="allow").get("error") == "unknown_approval"
             stale_refused += control.call(op="approval.answer", session=s["id"], generation=s["generation"] + 50, approval_id=number, answer="allow").get("error") == "stale_generation"
             ok = control.call(op="approval.answer", session=s["id"], generation=s["generation"], approval_id=number, answer="allow" if (k % 2) else "deny")
@@ -157,8 +163,10 @@ def _approvals(control: ProtoConn, host, received: Path, sessions: list[dict], t
         _until(lambda: _settled(control, s["id"], f"fx-{k}") and not _pending(control, s["id"]))
     time.sleep(1.0)
     replies = [m for m in _provider_messages(received) if "result" in m and m.get("id") in (7, 11)]
+    decisions = [m["result"].get("decision") for m in replies[base:]]
     return {
-        "fixture_turns": turns, "approvals_raised": turns * 2, "answered": answered, "provider_responses": len(replies) - base,
+        "fixture_turns": turns, "approvals_raised": raised, "answered": answered, "provider_responses": len(replies) - base,
+        "provider_decisions": {d: decisions.count(d) for d in set(decisions)},
         "forged_refused": forged_refused, "stale_refused": stale_refused, "repeat_refused": repeat_refused,
     }
 
@@ -265,10 +273,17 @@ def provider_idle_memory(launches: int = 3) -> dict:
             finally:
                 os.killpg(proc.pid, signal.SIGKILL)               # the program and every helper it started
                 proc.wait()
-    where = {"candidate": "codex app-server " + json.loads(CAPABILITIES.read_text())["version"]["cli"] + " (not signed in)",
+    import hashlib
+
+    from .providers import installed_version
+
+    with private_dir() as scratch:
+        version = installed_version(Path(scratch))          # asked of the binary that ran, not of the capability record
+    digest = hashlib.sha256(Path(binary).resolve().read_bytes()).hexdigest()
+    where = {"candidate": "codex app-server " + version + " (not signed in)",
              "workload": "initialized, no thread, no turn", "process_scope": "provider process tree", "sample_unit": "independent launch"}
     return {"measurements": [build_measurement("provider_idle_rss_mib", where, rss), build_measurement("provider_idle_pss_mib", where, pss)],
-            "observations": {"processes_in_tree": processes, "note": "an idle provider, not signed in; a provider with a conversation holds more"}}
+            "observations": {"version_reported_by_the_binary": version, "binary_sha256": digest, "processes_in_tree": processes, "note": "an idle provider, not signed in; a provider with a conversation holds more"}}
 
 
 def real_turn_dry_run() -> dict:
@@ -278,7 +293,7 @@ def real_turn_dry_run() -> dict:
 
     with private_dir() as directory:
         out = Path(directory) / "dry"
-        result = real_turn.run(out, 2, "dry run 한글 ok", str(SIMULATOR))
+        result = real_turn.run(out, 1, "fixture", str(SIMULATOR))     # the fixture turn asks for two approvals
         mode = oct((out / "transcript.txt").stat().st_mode & 0o777)
     return {"simulated": result["simulated"], "turns": [t.get("finished") for t in result["turns"]], "records": result["records"],
             "approvals_denied": result["approvals_denied"], "transcript_mode": mode}
