@@ -11,6 +11,7 @@ import time
 from .latency import measure_switch
 from .procscope import collect_scopes, cpu_seconds, mapping_top, tree_pids
 from .report import build_measurement
+from . import rig as rig_module
 from .rig import Client, Host, HostConn, Xvfb, effective_history, output_kind, private_dir, session_rgb
 from .xpixel import PixelReader
 
@@ -392,7 +393,7 @@ def continuity(candidate: str) -> dict:
         "observations": {
             "records_emitted_at_end": status["seq"] + 1, "records_recorded_by_independent_subscriber": len(seqs),
             "recorder_contiguous_no_gap_no_duplicate": contiguous,
-            "bytes_total": status["bytes_total"], "record_bytes": 1024, "rate_per_second": 100,
+            "bytes_total": status["bytes_total"], "record_bytes": (rig_module.TEXT_WORKLOAD or {}).get("payload", 1024), "rate_per_second": 100,
             "duration_s": 30, "gui_absent_s": 15, "reattach_cursor": cursor,
             "client_gaps": final["gaps"], "client_dups": final["dups"],
             "client_final_cursor_at_30s": final["cursor"], "host_seq_after_recorder_stopped": status["seq"],

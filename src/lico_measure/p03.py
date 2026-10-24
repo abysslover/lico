@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import signal
 import subprocess
 import sys
 import time
@@ -103,11 +104,18 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
             heard_texts = [m["params"]["input"][0]["text"] for m in heard]
             records = {s["id"]: [p.decode() for _, p in read_log(log, s["id"])] for s in sessions}
             wanted = [t for texts in expected.values() for t in texts]
+            # the provider applies an input as a turn ("echo:") or as a steer of the running turn ("steer:");
+            # a steer it refuses is followed by a turn, so one text can be sent twice and applied once
+            applied = {t: sum(r in (f"echo: {t}", f"steer: {t}") for rs in records.values() for r in rs) for t in wanted}
+            sent_twice = {t: [m["method"] for m in heard if m["params"]["input"][0]["text"] == t] for t in wanted if heard_texts.count(t) > 1}
             result = {
                 "inputs": inputs, "sessions": 2, "provider_restarts": reconnects, "retried_after_lost_reply": lost_replies,
                 "stale_and_foreign_attempts": 150, "refused_correctly": refused,
+                "applied_zero_times": sum(1 for t in wanted if applied[t] == 0),
+                "applied_more_than_once": sum(1 for t in wanted if applied[t] > 1),
                 "sent_to_provider_zero_times": sum(1 for t in wanted if heard_texts.count(t) == 0),
-                "sent_to_provider_more_than_once": sum(1 for t in wanted if heard_texts.count(t) > 1),
+                "sent_to_provider_more_than_once": len(sent_twice),
+                "sent_more_than_once_detail": sent_twice,
                 "refused_inputs_that_reached_the_provider": sum(1 for t in heard_texts if "target" in t),
                 "misrouted": sum(1 for sid, texts in expected.items() for t in texts
                                  if not any(r.endswith(t) for r in records[sid]) or any(r.endswith(t) for o, rs in records.items() if o != sid for r in rs)),
@@ -172,6 +180,65 @@ def provider_evidence() -> dict:
     }
 
 
+def provider_idle_memory(launches: int = 3) -> dict:
+    """The real provider program started and initialized in a private empty home: no sign-in, no
+    thread, no turn. Its memory is the provider's, kept apart from Lico's budget."""
+    import shutil
+
+    from .procscope import collect_scopes
+    from .providers import _private_env
+    from .report import build_measurement
+
+    binary = shutil.which("codex")
+    if not binary:
+        return {"measurements": [], "observations": {"unverified": "the codex program is not installed"}}
+    rss, pss, processes = [], [], []
+    for _ in range(launches):
+        with private_dir() as directory:
+            home = Path(directory) / "provider"
+            proc = subprocess.Popen([binary, "app-server"], env=_private_env(home), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, text=True,
+                                    start_new_session=True)       # its own process group: one exact group to stop
+            try:
+                init = {"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "lico", "title": "Lico", "version": "0.0.0"}, "capabilities": {}}}
+                proc.stdin.write(json.dumps(init) + "\n")
+                proc.stdin.flush()
+                assert json.loads(proc.stdout.readline()).get("id") == 1
+                proc.stdin.write(json.dumps({"method": "initialized"}) + "\n")
+                proc.stdin.flush()
+                time.sleep(3.0)
+                for _ in range(10):                                  # a helper that starts and ends while sampled is read again
+                    scope = collect_scopes({"provider": proc.pid})["provider"]
+                    if not scope.unreadable:
+                        break
+                    time.sleep(1.0)
+                else:
+                    raise RuntimeError("a provider process could not be read")
+                processes.append(len(scope.processes))
+                rss.append(scope.rss_kb / 1024.0)
+                pss.append(scope.pss_kb / 1024.0)
+            finally:
+                os.killpg(proc.pid, signal.SIGKILL)               # the program and every helper it started
+                proc.wait()
+    where = {"candidate": "codex app-server " + json.loads(CAPABILITIES.read_text())["version"]["cli"] + " (not signed in)",
+             "workload": "initialized, no thread, no turn", "process_scope": "provider process tree", "sample_unit": "independent launch"}
+    return {"measurements": [build_measurement("provider_idle_rss_mib", where, rss), build_measurement("provider_idle_pss_mib", where, pss)],
+            "observations": {"processes_in_tree": processes, "note": "an idle provider, not signed in; a provider with a conversation holds more"}}
+
+
+def real_turn_dry_run() -> dict:
+    """The owner's real-turn command run against the simulator: it must finish its turns, deny nothing
+    unasked and leave an owner-only transcript. This is the script's own check, not a provider result."""
+    from . import real_turn
+
+    with private_dir() as directory:
+        out = Path(directory) / "dry"
+        result = real_turn.run(out, 2, "dry run 한글 ok", str(SIMULATOR))
+        mode = oct((out / "transcript.txt").stat().st_mode & 0o777)
+    return {"simulated": result["simulated"], "turns": [t.get("finished") for t in result["turns"]], "records": result["records"],
+            "approvals_denied": result["approvals_denied"], "transcript_mode": mode}
+
+
 def hostile_adapter_check() -> dict:
     """Run the adapter's hostile test and report its outcome and duration."""
     began = time.monotonic()
@@ -184,4 +251,5 @@ def hostile_adapter_check() -> dict:
 
 def collect_p03() -> dict:
     return {"adapter_integrity": adapter_integrity(), "hostile_adapter": hostile_adapter_check(),
-            "provider_evidence": provider_evidence()}
+            "provider_evidence": provider_evidence(), "provider_memory": provider_idle_memory(),
+            "real_turn_dry_run": real_turn_dry_run()}

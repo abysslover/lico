@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .experiments import EXPERIMENTS, Rig
 from .report import build_report
+from .real_turn import DEFAULT_PROMPT as DEFAULT_REAL_PROMPT
 from .rig import REPO
 
 
@@ -75,7 +76,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "experiments": names,
         "candidates": args.candidates.split(","), "environment": environment(),
         "binary_sha256": _binary_hashes(args.candidates.split(",")),
-        "workload": {"record_bytes": 1024, "rate_per_second": 100, "stream_duration_s": 30,
+        "workload": {"record_bytes": (text or {}).get("payload", 1024), "rate_per_second": 100, "stream_duration_s": 30,
                      "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60,
                      "text_workload": text},
     }
@@ -167,6 +168,12 @@ def cmd_p03(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_real_turn(args: argparse.Namespace) -> int:
+    from . import real_turn
+
+    return real_turn.main(args)
+
+
 def _p02_hashes() -> dict:
     import hashlib
 
@@ -234,6 +241,13 @@ def main() -> int:
     p03.add_argument("--out", required=True)
     p03.add_argument("--allow-dirty", action="store_true")
     p03.set_defaults(func=cmd_p03)
+    real = sub.add_parser("real-turn", help="a real provider turn, run by the owner (can be billed)")
+    real.add_argument("--out", required=True)
+    real.add_argument("--turns", type=int, default=1)
+    real.add_argument("--prompt", default=DEFAULT_REAL_PROMPT)
+    real.add_argument("--provider-bin", default=None, help="another program speaking the same protocol (a free dry run)")
+    real.add_argument("--accept-billing", action="store_true")
+    real.set_defaults(func=cmd_real_turn)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
     p02b.add_argument("--p02", required=True, help="output directory of the p02 command")
     p02b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run command")
