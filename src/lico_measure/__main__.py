@@ -203,6 +203,41 @@ def cmd_p04(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_p05(args: argparse.Namespace) -> int:
+    """The M01-P05 collection: the executable's inventory and restart recovery at scale; the receipt is written first."""
+    from .p05 import collect_p05
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
+               "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
+               "binary_sha256": _p02_hashes(), "provider": "protocol simulator (a test double); synthetic sessions"}
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    (out / "p05.json").write_text(json.dumps(collect_p05(), indent=1, ensure_ascii=False))
+    receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    return 0
+
+
+def cmd_p05_bundle(args: argparse.Namespace) -> int:
+    from .bundle_p05 import build
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    runs = {"p05": Path(args.p05), "p02 --text": Path(args.p02), "run --text scale 1": Path(args.raw1), "run --text scale 2": Path(args.raw2)}
+    receipts = {name: json.loads((d / "receipt.json").read_text()) for name, d in runs.items()}
+    raws = {"display scale 1": json.loads((Path(args.raw1) / "raw.json").read_text()), "display scale 2": json.loads((Path(args.raw2) / "raw.json").read_text())}
+    build(raws, json.loads((Path(args.p02) / "p02.json").read_text()), json.loads((Path(args.p05) / "p05.json").read_text()),
+          Path(args.tests).read_text(), Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
+    return 0
+
+
 def _p02_hashes_path(name: str) -> str:
     from . import p02
 
@@ -344,6 +379,15 @@ def main() -> int:
     p04b.add_argument("--out", required=True)
     p04b.add_argument("--allow-dirty", action="store_true")
     p04b.set_defaults(func=cmd_p04_bundle)
+    p05 = sub.add_parser("p05", help="run the M01-P05 collection (single executable, restart recovery)")
+    p05.add_argument("--out", required=True)
+    p05.add_argument("--allow-dirty", action="store_true")
+    p05.set_defaults(func=cmd_p05)
+    p05b = sub.add_parser("p05-bundle", help="generate the M01-P05 inspection bundle")
+    for name in ("p05", "p02", "raw1", "raw2", "tests", "out"):
+        p05b.add_argument(f"--{name}", required=True)
+    p05b.add_argument("--allow-dirty", action="store_true")
+    p05b.set_defaults(func=cmd_p05_bundle)
     notices = sub.add_parser("notices", help="write the third-party notices of the single executable")
     notices.set_defaults(func=cmd_notices)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
