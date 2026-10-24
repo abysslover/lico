@@ -81,3 +81,19 @@ def credential_store_costs(reads: int = 100) -> dict:
             absent_ms.append(elapsed)
         measurements.append(build_measurement("credential_fail_closed_ms", dict(scope, workload="status with no session bus"), absent_ms))
     return {"measurements": measurements, "observations": observations}
+
+
+def real_turn_dry_run() -> dict:
+    """The owner's real-turn command for Claude Code run against its simulator: it must finish its turn,
+    deny both permission requests and leave an owner-only transcript. The script's own check, not a provider result."""
+    from . import real_turn
+    from .p03 import SIMULATOR  # noqa: F401  (the Codex simulator is used by the P03 dry run)
+    from .rig import REPO
+
+    simulator = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
+    with private_dir() as directory:
+        out = Path(directory) / "dry"
+        result = real_turn.run(out, 1, "fixture", str(simulator), provider="claude")
+        mode = oct((out / "transcript.txt").stat().st_mode & 0o777)
+    return {"simulated": result["simulated"], "provider": result["provider"], "turns": [t.get("finished") for t in result["turns"]],
+            "records": result["records"], "approvals_denied": result["approvals_denied"], "transcript_mode": mode}

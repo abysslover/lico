@@ -18,9 +18,9 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 19] = [
+pub const OPS: [&str; 20] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind",
+    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -35,6 +35,10 @@ pub struct Config {
     pub max_sessions: usize,
     pub codex: PathBuf,
     pub codex_args: Vec<String>,
+    pub claude: PathBuf,
+    pub claude_args: Vec<String>, // placed before the flags the adapter adds (a simulator is started this way)
+    pub cred_bin: PathBuf,        // the credential command a provider calls as its key helper
+    pub cred_dir: PathBuf,        // the credential metadata directory
     pub workspace_root: PathBuf,
     pub accounts_dir: PathBuf,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
@@ -308,6 +312,8 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
         Err("busy")
     } else if kind == "codex" {
         start_codex_session(shared, bound)
+    } else if kind == "claude" {
+        start_claude_session(shared, bound)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -325,11 +331,11 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
 fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Result<Option<(String, u64)>, &'static str> {
     let accounts = shared.accounts.lock().unwrap();
     match (kind, requested) {
-        ("codex", Some(id)) => match accounts.get(id) {
-            Some(a) if a.provider == "codex" => Ok(Some((a.id.clone(), a.credential_generation))),
+        ("codex" | "claude", Some(id)) => match accounts.get(id) {
+            Some(a) if a.provider == kind => Ok(Some((a.id.clone(), a.credential_generation))),
             _ => Err("unknown_account"),
         },
-        ("codex", None) => Ok(accounts.default_for("codex").map(|a| (a.id.clone(), a.credential_generation))),
+        ("codex" | "claude", None) => Ok(accounts.default_for(kind).map(|a| (a.id.clone(), a.credential_generation))),
         (_, Some(_)) => Err("bad_request"),
         (_, None) => Ok(None),
     }
@@ -342,6 +348,18 @@ pub fn account_create(shared: &Shared, provider: &str, label: &str) -> Reply {
 
 pub fn account_list(shared: &Shared) -> Reply {
     Ok(obj(json!({"accounts": shared.accounts.lock().unwrap().entries()})))
+}
+
+/// Attach a credential of the store to an account: it must exist, belong to this account and its provider.
+pub fn account_credential(shared: &Shared, account: &str, reference: &str) -> Reply {
+    let provider = shared.accounts.lock().unwrap().get(account).ok_or("unknown_account")?.provider.clone();
+    let known = crate::creds::find(&shared.cfg.cred_dir, reference).ok().flatten();
+    match known {
+        Some(entry) if entry["account"] == account && entry["provider"] == provider => {}
+        _ => return Err("bad_request"),
+    }
+    shared.accounts.lock().unwrap().set_credential(account, reference)?;
+    Ok(obj(json!({"account": account})))
 }
 
 pub fn account_default(shared: &Shared, account: &str) -> Reply {
@@ -364,7 +382,7 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         if s.state != State::Disconnected || s.codex_thread.is_none() {
             return Err("busy");
         }
-        if bound.2 != "codex" {
+        if bound.2 != s.provider {
             return Err("unknown_account");
         }
         let previous = (s.account.clone(), s.credential_generation, s.codex_thread.take());
@@ -373,7 +391,7 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         s.generation += 1; // every target of the old execution is stale from now on
         previous
     };
-    if let Err(code) = crate::codex::start(shared, &found) {
+    if let Err(code) = start_provider(shared, &found) {
         let mut s = found.lock().unwrap();
         s.generation -= 1;
         s.account = previous.0;
@@ -383,8 +401,46 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         return Err(code);
     }
     let mut s = found.lock().unwrap();
-    crate::codex::note(&mut s, "[account changed]");
+    if s.provider == "claude" {
+        crate::claude::note(&mut s, "[account changed]");
+    } else {
+        crate::codex::note(&mut s, "[account changed]");
+    }
     Ok(obj(json!({"session": s.id, "generation": s.generation})))
+}
+
+fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), &'static str> {
+    let provider = session.lock().unwrap().provider;
+    if provider == "claude" {
+        crate::claude::start(shared, session)
+    } else {
+        crate::codex::start(shared, session)
+    }
+}
+
+/// A session backed by the Claude Code program (or its simulator): one provider process, one provider session.
+fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> Result<Arc<Mutex<Session>>, &'static str> {
+    let id = format!("s{}", random_hex(8));
+    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
+    {
+        let mut s = session.lock().unwrap();
+        s.text_mode = true;
+        s.provider = "claude";
+        if let Some((account, credential_generation)) = bound {
+            s.account = Some(account);
+            s.credential_generation = credential_generation;
+        }
+    }
+    if let Err(code) = crate::claude::start(shared, &session) {
+        let mut s = session.lock().unwrap();
+        s.purged = true;
+        s.stop_process();
+        s.purge_log();
+        let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&s.id));
+        return Err(code);
+    }
+    shared.sessions.write().unwrap().push(session.clone());
+    Ok(session)
 }
 
 /// A session backed by the Codex app-server (or its simulator): one provider process, one thread.
@@ -421,6 +477,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         s.state = State::Exited;
         s.input_tx = None;
         s.codex = None;
+        s.claude = None;
         s.approvals.clear();
         let pid = s.agent_pid;
         s.stop_process();
@@ -450,7 +507,9 @@ pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> R
         }
         s.generation += 1; // every target of the old execution is stale from now on
     }
-    if let Err(code) = crate::codex::resume(shared, &found) {
+    let provider = found.lock().unwrap().provider;
+    let resumed = if provider == "claude" { crate::claude::resume(shared, &found) } else { crate::codex::resume(shared, &found) };
+    if let Err(code) = resumed {
         found.lock().unwrap().generation -= 1;
         return Err(code);
     }
@@ -482,6 +541,9 @@ pub fn input(shared: &Shared, session: &str, generation: i64, request_id: &str, 
     if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, text)?;
         s.record_input(request_id);
+    } else if s.claude.is_some() {
+        crate::claude::send_input(&mut s, request_id, text)?;
+        s.record_input(request_id);
     } else {
         if s.input_tx.is_none() {
             return Err("session_exited");
@@ -511,6 +573,8 @@ pub fn approval_answer(shared: &Shared, session: &str, generation: i64, approval
     let position = s.approvals.iter().position(|(n, _)| *n == approval_id).ok_or("unknown_approval")?;
     if s.codex.is_some() {
         crate::codex::answer(&mut s, approval_id, answer == "allow")?;
+    } else if s.claude.is_some() {
+        crate::claude::answer(&mut s, approval_id, answer == "allow")?;
     } else {
         match s.input_tx.as_ref().map(|tx| tx.try_send(format!("P {approval_id} {answer}"))) {
             Some(Ok(())) => {}

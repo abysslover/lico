@@ -265,6 +265,8 @@ def main() -> int:
     real.add_argument("--prompt", default=DEFAULT_REAL_PROMPT)
     real.add_argument("--provider-bin", default=None, help="another program speaking the same protocol (a free dry run)")
     real.add_argument("--accept-billing", action="store_true")
+    real.add_argument("--provider", choices=["codex", "claude"], default="codex")
+    real.add_argument("--allow-unpinned-version", action="store_true", help="run although the installed version is not the one the adapter is pinned to")
     real.set_defaults(func=cmd_real_turn)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
     p02b.add_argument("--p02", required=True, help="output directory of the p02 command")

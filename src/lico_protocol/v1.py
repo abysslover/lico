@@ -40,6 +40,7 @@ INVENTORY = {
     "account.list": {"state": "host", "mutates": False},
     "account.default": {"state": "host", "mutates": True},
     "session.rebind": {"state": "host", "mutates": True},
+    "account.credential": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -114,9 +115,10 @@ REPLIES = {
         "type": "object",
         "required": {"account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]},
                      "label": {"type": STR, "max_length": 40}, "default": {"type": BOOL},
-                     "credential_generation": {"type": INT, "minimum": 1}},
+                     "credential_generation": {"type": INT, "minimum": 1}, "has_credential": {"type": BOOL}},
         "optional": {}}}}, COMMON_REPLY_OPTIONAL),
     "account.default": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
+    "account.credential": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),
     "subscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
                        "gap": {"type": BOOL}, "from": {"type": INT, "minimum": 0}},
@@ -148,7 +150,7 @@ REQUESTS = {
     "unsubscribe": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.resume": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
     "session.purge": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
-    "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic", "codex"]}},
+    "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic", "codex", "claude"]}},
                            {**_COMMON_REQ, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096},
@@ -158,6 +160,7 @@ REQUESTS = {
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
                             "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True}}, _COMMON_REQ),
     "account.list": _obj({}, _COMMON_REQ),
+    "account.credential": _obj({"account": {"type": STR, "max_length": 64}, "credential_ref": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.default": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.list": _obj({}, _COMMON_REQ),
     "input": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},

@@ -122,7 +122,7 @@ pub fn sanitize(text: &str) -> String {
     result
 }
 
-fn clip(text: &str, max: usize) -> String {
+pub fn clip(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_string();
     }
@@ -230,6 +230,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         let mut s = session.lock().unwrap();
         s.agent_pid = pid;
         s.process_group = true;
+        s.provider = "codex";
         s.codex = Some(link);
         s.state = State::Running;
         if let Some(thread) = &resume {

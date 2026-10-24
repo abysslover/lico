@@ -204,3 +204,18 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   a rebind of a running session, which had been refused only by an accident (replacing the link closes the old
   provider's input) that also flipped the session to `disconnected`. The credential generation is stored and
   shown but nothing raises it yet (S04). Not covered: the Claude provider (S03), a removed account's sessions (S04).
+- 2026-10-24: S03 done. A second adapter for Claude Code (`session.create` with kind `claude`) behind the same
+  contract: one `claude -p` process per session speaking stream-json; an input is a user message acknowledged
+  when the provider replays it with the uuid the host gave it (there is no steer; the provider queues further
+  messages); a permission request becomes one host approval answered at most once; a vanished process is
+  `disconnected` and `session.resume` starts `--resume` with the provider session id; an account's key reaches
+  the provider only through an `apiKeyHelper` that runs `lico-cred helper` (its command names the credential
+  reference, never the key; the provider's environment is `PATH`, `LANG`, `HOME`, `CLAUDE_CONFIG_DIR` and, for
+  an account with a credential, the keyring's bus). New operation `account.credential`. The installed Claude
+  Code is 2.1.310, reported by the owner (the development session may not run it). **Everything about the
+  provider's messages is built from the documentation, not recorded**: the permission request subtype, the
+  allow/deny response shape, the replay acknowledgment and the behavior of `--resume` with stream-json are
+  unverified (see the capability record); the real-turn command (`--provider claude`) refuses an installed
+  version other than the pinned one. Two tests; mutations caught: no acknowledgment, resume without
+  `--resume`, a wrong request id in an answer, and records cut to one line per text block. No real Claude Code
+  turn has run.

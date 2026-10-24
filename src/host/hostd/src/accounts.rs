@@ -17,6 +17,7 @@ pub struct Account {
     pub provider: String,
     pub label: String,
     pub credential_generation: u64,
+    pub credential_ref: Option<String>, // an opaque reference into the credential store, never a secret
 }
 
 pub struct Homes {
@@ -47,7 +48,7 @@ impl Accounts {
             if let Ok(value) = serde_json::from_str::<Value>(&text) {
                 for entry in value["accounts"].as_array().into_iter().flatten() {
                     if let (Some(id), Some(provider), Some(label)) = (entry["account"].as_str(), entry["provider"].as_str(), entry["label"].as_str()) {
-                        accounts.list.push(Account { id: id.into(), provider: provider.into(), label: label.into(), credential_generation: entry["credential_generation"].as_u64().unwrap_or(1) });
+                        accounts.list.push(Account { id: id.into(), provider: provider.into(), label: label.into(), credential_generation: entry["credential_generation"].as_u64().unwrap_or(1), credential_ref: entry["credential_ref"].as_str().map(str::to_string) });
                     }
                 }
                 for (provider, id) in value["defaults"].as_object().into_iter().flatten() {
@@ -62,7 +63,7 @@ impl Accounts {
 
     fn save(&self) -> std::io::Result<()> {
         let value = json!({
-            "accounts": self.list.iter().map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "credential_generation": a.credential_generation})).collect::<Vec<_>>(),
+            "accounts": self.list.iter().map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "credential_generation": a.credential_generation, "credential_ref": a.credential_ref})).collect::<Vec<_>>(),
             "defaults": self.defaults,
         });
         let temporary = self.dir.join(format!(".accounts.{}.tmp", std::process::id()));
@@ -82,7 +83,7 @@ impl Accounts {
         for dir in [&self.dir.join(&id), &homes.home, &homes.provider_home] {
             std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(|_| "busy")?;
         }
-        let account = Account { id: id.clone(), provider: provider.into(), label: label.into(), credential_generation: 1 };
+        let account = Account { id: id.clone(), provider: provider.into(), label: label.into(), credential_generation: 1, credential_ref: None };
         self.list.push(account.clone());
         self.defaults.entry(provider.to_string()).or_insert_with(|| id.clone()); // a provider's first account is its default
         if self.save().is_err() {
@@ -106,10 +107,22 @@ impl Accounts {
         self.save().map_err(|_| "busy")
     }
 
+    pub fn credential_ref(&self, id: &str) -> Option<String> {
+        self.get(id).and_then(|a| a.credential_ref.clone())
+    }
+
+    /// Attach (or replace) the credential of an account; its credential generation rises.
+    pub fn set_credential(&mut self, id: &str, reference: &str) -> Result<(), &'static str> {
+        let account = self.list.iter_mut().find(|a| a.id == id).ok_or("unknown_account")?;
+        account.credential_ref = Some(reference.to_string());
+        account.credential_generation += 1;
+        self.save().map_err(|_| "busy")
+    }
+
     pub fn entries(&self) -> Vec<Value> {
         self.list
             .iter()
-            .map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "default": self.defaults.get(&a.provider) == Some(&a.id), "credential_generation": a.credential_generation}))
+            .map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "default": self.defaults.get(&a.provider) == Some(&a.id), "credential_generation": a.credential_generation, "has_credential": a.credential_ref.is_some()}))
             .collect()
     }
 

@@ -1,0 +1,83 @@
+{
+ "schema": 1,
+ "provider": "claude",
+ "path": "claude -p with stream-json input and output (newline-delimited JSON on standard input and output)",
+ "version": {
+  "cli": "2.1.310",
+  "pinned": true,
+  "checked": "2026-10-24",
+  "how": "reported by the owner, who ran `claude --version`; the development session may not run the program and no sign-in or model turn exists here",
+  "fixtures": "built from the documentation, not recorded"
+ },
+ "sources": [
+  {
+   "page": "Run Claude Code programmatically (non-interactive mode)",
+   "read": "2026-10-24"
+  },
+  {
+   "page": "Authentication",
+   "read": "2026-10-24"
+  },
+  {
+   "page": "CLI reference",
+   "read": "2026-10-24 (the flags listed below)"
+  },
+  {
+   "page": "Agent SDK TypeScript reference",
+   "read": "2026-10-24 (characters 0 to 200000 of 302448)"
+  }
+ ],
+ "flags": [
+  "-p",
+  "--input-format stream-json",
+  "--output-format stream-json",
+  "--verbose",
+  "--replay-user-messages",
+  "--permission-mode default",
+  "--resume SESSION",
+  "--settings JSON (apiKeyHelper only)"
+ ],
+ "environment": [
+  "PATH",
+  "LANG",
+  "HOME",
+  "CLAUDE_CONFIG_DIR (per account)",
+  "DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR (only for an account with a registered credential, so the key helper can reach the keyring)"
+ ],
+ "mapped": [
+  "system/init (session id, model)",
+  "assistant text and tool_use blocks",
+  "user tool_result blocks",
+  "result (success, error subtypes, is_error)",
+  "control_request with the permission subtype, as a host approval",
+  "user message replay with our uuid, as the acknowledgment of an input"
+ ],
+ "refused": [
+  "any other control_request subtype is answered with an error response (the response shape is unverified)"
+ ],
+ "unsupported": [
+  {
+   "operation": "steering a running turn",
+   "reason": "the provider queues further user messages; there is no steer, so a second input becomes a queued message"
+  },
+  {
+   "operation": "interrupt",
+   "reason": "the control request exists in the documentation but is not mapped in this phase"
+  },
+  {
+   "operation": "partial streaming events, MCP servers, hooks, slash commands, images and pasted content, forking, structured output",
+   "reason": "not requested and not mapped"
+  }
+ ],
+ "unverified": [
+  "the subtype string of a permission request (assumed `can_use_tool`; the documentation names control_request and control_response but not this subtype)",
+  "the exact shape of the control_response that allows or denies a request",
+  "whether the provider accepts a user message on standard input before it emits system/init",
+  "the shape of the replayed user message that acknowledges an input (matched by uuid; `isReplay` is assumed)",
+  "the behavior of --resume together with stream-json input after the process died",
+  "how a run without a sign-in or with a failing apiKeyHelper reports the failure on the stream",
+  "the full list of result subtypes and of tool_result content shapes",
+  "whether queued user messages keep their order across an interrupted or failed turn",
+  "any real turn: nothing here was recorded from a running provider"
+ ]
+}

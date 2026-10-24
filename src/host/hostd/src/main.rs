@@ -3,7 +3,10 @@
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
 mod accounts;
+mod claude;
 mod codex;
+#[allow(dead_code)]
+mod creds;
 mod core;
 mod http;
 mod ipc;
@@ -80,6 +83,10 @@ fn main() {
             if given.is_empty() { vec!["app-server".to_string()] } else { given }
         },
         workspace_root: socket_dir.join("workspaces"),
+        claude: PathBuf::from(arg("--claude", "claude")),
+        claude_args: args.windows(2).filter(|w| w[0] == "--claude-arg").map(|w| w[1].clone()).collect(),
+        cred_bin: PathBuf::from(arg("--cred-bin", std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-cred"))).unwrap_or_default().to_str().unwrap_or("lico-cred"))),
+        cred_dir: PathBuf::from(arg("--cred-dir", socket_dir.join("credentials").to_str().unwrap_or("credentials"))),
         accounts_dir: PathBuf::from(arg("--accounts-dir", socket_dir.join("accounts").to_str().unwrap_or("accounts"))),
         text: args.iter().any(|a| a == "--text"),
     };

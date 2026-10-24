@@ -293,6 +293,8 @@ pub struct Session {
     pub producing: bool,
     pub state: State,
     pub codex: Option<crate::codex::Link>,
+    pub claude: Option<crate::claude::Link>,
+    pub provider: &'static str, // "codex" or "claude" for a provider session, empty otherwise
     pub codex_thread: Option<String>,
     window: VecDeque<(i64, Vec<u8>)>,
     window_cap: usize,
@@ -335,6 +337,8 @@ impl Session {
             purged: false,
             generation: 1,
             codex: None,
+            claude: None,
+            provider: "",
             codex_thread: None,
             producing,
             state: State::Running,

@@ -36,17 +36,30 @@ FINISHED = ("[turn completed]", "[turn failed]", "[turn interrupted]")
 REFUSED = "[input refused]"                 # the provider refused the input (for example, it is not signed in)
 
 
-def run(out: Path, turns: int, prompt: str, provider_bin: str | None) -> dict:
+PROVIDERS = {"codex": {"home": "CODEX_HOME", "default_home": ".codex", "record": "codex"},
+             "claude": {"home": "CLAUDE_CONFIG_DIR", "default_home": ".claude", "record": "claude"}}
+
+
+def _pinned(provider: str) -> str:
+    record = REPO / "src" / "host" / "adapters" / PROVIDERS[provider]["record"] / "capabilities.json"
+    return json.loads(record.read_text())["version"]["cli"]
+
+
+def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: str = "codex", allow_unpinned: bool = False) -> dict:
     if not 1 <= turns <= MAX_TURNS:
         raise SystemExit(f"--turns must be between 1 and {MAX_TURNS}")
-    binary = str(Path(provider_bin).resolve()) if provider_bin else shutil.which("codex")   # the provider runs in a private directory
+    binary = str(Path(provider_bin).resolve()) if provider_bin else shutil.which(provider)   # the provider runs in a private directory
     if not binary:
-        raise SystemExit("the codex program was not found on PATH (use --provider-bin for another one)")
+        raise SystemExit(f"the {provider} program was not found on PATH (use --provider-bin for another one)")
+    receipt = _receipt(binary)
+    if not provider_bin and _pinned(provider) not in receipt["provider_version"] and not allow_unpinned:
+        raise SystemExit(f"installed {provider} reports {receipt['provider_version']!r}; the adapter is pinned to {_pinned(provider)}. "
+                         "Nothing was run. Pass --allow-unpinned-version to run anyway (behavior is then unverified).")
     os.umask(0o077)                                  # everything written here is the owner's alone
     out.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(out, 0o700)
     result: dict = {"provider_program": Path(binary).name, "turns_requested": turns, "simulated": bool(provider_bin),
-                    "approvals_denied": 0, "turns": [], "receipt": _receipt(binary)}
+                    "approvals_denied": 0, "turns": [], "receipt": receipt, "provider": provider}
     # The provider keeps its own sign-in in its own home (CODEX_HOME), which is passed on as a path and never
     # read here. Its HOME is an empty private directory, so a command it runs does not find the owner's files
     # (ssh keys, shell history, other tools' settings) under the real home. Other files the owner's account can
@@ -54,22 +67,24 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None) -> dict:
     with private_dir() as directory:
         provider_home = Path(directory) / "provider_home"
         provider_home.mkdir(mode=0o700)
+        variable = PROVIDERS[provider]["home"]
         if provider_bin:                              # a dry run never points anything at the owner's provider home
-            codex_home = str(Path(directory) / "provider_codex_home")
+            keep_home = str(Path(directory) / "provider_own_home")
         else:
-            codex_home = os.environ.get("CODEX_HOME") or str(Path.home() / ".codex")
-        overrides = {"HOME": str(provider_home), "CODEX_HOME": codex_home}
+            keep_home = os.environ.get(variable) or str(Path.home() / PROVIDERS[provider]["default_home"])
+        overrides = {"HOME": str(provider_home), variable: keep_home}
         from .p02 import start
 
-        program = ["--codex", binary]
+        flag = "--" + provider
+        program = [flag, binary]
         if binary.endswith(".py"):                  # a protocol simulator for a free dry run
-            program = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", binary]
-        if binary.endswith(".py"):
-            program += ["--codex-arg", "--fixture", "--codex-arg", str(REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json")]
+            fixture = (REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json" if provider == "codex"
+                       else REPO / "tests" / "fixtures" / "claude_stream" / "turn_with_permission.json")
+            program = [flag, sys.executable, flag + "-arg", "-I", flag + "-arg", binary, flag + "-arg", "--fixture", flag + "-arg", str(fixture)]
         host, log = start(directory, extra=program, sessions=0, producing=0, history=0, env_overrides=overrides)
         try:
             conn = ProtoConn(host.socket, timeout=30.0)
-            made = conn.call(op="session.create", kind="codex")
+            made = conn.call(op="session.create", kind=provider)
             if made.get("ok") != 1:
                 result["error"] = made
                 return _finish(out, result, log, None)
@@ -109,6 +124,7 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None) -> dict:
 
 
 def _receipt(binary: str) -> dict:
+    # the owner runs this, so the program may be asked its version (the development session never does)
     version = subprocess.run([binary, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() if not binary.endswith(".py") else "simulator"
     commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True).stdout.strip()
     return {"commit": commit, "provider_version": version, "provider_binary_sha256": hashlib.sha256(Path(binary).read_bytes()).hexdigest(),
@@ -127,6 +143,6 @@ def main(args) -> int:
     if not args.accept_billing:
         print("A real turn can be billed to your account. Nothing was run; pass --accept-billing to run it.", file=sys.stderr)
         return 2
-    result = run(Path(args.out), args.turns, args.prompt, args.provider_bin)
+    result = run(Path(args.out), args.turns, args.prompt, args.provider_bin, args.provider, args.allow_unpinned_version)
     print(json.dumps({k: v for k, v in result.items() if k != "turns"} | {"finished": [t.get("finished") for t in result["turns"]]}, ensure_ascii=False))
     return 0 if result["turns"] and all(t.get("finished") == "[turn completed]" for t in result["turns"]) else 1

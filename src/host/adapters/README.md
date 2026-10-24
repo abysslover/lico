@@ -16,3 +16,12 @@ records and approvals (one UTF-8 line per record, escape sequences and control c
 removed, an approval answer bound to exactly one provider request). The fixtures under
 `tests/fixtures/codex_app_server/` are recorded sequences validated against the provider's own
 schema; the owned host's adapter is tested against the same fixtures.
+
+## Claude Code (second adapter)
+
+`claude/capabilities.json` pins Claude Code 2.1.310 (the version the owner reported) and lists what is
+mapped, refused, unsupported and **unverified**. The message shapes come from the provider's
+documentation, not from a recording; `tests/fixtures/claude_stream/` says so, and the permission
+request subtype it uses (`can_use_tool`) is an assumption the documentation does not confirm.
+`claude/simulator.py` stands in for `claude -p --input-format stream-json` in tests. The adapter
+(`hostd/src/claude.rs`) must produce the records `lico_protocol/claude_mapping.py` produces.
