@@ -1,33 +1,33 @@
 [package]
-name = "lico-host"
+name = "lico"
 version = "0.0.0"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.89"
 license = "MIT"
 publish = false
 
-[[bin]]
-name = "lico-host"
-path = "src/main.rs"
-
+# One program with several roles: the session host, the command line, the credential command and
+# the primary client are subcommands of `lico` (or run by the name they are linked under).
 [[bin]]
 name = "lico"
-path = "src/bin/lico.rs"
+path = "src/unified.rs"
 
+# A test double for an agent; never part of the shipped program.
 [[bin]]
 name = "lico-synth-agent"
 path = "src/bin/synth_agent.rs"
 
-[[bin]]
-name = "lico-cred"
-path = "src/bin/cred.rs"
-
 [dependencies]
+winit = { version = "=0.30.13", default-features = false, features = ["x11", "wayland", "wayland-dlopen", "rwh_06"] }
+softbuffer = { version = "=0.4.8", default-features = false, features = ["x11", "x11-dlopen", "wayland", "wayland-dlopen"] }
+cosmic-text = "=0.19.0"
+x11rb = { version = "=0.13.2", default-features = false }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 
 [profile.release]
-opt-level = "z"
-lto = "fat"
-codegen-units = 1
+opt-level = 2
+debug = false
+lto = false
+codegen-units = 16
 panic = "abort"
 strip = true

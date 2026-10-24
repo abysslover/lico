@@ -10,12 +10,7 @@
 //! Exit codes: 0 done, 2 usage, 3 the keyring is missing or locked (nothing was stored anywhere
 //! else), 4 no such credential, 5 the Secret Service failed.
 
-#[path = "../creds.rs"]
-mod creds;
-#[path = "../dbus.rs"]
-mod dbus;
-#[path = "../keyring.rs"]
-mod keyring;
+use crate::{creds, keyring};
 
 use serde_json::json;
 use std::io::{IsTerminal, Read, Write};
@@ -39,9 +34,9 @@ extern "C" {
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
 }
 
-fn main() {
+pub fn run(args: Vec<String>) {
     unsafe { prctl(4, 0, 0, 0, 0) }; // PR_SET_DUMPABLE 0: no core dump or ptrace read of a secret in memory
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let args: Vec<String> = args.into_iter().skip(1).collect();
     if args.len() < 3 || args[0] != "--data-dir" {
         usage("--data-dir DIR and a command are required");
     }

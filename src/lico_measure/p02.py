@@ -29,6 +29,22 @@ LICO = HOSTD_DIR / "lico"
 AGENT = HOSTD_DIR / "lico-synth-agent"
 
 
+def link_roles() -> None:
+    """The program is one file, `lico`; the measurement and test code starts a role by the name it is linked under
+    (`lico-host`, `lico-cred`, `lico-candidate-a2`), which the program reads from its own argv[0]."""
+    if not LICO.exists():
+        return
+    for role in ("lico-host", "lico-cred", "lico-candidate-a2"):
+        path = HOSTD_DIR / role
+        if path.is_symlink() and os.readlink(path) == "lico":
+            continue
+        path.unlink(missing_ok=True)
+        path.symlink_to("lico")
+
+
+link_roles()
+
+
 class ProtoConn:
     """A v1 protocol client: replies are found among the events that may precede them."""
 

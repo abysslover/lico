@@ -1,5 +1,5 @@
-//! Candidate A2: candidate A with a real text stack (cosmic-text: shaping, font fallback)
-//! for the synthetic host. Commands arrive on stdin, see `handle_command`.
+//! The primary client (formerly candidate A2): winit, softbuffer and cosmic-text (shaping, font fallback).
+//! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
 mod ui;
 
@@ -630,14 +630,78 @@ impl ApplicationHandler<Ev> for App {
     }
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let arg = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
-    let Some(socket) = arg("--socket") else {
-        eprintln!("usage: candidate-a2 --socket PATH");
-        std::process::exit(2);
+/// The host's socket for this user, starting the host (detached, with its own state directory) when none answers.
+fn ensure_host() -> String {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        eprintln!("lico: XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket");
+        std::process::exit(2)
+    });
+    let dir = std::path::Path::new(&runtime).join("lico");
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir);
+    }
+    let socket = dir.join("host.sock").to_string_lossy().to_string();
+    if UnixStream::connect(&socket).is_ok() {
+        return socket;
+    }
+    let state = std::env::var("XDG_STATE_HOME").ok().map(std::path::PathBuf::from).or_else(|| std::env::var("HOME").ok().map(|h| std::path::Path::new(&h).join(".local/state"))).map(|p| p.join("lico"));
+    let Some(state) = state else {
+        eprintln!("lico: neither XDG_STATE_HOME nor HOME is set, so there is nowhere to keep the host's state");
+        std::process::exit(2)
     };
-    let sock = UnixStream::connect(&socket).expect("connect");
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&state);
+    }
+    let started = std::env::current_exe().ok().and_then(|exe| {
+        use std::os::unix::process::CommandExt;
+        let mut command = std::process::Command::new(exe);
+        command.arg("host").arg("--socket").arg(&socket).arg("--state-dir").arg(&state).arg("--sessions").arg("0").arg("--producing").arg("0");
+        // what the host says goes to a file of its own in the state directory (owner-only), not into the void
+        let log = || {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(state.join("host.log")).map(std::process::Stdio::from).unwrap_or_else(|_| std::process::Stdio::null())
+        };
+        command.stdin(std::process::Stdio::null()).stdout(log()).stderr(log());
+        unsafe {
+            command.pre_exec(|| {
+                extern "C" {
+                    fn setsid() -> i32;
+                }
+                setsid(); // its own session: closing this window does not end it
+                Ok(())
+            });
+        }
+        command.spawn().ok()
+    });
+    if started.is_none() {
+        eprintln!("lico: could not start the host");
+        std::process::exit(3);
+    }
+    for _ in 0..100 {
+        if UnixStream::connect(&socket).is_ok() {
+            return socket;
+        }
+        thread::sleep(std::time::Duration::from_millis(50));
+    }
+    eprintln!("lico: the host did not come up");
+    std::process::exit(3)
+}
+
+pub fn run(args: Vec<String>) {
+    let arg = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
+    // `lico gui` is the product: it finds (or starts) the host itself and shows the first view; the name the
+    // measurement harness uses keeps the older bare view unless it is given --ui
+    let product = args[0] == "lico-gui";
+    let socket = arg("--socket").unwrap_or_else(|| ensure_host());
+    let sock = match UnixStream::connect(&socket) {
+        Ok(sock) => sock,
+        Err(e) => {
+            eprintln!("lico: cannot reach the host at {socket}: {e}");
+            std::process::exit(3);
+        }
+    };
     let reader = sock.try_clone().expect("clone");
     let event_loop = EventLoop::<Ev>::with_user_event().build().expect("event loop");
     let proxy = event_loop.create_proxy();
@@ -658,7 +722,7 @@ fn main() {
         }
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
-    let ui_mode = args.iter().any(|a| a == "--ui");
+    let ui_mode = product || args.iter().any(|a| a == "--ui");
     if ui_mode {
         let ticker = proxy_for_ticks;
         thread::spawn(move || loop {

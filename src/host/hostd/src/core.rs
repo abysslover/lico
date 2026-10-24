@@ -38,6 +38,7 @@ pub struct Config {
     pub claude: PathBuf,
     pub claude_args: Vec<String>, // placed before the flags the adapter adds (a simulator is started this way)
     pub cred_bin: PathBuf,        // the credential command a provider calls as its key helper
+    pub cred_args: Vec<String>,   // its leading arguments (`cred`, when the command is this very program)
     pub cred_dir: PathBuf,        // the credential metadata directory
     pub workspace_root: PathBuf,
     pub accounts_dir: PathBuf,
@@ -447,7 +448,7 @@ pub fn account_remove(shared: &Arc<Shared>, account: &str, sessions: &str) -> Re
 /// Run the credential command (the keyring's bus is passed on); true when it succeeded.
 fn credential_command(shared: &Shared, args: &[&str]) -> bool {
     let mut command = Command::new(&shared.cfg.cred_bin);
-    command.arg("--data-dir").arg(&shared.cfg.cred_dir).args(args).env_clear().stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    command.args(&shared.cfg.cred_args).arg("--data-dir").arg(&shared.cfg.cred_dir).args(args).env_clear().stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     for key in ["PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
         if let Some(value) = std::env::var_os(key) {
             command.env(key, value);

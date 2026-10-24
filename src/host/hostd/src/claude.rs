@@ -161,9 +161,9 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
                 // the key reaches the provider only through a helper that asks this session's broker: the command names a
                 // private socket, never the key, and the provider gets no part of the keyring's bus
                 let name = format!("lico-broker-{}", core::random_hex(12));
-                let stop = crate::broker::serve(shared.cfg.cred_bin.clone(), shared.cfg.cred_dir.clone(), name.clone(), reference).map_err(|_| "busy")?;
+                let stop = crate::broker::serve(shared.cfg.cred_bin.clone(), shared.cfg.cred_args.clone(), shared.cfg.cred_dir.clone(), name.clone(), reference).map_err(|_| "busy")?;
                 broker = Some(stop);
-                let helper = format!("{} --data-dir {} broker --name {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), name);
+                let helper = format!("{} {} --data-dir {} broker --name {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shared.cfg.cred_args.join(" "), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), name);
                 command.arg("--settings").arg(json!({"apiKeyHelper": helper}).to_string());
             }
         }

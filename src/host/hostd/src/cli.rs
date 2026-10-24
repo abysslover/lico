@@ -95,8 +95,8 @@ fn session_generation(conn: &mut Conn, session: &str) -> i64 {
         .unwrap_or_else(|| die(2, "unknown session"))
 }
 
-fn main() {
-    let mut args: Vec<String> = std::env::args().skip(1).collect();
+pub fn run(args: Vec<String>) {
+    let mut args: Vec<String> = args.into_iter().skip(1).collect();
     let socket = match args.iter().position(|a| a == "--socket") {
         Some(i) if i + 1 < args.len() => {
             let value = args[i + 1].clone();

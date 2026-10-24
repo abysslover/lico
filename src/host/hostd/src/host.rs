@@ -2,19 +2,7 @@
 //! the durable log independently of any GUI, and serves protocol v1 on an
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
-mod accounts;
-mod broker;
-mod claude;
-mod codex;
-mod registry;
-#[allow(dead_code)]
-mod creds;
-mod core;
-mod http;
-mod ipc;
-mod payload;
-mod session;
-
+use crate::{accounts, core, http, ipc, registry, session};
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Write;
@@ -25,7 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use core::{Config, Shared};
+use crate::core::{Config, Shared};
 
 #[repr(C)]
 struct Rlimit {
@@ -51,17 +39,12 @@ fn raise_descriptor_limit() {
     }
 }
 
-fn shared_workspace_root(socket_dir: &std::path::Path) -> PathBuf {
-    socket_dir.join("workspaces")
-}
-
 fn refuse(message: &str) -> ! {
     eprintln!("lico-host: {message}");
     std::process::exit(2);
 }
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
+pub fn run(args: Vec<String>) {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
@@ -69,7 +52,10 @@ fn main() {
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
-    let log_dir = PathBuf::from(arg("--log-dir", socket_dir.join("lico-log").to_str().unwrap_or("lico-log")));
+    // every directory of the host defaults to a place under --state-dir, or else beside the socket
+    let state_dir = arg("--state-dir", "");
+    let base = if state_dir.is_empty() { socket_dir.clone() } else { PathBuf::from(&state_dir) };
+    let log_dir = PathBuf::from(arg("--log-dir", base.join("lico-log").to_str().unwrap_or("lico-log")));
     let agent_default = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-synth-agent"))).unwrap_or_default();
     let cfg = Config {
         log_dir: log_dir.clone(),
@@ -84,13 +70,14 @@ fn main() {
             let given: Vec<String> = args.windows(2).filter(|w| w[0] == "--codex-arg").map(|w| w[1].clone()).collect();
             if given.is_empty() { vec!["app-server".to_string()] } else { given }
         },
-        workspace_root: socket_dir.join("workspaces"),
+        workspace_root: base.join("workspaces"),
         claude: PathBuf::from(arg("--claude", "claude")),
         claude_args: args.windows(2).filter(|w| w[0] == "--claude-arg").map(|w| w[1].clone()).collect(),
-        cred_bin: PathBuf::from(arg("--cred-bin", std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-cred"))).unwrap_or_default().to_str().unwrap_or("lico-cred"))),
-        cred_dir: PathBuf::from(arg("--cred-dir", socket_dir.join("credentials").to_str().unwrap_or("credentials"))),
-        accounts_dir: PathBuf::from(arg("--accounts-dir", socket_dir.join("accounts").to_str().unwrap_or("accounts"))),
-        registry_dir: PathBuf::from(arg("--registry-dir", socket_dir.join("registry").to_str().unwrap_or("registry"))),
+        cred_bin: if args.iter().any(|a| a == "--cred-bin") { PathBuf::from(arg("--cred-bin", "")) } else { std::env::current_exe().unwrap_or_default() },
+        cred_args: if args.iter().any(|a| a == "--cred-bin") { Vec::new() } else { vec!["cred".to_string()] }, // this program is its own credential command
+        cred_dir: PathBuf::from(arg("--cred-dir", base.join("credentials").to_str().unwrap_or("credentials"))),
+        accounts_dir: PathBuf::from(arg("--accounts-dir", base.join("accounts").to_str().unwrap_or("accounts"))),
+        registry_dir: PathBuf::from(arg("--registry-dir", base.join("registry").to_str().unwrap_or("registry"))),
         text: args.iter().any(|a| a == "--text"),
     };
     {
@@ -119,7 +106,7 @@ fn main() {
         }
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.registry_dir).expect("registry dir");
-        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&shared_workspace_root(&socket_dir)).expect("workspace root");
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.workspace_root).expect("workspace root");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
     raise_descriptor_limit();

@@ -224,6 +224,16 @@ def cmd_p04_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_notices(args: argparse.Namespace) -> int:
+    from . import notices
+
+    (notices.HOSTD / "NOTICES.txt").write_text(notices.build())
+    found = notices.problems()
+    for line in found:
+        print(line, file=sys.stderr)
+    return 1 if found else 0
+
+
 def _p02_hashes() -> dict:
     import hashlib
 
@@ -334,6 +344,8 @@ def main() -> int:
     p04b.add_argument("--out", required=True)
     p04b.add_argument("--allow-dirty", action="store_true")
     p04b.set_defaults(func=cmd_p04_bundle)
+    notices = sub.add_parser("notices", help="write the third-party notices of the single executable")
+    notices.set_defaults(func=cmd_notices)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
     p02b.add_argument("--p02", required=True, help="output directory of the p02 command")
     p02b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run command")

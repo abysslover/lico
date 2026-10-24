@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-pub fn serve(cred_bin: PathBuf, cred_dir: PathBuf, name: String, reference: String) -> std::io::Result<Arc<AtomicBool>> {
+pub fn serve(cred_bin: PathBuf, cred_args: Vec<String>, cred_dir: PathBuf, name: String, reference: String) -> std::io::Result<Arc<AtomicBool>> {
     let listener = UnixListener::bind_addr(&SocketAddr::from_abstract_name(name.as_bytes())?)?;
     listener.set_nonblocking(true)?;
     let stop = Arc::new(AtomicBool::new(false));
@@ -28,7 +28,7 @@ pub fn serve(cred_bin: PathBuf, cred_dir: PathBuf, name: String, reference: Stri
                     }
                     let _ = stream.set_nonblocking(false);
                     let mut command = Command::new(&cred_bin);
-                    command.arg("--data-dir").arg(&cred_dir).args(["helper", "--ref", &reference]).env_clear().stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+                    command.args(&cred_args).arg("--data-dir").arg(&cred_dir).args(["helper", "--ref", &reference]).env_clear().stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
                     for key in ["PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
                         if let Some(value) = std::env::var_os(key) {
                             command.env(key, value);

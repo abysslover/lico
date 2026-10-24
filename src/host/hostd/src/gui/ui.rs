@@ -185,6 +185,19 @@ impl App {
         self.ui.rows.iter().find(|r| r.session == self.session)
     }
 
+    /// The target beside the input: provider, account, model and state of the selected session, as the host reports them.
+    fn header_text(&self) -> String {
+        match self.selected_row() {
+            Some(r) => {
+                let model = if r.model.is_empty() { "model not reported".to_string() } else { r.model.clone() };
+                let issue = if r.issue.is_empty() { String::new() } else { format!(" | account issue: {}", r.issue) };
+                format!("{} | {} | {} | {}{issue}", r.provider, self.label_of(&r.account), model, r.state_text())
+            }
+            None if self.session.is_empty() => "select a session".into(),
+            None => format!("{} | not listed", self.session),
+        }
+    }
+
     fn label_of(&self, account: &str) -> String {
         if account.is_empty() {
             "no account".into()
@@ -450,7 +463,8 @@ impl App {
             .collect();
         let view = self.view.as_ref();
         let dump = json!({
-            "ev": "ui", "rows": rows, "selected": self.session, "header": self.ui.header, "approval_bar": self.ui.bar,
+            "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(),
+            "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
@@ -478,15 +492,7 @@ impl App {
         self.refresh_list();
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
-        let header = match &row {
-            Some(r) => {
-                let model = if r.model.is_empty() { "model not reported".to_string() } else { r.model.clone() };
-                let issue = if r.issue.is_empty() { String::new() } else { format!(" | account issue: {}", r.issue) };
-                format!("{} | {} | {} | {}{issue}", r.provider, self.label_of(&r.account), model, r.state_text())
-            }
-            None if self.session.is_empty() => "select a session".into(),
-            None => format!("{} | not listed", self.session),
-        };
+        let header = self.header_text();
         let bar = row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}")));
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
