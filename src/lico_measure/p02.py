@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .procscope import collect_scopes, cpu_seconds, tree_pids
 from .report import build_measurement
-from .rig import REPO, Client, Host, Xvfb, private_dir
+from .rig import REPO, Client, Host, Xvfb, effective_history, output_kind, private_dir
 
 BUILD = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
 HOSTD_DIR = BUILD / "host_hostd" / "release"
@@ -222,10 +222,11 @@ def drain(conn: ProtoConn, stop: threading.Event) -> None:
 def host_resources(repetitions: int = 3) -> dict:
     """Host memory at 10 and 100 sessions, idle, producing, and with streaming views."""
     rows = {"10 sessions": (10, 0, 0, 500), "100 sessions": (100, 0, 0, 500),
-            "100 sessions, history 5000": (100, 0, 0, 5000),
+            f"100 sessions, history {effective_history(5000)}": (100, 0, 0, 5000),
             "100 sessions, 5 producing, 10 streaming": (100, 5, 10, 500)}
     measurements, observations = [], {}
     for label, (sessions, producing, streaming, history) in rows.items():
+        history = effective_history(history)
         rss, pss, agent_rss, reported, peak, cpu = [], [], [], [], [], []
         for _ in range(repetitions):
             with private_dir() as directory:
@@ -253,7 +254,7 @@ def host_resources(repetitions: int = 3) -> dict:
                     for c in conns:
                         c.close()
                     host.stop()
-        scope = {"candidate": "host:hostd", "workload": f"{label}, history {history}, window 64", "process_scope": "host process"}
+        scope = {"candidate": "host:hostd", "workload": f"{label}, history {history}, window 64", "process_scope": "host process", "output": output_kind()}
         measurements += [
             build_measurement("host_rss_mib", scope, rss), build_measurement("host_pss_mib", scope, pss),
             build_measurement("host_peak_rss_mib", scope, peak),

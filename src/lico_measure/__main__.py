@@ -48,6 +48,18 @@ def _binary_hashes(candidates: list[str]) -> dict:
     return out
 
 
+TEXT_WORKLOAD = {"payload": 110, "history": 10000,
+                 "shape": "UTF-8 lines of mixed scripts (Latin, Korean, ideographs, Hebrew, emoji, a combining accent, code), about 110 bytes"}
+
+
+def _text_workload(args: argparse.Namespace) -> dict | None:
+    """With --text, synthetic sessions produce agent-shaped UTF-8 lines and long transcripts."""
+    from . import rig
+
+    rig.TEXT_WORKLOAD = TEXT_WORKLOAD if args.text else None
+    return rig.TEXT_WORKLOAD
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     dirty = _git("status", "--porcelain")
     if dirty and not args.allow_dirty:
@@ -55,6 +67,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         return 2
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    text = _text_workload(args)
     names = args.only.split(",") if args.only else list(EXPERIMENTS)
     results: dict = {"candidates": {}}
     receipt = {
@@ -63,7 +76,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         "candidates": args.candidates.split(","), "environment": environment(),
         "binary_sha256": _binary_hashes(args.candidates.split(",")),
         "workload": {"record_bytes": 1024, "rate_per_second": 100, "stream_duration_s": 30,
-                     "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60},
+                     "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60,
+                     "text_workload": text},
     }
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))  # kept even if a run aborts
     for candidate in receipt["candidates"]:
@@ -124,10 +138,30 @@ def cmd_p02(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
                "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
-               "binary_sha256": _p02_hashes()}
+               "binary_sha256": _p02_hashes(), "text_workload": _text_workload(args)}
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
     results = collect_p02(out)
     (out / "p02.json").write_text(json.dumps(results, indent=1, ensure_ascii=False))
+    receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    return 0
+
+
+def cmd_p03(args: argparse.Namespace) -> int:
+    """The adapter against the simulator and the provider evidence; the receipt is written first."""
+    from .p03 import collect_p03
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    receipt = {"command": "python -m lico_measure " + " ".join(sys.argv[1:]), "commit": _git("rev-parse", "HEAD"),
+               "tree_dirty": bool(dirty), "started": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "environment": environment(),
+               "binary_sha256": _p02_hashes(), "provider": "protocol simulator (a test double), not the real provider"}
+    (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
+    (out / "p03.json").write_text(json.dumps(collect_p03(), indent=1, ensure_ascii=False))
     receipt["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))
     return 0
@@ -180,6 +214,7 @@ def main() -> int:
     run.add_argument("--candidates", default="a,b")
     run.add_argument("--only", default="")
     run.add_argument("--allow-dirty", action="store_true")
+    run.add_argument("--text", action="store_true", help="agent-shaped UTF-8 output and 10000-line transcripts")
     run.set_defaults(func=cmd_run)
     bundle = sub.add_parser("bundle", help="generate the inspection bundle from raw output")
     bundle.add_argument("--raw", required=True, nargs="+", help="raw output directories, later ones win per candidate")
@@ -193,7 +228,12 @@ def main() -> int:
     p02 = sub.add_parser("p02", help="run the M01-P02 scenarios and experiments")
     p02.add_argument("--out", required=True)
     p02.add_argument("--allow-dirty", action="store_true")
+    p02.add_argument("--text", action="store_true", help="agent-shaped UTF-8 output and 10000-line transcripts")
     p02.set_defaults(func=cmd_p02)
+    p03 = sub.add_parser("p03", help="run the M01-P03 adapter scenarios against the simulator")
+    p03.add_argument("--out", required=True)
+    p03.add_argument("--allow-dirty", action="store_true")
+    p03.set_defaults(func=cmd_p03)
     p02b = sub.add_parser("p02-bundle", help="generate the M01-P02 inspection bundle")
     p02b.add_argument("--p02", required=True, help="output directory of the p02 command")
     p02b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run command")

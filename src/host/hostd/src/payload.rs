@@ -15,6 +15,28 @@ pub fn payload(seq: i64, size: usize) -> Vec<u8> {
     out
 }
 
+/// A line of text shaped like agent output: English, Korean, ideographs, Hebrew, an emoji, a
+/// combining accent and some code, deterministic in the sequence number and about `size` bytes.
+#[allow(dead_code)]
+pub fn text_line(seq: i64, size: usize) -> String {
+    const WORDS: [&str; 16] = [
+        "the", "session", "reads", "파일을", "읽습니다", "안녕하세요", "漢字", "日本語", "שלום", "🙂", "e\u{301}", "fn main() {}", "let x = 42;", "--flag=value", "src/lib.rs:12", "완료",
+    ];
+    let mut state = (seq as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(0xD1B5_4A32_D192_ED03);
+    let mut out = format!("{seq:06} ");
+    while out.len() < size {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        out.push_str(WORDS[(state >> 60) as usize]);
+        out.push(' ');
+    }
+    let mut end = out.len().min(size);
+    while !out.is_char_boundary(end) {
+        end -= 1;
+    }
+    out.truncate(end);
+    out
+}
+
 pub fn hex(bytes: &[u8]) -> String {
     const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let mut s = String::with_capacity(bytes.len() * 2);

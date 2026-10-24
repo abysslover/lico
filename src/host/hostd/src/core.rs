@@ -36,6 +36,7 @@ pub struct Config {
     pub codex: PathBuf,
     pub codex_args: Vec<String>,
     pub workspace_root: PathBuf,
+    pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
 }
 
 const MAX_AGENT_LINE: usize = 16 * 1024;
@@ -127,6 +128,10 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
         .stderr(Stdio::null());
     if stay {
         command.arg("--stay");
+    }
+    if shared.cfg.text {
+        command.arg("--text");
+        session.lock().unwrap().text_mode = true;
     }
     command.env_clear(); // an agent gets no part of the host's environment
     for key in ["PATH", "LANG"] {

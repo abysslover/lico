@@ -59,7 +59,7 @@ fn main() {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--http-port P --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text] [--http-port P --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -79,6 +79,7 @@ fn main() {
             if given.is_empty() { vec!["app-server".to_string()] } else { given }
         },
         workspace_root: socket_dir.join("workspaces"),
+        text: args.iter().any(|a| a == "--text"),
     };
     {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};

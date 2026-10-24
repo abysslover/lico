@@ -11,7 +11,7 @@ import time
 from .latency import measure_switch
 from .procscope import collect_scopes, cpu_seconds, mapping_top, tree_pids
 from .report import build_measurement
-from .rig import Client, Host, HostConn, Xvfb, private_dir, session_rgb
+from .rig import Client, Host, HostConn, Xvfb, effective_history, output_kind, private_dir, session_rgb
 from .xpixel import PixelReader
 
 VIEWPORT = "1200x800"
@@ -66,7 +66,7 @@ class Rig:
         self.tmp.cleanup()
 
     def scope(self, name: str, extra: dict | None = None) -> dict:
-        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree"}
+        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree", "output": output_kind()}
         scope.update(extra or {})
         return scope
 
@@ -136,7 +136,7 @@ def idle_memory(candidate: str) -> dict:
     launches = [_idle_once(candidate) for _ in range(IDLE_LAUNCHES)]
     scope = {"candidate": candidate, "workload": "one visible session, idle",
              "process_scope": "gui process tree", "viewport": VIEWPORT, "settle_s": SETTLE_S,
-             "sample_unit": "independent launch"}
+             "sample_unit": "independent launch", "output": output_kind(), "history": effective_history(100)}
 
     def column(key: str) -> list[float]:
         return [launch[key] for launch in launches]
@@ -185,7 +185,7 @@ def hidden_growth(candidate: str, repetitions: int = 3) -> dict:
         large.append(gui)
         host_large.append(host)
     scope = {"candidate": candidate, "workload": "10 vs 100 sessions, each shown once then hidden",
-             "process_scope": "gui process tree", "viewport": VIEWPORT}
+             "process_scope": "gui process tree", "viewport": VIEWPORT, "output": output_kind(), "history": effective_history(500)}
     return {
         "measurements": [
             build_measurement("hidden_growth_rss_mib", scope, [b - a for a, b in zip(small, large)]),
@@ -222,7 +222,7 @@ def activation(candidate: str) -> dict:
         first, first_timeouts = _switch_samples(rig, list(range(100)))
         order = [(i * 37) % 100 for i in range(SWITCHES)]
         warm, warm_timeouts = _switch_samples(rig, order)
-        scope = rig.scope("100 sessions (5 producing 100 rec/s while hidden), history 5000 records",
+        scope = rig.scope(f"100 sessions (5 producing 100 rec/s while hidden), history {effective_history(5000)} records",
                           {"viewport": VIEWPORT, "clock": "monotonic", "frame_source": "X server pixels",
                            "p95_method": "nearest rank"})
         return {
@@ -297,7 +297,7 @@ def restart(candidate: str) -> dict:
             evicted = _evict(mapped)
             time.sleep(0.2)
             cold.append(_launch_and_time(rig, i % 100))
-        scope = rig.scope("start GUI process, attach to one of 100 sessions (5 producing), snapshot path",
+        scope = rig.scope(f"start GUI process, attach to one of 100 sessions (5 producing, history {effective_history(5000)} records), snapshot path",
                           {"viewport": VIEWPORT, "clock": "monotonic", "frame_source": "X server pixels",
                            "filesystem": "page cache warm after first launch; others not controlled",
                            "p95_method": "nearest rank"})

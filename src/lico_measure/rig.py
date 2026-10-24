@@ -93,6 +93,19 @@ def host_impls() -> list[str]:
     return ["oracle"] + [name for name, rel in HOST_BUILD.items() if (build / rel).exists()]
 
 
+# When set, synthetic sessions produce UTF-8 text lines shaped like agent output (mixed scripts,
+# ~110 bytes) and every transcript of 100 records or more becomes `history` lines long.
+TEXT_WORKLOAD: dict | None = None
+
+
+def effective_history(history: int) -> int:
+    return TEXT_WORKLOAD["history"] if TEXT_WORKLOAD and history >= 100 else history
+
+
+def output_kind() -> str:
+    return "agent-shaped UTF-8 text lines" if TEXT_WORKLOAD else "synthetic bytes shown as hex"
+
+
 class Host:
     def __init__(self, directory: str, sessions: int, producing: int, rate: float = 100.0,
                  history: int = 5000, retain: int = 2048, impl: str | None = None,
@@ -101,10 +114,14 @@ class Host:
         self.socket = os.path.join(directory, "host.sock")
         self.directory = directory
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")
+        extra_args = list(extra_args or [])
+        if TEXT_WORKLOAD:
+            extra_args += ["--text", "--payload", str(TEXT_WORKLOAD["payload"])]
+            history = effective_history(history)
         self.proc = subprocess.Popen(
             [*_host_command(impl), "--socket", self.socket, "--sessions", str(sessions),
              "--producing", str(producing), "--rate", str(rate), "--history", str(history),
-             "--retain", str(retain), *(extra_args or [])],
+             "--retain", str(retain), *extra_args],
             stdout=subprocess.PIPE, stderr=open(os.path.join(directory, "host.err"), "wb"), text=True,
             env={k: v for k, v in env.items() if k != "PYTHONHOME"},
         )
