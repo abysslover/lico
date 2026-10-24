@@ -82,6 +82,7 @@ pub fn send_input(s: &mut Session, request_id: &str, text: &str) -> Result<(), &
         link.pending_inputs.remove(&uuid);
         return Err(code);
     }
+    s.busy = true; // a user message is in flight: the turn it starts is over when the provider's result says so
     Ok(())
 }
 
@@ -241,6 +242,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
         if s.state == State::Running && s.claude.is_some() {
             s.set_state(State::Disconnected);
+            s.busy = false;
             s.stop_broker();
             s.claude = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
@@ -281,6 +283,9 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
                 crate::registry::mark_dirty();
             }
             let model = clip(message["model"].as_str().unwrap_or(""), 60);
+            if !model.is_empty() {
+                s.model = Some(sanitize(&model));
+            }
             record(&mut s, &format!("[session started] model={model}"));
         }
         Some("assistant") => {
@@ -326,6 +331,7 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
             }
         }
         Some("result") => {
+            s.busy = false;
             // an authentication or limit failure is shown against the account; nothing is retried under another one
             let status_issue = match message["api_error_status"].as_i64() {
                 Some(401) | Some(403) => Some("authentication_failed"),

@@ -626,6 +626,7 @@ dependencies = [
  "serde_json",
  "softbuffer",
  "winit",
+ "x11rb",
 ]
 
 [[package]]

@@ -23,7 +23,7 @@ def claude_host(directory, env_overrides=None):
     received = Path(directory) / "claude_received.txt"
     extra = ["--claude", sys.executable, "--claude-arg", "-I", "--claude-arg", str(SIM), "--claude-arg", "--received", "--claude-arg", str(received),
              "--claude-arg", "--fixture", "--claude-arg", str(FIXTURE), "--cred-bin", str(HOSTD_DIR / "lico-cred"), "--cred-dir", str(Path(directory) / "credentials")]
-    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, env_overrides=env_overrides)
+    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000, env_overrides=env_overrides)
     return host, log, received
 
 

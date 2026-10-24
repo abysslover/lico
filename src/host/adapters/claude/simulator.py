@@ -11,6 +11,7 @@ user message:
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
   "hostile"   hundreds of permission requests (one id repeated, an unknown subtype, an oversize id, an oversize input)
+  "lines:N"   N assistant lines at once
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
@@ -126,6 +127,10 @@ def turn(message):
             say(f"key length {len(key)}\nkey sha256 {hashlib.sha256(key.encode()).hexdigest()[:12]}")
         else:
             say("no helper")
+        out(result())
+    elif text.startswith("lines:"):
+        for k in range(int(text.split(":")[1])):
+            say(f"line {k:05d} " + "한글 text " * 3)
         out(result())
     elif text == "authfail":
         out({"type": "system", "subtype": "api_retry", "attempt": 3, "max_retries": 3, "retry_delay_ms": 0, "error_status": 401,

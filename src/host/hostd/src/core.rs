@@ -18,9 +18,9 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 22] = [
+pub const OPS: [&str; 23] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove",
+    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -267,6 +267,15 @@ fn status_entry(s: &Session) -> Value {
         "session": s.id, "generation": s.generation, "seq": s.last_seq(), "producing": s.producing,
         "subscribers": s.subs.len(), "bytes_total": s.bytes_total, "oldest": s.oldest(), "state": state_name(s), "state_at": s.state_at,
     });
+    if !s.provider.is_empty() {
+        entry["provider"] = json!(s.provider);
+    }
+    if let Some(model) = &s.model {
+        entry["model"] = json!(model);
+    }
+    if !s.provider.is_empty() && s.state == State::Running {
+        entry["activity"] = json!(if s.busy { "working" } else { "idle" });
+    }
     if let Some(account) = &s.account {
         entry["account"] = json!(account);
         entry["credential_generation"] = json!(s.credential_generation);
@@ -603,6 +612,29 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
 }
 
 /// Bring a disconnected session back with a new provider process and a new generation.
+/// Older records of a session, read from its log on demand: up to `limit` records before sequence `before`, oldest first.
+pub fn history(shared: &Shared, session: &str, before: i64, limit: i64) -> Reply {
+    let found = find(shared, session).ok_or("unknown_session")?;
+    let (view, text_mode, oldest) = {
+        let s = found.lock().unwrap();
+        (s.log_view(), s.text_mode, s.oldest())
+    };
+    let limit = limit.clamp(1, 200);
+    let from = (before - limit).max(oldest.min(before));
+    let records = view.read(from, before, limit as usize).map_err(|_| "busy")?;
+    let lines: Vec<Value> = records
+        .iter()
+        .map(|(seq, data)| {
+            if text_mode {
+                json!([seq, String::from_utf8_lossy(data)])
+            } else {
+                json!([seq, format!("{:08} {}", seq, payload::hex(&data[..data.len().min(44)]))])
+            }
+        })
+        .collect();
+    Ok(obj(json!({"session": session, "lines": lines, "oldest": oldest})))
+}
+
 pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     {

@@ -165,3 +165,15 @@ approved. Windows is specification step 6 and needs its own milestone.
   keyring's bus. Three tests; mutations caught: sessions recovered as running, frames not checked beyond their length (found only
   after a zero-filled-tail case was added) and registry ids not validated. Limits: no checksum (damage inside a frame is not
   detected), a log can lose its last second on a power cut, live provider processes do not survive a host restart (by design).
+- 2026-10-24: S02 done. The primary client (A2, started with `--ui`) has a first view: a list of the host's provider sessions grouped by
+  provider and account (the host's order within a group), each with its real state (working, idle, waiting for approval, disconnected,
+  exited, as the host and the provider report them, with the age of the state), the selected session with provider, account label and
+  model beside the input, an approval bar with Allow and Deny for the selected session (the list shows pending approvals of hidden
+  sessions; clicking the row brings the bar up), older history read on demand from the host's log (`history`, a page of 100, never the
+  whole transcript, at most 2000 lines held), and line-wise selection copied only by Ctrl+Shift+C into the X11 clipboard. The host gained
+  `provider`, `model` and `activity` in its status and the `history` operation. Three tests; mutations caught: a pending approval hidden
+  behind "idle", older history never requested, and copying on selecting. Limits: selection is by line (no character selection, no
+  paste into the input, no Wayland clipboard), the list is grouped by provider and account because every session's workspace is its own
+  private directory, status is polled once a second (idle CPU is re-measured in S03), the list shows no scroll bar and is not
+  scrollable beyond the window, long lines wrap by an estimate that is verified against the layout, nothing here is accessible to a
+  screen reader, and C2 keeps its older view and is not extended.

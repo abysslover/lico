@@ -43,6 +43,7 @@ INVENTORY = {
     "account.credential": {"state": "host", "mutates": True},
     "account.affected": {"state": "host", "mutates": False},
     "account.remove": {"state": "host", "mutates": True},
+    "history": {"state": "host", "mutates": False},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -74,7 +75,7 @@ REPLIES = {
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
                      "bytes_total": {"type": INT, "minimum": 0}},
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
-                     "account": {"type": STR}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
+                     "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
@@ -128,6 +129,8 @@ REPLIES = {
                             "home": {"type": STR, "enum": ["kept", "removed", "none"]}, "affected": {"type": "array", "items": {"type": STR}}},
                            COMMON_REPLY_OPTIONAL),
     "account.default": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
+    "history": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "lines": {"type": "array", "items": {"type": "array", "length": 2}},
+                     "oldest": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
     "account.credential": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),
     "subscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
@@ -170,6 +173,7 @@ REQUESTS = {
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
                             "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True}}, _COMMON_REQ),
     "account.list": _obj({}, _COMMON_REQ),
+    "history": _obj({"session": {"type": STR, "max_length": 64}, "before": {"type": INT, "minimum": 0}, "limit": {"type": INT, "minimum": 1, "maximum": 200}}, _COMMON_REQ),
     "account.affected": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.remove": _obj({"account": {"type": STR, "max_length": 64}, "sessions": {"type": STR, "enum": ["detach", "end"]}}, _COMMON_REQ),
     "account.credential": _obj({"account": {"type": STR, "max_length": 64}, "credential_ref": {"type": STR, "max_length": 64}}, _COMMON_REQ),

@@ -277,6 +277,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         }
         if s.state == State::Running && s.codex.is_some() {
             s.set_state(State::Disconnected);
+            s.busy = false;
             s.codex = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
             record(&mut s, "[provider disconnected]");
@@ -357,6 +358,9 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
             if let Some(thread) = message.pointer("/result/thread/id").and_then(Value::as_str) {
                 s.codex_thread = Some(thread.to_string());
                 crate::registry::mark_dirty();
+                if let Some(model) = message.pointer("/result/model").and_then(Value::as_str).filter(|m| !m.is_empty() && m.len() <= 60) {
+                    s.model = Some(sanitize(model)); // only when the provider says so
+                }
                 if let Some(link) = s.codex.as_mut() {
                     link.ready = true;
                 }
@@ -477,12 +481,14 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = params.pointer("/turn/id").and_then(Value::as_str).map(str::to_string);
             }
+            s.busy = true;
             record(s, "[turn started]");
         }
         "turn/completed" => {
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = None;
             }
+            s.busy = false;
             record(s, &format!("[turn {}]", text("/turn/status")));
         }
         "error" => record(s, &format!("[error] {}", text("/error/message"))),

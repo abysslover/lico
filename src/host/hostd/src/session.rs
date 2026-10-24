@@ -394,6 +394,8 @@ pub struct Session {
     pub agent_pid: u32,
     pub account: Option<String>, // the account this session is bound to for its whole life (until a rebind of a dead session)
     pub credential_generation: u64,
+    pub busy: bool, // a turn is in progress, as the provider reported it (never inferred from silence)
+    pub model: Option<String>, // the model the provider reported, never guessed
     pub account_issue: Option<String>, // what the provider reported about the account (authentication, limit); cleared by a successful turn
     pub broker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>, // ends the key broker of this session's provider
     pub process_group: bool, // the process leads its own group (a provider and its helpers): stop the whole group
@@ -443,6 +445,8 @@ impl Session {
             agent_pid: 0,
             account: None,
             credential_generation: 0,
+            busy: false,
+            model: None,
             account_issue: None,
             broker_stop: None,
             process_group: false,

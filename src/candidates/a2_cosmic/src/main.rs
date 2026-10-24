@@ -1,6 +1,8 @@
 //! Candidate A2: candidate A with a real text stack (cosmic-text: shaping, font fallback)
 //! for the synthetic host. Commands arrive on stdin, see `handle_command`.
 
+mod ui;
+
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::num::NonZeroU32;
@@ -28,11 +30,12 @@ const NEUTRAL: u32 = 0xFF20_2020;
 enum Ev {
     Sock(String),
     Cmd(String),
+    Tick, // once a second in the first view: ask the host for the sessions again
 }
 
 struct View {
-    lines: VecDeque<String>,
-    surface: Surface<Arc<Window>, Arc<Window>>,
+    lines: VecDeque<(i64, String)>, // (sequence number, text)
+    surface: Option<Surface<Arc<Window>, Arc<Window>>>, // none in the first view, which owns one surface for the window
     buffer: Buffer,
     swash: SwashCache,
     session_rgb: u32,
@@ -69,6 +72,7 @@ struct App {
     gaps: i64,
     resyncs: i64,
     subscribed: bool,
+    ui: ui::UiState,
 }
 
 fn json_escape(s: &str) -> String {
@@ -186,7 +190,7 @@ impl App {
         if let Some(m) = self.meta.iter_mut().find(|m| m.id == self.session) {
             m.cursor = cursor; // navigation metadata survives; the view does not
         }
-        if self.view.take().is_some() {
+        if self.view.take().is_some() && !self.ui.enabled {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines
         }
         self.session.clear(); // nothing typed while no view is shown can be sent anywhere
@@ -200,7 +204,7 @@ impl App {
         self.hide();
         self.load_fonts();
         let Some(context) = self.context.as_ref() else { return };
-        let surface = Surface::new(context, window.clone()).expect("surface");
+        let surface = if self.ui.enabled { None } else { Some(Surface::new(context, window.clone()).expect("surface")) };
         let fs = self.font_system.as_mut().expect("fonts");
         let buffer = Buffer::new(fs, Metrics::new(FONT_PX, LINE_HEIGHT as f32));
         let rgb = 0xFF00_0000 | (u32::from_str_radix(id.get(1..7).unwrap_or("0"), 16).unwrap_or(0) & 0xFF_FFFF);
@@ -223,9 +227,13 @@ impl App {
     }
 
     fn append_line(&mut self, seq: i64, hex: &str) {
+        if self.ui.enabled {
+            let hex = &hex[..hex.len().min(LINE_HEX)];
+            return self.push_line(seq, format!("{seq:08} {hex}"));
+        }
         let Some(view) = self.view.as_mut() else { return };
         let hex = &hex[..hex.len().min(LINE_HEX)];
-        view.lines.push_back(format!("{seq:08} {hex}"));
+        view.lines.push_back((seq, format!("{seq:08} {hex}")));
         while view.lines.len() > VISIBLE_LINES {
             view.lines.pop_front();
         }
@@ -235,8 +243,11 @@ impl App {
     }
 
     fn append_text(&mut self, seq: i64, text: &str) {
+        if self.ui.enabled {
+            return self.push_line(seq, clean(text));
+        }
         let Some(view) = self.view.as_mut() else { return };
-        view.lines.push_back(clean(text));
+        view.lines.push_back((seq, clean(text)));
         while view.lines.len() > VISIBLE_LINES {
             view.lines.pop_front();
         }
@@ -377,7 +388,12 @@ impl App {
                 }
                 self.emit_state("subscribed");
             }
+            _ if line.contains("\"accounts\":[") && self.ui.enabled => self.ui_accounts(line),
+            _ if line.contains("\"oldest\":") && line.contains("\"lines\":[") && !line.contains("\"sessions\":[") && self.ui.enabled => self.ui_history(line),
             _ if line.contains("\"sessions\":[") => {
+                if self.ui.enabled {
+                    self.ui_status(line);
+                }
                 self.on_status(line);
                 if self.print_status {
                     println!("{line}");
@@ -394,8 +410,8 @@ impl App {
     /// glyph caches reach a realistic worst case; the harness reads memory after.
     fn stress(&mut self) {
         for base in [0xAC00u32, 0x4E00u32] {
-            let lines: VecDeque<String> = (0..VISIBLE_LINES)
-                .map(|row| (0..59).filter_map(|col| char::from_u32(base + (row * 59 + col) as u32)).collect())
+            let lines: VecDeque<(i64, String)> = (0..VISIBLE_LINES)
+                .map(|row| (row as i64, (0..59).filter_map(|col| char::from_u32(base + (row * 59 + col) as u32)).collect()))
                 .collect();
             let Some(view) = self.view.as_mut() else { return };
             view.lines = lines;
@@ -418,8 +434,9 @@ impl App {
                 self.emit_state("hidden");
             }
             Some("status") => self.emit_state("status"),
+            Some("ui") => self.ui_dump(),
             Some("lines") => {
-                let shown: Vec<String> = self.view.iter().flat_map(|v| v.lines.iter()).map(|l| format!("\"{}\"", json_escape(l))).collect();
+                let shown: Vec<String> = self.view.iter().flat_map(|v| v.lines.iter()).map(|l| format!("\"{}\"", json_escape(&l.1))).collect();
                 println!("{{\"ev\":\"lines\",\"lines\":[{}]}}", shown.join(","));
                 let _ = std::io::stdout().flush();
             }
@@ -436,27 +453,31 @@ impl App {
     }
 
     fn draw(&mut self) {
+        if self.ui.enabled {
+            return self.draw_ui();
+        }
         let prompt = format!("> {}[{}]", self.input, self.preedit);
         let (Some(window), Some(view), Some(fs)) = (&self.window, self.view.as_mut(), self.font_system.as_mut()) else {
             return;
         };
         let size = window.inner_size();
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
-        if view.surface.resize(w, h).is_err() {
+        let Some(surface) = view.surface.as_mut() else { return };
+        if surface.resize(w, h).is_err() {
             return;
         }
         let (width, height) = (w.get() as usize, h.get() as usize);
         let mut text = String::from("      \u{d55c}\u{ae00} Lico session view");
         for line in &view.lines {
             text.push('\n');
-            text.push_str(line);
+            text.push_str(&line.1);
         }
         text.push('\n');
         text.push_str(&prompt);
         view.buffer.set_size(Some(width as f32), Some(height as f32));
         view.buffer.set_text(&text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
         view.buffer.shape_until_scroll(fs, true);
-        let Ok(mut buf) = view.surface.buffer_mut() else { return };
+        let Ok(mut buf) = surface.buffer_mut() else { return };
         buf.fill(BACKGROUND);
         fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
         fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
@@ -494,8 +515,16 @@ impl ApplicationHandler<Ev> for App {
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         window.set_ime_allowed(true);
         self.context = Some(Context::new(window.clone()).expect("context"));
+        if self.ui.enabled {
+            self.load_fonts();
+            self.ui.surface = self.context.as_ref().and_then(|c| Surface::new(c, window.clone()).ok());
+        }
         self.window = Some(window);
-        self.present_neutral();
+        if self.ui.enabled {
+            self.dirty = true;
+        } else {
+            self.present_neutral();
+        }
         if let Some((id, after)) = self.pending_show.take() {
             self.show(&id, after);
         }
@@ -504,6 +533,9 @@ impl ApplicationHandler<Ev> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if self.ui.enabled && self.ui_window_event(&event) {
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => self.draw(),
@@ -571,6 +603,7 @@ impl ApplicationHandler<Ev> for App {
         match event {
             Ev::Sock(line) => self.on_sock_line(&line),
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
+            Ev::Tick => self.ui_tick(),
         }
     }
 }
@@ -587,6 +620,7 @@ fn main() {
     let event_loop = EventLoop::<Ev>::with_user_event().build().expect("event loop");
     let proxy = event_loop.create_proxy();
     let sock_proxy = proxy.clone();
+    let proxy_for_ticks = proxy.clone();
     thread::spawn(move || {
         for line in BufReader::new(reader).lines().map_while(Result::ok) {
             if sock_proxy.send_event(Ev::Sock(line)).is_err() {
@@ -602,11 +636,22 @@ fn main() {
         }
         let _ = proxy.send_event(Ev::Cmd("quit".into()));
     });
+    let ui_mode = args.iter().any(|a| a == "--ui");
+    if ui_mode {
+        let ticker = proxy_for_ticks;
+        thread::spawn(move || loop {
+            thread::sleep(std::time::Duration::from_millis(1000));
+            if ticker.send_event(Ev::Tick).is_err() {
+                break;
+            }
+        });
+    }
     let mut app = App {
         stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
+        ui: ui::UiState { enabled: ui_mode, ..Default::default() },
     };
     event_loop.run_app(&mut app).expect("run");
 }

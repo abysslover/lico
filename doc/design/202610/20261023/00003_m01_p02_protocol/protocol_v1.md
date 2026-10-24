@@ -37,6 +37,7 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `session.resume` | host | yes | bring a disconnected provider session back with a new provider process that resumes the same thread; the execution generation rises by one, so every older target is stale |
 | `account.create` | host | yes | add an account of a provider (`codex` or `claude`) with an editable label (at most 40 printable characters); a stable opaque id (`a` and twelve hex digits) is returned, a private home is created for it (mode 0700, never read by Lico), and a provider's first account becomes its default (local socket only) |
 | `account.list` | host | no | the accounts with provider, label, whether each is its provider's default and its credential generation |
+| `history` | host | no | up to 200 older records of a session (`before` is a sequence number, `limit` at most 200), oldest first, read from the durable log on demand; the reply names the oldest sequence still kept |
 | `account.default` | host | yes | make an account its provider's default; this affects only sessions created afterwards |
 | `account.credential` | host | yes | attach a credential of the credential store to an account (its `ref` from `lico-cred`, which must belong to this account and its provider; otherwise `bad_request`); the account's credential generation rises; a Claude session of that account gets its key only through a helper that reads the keyring |
 | `account.affected` | host | no | the sessions bound to an account with their states, named before anything is removed |
