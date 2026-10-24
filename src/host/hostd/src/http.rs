@@ -171,12 +171,12 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
         ["v1", "sessions"] => match method {
             "GET" => core::session_list(shared),
             "POST" => {
-                let mut map = body_map(request).map_err(bad)?;
+                let map = body_map(request).map_err(bad)?;
                 if !valid_request("session.create", &map.clone().into_iter().chain([("op".to_string(), json!("session.create"))]).collect()) {
                     return Err(bad("bad_request"));
                 }
-                map.remove("kind");
-                core::session_create(shared, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
+                let kind = crate::ipc::text(&map, "kind").to_string();
+                core::session_create(shared, &kind, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
                                      int(&map, "payload").unwrap_or(shared.cfg.payload as i64) as usize)
             }
             _ => return Err((405, "bad_request")),

@@ -102,7 +102,7 @@ def record_codex(out: Path = CAPABILITIES) -> dict:
         version = installed_version(home)
         generate_schema(home, home / "schema")
         inventory = schema_inventory(home / "schema")
-    approvals = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval", "item/permissions/requestApproval")
+    approvals = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval")
     cap = {
         "schema": "lico.provider_capabilities.v1",
         "provider": "codex",
@@ -134,7 +134,7 @@ def record_codex(out: Path = CAPABILITIES) -> dict:
         "unsupported": [
             {"what": "websocket and unix transports", "reason": "the provider documents websocket as experimental and unsupported"},
             {"what": "account login and token refresh by Lico", "reason": "sign-in stays with the provider's own storage until M01-P04"},
-            {"what": "dynamic tools, attestation and MCP elicitation", "reason": "no consumer exists in this phase; answered with an error"},
+            {"what": "dynamic tools, attestation, MCP elicitation and permission grants", "reason": "no consumer exists in this phase (a permission grant needs a different answer shape); answered with an error"},
         ],
         "unverified": [
             "thread/start and turn/start with a signed-in account (no sign-in was used; no model turn ran)",

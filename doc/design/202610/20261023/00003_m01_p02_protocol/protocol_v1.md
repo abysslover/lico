@@ -32,8 +32,9 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `snapshot` | oracle | no | latest screen lines and last sequence of one session |
 | `subscribe` | oracle | yes | start the live stream; `after` is the client cursor; `snapshot: true` asks for the latest screen first |
 | `unsubscribe` | oracle | yes | stop the stream, keep the cursor |
-| `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) |
-| `session.list` | host | no | id, generation, state (`running` or `exited`) and last sequence of every session |
+| `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) or a provider session (`kind` `codex`: one provider process and one thread) |
+| `session.resume` | host | yes | bring a disconnected provider session back with a new provider process that resumes the same thread; the execution generation rises by one, so every older target is stale |
+| `session.list` | host | no | id, generation, state (`running`, `exited` or `disconnected`) and last sequence of every session |
 | `input` | host | yes | send text to a session's agent: needs the target generation and a client request id; the reply and later `input` events give the state `accepted`, `submitted` (written to the agent) and `observed` (the agent acted on it) separately |
 | `input.status` | host | no | the state of an earlier request id, so a client that lost a reply can ask instead of sending again |
 | `approval.answer` | host | yes | answer a pending approval request (`allow` or `deny`) of a session |
@@ -112,3 +113,17 @@ failed credentials per second. The log directory is only cleared if it holds not
 but session segments, and the socket directory must be owned by the user with mode
 0700 or the host refuses to start. The log is written but never fsynced: it survives
 a killed GUI or host process, not a power cut, and a write error ends that session.
+
+## Provider sessions (M01-P03)
+
+A `codex` session is backed by the provider's app-server (or its simulator) over standard
+input and output. An `input` becomes one `turn/start`, or a `turn/steer` of the turn that is
+running; a steer the provider refuses (the turn had just ended) becomes a turn of its own, so
+an input is applied once and never twice. The input states are `accepted` (queued), `submitted`
+(written to the provider), `observed` (the provider answered) and `failed` (the provider refused
+it, shown as a record). An input whose answer never came stays `submitted` after a disconnect and
+is never sent again. A provider that goes away makes the session `disconnected` (never idle);
+`input` then answers `session_disconnected` until `session.resume`. Provider approval requests
+(commands and file changes) become host approvals bound to exactly one provider request and
+answered at most once; every other provider request (tokens, tools, attestation, elicitation,
+permission grants) is answered with an error. Provider output is sanitized into one-line records.

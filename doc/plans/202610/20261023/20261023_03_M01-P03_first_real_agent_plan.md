@@ -156,3 +156,13 @@ need their own plans and approvals.
   each checked with mutations. The code was written before its tests (no red-before-code run);
   red was observed by mutation. Not yet verified: any signed-in behavior, the exact approval
   events of a real turn, and the Claude Code path (not run by this session).
+- 2026-10-23: S02 done. The owned host runs a provider session (`session.create` with kind
+  `codex`) through an adapter against a protocol simulator that replays the recorded turn: an input
+  becomes one turn or steers the running one (a refused steer falls back to a turn, never both), a
+  provider approval request becomes one host approval answered at most once, requests the client
+  cannot serve are answered with an error, a vanished provider makes the session `disconnected`
+  and `session.resume` brings it back with the execution generation raised by one (the generation
+  is now a real value, not a placeholder). Three tests, each checked with mutations (two mutations
+  of one guard survived because a second independent guard also refuses; a combined mutation was
+  caught). The host's records equal the reference mapping for the recorded turn. Everything here is
+  simulated; no real provider turn has run.

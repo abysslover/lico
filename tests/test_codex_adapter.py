@@ -1,0 +1,174 @@
+import json
+import os
+import random
+import sys
+import time
+from pathlib import Path
+
+from lico_measure.p02 import ProtoConn as Conn, read_log, start
+from lico_measure.rig import REPO, private_dir
+
+SIM = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
+FIXTURE = REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json"
+
+
+def codex_host(directory):
+    received = os.path.join(directory, "received.jsonl")
+    extra = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", str(SIM), "--codex-arg", "--received",
+             "--codex-arg", received, "--codex-arg", "--fixture", "--codex-arg", str(FIXTURE)]
+    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0)
+    return host, log, Path(received)
+
+
+def new_session(host):
+    conn = Conn(host.socket)
+    made = conn.call(op="session.create", kind="codex")
+    assert made["ok"] == 1, made
+    return conn, made["session"], made["generation"]
+
+
+def sent(received):
+    """Every message the provider received from the host, parsed."""
+    if not received.exists():
+        return []
+    return [json.loads(line) for line in received.read_text().splitlines() if line.strip().startswith("{")]
+
+
+def texts(log, sid):
+    return [p.decode() for _, p in read_log(log, sid)]
+
+
+def wait_for(check, timeout=10.0):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        value = check()
+        if value:
+            return value
+        time.sleep(0.05)
+    raise AssertionError("condition not reached")
+
+
+def test_input_becomes_exactly_one_turn_and_an_ambiguous_one_is_never_resent():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            first = conn.call(op="input", session=sid, generation=generation, request_id="r-1", text="hello 한글 안녕")
+            assert first["ok"] == 1 and first["duplicate"] is False
+            wait_for(lambda: "echo: hello 한글 안녕" in texts(log, sid))
+            turns = [m for m in sent(received) if m.get("method") == "turn/start"]
+            assert len(turns) == 1 and turns[0]["params"]["input"] == [{"type": "text", "text": "hello 한글 안녕", "text_elements": []}] \
+                or turns[0]["params"]["input"][0]["text"] == "hello 한글 안녕"
+            assert conn.call(op="input.status", session=sid, request_id="r-1")["state"] in ("submitted", "observed")
+            wait_for(lambda: conn.call(op="input.status", session=sid, request_id="r-1")["state"] == "observed")
+            # replies lost and the same request sent again: still one turn each
+            rng = random.Random(3)
+            for k in range(30):
+                probe = Conn(host.socket)
+                probe.send(op="input", session=sid, generation=generation, request_id=f"x-{k}", text=f"t{k}")
+                if rng.random() < 0.5:
+                    probe.close()
+                    again = Conn(host.socket)
+                    assert again.call(op="input", session=sid, generation=generation, request_id=f"x-{k}", text=f"t{k}")["ok"] == 1
+                    again.close()
+                else:
+                    probe.read()
+                    probe.close()
+            wait_for(lambda: all(f"echo: t{k}" in texts(log, sid) or f"steer: t{k}" in texts(log, sid) for k in range(30)))
+            seen = texts(log, sid)
+            # each input was applied by the provider exactly once: as a turn of its own, or as a steer of
+            # the turn that was running (a steer the provider refused falls back to a turn, never both)
+            for k in range(30):
+                assert seen.count(f"echo: t{k}") + seen.count(f"steer: t{k}") == 1, k
+            # an input while a turn is running steers that turn instead of starting another
+            conn.call(op="input", session=sid, generation=generation, request_id="slow-1", text="slow:6")
+            wait_for(lambda: "tick 0" in texts(log, sid))
+            conn.call(op="input", session=sid, generation=generation, request_id="steer-1", text="mid-turn")
+            wait_for(lambda: "steer: mid-turn" in texts(log, sid))
+            messages = sent(received)
+            mid = [m for m in messages if m.get("method") in ("turn/start", "turn/steer") and m["params"]["input"][0]["text"] == "mid-turn"]
+            assert [m["method"] for m in mid] == ["turn/steer"] and mid[0]["params"]["expectedTurnId"].startswith("tu-")
+            assert "echo: mid-turn" not in texts(log, sid)
+        finally:
+            host.stop()
+
+
+def test_approval_round_trip_and_a_stale_or_forged_approval_is_refused():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            watcher = Conn(host.socket)
+            watcher.call(op="subscribe", session=sid, after=-1, snapshot=True)
+            conn.call(op="input", session=sid, generation=generation, request_id="fx", text="fixture")
+
+            def pending():
+                entry = [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]
+                return entry.get("approvals", [])
+
+            first = wait_for(pending)
+            assert first[0]["prompt"] == "run: ls -la"
+            number = first[0]["approval_id"]
+            # forged, stale and wrong-session answers send nothing to the provider
+            assert conn.call(op="approval.answer", session=sid, generation=generation, approval_id=number + 50, answer="allow")["error"] == "unknown_approval"
+            assert conn.call(op="approval.answer", session=sid, generation=generation + 1, approval_id=number, answer="allow")["error"] == "stale_generation"
+            assert not [m for m in sent(received) if m.get("id") in (7, 11) and "result" in m]
+            ok = conn.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow")
+            assert ok["ok"] == 1 and ok["state"] == "answered"
+            # the same answer again is refused: it is never sent twice
+            assert conn.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow")["error"] == "unknown_approval"
+            second = wait_for(lambda: [a for a in pending() if a["approval_id"] != number])
+            assert second[0]["prompt"].startswith("change files")
+            assert conn.call(op="approval.answer", session=sid, generation=generation, approval_id=second[0]["approval_id"], answer="deny")["ok"] == 1
+            wait_for(lambda: "[turn completed]" in texts(log, sid))
+            replies = [m for m in sent(received) if "result" in m or "error" in m]
+            assert replies.count({"id": 7, "result": {"decision": "accept"}}) == 1
+            assert replies.count({"id": 11, "result": {"decision": "decline"}}) == 1
+            assert replies.count({"id": 9, "error": {"code": -32601, "message": "unsupported by this client"}}) == 1
+            assert len([m for m in replies if m.get("id") in (7, 9, 11)]) == 3
+            # the records are exactly what the reference mapping gives for the same recorded turn
+            assert texts(log, sid) == [
+                "[turn started]", "안녕하세요. 작업을 시작합니다.", "두 번째 줄 é 漢字 🙂", "hidden controls and tab done",
+                "$ ls -la", "total 0", "file-한글.txt", "[exit 0]", "[error] network unavailable", "[turn completed]",
+            ]
+            # viewers were told about both approvals as events
+            events = []
+            watcher.sock.settimeout(0.5)
+            try:
+                while True:
+                    events.append(watcher.read())
+            except Exception:
+                pass
+            assert len([e for e in events if e.get("ev") == "approval"]) == 2
+        finally:
+            host.stop()
+
+
+def test_provider_exit_is_disconnected_not_idle():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            conn.call(op="input", session=sid, generation=generation, request_id="boom", text="crash")
+
+            def state():
+                return [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]["state"]
+
+            wait_for(lambda: state() == "disconnected")
+            assert "[provider disconnected]" in texts(log, sid)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="after", text="x")["error"] == "session_disconnected"
+            # the input that was in flight is neither resent nor forgotten
+            assert conn.call(op="input.status", session=sid, request_id="boom")["state"] in ("submitted", "observed")
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)
+            assert resumed["ok"] == 1 and resumed["generation"] == generation + 1
+            assert state() == "running"
+            # the old target is stale now; the new generation works
+            assert conn.call(op="input", session=sid, generation=generation, request_id="old", text="x")["error"] == "stale_generation"
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="new", text="안녕")["ok"] == 1
+            wait_for(lambda: "echo: 안녕" in texts(log, sid))
+            messages = sent(received)
+            assert len([m for m in messages if m.get("method") == "turn/start" and m["params"]["input"][0]["text"] == "crash"]) == 1
+            assert [m for m in messages if m.get("method") == "thread/resume"], "the thread was not resumed"
+            assert "[provider reconnected]" in texts(log, sid)
+        finally:
+            host.stop()

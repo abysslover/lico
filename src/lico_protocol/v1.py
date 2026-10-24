@@ -13,7 +13,7 @@ from __future__ import annotations
 PROTOCOL = 1
 MAX_REQUEST = 4096
 ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "version_unsupported", "too_large",
-          "session_exited", "unknown_request", "unknown_approval", "unknown_view", "busy")
+          "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -27,6 +27,7 @@ INVENTORY = {
     "unsubscribe": {"state": "oracle", "mutates": True},
     "session.create": {"state": "host", "mutates": True},
     "session.list": {"state": "host", "mutates": False},
+    "session.resume": {"state": "host", "mutates": True},
     "input": {"state": "host", "mutates": True},
     "input.status": {"state": "host", "mutates": False},
     "approval.answer": {"state": "host", "mutates": True},
@@ -63,7 +64,7 @@ REPLIES = {
         "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": -1},
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
                      "bytes_total": {"type": INT, "minimum": 0}},
-        "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited"]},
+        "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
@@ -71,10 +72,10 @@ REPLIES = {
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "input": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},
-                   "state": {"type": STR, "enum": ["accepted", "submitted", "observed"]}, "duplicate": {"type": BOOL}},
+                   "state": {"type": STR, "enum": ["accepted", "submitted", "observed", "failed"]}, "duplicate": {"type": BOOL}},
                   COMMON_REPLY_OPTIONAL),
     "input.status": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},
-                          "state": {"type": STR, "enum": ["accepted", "submitted", "observed"]}}, COMMON_REPLY_OPTIONAL),
+                          "state": {"type": STR, "enum": ["accepted", "submitted", "observed", "failed"]}}, COMMON_REPLY_OPTIONAL),
     "approval.answer": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "approval_id": {"type": INT, "minimum": 1},
                              "state": {"type": STR, "enum": ["answered"]}}, COMMON_REPLY_OPTIONAL),
     "view.attach": _obj({"v": _V, "ok": _OK, "view": {"type": STR}, "session": {"type": STR},
@@ -93,8 +94,10 @@ REPLIES = {
     "session.list": _obj({"v": _V, "ok": _OK, "sessions": {"type": "array", "items": {
         "type": "object",
         "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
-                     "state": {"type": STR, "enum": ["running", "exited"]}, "seq": {"type": INT, "minimum": -1}},
+                     "state": {"type": STR, "enum": ["running", "exited", "disconnected"]}, "seq": {"type": INT, "minimum": -1}},
         "optional": {}}}}, COMMON_REPLY_OPTIONAL),
+    "session.resume": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
+                           COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),
     "subscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1},
                        "gap": {"type": BOOL}, "from": {"type": INT, "minimum": 0}},
@@ -109,7 +112,7 @@ EVENTS = {
                  "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": 0}, "data": {"type": STR}}),
     "overflow": _obj({"v": _V, "ev": {"type": STR, "enum": ["overflow"]}, "session": {"type": STR}}),
     "input": _obj({"v": _V, "ev": {"type": STR, "enum": ["input"]}, "session": {"type": STR},
-                   "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed"]}}),
+                   "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed", "failed"]}}),
     "approval": _obj({"v": _V, "ev": {"type": STR, "enum": ["approval"]}, "session": {"type": STR},
                       "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}),
 }
@@ -123,7 +126,8 @@ REQUESTS = {
     "subscribe": _obj({"session": {"type": STR, "max_length": 64}, "after": {"type": INT, "minimum": -1}},
                       {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "snapshot": {"type": BOOL}}),
     "unsubscribe": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
-    "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic"]}},
+    "session.resume": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
+    "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic", "codex"]}},
                            {**_COMMON_REQ, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096}}),

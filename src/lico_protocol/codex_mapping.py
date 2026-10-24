@@ -19,9 +19,8 @@ _OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 _ESC = re.compile(r"\x1b[@-_]")
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
 
-APPROVAL_METHODS = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval",
-                    "item/permissions/requestApproval")
-REFUSED_METHODS = ("item/tool/call", "item/tool/requestUserInput", "account/chatgptAuthTokens/refresh",
+APPROVAL_METHODS = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval")
+REFUSED_METHODS = ("item/permissions/requestApproval", "item/tool/call", "item/tool/requestUserInput", "account/chatgptAuthTokens/refresh",
                    "attestation/generate", "mcpServer/elicitation/request", "execCommandApproval", "applyPatchApproval")
 
 
@@ -95,10 +94,8 @@ class Mapper:
         if method in APPROVAL_METHODS:
             if method.endswith("commandExecution/requestApproval"):
                 prompt = "run: " + str(params.get("command", "a command"))
-            elif method.endswith("fileChange/requestApproval"):
-                prompt = "change files" + (": " + params["reason"] if params.get("reason") else "")
             else:
-                prompt = "permissions" + (": " + params["reason"] if params.get("reason") else "")
+                prompt = "change files" + (": " + params["reason"] if params.get("reason") else "")
             self.out.approvals.append({"request_id": request_id, "method": method, "prompt": sanitize(prompt)[:MAX_PROMPT]})
         else:
             # tokens, tools, attestations and elicitations are not supplied by this client

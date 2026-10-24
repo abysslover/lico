@@ -250,6 +250,7 @@ impl LogView {
 pub enum State {
     Running,
     Exited,
+    Disconnected, // the provider is gone; the session can be resumed
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -257,6 +258,7 @@ pub enum InputState {
     Accepted,
     Submitted,
     Observed,
+    Failed,
 }
 
 impl InputState {
@@ -265,14 +267,18 @@ impl InputState {
             InputState::Accepted => "accepted",
             InputState::Submitted => "submitted",
             InputState::Observed => "observed",
+            InputState::Failed => "failed",
         }
     }
 }
 
 pub struct Session {
     pub id: String,
+    pub generation: u64,
     pub producing: bool,
     pub state: State,
+    pub codex: Option<crate::codex::Link>,
+    pub codex_thread: Option<String>,
     window: VecDeque<(i64, Vec<u8>)>,
     window_cap: usize,
     pub next_seq: i64,
@@ -293,8 +299,8 @@ extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
 }
 
-pub fn rec_line(session: &str, seq: i64, data: &[u8]) -> Arc<Vec<u8>> {
-    encode(obj(json!({"ev": "rec", "session": session, "generation": 1, "seq": seq, "data": hex(data)})))
+pub fn rec_line(session: &str, generation: u64, seq: i64, data: &[u8]) -> Arc<Vec<u8>> {
+    encode(obj(json!({"ev": "rec", "session": session, "generation": generation, "seq": seq, "data": hex(data)})))
 }
 
 impl Session {
@@ -302,6 +308,9 @@ impl Session {
         let log = Log::new(dir, &id, retain);
         Session {
             id,
+            generation: 1,
+            codex: None,
+            codex_thread: None,
             producing,
             state: State::Running,
             window: VecDeque::new(),
@@ -358,7 +367,7 @@ impl Session {
         }
         self.next_seq += 1;
         self.bytes_total += data.len() as i64;
-        let line = rec_line(&self.id, seq, &data);
+        let line = rec_line(&self.id, self.generation, seq, &data);
         if self.window.len() == self.window_cap {
             self.window.pop_front();
         }
@@ -379,7 +388,7 @@ impl Session {
             .skip(skip)
             .map(|(seq, data)| json!([seq, format!("{:08} {}", seq, hex(&data[..data.len().min(44)]))]))
             .collect();
-        obj(json!({"session": self.id, "generation": 1, "seq": self.last_seq(), "lines": lines}))
+        obj(json!({"session": self.id, "generation": self.generation, "seq": self.last_seq(), "lines": lines}))
     }
 
     // ---- input bookkeeping: a request id is dispatched at most once within the tracked window

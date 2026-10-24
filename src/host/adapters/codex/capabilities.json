@@ -84,8 +84,8 @@
    "note": "becomes a host approval bound to its id"
   },
   "item/permissions/requestApproval": {
-   "decision": "mapped_to_host_approval",
-   "note": "becomes a host approval bound to its id"
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
   },
   "item/tool/call": {
    "decision": "answered_with_error",
@@ -125,8 +125,8 @@
    "reason": "sign-in stays with the provider's own storage until M01-P04"
   },
   {
-   "what": "dynamic tools, attestation and MCP elicitation",
-   "reason": "no consumer exists in this phase; answered with an error"
+   "what": "dynamic tools, attestation, MCP elicitation and permission grants",
+   "reason": "no consumer exists in this phase (a permission grant needs a different answer shape); answered with an error"
   }
  ],
  "unverified": [

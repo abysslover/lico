@@ -2,6 +2,7 @@
 //! the durable log independently of any GUI, and serves protocol v1 on an
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
+mod codex;
 mod core;
 mod http;
 mod ipc;
@@ -44,6 +45,10 @@ fn raise_descriptor_limit() {
     }
 }
 
+fn shared_workspace_root(socket_dir: &std::path::Path) -> PathBuf {
+    socket_dir.join("workspaces")
+}
+
 fn refuse(message: &str) -> ! {
     eprintln!("lico-host: {message}");
     std::process::exit(2);
@@ -54,7 +59,7 @@ fn main() {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--http-port P --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--http-port P --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -68,6 +73,12 @@ fn main() {
         queue_bytes: arg("--queue-bytes", "1048576").parse().expect("queue-bytes"),
         payload: arg("--payload", "1024").parse().expect("payload"),
         max_sessions: arg("--max-sessions", "256").parse().expect("max-sessions"),
+        codex: PathBuf::from(arg("--codex", "codex")),
+        codex_args: {
+            let given: Vec<String> = args.windows(2).filter(|w| w[0] == "--codex-arg").map(|w| w[1].clone()).collect();
+            if given.is_empty() { vec!["app-server".to_string()] } else { given }
+        },
+        workspace_root: socket_dir.join("workspaces"),
     };
     {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
@@ -85,6 +96,7 @@ fn main() {
             let _ = std::fs::remove_dir_all(&log_dir);
         }
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&shared_workspace_root(&socket_dir)).expect("workspace root");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
     raise_descriptor_limit();

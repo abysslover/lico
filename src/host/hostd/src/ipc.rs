@@ -86,6 +86,7 @@ pub fn valid_text(value: &Value) -> bool {
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
         "hello" | "status" | "session.list" | "resources" => &[],
+        "session.resume" => &["session", "generation"],
         "snapshot" | "unsubscribe" => &["session"],
         "subscribe" => &["session", "after"],
         "session.create" => &["kind"],
@@ -100,11 +101,11 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
-            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach", "generation") => in_range(value, 1, i64::MAX),
+            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
-            ("session.create", "kind") => value.as_str() == Some("synthetic"),
+            ("session.create", "kind") => matches!(value.as_str(), Some("synthetic" | "codex")),
             ("session.create", "rate") => in_range(value, 0, 10_000),
             ("session.create", "history") => in_range(value, 0, 100_000),
             ("session.create", "payload") => in_range(value, 1, 4096),
@@ -146,8 +147,10 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "status" => core::status(shared),
         "session.list" => core::session_list(shared),
         "resources" => core::resources(shared),
+        "session.resume" => core::session_resume(shared, &session, generation.unwrap_or(0)),
         "session.create" => core::session_create(
             shared,
+            text(&request, "kind"),
             int(&request, "rate").unwrap_or(0) as u64,
             int(&request, "history").unwrap_or(0) as u64,
             int(&request, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
@@ -173,12 +176,12 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
 fn stream_op(shared: &Arc<Shared>, sub: &Arc<Sub>, request: &Map<String, Value>, op: &str, rid: &Option<Value>) {
     let reply = |body: Value| sub.push(encode(reply_fields(rid, obj(body))));
     let Some(session) = core::find(shared, text(request, "session")) else { return fail(sub, "unknown_session", rid.as_ref()) };
+    let mut guard = session.lock().unwrap();
     if let Some(g) = int(request, "generation") {
-        if g != 1 {
+        if g != guard.generation as i64 {
             return fail(sub, "stale_generation", rid.as_ref());
         }
     }
-    let mut guard = session.lock().unwrap();
     if op == "unsubscribe" {
         guard.subs.retain(|s| !Arc::ptr_eq(s, sub));
         sub.clear_overflow(&guard.id);
@@ -188,7 +191,7 @@ fn stream_op(shared: &Arc<Shared>, sub: &Arc<Sub>, request: &Map<String, Value>,
     let want_snapshot = request.get("snapshot").and_then(Value::as_bool) == Some(true);
     let (oldest, last) = (guard.oldest(), guard.last_seq());
     let id = guard.id.clone();
-    let mut body = json!({"session": id, "generation": 1});
+    let mut body = json!({"session": id, "generation": guard.generation});
     let valid = oldest <= after + 1 && after <= last;
     if want_snapshot || !valid {
         // the latest screen now, live records after it; a stale cursor is a gap
