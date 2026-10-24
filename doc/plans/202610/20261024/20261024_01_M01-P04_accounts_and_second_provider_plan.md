@@ -1,10 +1,10 @@
 # M01-P04 — Keyring-only credentials, same-provider accounts and a second provider adapter (2026-10-24)
 
-> Status: draft
+> Status: in_progress
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
 > Branch: `phase/M01-P04-accounts-second-provider` (not created; created from the reviewed documentation commit after approval)
 > Motivation: store provider and application secrets only in the OS credential store, run several accounts of one provider side by side without sharing state, and add a second provider behind the adapter contract, before packaging and recovery.
-> Approval: G2 **pending**. Nothing below is approved, built or measured. M01-P01 to M01-P03 gates G3 and G4 pending.
+> Approval: G2 approved 2026-10-24 as drafted. The five decisions below keep their recommendations, except that the owner asked for repeated experiments against the keyring the owner registered; that request is open (see decision 1). M01-P01 to M01-P03 gates G3 and G4 pending. G3 and G4 for this phase pending.
 
 ## Basis recorded from M01-P03
 
@@ -158,4 +158,5 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
 ## Progress
 
 - 2026-10-24: Draft prepared from the M01-P03 evidence and the provider documentation read on
-  this date. No branch, implementation, test, download or experiment exists. G2 pending.
+  this date. No branch, implementation, test, download or experiment existed.
+- 2026-10-24: G2 approved as drafted. No step has run: S01 to S05 are not started. G3 and G4 are pending.

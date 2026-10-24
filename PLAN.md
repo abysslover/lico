@@ -16,7 +16,7 @@ Updated: 2026-10-23
 | Gate | State | Unlocks |
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-23 | Approved milestone scope |
-| G2 phase-plan approval | Approved 2026-10-23 for M01-P01, M01-P02 and M01-P03 | Implementation and experiments for those phases only |
+| G2 phase-plan approval | Approved 2026-10-23 for M01-P01, M01-P02 and M01-P03; approved 2026-10-24 for M01-P04 as drafted | Implementation and experiments for those phases only |
 | G3 inspection acceptance | Pending | An observed acceptance verdict |
 | G4 merge approval | Pending | A reviewed branch merge |
 
