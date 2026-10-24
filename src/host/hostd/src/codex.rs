@@ -107,7 +107,8 @@ pub fn sanitize(text: &str) -> String {
         let code = c as u32;
         if c == '\t' {
             result.push(' ');
-        } else if !(code <= 8 || (0x0b..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)) {
+        } else if !(code <= 8 || (0x0b..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
+            || (0x202a..=0x202e).contains(&code) || (0x2066..=0x2069).contains(&code)) {
             result.push(c);
         }
         i += 1;

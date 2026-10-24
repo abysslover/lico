@@ -17,7 +17,7 @@ MAX_RECORD = 4096
 _CSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _OSC = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 _ESC = re.compile(r"\x1b[@-_]")
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+_CONTROL = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")  # also the bidi overrides that spoof text
 
 APPROVAL_METHODS = ("item/commandExecution/requestApproval", "item/fileChange/requestApproval")
 REFUSED_METHODS = ("item/permissions/requestApproval", "item/tool/call", "item/tool/requestUserInput", "account/chatgptAuthTokens/refresh",

@@ -4,6 +4,9 @@
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QHBoxLayout>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QInputMethod>
 #include <QEventLoop>
 #include <QInputMethodEvent>
@@ -29,6 +32,7 @@
 
 static const int VISIBLE_LINES = 40;
 static const int LINE_HEX = 88;
+static const int LINE_CHARS = 200;
 
 class Mark : public QWidget {
 public:
@@ -199,6 +203,28 @@ static void append_line(long long seq, const std::string &hex)
     mark_seq->set((unsigned)(seq & 0xffffff));
 }
 
+/* text from an agent is shown, never obeyed: control characters and the bidirectional overrides are dropped */
+static QString clean(const QString &text)
+{
+    QString out;
+    for (QChar c : text) {
+        ushort u = c.unicode();
+        if (u < 0x20 || (u >= 0x7f && u <= 0x9f) || (u >= 0x202a && u <= 0x202e) || (u >= 0x2066 && u <= 0x2069)) continue;
+        out.append(c);
+        if (out.size() >= LINE_CHARS) break;
+    }
+    return out;
+}
+
+static void append_text(long long seq, const QString &text)
+{
+    if (!view) return;
+    edit->appendPlainText(clean(text));
+    lines_in_buf = std::min(lines_in_buf + 1, VISIBLE_LINES);
+    cursor = seq;
+    mark_seq->set((unsigned)(seq & 0xffffff));
+}
+
 static void build_view()
 {
     view = new QWidget;
@@ -291,6 +317,14 @@ static void show_session(const std::string &id, long long after, bool has_after)
 
 static void on_snapshot_lines(const char *reply)
 {
+    QJsonObject snapshot = QJsonDocument::fromJson(QByteArray(reply)).object().value("snapshot").toObject();
+    if (snapshot.value("text").toBool()) {
+        for (const QJsonValue &entry : snapshot.value("lines").toArray()) {
+            QJsonArray pair = entry.toArray();
+            if (pair.size() == 2) append_text((long long)pair.at(0).toDouble(), pair.at(1).toString());
+        }
+        return;
+    }
     const char *p = strstr(reply, "\"lines\":[");
     if (!p) return;
     p += 9;
@@ -336,7 +370,10 @@ static void handle_sock_line(const char *line)
         if (!view || !jstr(line, "session", &sess) || sess != cur_session || !jint(line, "seq", &seq)) return;
         if (seq <= cursor) { dups++; return; }
         if (cursor >= 0 && seq != cursor + 1) gaps++;
-        if (jstr(line, "data", &data)) append_line(seq, data);
+        if (strstr(line, "\"text\":")) {
+            QJsonObject rec = QJsonDocument::fromJson(QByteArray(line)).object();
+            if (rec.value("text").isString()) append_text(seq, rec.value("text").toString());
+        } else if (jstr(line, "data", &data)) append_line(seq, data);
         return;
     }
     if (jstr(line, "ev", &ev) && ev == "overflow") {
@@ -381,6 +418,13 @@ static void handle_command(const std::string &line)
     else if (sscanf(line.c_str(), "show %39s", id) == 1) show_session(id, -1, false);
     else if (line.rfind("hide", 0) == 0) { hide_view(); emit_state("hidden"); }
     else if (line.rfind("status", 0) == 0) emit_state("status");
+    else if (line.rfind("lines", 0) == 0) {
+        QJsonArray shown;
+        if (edit) for (const QString &l : edit->toPlainText().split('\n')) shown.append(l);
+        QJsonObject out{{"ev", "lines"}, {"lines", shown}};
+        printf("%s\n", QJsonDocument(out).toJson(QJsonDocument::Compact).constData());
+        fflush(stdout);
+    }
     else if (line.rfind("text", 0) == 0) emit_ime("text", entry ? entry->text() : QString());
     else if (line.rfind("hoststatus", 0) == 0) { print_status = true; send_line("{\"op\":\"status\"}"); }
     else if (line.rfind("load", 0) == 0) send_line("{\"op\":\"status\"}");

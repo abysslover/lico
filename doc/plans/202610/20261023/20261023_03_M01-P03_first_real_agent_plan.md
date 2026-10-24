@@ -173,3 +173,15 @@ need their own plans and approvals.
   with mutations. The environment allowlist was written in S02, so its test was first run against existing
   code (red was observed by mutation, not before code); the purge test was red before the purge existed.
   The log is not fsynced and drafts are lost when a GUI is killed (unchanged).
+- 2026-10-24: S04 done. Provider sessions are text sessions: a record and a snapshot line carry the
+  UTF-8 line itself (optional `text` field on `rec` and `text: true` on the snapshot) instead of hex, and
+  the bidirectional override and isolate controls are now removed along with escapes and controls. Both
+  clients (A2 with serde_json =1.0.154, already used by the host and in the offline cache; C2 with
+  `QJsonDocument`) show these lines, drop control and bidirectional characters again on their own, and
+  have a `lines` command. Two tests (four runs, one per client): a hostile provider turn leaves the
+  clipboard, the window title and the screen untouched, and a stand-in host that sends raw escape
+  sequences is also refused by each client alone; mixed scripts (Latin, accented, CJK, Hebrew, emoji)
+  typed directly and Korean typed through the real input method reach the provider as one turn with the
+  same text and come back displayed. Red was observed by mutation of each client's filter (the client-only
+  half failed with the filter weakened); the round-trip test passed on its first run. Full suite: 52 passed.
+  Not yet measured with this output shape (S05); no real provider turn has run.

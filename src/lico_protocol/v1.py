@@ -53,7 +53,7 @@ SNAPSHOT_BODY = {
     "type": "object",
     "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": -1},
                  "lines": {"type": "array", "items": {"type": "array", "length": 2}}},
-    "optional": {},
+    "optional": {"text": {"type": BOOL}},
 }
 
 REPLIES = {
@@ -111,7 +111,8 @@ ERROR_REPLY = _obj({"v": _V, "ok": {"type": INT, "enum": [0]}, "error": {"type":
                    COMMON_REPLY_OPTIONAL)
 EVENTS = {
     "rec": _obj({"v": _V, "ev": {"type": STR, "enum": ["rec"]}, "session": {"type": STR},
-                 "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": 0}, "data": {"type": STR}}),
+                 "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": 0}, "data": {"type": STR}},
+                {"text": {"type": STR}}),
     "overflow": _obj({"v": _V, "ev": {"type": STR, "enum": ["overflow"]}, "session": {"type": STR}}),
     "input": _obj({"v": _V, "ev": {"type": STR, "enum": ["input"]}, "session": {"type": STR},
                    "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed", "failed"]}}),

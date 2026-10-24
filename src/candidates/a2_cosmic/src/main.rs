@@ -19,6 +19,7 @@ use winit::window::{Window, WindowId};
 
 const VISIBLE_LINES: usize = 40;
 const LINE_HEX: usize = 88;
+const LINE_CHARS: usize = 200;
 const FONT_PX: f32 = 14.0;
 const LINE_HEIGHT: usize = 18;
 const BACKGROUND: u32 = 0xFF10_1418;
@@ -81,6 +82,15 @@ fn json_escape(s: &str) -> String {
         }
     }
     out
+}
+
+/// Text from an agent is shown, never obeyed: control characters (escape, bell,
+/// backspace, carriage return) and the bidirectional overrides are dropped.
+fn clean(text: &str) -> String {
+    text.chars()
+        .filter(|c| !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}'))
+        .take(LINE_CHARS)
+        .collect()
 }
 
 fn emit_ime(kind: &str, text: &str) {
@@ -224,6 +234,17 @@ impl App {
         self.dirty = true; // drawn once when the event queue is drained
     }
 
+    fn append_text(&mut self, seq: i64, text: &str) {
+        let Some(view) = self.view.as_mut() else { return };
+        view.lines.push_back(clean(text));
+        while view.lines.len() > VISIBLE_LINES {
+            view.lines.pop_front();
+        }
+        view.seq_rgb = 0xFF00_0000 | (seq as u32 & 0xFF_FFFF);
+        self.cursor = seq;
+        self.dirty = true;
+    }
+
     /// Send the draft of the visible session as one input with its own request id.
     fn send_draft(&mut self) {
         if self.session.is_empty() || self.input.is_empty() {
@@ -244,6 +265,17 @@ impl App {
     }
 
     fn on_snapshot_lines(&mut self, reply: &str) {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(reply) {
+            let snapshot = &parsed["snapshot"];
+            if snapshot["text"] == true {
+                for entry in snapshot["lines"].as_array().into_iter().flatten() {
+                    if let (Some(seq), Some(text)) = (entry[0].as_i64(), entry[1].as_str()) {
+                        self.append_text(seq, text);
+                    }
+                }
+                return;
+            }
+        }
         let Some(start) = reply.find("\"lines\":[") else { return };
         let mut rest = &reply[start + 9..];
         while let Some(open) = rest.find('[') {
@@ -308,7 +340,12 @@ impl App {
                 if self.cursor >= 0 && seq != self.cursor + 1 {
                     self.gaps += 1;
                 }
-                if let Some(data) = jstr(line, "data") {
+                if line.contains("\"text\":") {
+                    let parsed: Option<serde_json::Value> = serde_json::from_str(line).ok();
+                    if let Some(text) = parsed.as_ref().and_then(|v| v["text"].as_str()) {
+                        self.append_text(seq, text);
+                    }
+                } else if let Some(data) = jstr(line, "data") {
                     self.append_line(seq, data);
                 }
             }
@@ -381,6 +418,11 @@ impl App {
                 self.emit_state("hidden");
             }
             Some("status") => self.emit_state("status"),
+            Some("lines") => {
+                let shown: Vec<String> = self.view.iter().flat_map(|v| v.lines.iter()).map(|l| format!("\"{}\"", json_escape(l))).collect();
+                println!("{{\"ev\":\"lines\",\"lines\":[{}]}}", shown.join(","));
+                let _ = std::io::stdout().flush();
+            }
             Some("text") => emit_ime("text", &self.input),
             Some("stress") => self.stress(),
             Some("hoststatus") => {

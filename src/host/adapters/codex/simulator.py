@@ -7,6 +7,7 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "crash"     exits abruptly after acknowledging the turn
   "slow:N"    N output lines, one every 100 ms, so a turn is still running
   "bad"       malformed, oversize and endless messages
+  "escape"    terminal escapes (clear screen, clipboard write, hyperlink, title, backspaces, bidi override, bell) and a very long line
   "env"       reports the names (never the values) of its environment, its working directory and its mode
   otherwise   echoes the text back, character for character
 """
@@ -102,6 +103,15 @@ def handle(message):
             for k in range(count):
                 scheduled.append((now + 0.1 * (k + 1), ("delta", f"tick {k}\n")))
             scheduled.append((now + 0.1 * (count + 1), ("done", None)))
+        elif text == "escape":
+            esc, bel = chr(27), chr(7)
+            body = ("before\n" + esc + "[2J" + esc + "[H" + "cleared?\n" + esc + "]52;c;aGVsbG8=" + bel + "clip?\n"
+                    + esc + "]8;;http://example.invalid" + esc + "\\link" + esc + "]8;;" + esc + "\\\n"
+                    + "back" + chr(8) * 4 + "spoof\n" + "\u202etxet\u202c\n" + bel + "bell\n" + esc + "]0;pwned" + bel + "title\n"
+                    + "x" * 10000 + "\nvisible after escapes\n")
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "esc", "delta": body})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text == "env":
             iid = f"env-{turn_counter}"
             lines_out = [f"ENV {name}" for name in sorted(os.environ)] + [f"CWD {os.getcwd()}", f"CWDMODE {oct(os.stat('.').st_mode & 0o777)[2:]}"]

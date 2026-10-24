@@ -22,6 +22,10 @@ _X11.XGetPixel.restype = ctypes.c_ulong
 _X11.XGetPixel.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
 _X11.XDestroyImage.argtypes = [ctypes.c_void_p]
 _X11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+_X11.XInternAtom.restype = ctypes.c_ulong
+_X11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+_X11.XGetSelectionOwner.restype = ctypes.c_ulong
+_X11.XGetSelectionOwner.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
 _ALL_PLANES = 0xFFFFFFFFFFFFFFFF
 _ZPIXMAP = 2
 
@@ -42,6 +46,10 @@ class PixelReader:
             return int(_X11.XGetPixel(image, 0, 0)) & 0xFFFFFF
         finally:
             _X11.XDestroyImage(image)
+
+    def selection_owner(self, name: str) -> int:
+        """The window that owns a selection such as CLIPBOARD or PRIMARY (0: nobody)."""
+        return int(_X11.XGetSelectionOwner(self._display, _X11.XInternAtom(self._display, name.encode(), 0)))
 
     def close(self) -> None:
         if self._display:

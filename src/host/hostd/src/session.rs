@@ -287,6 +287,7 @@ impl InputState {
 
 pub struct Session {
     pub id: String,
+    pub text_mode: bool, // records are UTF-8 lines (a provider session), not bytes to show as hex
     pub purged: bool, // the session was deleted: nothing may be written for it again
     pub generation: u64,
     pub producing: bool,
@@ -313,8 +314,12 @@ extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
 }
 
-pub fn rec_line(session: &str, generation: u64, seq: i64, data: &[u8]) -> Arc<Vec<u8>> {
-    encode(obj(json!({"ev": "rec", "session": session, "generation": generation, "seq": seq, "data": hex(data)})))
+pub fn rec_line(session: &str, generation: u64, seq: i64, data: &[u8], text: bool) -> Arc<Vec<u8>> {
+    let mut body = obj(json!({"ev": "rec", "session": session, "generation": generation, "seq": seq, "data": hex(data)}));
+    if text {
+        body.insert("text".into(), Value::String(String::from_utf8_lossy(data).into_owned()));
+    }
+    encode(body)
 }
 
 impl Session {
@@ -322,6 +327,7 @@ impl Session {
         let log = Log::new(dir, &id, retain);
         Session {
             id,
+            text_mode: false,
             purged: false,
             generation: 1,
             codex: None,
@@ -386,7 +392,7 @@ impl Session {
         }
         self.next_seq += 1;
         self.bytes_total += data.len() as i64;
-        let line = rec_line(&self.id, self.generation, seq, &data);
+        let line = rec_line(&self.id, self.generation, seq, &data, self.text_mode);
         if self.window.len() == self.window_cap {
             self.window.pop_front();
         }
@@ -405,9 +411,19 @@ impl Session {
             .window
             .iter()
             .skip(skip)
-            .map(|(seq, data)| json!([seq, format!("{:08} {}", seq, hex(&data[..data.len().min(44)]))]))
+            .map(|(seq, data)| {
+                if self.text_mode {
+                    json!([seq, String::from_utf8_lossy(data)])
+                } else {
+                    json!([seq, format!("{:08} {}", seq, hex(&data[..data.len().min(44)]))])
+                }
+            })
             .collect();
-        obj(json!({"session": self.id, "generation": self.generation, "seq": self.last_seq(), "lines": lines}))
+        let mut body = obj(json!({"session": self.id, "generation": self.generation, "seq": self.last_seq(), "lines": lines}));
+        if self.text_mode {
+            body.insert("text".into(), json!(true));
+        }
+        body
     }
 
     // ---- input bookkeeping: a request id is dispatched at most once within the tracked window

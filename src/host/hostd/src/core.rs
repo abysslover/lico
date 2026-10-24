@@ -308,6 +308,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
 fn start_codex_session(shared: &Arc<Shared>) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
+    session.lock().unwrap().text_mode = true;
     crate::codex::start(shared, &session)?;
     shared.sessions.write().unwrap().push(session.clone());
     Ok(session)
@@ -518,7 +519,7 @@ pub fn resources(shared: &Shared) -> Reply {
 pub fn events(shared: &Shared, session: &str, after: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     let s = found.lock().unwrap();
-    let (oldest, last, mem_start, id, generation) = (s.oldest(), s.last_seq(), s.mem_start(), s.id.clone(), s.generation);
+    let (oldest, last, mem_start, id, generation, text_mode) = (s.oldest(), s.last_seq(), s.mem_start(), s.id.clone(), s.generation, s.text_mode);
     let valid = oldest <= after + 1 && after <= last;
     let gap = |s: &Session| {
         Ok(obj(json!({"session": s.id, "generation": s.generation, "gap": true, "from": s.last_seq() + 1,
@@ -543,7 +544,13 @@ pub fn events(shared: &Shared, session: &str, after: i64) -> Reply {
     };
     let events: Vec<Value> = records
         .iter()
-        .map(|(seq, data)| json!({"v": 1, "ev": "rec", "session": id, "generation": generation, "seq": seq, "data": payload::hex(data)}))
+        .map(|(seq, data)| {
+            let mut event = json!({"v": 1, "ev": "rec", "session": id, "generation": generation, "seq": seq, "data": payload::hex(data)});
+            if text_mode {
+                event["text"] = Value::String(String::from_utf8_lossy(data).into_owned());
+            }
+            event
+        })
         .collect();
     Ok(obj(json!({"session": id, "generation": generation, "gap": false, "from": after + 1, "events": events})))
 }
@@ -552,14 +559,17 @@ pub fn events(shared: &Shared, session: &str, after: i64) -> Reply {
 /// records come from the log in chunks (outside the session lock), the recent ones
 /// from the in-memory window, and the join happens under the lock.
 pub fn replay(session: &Arc<Mutex<Session>>, sub: &Arc<Sub>, id: &str, mut cursor: i64) {
-    let generation = session.lock().unwrap().generation;
+    let (generation, text_mode) = {
+        let s = session.lock().unwrap();
+        (s.generation, s.text_mode)
+    };
     loop {
         let (mem_start, view): (i64, LogView) = {
             let mut s = session.lock().unwrap();
             let mem_start = s.mem_start();
             if cursor + 1 >= mem_start {
                 for (seq, data) in s.window_after(cursor) {
-                    if sub.offer(id, rec_line(id, generation, seq, &data)) {
+                    if sub.offer(id, rec_line(id, generation, seq, &data, text_mode)) {
                         return;
                     }
                 }
@@ -582,7 +592,7 @@ pub fn replay(session: &Arc<Mutex<Session>>, sub: &Arc<Sub>, id: &str, mut curso
             }
         };
         for (seq, data) in chunk {
-            if sub.offer(id, rec_line(id, generation, seq, &data)) {
+            if sub.offer(id, rec_line(id, generation, seq, &data, text_mode)) {
                 return;
             }
             cursor = seq;
