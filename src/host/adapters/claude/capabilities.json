@@ -98,9 +98,19 @@
    "the three host records of the turn were `[session started] model=...`, the text line and `[turn completed]`"
   ],
   "not_observed": [
-   "any permission request (the turn needed none; 0 approvals were raised), so the subtype, the control_request shape and the response shape are still unverified",
+   "any permission request (none was raised in either run), so the subtype, the control_request shape and the response shape are still unverified",
    "whether the provider replayed the user message (the input's final state was not read), so the acknowledgment by uuid is still unverified",
    "resume after the process died, a failing or absent key helper, any failure or limit message, tool_result content"
-  ]
+  ],
+  "second_run": {
+   "when": "2026-10-24 16:22, prompt `Run the command: ls`, 25 records",
+   "observed": [
+    "a Bash tool_use block was recorded as `$ ls`, a tool_result with is_error as `[tool error]` followed by `> ` lines, and several assistant messages in one turn each as lines",
+    "the owner's own settings were loaded (the unbound session used the owner's config directory) and their PreToolUse hooks ran; with the private HOME the hooks' scripts were not found and the provider reported the tool error to the model, which stopped without bypassing them. This confirms that an unbound session applies the owner's settings and hooks"
+   ],
+   "not_observed": [
+    "any permission request: the hooks failed before the permission flow, and `ls` is in the provider's read-only command set that needs no approval anyway"
+   ]
+  }
  }
 }

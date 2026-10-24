@@ -47,7 +47,8 @@ def _pinned(provider: str) -> str:
     return json.loads(record.read_text())["version"]["cli"]
 
 
-def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: str = "codex", allow_unpinned: bool = False) -> dict:
+def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: str = "codex", allow_unpinned: bool = False,
+        config_dir: str | None = None) -> dict:
     if not 1 <= turns <= MAX_TURNS:
         raise SystemExit(f"--turns must be between 1 and {MAX_TURNS}")
     binary = str(Path(provider_bin).resolve()) if provider_bin else shutil.which(provider)   # the provider runs in a private directory
@@ -74,7 +75,8 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: 
         if simulated:                                 # a dry run never points anything at the owner's provider home
             keep_home = str(Path(directory) / "provider_own_home")
         else:
-            keep_home = os.environ.get(variable) or str(Path.home() / PROVIDERS[provider]["default_home"])
+            # the provider's own config directory: the one given, else the owner's (whose settings and hooks then apply)
+            keep_home = config_dir or os.environ.get(variable) or str(Path.home() / PROVIDERS[provider]["default_home"])
         overrides = {"HOME": str(provider_home), variable: keep_home}
         from .p02 import start
 
@@ -146,6 +148,6 @@ def main(args) -> int:
     if not args.accept_billing:
         print("A real turn can be billed to your account. Nothing was run; pass --accept-billing to run it.", file=sys.stderr)
         return 2
-    result = run(Path(args.out), args.turns, args.prompt, args.provider_bin, args.provider, args.allow_unpinned_version)
+    result = run(Path(args.out), args.turns, args.prompt, args.provider_bin, args.provider, args.allow_unpinned_version, args.config_dir)
     print(json.dumps({k: v for k, v in result.items() if k != "turns"} | {"finished": [t.get("finished") for t in result["turns"]]}, ensure_ascii=False))
     return 0 if result["turns"] and all(t.get("finished") == "[turn completed]" for t in result["turns"]) else 1

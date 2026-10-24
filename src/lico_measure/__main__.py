@@ -314,6 +314,7 @@ def main() -> int:
     real.add_argument("--provider-bin", default=None, help="another program speaking the same protocol (a free dry run)")
     real.add_argument("--accept-billing", action="store_true")
     real.add_argument("--provider", choices=["codex", "claude"], default="codex")
+    real.add_argument("--config-dir", default=None, help="the provider's own config directory to use instead of yours (a fresh one has none of your settings or hooks; sign in there once with the provider's own command)")
     real.add_argument("--allow-unpinned-version", action="store_true", help="run although the installed version is not the one the adapter is pinned to")
     real.set_defaults(func=cmd_real_turn)
     p04 = sub.add_parser("p04", help="run the M01-P04 scenarios (credential store, accounts, the Claude adapter)")

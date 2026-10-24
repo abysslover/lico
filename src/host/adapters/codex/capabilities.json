@@ -148,6 +148,16 @@
    "any approval request (the turn needed none; 0 raised), so the real approval events and the answers to them are unverified",
    "a command run under the read-only sandbox (the warning that its Linux sandbox needs user namespaces on this host is unconfirmed either way)",
    "steering a running turn, resuming a thread after the process died, any failure or limit message, tool output events"
-  ]
+  ],
+  "second_run": {
+   "when": "2026-10-24 16:23, prompt `Run the command: ls`, 6 records",
+   "observed": [
+    "a real approval request for a command was mapped to one host approval; the real-turn command's `deny` reached the provider, which reported the command as rejected by the user and finished the turn (`$ /bin/bash -lc ls`, `[exit unknown]`, then the model's explanation)",
+    "under the `untrusted` policy even `ls` asked for approval"
+   ],
+   "not_observed": [
+    "the allow path (a command actually run), the text of the approval prompt (it is not in the transcript), a command under the read-only sandbox"
+   ]
+  }
  }
 }

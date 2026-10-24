@@ -245,3 +245,7 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
 - 2026-10-24: The owner also ran one real Codex turn (0.164.0) through the adapter: it completed (turn started, a two-line answer,
   turn completed; no approval). Recorded in the Codex capability record; real approvals, a command under the sandbox, steering,
   resume and failures remain unverified.
+- 2026-10-24: Second real runs with a tool prompt. Codex: a real approval request was mapped, the denial reached the provider (the
+  real approval event and decline path are verified; the allow path is not). Claude Code: no permission request (the owner's hooks
+  failed under the private HOME before the permission flow). The real-turn command gained `--config-dir` to use a fresh provider
+  config directory instead of the owner's.

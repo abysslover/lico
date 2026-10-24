@@ -219,6 +219,16 @@ open risks. M01-P05 (measured resources, failure recovery, packaging, owner end-
    failures are unverified. Both runs wrote to the same output directory, so the second overwrote the first's files; the Claude
    files in the bundle's `owner_real_turn/` were reconstructed from what was read before (marked in the file), the Codex ones are
    the originals. Give each run its own `--out` directory.
+   **Second runs, with the prompt `Run the command: ls` (16:22 Claude, 16:23 Codex).** Codex raised a real approval request: it was
+   mapped to one host approval, the command's denial reached the provider, which said the command was rejected by the user and
+   finished the turn (this verifies the real approval event and the decline path; the allow path and the prompt text are still
+   unobserved). Claude Code raised no permission request: your own Claude settings were loaded and their PreToolUse hooks failed
+   because the command runs the provider with an empty private `HOME` (the hooks live under `$HOME/.claude/hooks`), so the tool
+   call failed before any permission flow, and `ls` needs no approval in Claude Code anyway. The model reported the failure and
+   did not bypass the hooks. That confirms the stated risk that an unbound session applies the owner's settings and hooks. A fresh
+   config directory avoids it: `--config-dir PATH` runs the provider with that directory instead of yours (sign in there once with
+   the provider's own command, which is exactly an account's private home), and a prompt that needs approval is
+   `--prompt "Create a file named probe.txt containing hello"`.
    **Real turns (owner-run).** `cd src && PYTHONPATH=. python3 -m lico_measure real-turn --provider claude --accept-billing --turns 1 --out DIR`
    (and `--provider codex`). It refuses an installed version other than the pinned one (Claude Code 2.1.310, Codex 0.164.0), denies
    every approval, writes an owner-only transcript and receipt, runs the provider with an empty private `HOME` and the provider's
