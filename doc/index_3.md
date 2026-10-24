@@ -10,6 +10,6 @@
 | [M01-P05 plan](plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | Workflow, recovery, resource acceptance and the single executable; G2 approved |
 | [M01-P05 report](reports/202610/20261024/20261024_03_M01-P05_workflow_recovery_and_single_executable_report.md) | Recovery, first view, single executable, measurements; the owner's own use and inspection pending |
 | [Owner end-to-end guide](manual_end_to_end.md) | The steps the owner runs with real accounts |
-| [M01-P06 plan](plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | Session creation, account management and provider login inside the window; draft, G2 pending |
+| [M01-P06 plan](plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | Session creation, account management and provider login inside the window; G2 approved |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

@@ -1,8 +1,9 @@
 # M01-P06 — Session creation, account management and provider login inside the window (2026-10-24)
 
-> Status: draft (G2 pending: nothing below may be built before the owner approves it)
+> Status: in_progress
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
-> Branch: `phase/M01-P06-in-window-login` (not created)
+> Branch: `phase/M01-P06-in-window-login`
+> Approval: G2 approved 2026-10-24 as drafted with every recommendation. G3 and G4 are pending, as are G3 and G4 of M01-P01 to M01-P05.
 > Motivation: after M01-P05 the owner ran the executable and found the window pointless: it lists sessions but cannot create one or sign in to a provider; both need the command line. A workbench whose window cannot start work does not meet its purpose. This phase makes the window sufficient for the everyday path.
 
 ## Basis
@@ -91,3 +92,4 @@ revoking a login at the provider, P07 and later.
 ## Progress
 
 - 2026-10-24: Draft prepared after the owner's use of the P05 executable. No branch, implementation, test, download or experiment exists. G2 pending.
+- 2026-10-24: G2 approved as drafted with every recommendation. S01 to S04 are not started.
