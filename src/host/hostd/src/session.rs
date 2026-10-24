@@ -310,6 +310,7 @@ pub struct Session {
     pub agent_pid: u32,
     pub account: Option<String>, // the account this session is bound to for its whole life (until a rebind of a dead session)
     pub credential_generation: u64,
+    pub account_issue: Option<String>, // what the provider reported about the account (authentication, limit); cleared by a successful turn
     pub process_group: bool, // the process leads its own group (a provider and its helpers): stop the whole group
     pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
@@ -356,6 +357,7 @@ impl Session {
             agent_pid: 0,
             account: None,
             credential_generation: 0,
+            account_issue: None,
             process_group: false,
             approval_counter: 0,
             input_tx: None,

@@ -107,6 +107,29 @@ impl Accounts {
         self.save().map_err(|_| "busy")
     }
 
+    /// True when the provider has accounts: a session of that provider then never runs unbound.
+    pub fn any_for(&self, provider: &str) -> bool {
+        self.list.iter().any(|a| a.provider == provider)
+    }
+
+    /// Remove an account; its home is removed too unless `keep_home`. A default that pointed at it is
+    /// cleared, never handed to another account.
+    pub fn remove(&mut self, id: &str, keep_home: bool) -> Result<(), &'static str> {
+        let position = self.list.iter().position(|a| a.id == id).ok_or("unknown_account")?;
+        let account = self.list.remove(position);
+        if self.defaults.get(&account.provider) == Some(&account.id) {
+            self.defaults.remove(&account.provider);
+        }
+        if self.save().is_err() {
+            self.list.insert(position, account);
+            return Err("busy");
+        }
+        if !keep_home {
+            let _ = std::fs::remove_dir_all(self.dir.join(id));
+        }
+        Ok(())
+    }
+
     pub fn credential_ref(&self, id: &str) -> Option<String> {
         self.get(id).and_then(|a| a.credential_ref.clone())
     }

@@ -31,6 +31,10 @@ def lines_of(received):
     return received.read_text().splitlines() if received.exists() else []
 
 
+def argv_of(received):
+    return [json.loads(l[5:]) for l in lines_of(received) if l.startswith("ARGV ")]
+
+
 def sent_users(received):
     """The user messages the provider received from the host, parsed."""
     out = []

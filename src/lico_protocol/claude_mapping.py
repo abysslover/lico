@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from .codex_mapping import MAX_PROMPT, MAX_RECORD, sanitize
 
 MAX_RESULT_LINES = 20
+ACCOUNT_ISSUES = ("authentication_failed", "oauth_org_not_allowed", "account_on_hold", "billing_error", "rate_limit")   # the api_retry error categories the documentation lists that concern the account
+STATUS_ISSUES = {401: "authentication_failed", 403: "authentication_failed", 402: "billing_error", 429: "rate_limit"}   # assumed mapping of a result's api_error_status (unverified)
 PERMISSION_SUBTYPE = "can_use_tool"          # assumed, not documented: listed as unverified
 
 
@@ -70,12 +72,17 @@ def map_stream(messages: list[dict]) -> Mapped:
                     for line in _text_of(block.get("content")).split("\n")[:MAX_RESULT_LINES]:
                         _emit(out, "> " + line.rstrip("\r"))
         elif kind == "result":
+            if message.get("is_error") and message.get("api_error_status") in STATUS_ISSUES:
+                _emit(out, "[account issue] " + STATUS_ISSUES[message["api_error_status"]])
             if message.get("is_error") or message.get("subtype") != "success":
                 _emit(out, "[turn failed] " + str(message.get("subtype", "")))
                 for error in message.get("errors", []) or []:
                     _emit(out, "[error] " + str(error))
             else:
                 _emit(out, "[turn completed]")
+        elif kind == "system" and message.get("subtype") == "api_retry":
+            if message.get("error") in ACCOUNT_ISSUES:
+                _emit(out, "[account issue] " + message["error"])
         elif kind == "control_request":
             request = message.get("request", {})
             if request.get("subtype") == PERMISSION_SUBTYPE:

@@ -10,6 +10,7 @@ user message:
   "env"       reports the names (never the values) of its environment
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
+  "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
 """
@@ -125,6 +126,12 @@ def turn(message):
         else:
             say("no helper")
         out(result())
+    elif text == "authfail":
+        out({"type": "system", "subtype": "api_retry", "attempt": 3, "max_retries": 3, "retry_delay_ms": 0, "error_status": 401,
+             "error": "authentication_failed", "uuid": str(uuid.uuid4()), "session_id": session})
+        res = result(ok=False, subtype="error_during_execution")
+        res.update({"api_error_status": 401, "errors": ["authentication failed"]})
+        out(res)
     elif text == "bad":
         sys.stdout.write("this is not json\n")
         out({"type": "assistant", "message": "not an object"})

@@ -18,9 +18,9 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 20] = [
+pub const OPS: [&str; 22] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential",
+    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -270,6 +270,9 @@ fn status_entry(s: &Session) -> Value {
         entry["account"] = json!(account);
         entry["credential_generation"] = json!(s.credential_generation);
     }
+    if let Some(issue) = &s.account_issue {
+        entry["account_issue"] = json!(issue);
+    }
     if !s.approvals.is_empty() {
         entry["approvals"] = Value::Array(s.approvals.iter().map(|(n, p)| json!({"approval_id": n, "prompt": p})).collect());
     }
@@ -335,7 +338,12 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
             Some(a) if a.provider == kind => Ok(Some((a.id.clone(), a.credential_generation))),
             _ => Err("unknown_account"),
         },
-        ("codex" | "claude", None) => Ok(accounts.default_for(kind).map(|a| (a.id.clone(), a.credential_generation))),
+        ("codex" | "claude", None) => match accounts.default_for(kind) {
+            Some(a) => Ok(Some((a.id.clone(), a.credential_generation))),
+            // accounts exist but none is the default: never fall back to an unbound session (the host's own provider home)
+            None if accounts.any_for(kind) => Err("unknown_account"),
+            None => Ok(None),
+        },
         (_, Some(_)) => Err("bad_request"),
         (_, None) => Ok(None),
     }
@@ -347,7 +355,83 @@ pub fn account_create(shared: &Shared, provider: &str, label: &str) -> Reply {
 }
 
 pub fn account_list(shared: &Shared) -> Reply {
-    Ok(obj(json!({"accounts": shared.accounts.lock().unwrap().entries()})))
+    let mut entries = shared.accounts.lock().unwrap().entries();
+    let sessions: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
+    for entry in entries.iter_mut() {
+        let id = entry["account"].as_str().unwrap_or("").to_string();
+        let mut affected: Vec<(String, String)> = Vec::new();
+        for session in &sessions {
+            let s = session.lock().unwrap();
+            if s.account.as_deref() == Some(id.as_str()) {
+                if let Some(issue) = &s.account_issue {
+                    affected.push((s.id.clone(), issue.clone()));
+                }
+            }
+        }
+        if let Some((_, issue)) = affected.first() {
+            entry["issue"] = json!(issue);
+            entry["issue_sessions"] = json!(affected.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
+        }
+        entry["usage"] = Value::Null; // no provider source reports usage yet: unknown is not zero
+    }
+    Ok(obj(json!({"accounts": entries})))
+}
+
+fn sessions_of(shared: &Shared, account: &str) -> Vec<Arc<Mutex<Session>>> {
+    let all: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
+    all.into_iter().filter(|s| s.lock().unwrap().account.as_deref() == Some(account)).collect()
+}
+
+/// The sessions bound to an account, named before anything is removed.
+pub fn account_affected(shared: &Shared, account: &str) -> Reply {
+    shared.accounts.lock().unwrap().get(account).ok_or("unknown_account")?;
+    let entries: Vec<Value> = sessions_of(shared, account).iter().map(|s| {
+        let s = s.lock().unwrap();
+        json!({"session": s.id, "state": state_name(&s)})
+    }).collect();
+    Ok(obj(json!({"account": account, "sessions": entries})))
+}
+
+/// Remove an account. `detach` leaves its sessions running (their histories and work stay, and the account's
+/// home is kept for them); `end` purges them first. Removing the local record and the key is one outcome;
+/// revoking the login at the provider is another and is not performed here.
+pub fn account_remove(shared: &Arc<Shared>, account: &str, sessions: &str) -> Reply {
+    let (reference, home_exists) = {
+        let accounts = shared.accounts.lock().unwrap();
+        accounts.get(account).ok_or("unknown_account")?;
+        (accounts.credential_ref(account), accounts.homes(account).is_some())
+    };
+    let affected: Vec<(String, u64)> = sessions_of(shared, account).iter().map(|s| {
+        let s = s.lock().unwrap();
+        (s.id.clone(), s.generation)
+    }).collect();
+    // the key goes first: if the credential store cannot be reached, nothing is removed
+    let mut credential = "none";
+    if let Some(reference) = &reference {
+        let mut command = Command::new(&shared.cfg.cred_bin);
+        command.arg("--data-dir").arg(&shared.cfg.cred_dir).args(["remove", "--ref", reference]).env_clear().stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        for key in ["PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        match command.status() {
+            Ok(status) if status.success() => credential = "removed",
+            _ => return Err("credential_store_unavailable"),
+        }
+    }
+    if sessions == "end" {
+        for (id, generation) in &affected {
+            let _ = session_purge(shared, id, *generation as i64);
+        }
+    }
+    let keep_home = sessions == "detach" && !affected.is_empty();
+    shared.accounts.lock().unwrap().remove(account, keep_home)?;
+    Ok(obj(json!({
+        "account": account, "metadata_removed": true, "credential": credential, "remote_revocation": "not_performed",
+        "home": if !home_exists { "none" } else if keep_home { "kept" } else { "removed" },
+        "affected": affected.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
+    })))
 }
 
 /// Attach a credential of the store to an account: it must exist, belong to this account and its provider.

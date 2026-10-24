@@ -14,7 +14,7 @@ PROTOCOL = 1
 MAX_REQUEST = 4096
 ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "version_unsupported", "too_large",
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
-          "unknown_account")
+          "unknown_account", "credential_store_unavailable")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -41,6 +41,8 @@ INVENTORY = {
     "account.default": {"state": "host", "mutates": True},
     "session.rebind": {"state": "host", "mutates": True},
     "account.credential": {"state": "host", "mutates": True},
+    "account.affected": {"state": "host", "mutates": False},
+    "account.remove": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -72,7 +74,7 @@ REPLIES = {
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
                      "bytes_total": {"type": INT, "minimum": 0}},
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
-                     "account": {"type": STR}, "credential_generation": {"type": INT, "minimum": 1},
+                     "account": {"type": STR}, "account_issue": {"type": STR}, "credential_generation": {"type": INT, "minimum": 1},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
@@ -115,8 +117,16 @@ REPLIES = {
         "type": "object",
         "required": {"account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]},
                      "label": {"type": STR, "max_length": 40}, "default": {"type": BOOL},
-                     "credential_generation": {"type": INT, "minimum": 1}, "has_credential": {"type": BOOL}},
+                     "credential_generation": {"type": INT, "minimum": 1}, "has_credential": {"type": BOOL},
+                     "usage": {"type": "null"}},
+        "optional": {"issue": {"type": STR}, "issue_sessions": {"type": "array", "items": {"type": STR}}}}}}, COMMON_REPLY_OPTIONAL),
+    "account.affected": _obj({"v": _V, "ok": _OK, "account": {"type": STR}, "sessions": {"type": "array", "items": {
+        "type": "object", "required": {"session": {"type": STR}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]}},
         "optional": {}}}}, COMMON_REPLY_OPTIONAL),
+    "account.remove": _obj({"v": _V, "ok": _OK, "account": {"type": STR}, "metadata_removed": {"type": BOOL},
+                            "credential": {"type": STR, "enum": ["removed", "none"]}, "remote_revocation": {"type": STR, "enum": ["not_performed"]},
+                            "home": {"type": STR, "enum": ["kept", "removed", "none"]}, "affected": {"type": "array", "items": {"type": STR}}},
+                           COMMON_REPLY_OPTIONAL),
     "account.default": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
     "account.credential": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),
@@ -160,6 +170,8 @@ REQUESTS = {
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
                             "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True}}, _COMMON_REQ),
     "account.list": _obj({}, _COMMON_REQ),
+    "account.affected": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
+    "account.remove": _obj({"account": {"type": STR, "max_length": 64}, "sessions": {"type": STR, "enum": ["detach", "end"]}}, _COMMON_REQ),
     "account.credential": _obj({"account": {"type": STR, "max_length": 64}, "credential_ref": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.default": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.list": _obj({}, _COMMON_REQ),

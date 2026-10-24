@@ -39,6 +39,8 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `account.list` | host | no | the accounts with provider, label, whether each is its provider's default and its credential generation |
 | `account.default` | host | yes | make an account its provider's default; this affects only sessions created afterwards |
 | `account.credential` | host | yes | attach a credential of the credential store to an account (its `ref` from `lico-cred`, which must belong to this account and its provider; otherwise `bad_request`); the account's credential generation rises; a Claude session of that account gets its key only through a helper that reads the keyring |
+| `account.affected` | host | no | the sessions bound to an account with their states, named before anything is removed |
+| `account.remove` | host | yes | remove an account; `sessions` must be chosen: `detach` leaves its sessions running (histories and work stay, the account's home is kept for them) and `end` purges them first; the reply states the separate outcomes: the local record (`metadata_removed`), the key (`credential`: `removed` or `none`), the home (`kept`, `removed`, `none`) and `remote_revocation` (always `not_performed`: revoking a login is the provider's own logout); `credential_store_unavailable` when a key exists and the credential store cannot be reached (nothing is removed then); a default that pointed at the account is cleared, never handed to another account |
 | `session.rebind` | host | yes | move a session whose provider process is gone to another account as a new thread under a new generation; refused with `busy` while the session is running, even when idle (a provider holds its account's login); `unknown_account` for an account that does not exist or belongs to another provider |
 | `session.list` | host | no | id, generation, state (`running`, `exited` or `disconnected`) and last sequence of every session |
 | `input` | host | yes | send text to a session's agent: needs the target generation and a client request id; the reply and later `input` events give the state `accepted`, `submitted` (written to the agent) and `observed` (the agent acted on it) separately |
@@ -143,3 +145,12 @@ has a private workspace directory named by its session id under the host's works
 which is the provider's working directory. The durable log of a provider session holds conversation
 content: it is sensitive, owner-only (0700 directory, 0600 files), retained by record count and removed
 by `session.purge`; it is never uploaded and the host has no telemetry.
+
+
+## Accounts and failures (M01-P04)
+
+A provider failure that concerns the account (authentication failed, organization not allowed, account on hold, billing, rate limit) is
+recorded as `[account issue] CATEGORY`, shown on the session (`account_issue` in `status`) and against the account (`issue`,
+`issue_sessions` in `account.list`), and cleared by the next successful turn. Nothing is retried under another account or another
+authentication mode, a restart keeps the binding, and a session created while the provider has accounts but no default is refused
+(`unknown_account`) instead of running unbound. Usage is `null` (unknown), never zero.

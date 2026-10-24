@@ -27,6 +27,7 @@ const MAX_PROMPT: usize = 200;
 const MAX_RESULT_LINES: usize = 20;
 const MAX_TRACKED_INPUTS: usize = 1024; // user messages written and not yet acknowledged
 const MAX_REQUEST_INPUT: usize = 16 * 1024; // a permission request whose input is larger is refused, not held
+const ACCOUNT_ISSUES: [&str; 5] = ["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "billing_error", "rate_limit"];
 const PERMISSION_SUBTYPE: &str = "can_use_tool"; // assumed: the documentation does not state it (unverified)
 
 extern "C" {
@@ -289,7 +290,27 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
                 }
             }
         }
+        Some("system") if message["subtype"] == "api_retry" => {
+            if let Some(issue) = message["error"].as_str().filter(|e| ACCOUNT_ISSUES.contains(e)) {
+                s.account_issue = Some(issue.to_string());
+                record(&mut s, &format!("[account issue] {issue}"));
+            }
+        }
         Some("result") => {
+            // an authentication or limit failure is shown against the account; nothing is retried under another one
+            let status_issue = match message["api_error_status"].as_i64() {
+                Some(401) | Some(403) => Some("authentication_failed"),
+                Some(402) => Some("billing_error"),
+                Some(429) => Some("rate_limit"),
+                _ => None,
+            };
+            if let (true, Some(issue)) = (message["is_error"] == true, status_issue) {
+                s.account_issue = Some(issue.to_string());
+                record(&mut s, &format!("[account issue] {issue}"));
+            }
+            if message["is_error"] != true && message["subtype"] == "success" {
+                s.account_issue = None;
+            }
             if message["is_error"] == true || message["subtype"] != "success" {
                 record(&mut s, &format!("[turn failed] {}", clip(message["subtype"].as_str().unwrap_or(""), 60)));
                 for error in message["errors"].as_array().into_iter().flatten().take(MAX_RESULT_LINES) {

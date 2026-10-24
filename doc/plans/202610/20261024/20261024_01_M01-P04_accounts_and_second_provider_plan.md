@@ -219,3 +219,14 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   version other than the pinned one. Two tests; mutations caught: no acknowledgment, resume without
   `--resume`, a wrong request id in an answer, and records cut to one line per text block. No real Claude Code
   turn has run.
+- 2026-10-24: S04 done. A provider failure that concerns the account is recorded, shown against the account and
+  the session and cleared by the next successful turn; nothing switches account or authentication mode, a
+  restart keeps the binding and the same key helper, usage is `null`, and a provider that has accounts but no
+  default refuses a new session instead of running unbound (a removal had exposed that silent fallback to the
+  host's own provider home). `account.affected` names the sessions of an account; `account.remove` requires a
+  choice (`detach` keeps running work and histories and the account's home; `end` purges its sessions), removes
+  the key and the record, leaves other accounts, histories and work alone, and reports the local removal, the key
+  and `remote_revocation: not_performed` as separate outcomes; it removes nothing when the credential store is
+  unreachable. Two tests; mutations caught: the silent fallback, `detach` ending sessions, the home always
+  removed, an issue never cleared. The failure categories come from the documented `api_retry` event; the
+  mapping of a result's `api_error_status` is an assumption (unverified). Codex has no failure mapping yet.
