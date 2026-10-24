@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import queue
@@ -70,9 +71,11 @@ class Xvfb:
         os.close(write_end)
         with os.fdopen(read_end) as handle:
             self.display = ":" + handle.readline().strip()
+        atexit.register(self.stop)      # a run that dies still takes its own display with it
 
     def stop(self) -> None:
-        self.proc.kill()
+        if self.proc.poll() is None:
+            self.proc.kill()
         self.proc.wait()
 
 

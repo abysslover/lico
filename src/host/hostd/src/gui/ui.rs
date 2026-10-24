@@ -42,6 +42,7 @@ pub struct Row {
 #[derive(Default)]
 pub struct UiState {
     pub enabled: bool,
+    pub markers: bool,
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>,
     pub list_sig: String,
@@ -557,6 +558,11 @@ impl App {
             buffer.set_scroll(Scroll::default());
             buffer.set_size(Some(main_w as f32), Some(height as f32));
             buffer.shape_until_scroll(fs, true);
+            // lines put in by hand are not all laid out by the call above (new lines in front of a reused one stayed unshaped and
+            // the whole text vanished): every line of the screenful is laid out here
+            for i in 0..buffer.lines.len() {
+                buffer.line_layout(fs, i);
+            }
         };
         let view = self.view.get_or_insert_with(|| {
             // no session selected yet: a text buffer still carries the header and the draft
@@ -593,8 +599,11 @@ impl App {
         self.ui.deny_rect = approval_y.map(|y| [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh]);
         let Ok(mut buf) = surface.buffer_mut() else { return };
         buf.fill(BACKGROUND);
-        fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
-        fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
+        if self.ui.markers {
+            // two 16-pixel squares (session and sequence colour) that the pixel-latency harness reads; the product window has none
+            fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
+            fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
+        }
         // the list panel: its own column, its own background, the selected row marked
         for y in 0..height {
             let idx = y * width + list_w - 1;

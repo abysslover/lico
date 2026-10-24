@@ -728,7 +728,9 @@ pub fn run(args: Vec<String>) {
                 break;
             }
         }
-        let _ = proxy.send_event(Ev::Cmd("quit".into()));
+        if !product {
+            let _ = proxy.send_event(Ev::Cmd("quit".into())); // the measurement client ends with its input; the window of a person does not
+        }
     });
     let ui_mode = product || args.iter().any(|a| a == "--ui");
     if ui_mode {
@@ -745,7 +747,7 @@ pub fn run(args: Vec<String>) {
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }
