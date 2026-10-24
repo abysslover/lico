@@ -8,4 +8,4 @@
 | [Future idea: chat store full-text index](design/202610/20261024/00001_future_ideas/chat_store_full_text_index.md) | The owner's idea of an updatable compressed full-text index for conversations; not planned |
 | [M01-P04 report](reports/202610/20261024/20261024_02_M01-P04_accounts_and_second_provider_report.md) | Credential store, accounts and the second provider against simulators and a throwaway keyring; inspection verdict pending |
 
-Back to the [first index page](README.md) or the [second](index_2.md).
+Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

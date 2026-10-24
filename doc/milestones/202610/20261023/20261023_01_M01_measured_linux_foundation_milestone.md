@@ -53,7 +53,7 @@ informs this division; it does not establish runtime compatibility.
 | M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | [Plan](../../../plans/202610/20261023/20261023_02_M01-P02_persistent_host_control_surface_plan.md) | [Report](../../../reports/202610/20261023/20261023_02_M01-P02_persistent_host_report.md) | Local bundle, verdict pending | None | in_review |
 | M01-P03 | One real supported agent, explicit target/input/approval/reconnect and Unicode/IME evidence | [Plan](../../../plans/202610/20261023/20261023_03_M01-P03_first_real_agent_plan.md) | [Report](../../../reports/202610/20261024/20261024_01_M01-P03_first_real_agent_report.md) | Local bundle, verdict pending | None | in_review |
 | M01-P04 | OS-keyring-only authentication, verified same-provider accounts and a second provider adapter | [Plan](../../../plans/202610/20261024/20261024_01_M01-P04_accounts_and_second_provider_plan.md) | [Report](../../../reports/202610/20261024/20261024_02_M01-P04_accounts_and_second_provider_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P05 | Measured resources, failure recovery, public-clone Linux packaging and owner end-to-end use | Not drafted; depends on P04 | Not produced | Not produced | None | not_started |
+| M01-P05 | Measured resources, failure recovery, public-clone Linux packaging and owner end-to-end use | [Plan](../../../plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) (draft) | Not produced | Not produced | None | draft |
 
 Phases run sequentially. Future plans are written from earlier evidence and need
 separate approval. A later provider that cannot meet storage or isolation rules
