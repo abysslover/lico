@@ -167,16 +167,13 @@ commit, the binary hashes and the workload. Open `index.html`.
 """
 
 
-def build(raw_dirs: list[Path], p02: dict, p03: dict, shots: dict, screens_dir: Path, out: Path, command: str, commit: str,
+def build(raw_dirs: list[Path], p02: dict, p03: dict, shots: dict, out: Path, command: str, commit: str,
           receipts: list[dict]) -> None:
-    import shutil
-
     raw: dict = {"candidates": {}}
     for raw_dir in raw_dirs:
         for candidate, experiments in json.loads((raw_dir / "raw.json").read_text())["candidates"].items():
             raw["candidates"].setdefault(candidate, {}).update(experiments)
     out.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(screens_dir, out / "screens", dirs_exist_ok=True)
     (out / "index.html").write_text(render(raw, p02, p03, shots, receipts[-1]))
     (out / "report.json").write_text(json.dumps({"p02_text": p02, "p03": p03, "gui_experiments": raw["candidates"]}, indent=1, ensure_ascii=False))
     (out / "README.md").write_text(README)

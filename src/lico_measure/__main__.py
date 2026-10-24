@@ -218,7 +218,7 @@ def cmd_p03_bundle(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     shots = screens(out / "screens")
     build([Path(p) for p in args.raw], json.loads((Path(args.p02) / "p02.json").read_text()),
-          json.loads((Path(args.p03) / "p03.json").read_text()), shots, out / "screens", out,
+          json.loads((Path(args.p03) / "p03.json").read_text()), shots, out,
           "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
     return 0
 
