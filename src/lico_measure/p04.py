@@ -307,7 +307,7 @@ def accounts_host_memory(repetitions: int = 3) -> dict:
     from .p02 import ProtoConn, _host_rss
     from .report import build_measurement
 
-    rows = {"0 accounts, 0 sessions": (0, 0), "10 accounts, 0 sessions": (10, 0), "100 accounts, 0 sessions": (100, 0), "10 accounts, 20 sessions": (10, 20)}
+    rows = {"0 accounts, 0 sessions": (0, 0), "10 accounts, 0 sessions": (10, 0), "60 accounts, 0 sessions": (60, 0), "10 accounts, 20 sessions": (10, 20)}
     measurements = []
     for label, (accounts, sessions) in rows.items():
         rss, pss, agents = [], [], []
