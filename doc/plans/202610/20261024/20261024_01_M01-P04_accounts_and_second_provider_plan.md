@@ -1,6 +1,6 @@
 # M01-P04 — Keyring-only credentials, same-provider accounts and a second provider adapter (2026-10-24)
 
-> Status: in_progress
+> Status: in_review
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
 > Branch: `phase/M01-P04-accounts-second-provider` (not created; created from the reviewed documentation commit after approval)
 > Motivation: store provider and application secrets only in the OS credential store, run several accounts of one provider side by side without sharing state, and add a second provider behind the adapter contract, before packaging and recovery.
@@ -234,3 +234,8 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
   runtime reuse test (each session has its own provider process and private workspace, an account's home is shared only
   by that account's sessions, the permission context is never widened) pass with mutations; the measurement and bundle
   commands (`p04`, `p04-bundle`) and the Claude path of the real-turn command exist. Runs, bundle, review and report follow.
+- 2026-10-24: S05 done. Measurements, inspection bundle, an independent read-only review and its fixes are recorded in the phase
+  report: no target missed; the credential store, accounts, the Claude adapter and the sink scan were measured against a
+  throwaway keyring and protocol simulators only. The review's blocker (GUI rows claimed accounts that were not present) was
+  fixed by re-measuring with 10 accounts on the host. Eleven tests in total, 64 runs passed. No real keyring, login or provider
+  turn was used. G3 and G4 are pending.
