@@ -193,5 +193,6 @@ need their own plans and approvals.
   misrouting), the provider's idle memory (about 122 MiB for the installed program, apart from Lico's budget),
   an owner-run real-turn command (refuses without `--accept-billing`, at most three turns, denies every approval,
   owner-only transcript) with a free dry run against the simulator, and a bundle generator. No target was
-  missed; A2's noisy-case CPU rose to 99% and C2's PERF-01 margin is 3.5 MiB (see the report). Ten tests in
-  total, 53 runs passed. No real provider turn was run. G3 and G4 are pending.
+  missed; A2's noisy-case CPU rose to 99% and C2's PERF-01 margin is 3.7 MiB (see the report). An independent
+  read-only review found stale approval ids after a resume, provider lifecycle leaks, forgeable records and
+  several measurement labels; all were fixed (see the report). Ten tests in total, 53 runs passed. No real provider turn was run. G3 and G4 are pending.
