@@ -24,7 +24,7 @@ const HEADER: usize = 12; // u32 length + u64 sequence
 /// Request ids remembered per session (as 64-bit hashes): a repeat inside this window is never
 /// dispatched twice; older ids are forgotten, which the protocol note states.
 pub const MAX_TRACKED_INPUTS: usize = 65536;
-const MAX_APPROVALS: usize = 64;
+pub const MAX_APPROVALS: usize = 64;
 
 pub fn obj(value: Value) -> serde_json::Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()

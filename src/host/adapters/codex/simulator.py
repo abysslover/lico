@@ -7,6 +7,8 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "crash"     exits abruptly after acknowledging the turn
   "slow:N"    N output lines, one every 100 ms, so a turn is still running
   "bad"       malformed, oversize and endless messages
+  "endless"   forty megabytes of one line that never ends, then a normal message
+  "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
   "escape"    terminal escapes (clear screen, clipboard write, hyperlink, title, backspaces, bidi override, bell) and a very long line
   "env"       reports the names (never the values) of its environment, its working directory and its mode
   otherwise   echoes the text back, character for character
@@ -117,6 +119,28 @@ def handle(message):
             lines_out = [f"ENV {name}" for name in sorted(os.environ)] + [f"CWD {os.getcwd()}", f"CWDMODE {oct(os.stat('.').st_mode & 0o777)[2:]}"]
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": iid, "delta": "\n".join(lines_out) + "\n"})
             notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
+        elif text == "endless":
+            for _ in range(40):
+                sys.stdout.write("y" * 1_000_000)
+                sys.stdout.flush()
+            sys.stdout.write("\n")
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "e", "delta": "endless survived\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
+        elif text == "hostile":
+            th = active["thread"]
+            for _ in range(300):                                   # 30 MB in one item that never gets a newline
+                notify("item/agentMessage/delta", {"threadId": th, "turnId": tid, "itemId": "long", "delta": "z" * 100_000})
+            for k in range(3000):                                  # many items, each with a partial line
+                notify("item/agentMessage/delta", {"threadId": th, "turnId": tid, "itemId": f"many-{k}", "delta": "partial"})
+            command = "rm -rf " + chr(27) + "]0;pwned" + chr(7) + chr(27) + "[2J" + "A" * 100_000
+            for k in range(300):
+                out({"id": 1000 + k, "method": "item/commandExecution/requestApproval", "params": {"threadId": th, "turnId": tid, "itemId": f"c{k}", "command": command}})
+            out({"id": 1000, "method": "item/commandExecution/requestApproval", "params": {"threadId": th, "turnId": tid, "itemId": "again", "command": "same id again"}})
+            out({"id": 5000, "method": "item/tool/call", "params": {"threadId": th, "turnId": tid, "tool": "anything"}})
+            notify("item/agentMessage/delta", {"threadId": th, "turnId": tid, "itemId": "end", "delta": "hostile survived\n"})
+            notify("turn/completed", {"threadId": th, "turn": {"id": tid, "items": [], "status": "completed"}})
             active["turn"] = None
         elif text == "bad":
             sys.stdout.write("this is not json\n")

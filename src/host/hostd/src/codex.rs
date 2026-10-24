@@ -15,11 +15,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::core::{self, Shared};
+use crate::session::MAX_APPROVALS;
 use crate::session::{InputState, Session, State};
 
 const MAX_PROVIDER_LINE: usize = 256 * 1024;
 const MAX_RECORD: usize = 4096;
 const MAX_PROMPT: usize = 200;
+const MAX_OPEN_ITEMS: usize = 64; // partial lines kept at once
 const READY_WAIT: Duration = Duration::from_secs(10);
 
 enum Pending {
@@ -338,6 +340,14 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
             let reason = params.get("reason").and_then(Value::as_str).map(|r| format!(": {r}")).unwrap_or_default();
             format!("change files{reason}")
         };
+        if link.approval_map.values().any(|known| *known == id) {
+            return; // the provider repeated a request id: one approval, never two
+        }
+        if s.approvals.len() >= MAX_APPROVALS {
+            // more than a person can answer: refuse to the provider instead of holding it
+            let _ = send(link, json!({"id": id, "error": {"code": -32000, "message": "too many pending approvals"}}), None);
+            return;
+        }
         link.next_approval += 1;
         let number = link.next_approval;
         link.approval_map.insert(number, id);
@@ -359,10 +369,19 @@ fn delta(s: &mut Session, item: &str, text: &str) {
     let Some(link) = s.codex.as_mut() else { return };
     let whole = format!("{}{}", link.buffers.get(item).map(String::as_str).unwrap_or(""), text);
     let mut parts: Vec<&str> = whole.split('\n').collect();
-    let rest = parts.pop().unwrap_or("").to_string();
+    let mut rest = parts.pop().unwrap_or("").to_string();
+    // a partial line is kept only up to one record; a longer one is written out now
+    let mut lines: Vec<String> = parts.into_iter().map(|p| p.trim_end_matches('\r').to_string()).collect();
+    if rest.len() >= MAX_RECORD {
+        lines.push(std::mem::take(&mut rest));
+    }
     link.buffers.insert(item.to_string(), rest);
-    for line in parts {
-        record(s, line.trim_end_matches('\r'));
+    if link.buffers.len() > MAX_OPEN_ITEMS {
+        // too many items with an open line: write out every partial line and start again
+        lines.extend(link.buffers.drain().map(|(_, partial)| partial).filter(|partial| !partial.is_empty()));
+    }
+    for line in lines {
+        record(s, &line);
     }
 }
 

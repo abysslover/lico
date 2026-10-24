@@ -172,3 +172,55 @@ def test_provider_exit_is_disconnected_not_idle():
             assert "[provider reconnected]" in texts(log, sid)
         finally:
             host.stop()
+
+
+def _hwm_kb(pid):
+    for line in open(f"/proc/{pid}/status"):
+        if line.startswith("VmHWM:"):
+            return int(line.split()[1])
+
+
+def test_adapter_survives_malformed_oversize_and_hostile_provider_messages():
+    canary = "CANARY-5c1e9f0a7b"
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            base = _hwm_kb(host.pid)
+
+            def run(name, text, marker):
+                assert conn.call(op="input", session=sid, generation=generation, request_id=name, text=text)["ok"] == 1
+                wait_for(lambda: marker in texts(log, sid), timeout=60)
+
+            run("bad", "bad", "still alive")                # not JSON, a message without fields, a 3 MB line
+            run("endless", "endless", "endless survived")   # forty megabytes and no end of line
+            run("hostile", "hostile", "hostile survived")
+            run("canary", canary, "echo: " + canary)
+            entry = [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]
+            assert entry["state"] == "running"               # the host did not drop the provider session
+            records = texts(log, sid)
+            assert all(len(r.encode()) <= 4096 for r in records)
+            assert not any(c < " " or c == "\x7f" for r in records for c in r)
+            # approvals stay bounded, prompts are short and plain, a repeated request id is one approval
+            approvals = entry.get("approvals", [])
+            assert len(approvals) == 64 and all(len(a["prompt"]) <= 200 and not any(c < " " for c in a["prompt"]) for a in approvals)
+            replies = {m["id"]: m for m in sent(received) if "id" in m and "error" in m}
+            assert all(replies[1000 + k]["error"]["code"] for k in range(64, 300)), "approvals beyond the bound are refused to the provider"
+            assert not any(1000 + k in replies for k in range(64))
+            assert replies[5000]["error"]["code"] == -32601
+            # memory grew by a small constant, not with the 70 MB the provider sent
+            assert _hwm_kb(host.pid) - base < 24 * 1024, (base, _hwm_kb(host.pid))
+            # the canary reached the session log and the provider only: not argv, not stderr, not any other file
+            for pid in [host.pid] + [int(p) for p in os.listdir("/proc") if p.isdigit() and _parent(int(p)) == host.pid]:
+                assert canary.encode() not in open(f"/proc/{pid}/cmdline", "rb").read()
+            holders = sorted(f.suffix for f in Path(directory).rglob("*") if f.is_file() and canary.encode() in f.read_bytes())
+            assert holders == [".jsonl", ".seg"], holders      # the provider's own received log and the session log
+        finally:
+            host.stop()
+
+
+def _parent(pid):
+    try:
+        return int(open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[1])
+    except (OSError, ValueError):
+        return -1
