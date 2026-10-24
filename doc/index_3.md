@@ -12,5 +12,7 @@
 | [Owner end-to-end guide](manual_end_to_end.md) | The steps the owner runs with real accounts |
 | [M01-P06 plan](plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | Session creation, account management and provider login inside the window; G2 approved |
 | [M01-P06 report](reports/202610/20261025/20261025_01_M01-P06_in_window_login_and_session_creation_report.md) | Session creation, accounts and sign-in in the window; the owner's real sign-in and inspection pending |
+| [M01-P07 plan](plans/202610/20261025/20261025_01_M01-P07_window_first_view_and_keys_plan.md) | The window's first view and key input: cause, scope and tests |
+| [M01-P07 report](reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Panel text drawn again, no marker square, survives a closed input; menu bar judgement; the owner's look pending |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

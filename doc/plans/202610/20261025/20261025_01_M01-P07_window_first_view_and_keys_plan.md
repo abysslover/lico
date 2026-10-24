@@ -37,3 +37,5 @@ Out of scope: a menu bar (one paragraph estimate in the report only), Wayland (n
 ## Progress
 
 - 2026-10-25: Plan written after the reproduction; fix and tests follow.
+- 2026-10-25: Done. Three pixel tests red before and green after (red: `assert 0 >= 4` text rows after Ctrl+N; `corner_is_background()` false; window gone with its input closed);
+  suite 84 passed; captures in the bundle; report written (commit eeae7e2 holds the fix). Cost of the phase about 2 US dollars on the harness meter.
