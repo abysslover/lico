@@ -51,7 +51,7 @@ fn main() {
     let mut rest = args[3..].iter();
     while let Some(flag) = rest.next() {
         match (flag.as_str(), rest.next()) {
-            ("--provider" | "--account" | "--kind" | "--label" | "--ref", Some(value)) => {
+            ("--provider" | "--account" | "--kind" | "--label" | "--ref" | "--name", Some(value)) => {
                 options.insert(flag.clone(), value.clone());
             }
             _ => usage("unknown or incomplete option"), // for example --secret: a secret is never an argument
@@ -62,6 +62,7 @@ fn main() {
         "status" | "list" => &[],
         "add" => &["--provider", "--account", "--kind", "--label"],
         "remove" | "helper" => &["--ref"],
+        "broker" => &["--name"],
         _ => usage("unknown command"),
     };
     if options.keys().any(|k| !allowed.contains(&k.as_str())) {
@@ -141,6 +142,31 @@ fn main() {
                 eprintln!("lico-cred: cannot write the metadata: {e}");
                 std::process::exit(5);
             }
+        }
+        "broker" => {
+            // ask the host's broker for the key of the session this provider belongs to (the provider has no keyring bus)
+            use std::os::linux::net::SocketAddrExt;
+            use std::os::unix::net::{SocketAddr, UnixStream};
+            if std::io::stdout().is_terminal() {
+                usage("the secret goes to standard output for a program that asked for it, not to a terminal");
+            }
+            let name = option("--name");
+            let Ok(addr) = SocketAddr::from_abstract_name(name.as_bytes()) else { usage("not a broker name") };
+            let Ok(stream) = UnixStream::connect_addr(&addr) else {
+                eprintln!("lico-cred: no broker answers: the session of this provider is over");
+                std::process::exit(3);
+            };
+            let mut secret = Vec::new();
+            let _ = stream.take(8193).read_to_end(&mut secret);
+            if secret.is_empty() || secret.len() > 8192 {
+                keyring::wipe_secret(&mut secret);
+                eprintln!("lico-cred: the broker gave no key");
+                std::process::exit(3);
+            }
+            let mut out = std::io::stdout().lock();
+            let _ = out.write_all(&secret);
+            let _ = out.flush();
+            keyring::wipe_secret(&mut secret);
         }
         "helper" => {
             let reference = option("--ref");

@@ -137,12 +137,24 @@ pub struct LogView {
     segments: Vec<(i64, usize)>,
 }
 
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
 pub struct Log {
     view: LogView,
     sizes: Vec<usize>, // bytes of each segment, parallel to view.segments
     segment_records: usize,
     retain: usize,
     writer: Option<File>,
+    dirty: bool, // appended since the last sync to disk
+}
+
+/// What a restart found wrong with a log: bytes of a torn tail set aside, and whole segments set aside.
+#[derive(Default)]
+pub struct Recovery {
+    pub torn_bytes: usize,
+    pub segments_set_aside: usize,
 }
 
 impl Log {
@@ -153,6 +165,76 @@ impl Log {
             segment_records: (retain / 4).clamp(16, 4096),
             retain,
             writer: None,
+            dirty: false,
+        }
+    }
+
+    /// Open the segments a session left on disk. Every frame is checked (its sequence must follow the one before);
+    /// at the first frame that is cut short or out of order the rest of that segment, and every later segment, is
+    /// set aside in `.damaged` files (owner-only, never read again) and the segment is cut at the last good frame.
+    /// Returns the log, the next sequence number and what was found.
+    pub fn recover(dir: &Path, id: &str, retain: usize) -> (Log, i64, Recovery) {
+        let mut log = Log::new(dir, id, retain);
+        let mut report = Recovery::default();
+        let mut files: Vec<(i64, PathBuf)> = std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                let rest = name.strip_prefix(id)?.strip_prefix('.')?.strip_suffix(".seg")?;
+                Some((rest.parse::<i64>().ok()?, e.path()))
+            })
+            .collect();
+        files.sort();
+        let mut next: i64 = 0;
+        let mut broken = false;
+        for (first, path) in files {
+            if broken || (!log.view.segments.is_empty() && first != next) {
+                broken = true;
+                let _ = std::fs::rename(&path, path.with_extension("seg.damaged"));
+                report.segments_set_aside += 1;
+                continue;
+            }
+            let Ok(data) = std::fs::read(&path) else { continue };
+            let (mut at, mut count) = (0usize, 0i64);
+            while at + HEADER <= data.len() {
+                let length = u32::from_le_bytes(data[at..at + 4].try_into().unwrap()) as usize;
+                let seq = u64::from_le_bytes(data[at + 4..at + 12].try_into().unwrap()) as i64;
+                if seq != first + count || length > 16 * 1024 * 1024 || at + HEADER + length > data.len() {
+                    break;
+                }
+                at += HEADER + length;
+                count += 1;
+            }
+            if at < data.len() {
+                broken = true;
+                report.torn_bytes += data.len() - at;
+                let aside = path.with_extension("seg.damaged");
+                if let Ok(mut out) = OpenOptions::new().create(true).append(true).mode(0o600).open(&aside) {
+                    let _ = out.write_all(&data[at..]);
+                }
+                if let Ok(file) = OpenOptions::new().write(true).open(&path) {
+                    let _ = file.set_len(at as u64);
+                }
+            }
+            if count == 0 {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
+            log.view.segments.push((first, count as usize));
+            log.sizes.push(at);
+            next = first + count;
+        }
+        (log, next, report)
+    }
+
+    pub fn sync(&mut self) {
+        if self.dirty {
+            if let Some(writer) = self.writer.as_ref() {
+                let _ = writer.sync_data();
+            }
+            self.dirty = false;
         }
     }
 
@@ -199,6 +281,7 @@ impl Log {
         record.extend_from_slice(&(seq as u64).to_le_bytes());
         record.extend_from_slice(data);
         self.writer.as_mut().expect("writer").write_all(&record)?;
+        self.dirty = true;
         if let Some(last) = self.view.segments.last_mut() {
             last.1 += 1;
         }
@@ -292,6 +375,7 @@ pub struct Session {
     pub generation: u64,
     pub producing: bool,
     pub state: State,
+    pub state_at: u64, // when the state last changed (unix seconds); kept after a disconnect
     pub codex: Option<crate::codex::Link>,
     pub claude: Option<crate::claude::Link>,
     pub provider: &'static str, // "codex" or "claude" for a provider session, empty otherwise
@@ -311,6 +395,7 @@ pub struct Session {
     pub account: Option<String>, // the account this session is bound to for its whole life (until a rebind of a dead session)
     pub credential_generation: u64,
     pub account_issue: Option<String>, // what the provider reported about the account (authentication, limit); cleared by a successful turn
+    pub broker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>, // ends the key broker of this session's provider
     pub process_group: bool, // the process leads its own group (a provider and its helpers): stop the whole group
     pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
@@ -343,6 +428,7 @@ impl Session {
             codex_thread: None,
             producing,
             state: State::Running,
+            state_at: now_secs(),
             window: VecDeque::new(),
             window_cap,
             next_seq: 0,
@@ -358,10 +444,46 @@ impl Session {
             account: None,
             credential_generation: 0,
             account_issue: None,
+            broker_stop: None,
             process_group: false,
             approval_counter: 0,
             input_tx: None,
         }
+    }
+
+    /// Change the state and remember when (the last known state keeps its time after a disconnect).
+    pub fn set_state(&mut self, state: State) {
+        if self.state != state {
+            self.state = state;
+            self.state_at = now_secs();
+            crate::registry::mark_dirty();
+        }
+    }
+
+    /// A session found on disk after a restart: its history and bindings, no process, state `disconnected`.
+    pub fn recovered(entry: &crate::registry::Entry, dir: &Path, retain: usize, window_cap: usize) -> (Session, Recovery) {
+        let (log, next, report) = Log::recover(dir, &entry.session, retain);
+        let mut s = Session::new(entry.session.clone(), false, dir, retain, window_cap);
+        s.log = log;
+        s.next_seq = next;
+        s.bytes_total = s.log.disk_bytes() as i64;
+        s.text_mode = true;
+        s.generation = entry.generation;
+        s.provider = if entry.provider == "claude" { "claude" } else { "codex" };
+        s.codex_thread = entry.provider_session.clone();
+        s.account = entry.account.clone();
+        s.credential_generation = entry.credential_generation;
+        s.state = State::Disconnected;
+        s.state_at = if entry.state_at > 0 { entry.state_at } else { now_secs() };
+        let from = (next - window_cap as i64).max(0);
+        if let Ok(records) = s.log.view().read(from, next, window_cap) {
+            s.window = records.into_iter().collect();
+        }
+        (s, report)
+    }
+
+    pub fn sync_log(&mut self) {
+        self.log.sync();
     }
 
     pub fn last_seq(&self) -> i64 {
@@ -396,7 +518,7 @@ impl Session {
         if let Err(error) = self.log.append(seq, &data) {
             // the record is not sequenced, shown or replayable without its log entry: end the session
             self.log_failed = true;
-            self.state = State::Exited;
+            self.set_state(State::Exited);
             self.input_tx = None;
             self.stop_process();
             eprintln!("log write failed for {}: {error}", self.id);
@@ -485,10 +607,17 @@ impl Session {
     /// End the agent or provider process (the whole group for a provider); a pid that was already
     /// reaped is zero and never signalled.
     pub fn stop_process(&mut self) {
+        self.stop_broker();
         if self.agent_pid != 0 {
             let target = if self.process_group { -(self.agent_pid as i32) } else { self.agent_pid as i32 };
             unsafe { kill(target, 9) };
             self.agent_pid = 0;
+        }
+    }
+
+    pub fn stop_broker(&mut self) {
+        if let Some(stop) = self.broker_stop.take() {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 

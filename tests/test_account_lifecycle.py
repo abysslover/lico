@@ -43,7 +43,8 @@ def test_account_failure_never_switches_account_or_paid_mode():
             argvs = wait_for(lambda: argv_of(received) if len(argv_of(received)) >= 3 else None)
             first = [x for x in argvs if "--settings" in x][0]
             restarted = [x for x in argvs if "--resume" in x][0]
-            helper = lambda argv: json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"]
+            import re
+            helper = lambda argv: re.sub(r"lico-broker-\w+", "lico-broker-N", json.loads(argv[argv.index("--settings") + 1])["apiKeyHelper"])   # the broker's name is new for each process
             assert helper(restarted) == helper(first)      # the same key helper: no other key, no other mode
             for argv in argvs:
                 assert "--dangerously-skip-permissions" not in argv and "ANTHROPIC_API_KEY" not in " ".join(argv)

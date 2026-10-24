@@ -24,7 +24,7 @@ extern "C" {
     fn getuid() -> u32;
 }
 
-fn peer_is_owner(stream: &UnixStream) -> bool {
+pub fn peer_is_owner(stream: &UnixStream) -> bool {
     use std::os::fd::AsRawFd;
     let mut cred = Ucred { pid: 0, uid: u32::MAX, gid: 0 };
     let mut len = std::mem::size_of::<Ucred>() as u32;

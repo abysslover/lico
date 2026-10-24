@@ -41,8 +41,7 @@
   "PATH",
   "LANG",
   "HOME",
-  "CLAUDE_CONFIG_DIR (per account)",
-  "DBUS_SESSION_BUS_ADDRESS and XDG_RUNTIME_DIR (only for an account with a registered credential, so the key helper can reach the keyring)"
+  "CLAUDE_CONFIG_DIR (per account)"
  ],
  "mapped": [
   "system/init (session id, model)",
@@ -86,7 +85,7 @@
   "an oversize provider line (over 256 KB) is dropped without an answer, so a request carried by it is never refused and the provider may wait for it"
  ],
  "exposure": [
-  "an account with a registered credential gets the keyring's session bus address and runtime directory in its provider's environment so the key helper can reach the keyring; every process the provider starts, tools the model drives included, inherits them and can reach the whole Secret Service of the session (not only Lico's entries) over the plain transfer. A helper that talks to the host over a private socket instead would avoid this; it is an owner decision"
+  "resolved in M01-P05 S01: an account with a registered credential no longer gets the keyring's bus in its provider's environment; the key helper asks a private broker socket of that session (a host thread that ends with the provider's process) which runs the credential command with the bus the provider never receives. A process in the provider's tree can obtain that one account's key (the provider needs it anyway) and nothing else of the keyring. Not changed: any process of the same user can still look for the abstract socket by name while the session runs, and is then served the key, because the broker checks only the user of the peer"
  ],
  "observed_in_an_owner_run": {
   "when": "2026-10-24 15:34 (+0900), one turn, run by the owner with `real-turn --provider claude` at commit 854870a",

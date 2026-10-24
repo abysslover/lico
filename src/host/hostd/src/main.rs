@@ -3,8 +3,10 @@
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
 mod accounts;
+mod broker;
 mod claude;
 mod codex;
+mod registry;
 #[allow(dead_code)]
 mod creds;
 mod core;
@@ -21,7 +23,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use core::{Config, Shared};
 
@@ -88,6 +90,7 @@ fn main() {
         cred_bin: PathBuf::from(arg("--cred-bin", std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-cred"))).unwrap_or_default().to_str().unwrap_or("lico-cred"))),
         cred_dir: PathBuf::from(arg("--cred-dir", socket_dir.join("credentials").to_str().unwrap_or("credentials"))),
         accounts_dir: PathBuf::from(arg("--accounts-dir", socket_dir.join("accounts").to_str().unwrap_or("accounts"))),
+        registry_dir: PathBuf::from(arg("--registry-dir", socket_dir.join("registry").to_str().unwrap_or("registry"))),
         text: args.iter().any(|a| a == "--text"),
     };
     {
@@ -97,15 +100,25 @@ fn main() {
             Ok(meta) if meta.is_dir() && meta.mode() & 0o077 == 0 && meta.uid() == unsafe { getuid() } => {}
             _ => refuse("the socket directory must exist, belong to this user and have mode 0700"),
         }
-        // a fresh log for each run of the synthetic host, but never wipe a directory that holds anything else
+        // the segments of registered sessions are kept (they are recovered below); the segments of anything else
+        // (synthetic sessions of an earlier run) are removed, and a directory that holds other files is never touched
+        let keep = registry::registered_ids(&cfg.registry_dir).unwrap_or_else(|why| refuse(&why));
         if log_dir.exists() {
-            let foreign = std::fs::read_dir(&log_dir).map_or(true, |mut entries| entries.any(|e| e.map_or(true, |e| !e.file_name().to_string_lossy().ends_with(".seg"))));
-            if foreign || !log_dir.is_dir() {
+            let name_of = |e: &std::fs::DirEntry| e.file_name().to_string_lossy().to_string();
+            let entries: Vec<std::fs::DirEntry> = std::fs::read_dir(&log_dir).map_or_else(|_| refuse("cannot read the log directory"), |it| it.flatten().collect());
+            if !log_dir.is_dir() || entries.iter().any(|e| !name_of(e).ends_with(".seg") && !name_of(e).ends_with(".damaged")) {
                 refuse("the log directory holds files that are not session segments; refusing to clear it");
             }
-            let _ = std::fs::remove_dir_all(&log_dir);
+            for entry in &entries {
+                let name = name_of(entry);
+                let owner = name.split('.').next().unwrap_or("");
+                if name.ends_with(".seg") && !keep.contains(owner) {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
         }
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.registry_dir).expect("registry dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&shared_workspace_root(&socket_dir)).expect("workspace root");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
@@ -118,6 +131,22 @@ fn main() {
     let size = cfg.payload;
     let accounts_dir = cfg.accounts_dir.clone();
     let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))) });
+    registry::recover(&shared).unwrap_or_else(|why| refuse(&why)); // sessions of an earlier run come back as disconnected
+    {
+        // durability policy: the logs are synced to disk about once a second while records arrive, and the registry is
+        // rewritten within a second of a change; a power cut can lose the last second, never leave a torn record read as data
+        let shared = shared.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let sessions: Vec<_> = shared.sessions.read().unwrap().clone();
+            for session in sessions {
+                session.lock().unwrap().sync_log();
+            }
+            if registry::take_dirty() {
+                registry::save(&shared);
+            }
+        });
+    }
     for index in 0..sessions {
         let live = index < producing;
         if core::start_session(&shared, live, if live { rate } else { 0 }, history, size, !live).is_err() {

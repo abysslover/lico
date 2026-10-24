@@ -154,3 +154,16 @@ recorded as `[account issue] CATEGORY`, shown on the session (`account_issue` in
 `issue_sessions` in `account.list`), and cleared by the next successful turn. Nothing is retried under another account or another
 authentication mode, a restart keeps the binding, and a session created while the provider has accounts but no default is refused
 (`unknown_account`) instead of running unbound. Usage is `null` (unknown), never zero.
+
+## Restart recovery (M01-P05)
+
+The host keeps a registry of its provider sessions (`registry/sessions.json`, owner-only, replaced atomically within a second of a change
+and at once on create and purge): id, provider, generation, account binding, credential generation, provider session id and the time of
+the last state change. After a restart every registered session returns as `disconnected` (`state_at` keeps the time of its last known
+state), with its bindings and history, and `session.resume` brings it back under a new generation; a provider process is never assumed
+to have survived, and synthetic sessions are not registered. A registry that cannot be parsed, or that names an id, provider or
+account that cannot be right, stops the host with a message; it is never repaired by guessing. Each log frame is checked on start (its
+sequence number must follow the one before): at the first frame that is cut short or out of order the rest of the segment and every
+later segment are set aside in owner-only `.damaged` files (never read again), the session shows one `[log recovered: ...]` record,
+and the sequence continues from the last good record. Logs are synced to disk about once a second; there is no checksum, so damage
+inside a frame that keeps its length is not detected.

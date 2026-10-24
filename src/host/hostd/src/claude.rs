@@ -124,7 +124,13 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
 }
 
 fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
-    let id = session.lock().unwrap().id.clone();
+    let id = {
+        let s = session.lock().unwrap();
+        if s.purged {
+            return Err("busy"); // a deleted session gets no workspace and no process
+        }
+        s.id.clone()
+    };
     let workspace = shared.cfg.workspace_root.join(&id);
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
     let mut command = Command::new(&shared.cfg.claude);
@@ -140,6 +146,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             command.env(key, value);
         }
     }
+    let mut broker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
     let bound = session.lock().unwrap().account.clone();
     match bound {
         // a session bound to an account sees only that account's private home
@@ -150,15 +157,13 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             };
             command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
             if let Some(reference) = credential {
-                // the key reaches the provider only through a helper that reads the keyring: the command names the
-                // reference, never the key, and the helper needs the keyring's bus to answer
-                let helper = format!("{} --data-dir {} helper --ref {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), reference);
+                // the key reaches the provider only through a helper that asks this session's broker: the command names a
+                // private socket, never the key, and the provider gets no part of the keyring's bus
+                let name = format!("lico-broker-{}", core::random_hex(12));
+                let stop = crate::broker::serve(shared.cfg.cred_bin.clone(), shared.cfg.cred_dir.clone(), name.clone(), reference).map_err(|_| "busy")?;
+                broker = Some(stop);
+                let helper = format!("{} --data-dir {} broker --name {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), name);
                 command.arg("--settings").arg(json!({"apiKeyHelper": helper}).to_string());
-                for key in ["DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
-                    if let Some(value) = std::env::var_os(key) {
-                        command.env(key, value);
-                    }
-                }
             }
         }
         None => {
@@ -170,9 +175,21 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
     }
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = core::spawn_provider_process(command).map_err(|_| "busy")?;
+    let stop_broker = |broker: &Option<std::sync::Arc<std::sync::atomic::AtomicBool>>| {
+        if let Some(stop) = broker {
+            stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    };
+    let mut child = match core::spawn_provider_process(command) {
+        Ok(child) => child,
+        Err(_) => {
+            stop_broker(&broker);
+            return Err("busy");
+        }
+    };
     let pid = child.id();
     let (Some(stdout), Some(mut stdin)) = (child.stdout.take(), child.stdin.take()) else {
+        stop_broker(&broker);
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
         return Err("busy");
@@ -183,15 +200,17 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         if s.purged {
             // the session was purged while this process started: it is stopped, never attached
             drop(s);
+            stop_broker(&broker);
             unsafe { kill(-(pid as i32), 9) };
             let _ = child.wait();
             return Err("busy");
         }
         s.agent_pid = pid;
         s.process_group = true;
+        s.broker_stop = broker;
         s.provider = "claude";
         s.claude = Some(Link { tx, pending_inputs: HashMap::new(), approvals: HashMap::new() });
-        s.state = State::Running;
+        s.set_state(State::Running);
         if let Some(provider_session) = &resume {
             s.codex_thread = Some(provider_session.clone());
         }
@@ -221,7 +240,8 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             s.agent_pid = 0; // reaped: the number may now belong to another process
         }
         if s.state == State::Running && s.claude.is_some() {
-            s.state = State::Disconnected;
+            s.set_state(State::Disconnected);
+            s.stop_broker();
             s.claude = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
             record(&mut s, "[provider disconnected]");
@@ -258,6 +278,7 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
             // the id is handed back as an argument on resume: letters, digits, dash and underscore only, never a leading dash
             if let Some(id) = message["session_id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64 && !id.starts_with('-') && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')) {
                 s.codex_thread = Some(id.to_string());
+                crate::registry::mark_dirty();
             }
             let model = clip(message["model"].as_str().unwrap_or(""), 60);
             record(&mut s, &format!("[session started] model={model}"));

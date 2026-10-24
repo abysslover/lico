@@ -41,6 +41,7 @@ pub struct Config {
     pub cred_dir: PathBuf,        // the credential metadata directory
     pub workspace_root: PathBuf,
     pub accounts_dir: PathBuf,
+    pub registry_dir: PathBuf,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
 }
 
@@ -195,7 +196,7 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
         }
         let _ = child.wait();
         let mut s = owner.lock().unwrap();
-        s.state = State::Exited;
+        s.set_state(State::Exited);
         s.input_tx = None;
     });
     // the first records exist before the session is announced
@@ -264,7 +265,7 @@ pub fn hello(shared: &Shared) -> Reply {
 fn status_entry(s: &Session) -> Value {
     let mut entry = json!({
         "session": s.id, "generation": s.generation, "seq": s.last_seq(), "producing": s.producing,
-        "subscribers": s.subs.len(), "bytes_total": s.bytes_total, "oldest": s.oldest(), "state": state_name(s),
+        "subscribers": s.subs.len(), "bytes_total": s.bytes_total, "oldest": s.oldest(), "state": state_name(s), "state_at": s.state_at,
     });
     if let Some(account) = &s.account {
         entry["account"] = json!(account);
@@ -499,7 +500,7 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         s.account = previous.0;
         s.credential_generation = previous.1;
         s.codex_thread = previous.2;
-        s.state = State::Disconnected;
+        s.set_state(State::Disconnected);
         return Err(code);
     }
     let mut s = found.lock().unwrap();
@@ -542,6 +543,7 @@ fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> R
         return Err(code);
     }
     shared.sessions.write().unwrap().push(session.clone());
+    crate::registry::save(shared);
     Ok(session)
 }
 
@@ -565,6 +567,7 @@ fn start_codex_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> Re
         return Err(code);
     }
     shared.sessions.write().unwrap().push(session.clone());
+    crate::registry::save(shared);
     Ok(session)
 }
 
@@ -576,7 +579,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
         s.purged = true;
-        s.state = State::Exited;
+        s.set_state(State::Exited);
         s.input_tx = None;
         s.codex = None;
         s.claude = None;
@@ -595,6 +598,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
     shared.sessions.write().unwrap().retain(|s| s.lock().unwrap().id != id);
     shared.views.lock().unwrap().retain(|_, v| v.session != id);
     let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&id));
+    crate::registry::save(shared);
     Ok(obj(json!({"session": id})))
 }
 

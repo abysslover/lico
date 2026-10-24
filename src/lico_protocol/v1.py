@@ -74,7 +74,7 @@ REPLIES = {
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
                      "bytes_total": {"type": INT, "minimum": 0}},
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
-                     "account": {"type": STR}, "account_issue": {"type": STR}, "credential_generation": {"type": INT, "minimum": 1},
+                     "account": {"type": STR}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},

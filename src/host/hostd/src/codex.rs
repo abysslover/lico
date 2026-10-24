@@ -184,7 +184,13 @@ pub fn answer(s: &mut Session, number: i64, allow: bool) -> Result<(), &'static 
 
 // ----------------------------------------------------------------- the process
 fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
-    let id = session.lock().unwrap().id.clone();
+    let id = {
+        let s = session.lock().unwrap();
+        if s.purged {
+            return Err("busy"); // a deleted session gets no workspace and no process
+        }
+        s.id.clone()
+    };
     let workspace = shared.cfg.workspace_root.join(&id);
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
     let mut command = Command::new(&shared.cfg.codex);
@@ -239,7 +245,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         s.process_group = true;
         s.provider = "codex";
         s.codex = Some(link);
-        s.state = State::Running;
+        s.set_state(State::Running);
         if let Some(thread) = &resume {
             s.codex_thread = Some(thread.clone());
         }
@@ -270,7 +276,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
             s.agent_pid = 0; // reaped: the number may now belong to another process
         }
         if s.state == State::Running && s.codex.is_some() {
-            s.state = State::Disconnected;
+            s.set_state(State::Disconnected);
             s.codex = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
             record(&mut s, "[provider disconnected]");
@@ -291,7 +297,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     s.stop_process();
     s.codex = None;
     s.approvals.clear();
-    s.state = if resume.is_some() { State::Disconnected } else { State::Exited };
+    s.set_state(if resume.is_some() { State::Disconnected } else { State::Exited });
     Err("busy")
 }
 
@@ -350,6 +356,7 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
         Pending::ThreadStart | Pending::ThreadResume => {
             if let Some(thread) = message.pointer("/result/thread/id").and_then(Value::as_str) {
                 s.codex_thread = Some(thread.to_string());
+                crate::registry::mark_dirty();
                 if let Some(link) = s.codex.as_mut() {
                     link.ready = true;
                 }

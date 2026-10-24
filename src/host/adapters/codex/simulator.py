@@ -27,6 +27,7 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument("--received", default="")
 parser.add_argument("--fixture", default="")
+parser.add_argument("--resume-delay", type=float, default=0.0)   # seconds before answering thread/resume (widens a race for a test)
 args, _ = parser.parse_known_args()
 
 lines: "queue.Queue[str | None]" = queue.Queue()
@@ -83,6 +84,8 @@ def handle(message):
     elif method == "initialized":
         return
     elif method in ("thread/start", "thread/resume"):
+        if method == "thread/resume":
+            time.sleep(args.resume_delay)
         tid = params.get("threadId", "th-1")
         active["thread"] = tid
         out({"id": rid, "result": {"thread": thread_object(tid)}})

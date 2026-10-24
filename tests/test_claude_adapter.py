@@ -164,6 +164,10 @@ def test_claude_input_and_approval_reach_the_provider_exactly_once_and_a_stale_t
             for source in (f"/proc/{pid}/cmdline", f"/proc/{pid}/environ"):
                 assert secret.encode() not in Path(source).read_bytes()
             assert "apiKeyHelper" in Path(f"/proc/{pid}/cmdline").read_text()
+            # the provider gets a private broker for its own key and no part of the keyring's bus
+            provider_env = dict(item.split("=", 1) for item in Path(f"/proc/{pid}/environ").read_bytes().decode().split("\0") if "=" in item)
+            assert "DBUS_SESSION_BUS_ADDRESS" not in provider_env and "XDG_RUNTIME_DIR" not in provider_env
+            assert " broker --name lico-broker-" in Path(f"/proc/{pid}/cmdline").read_text().replace("\0", " ")
             for path in [p for root in (directory, keyring.root) for p in Path(root).rglob("*") if p.is_file()]:
                 assert secret.encode() not in path.read_bytes(), path
         finally:

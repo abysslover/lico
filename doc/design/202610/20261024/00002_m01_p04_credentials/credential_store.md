@@ -44,9 +44,10 @@ does); it speaks little-endian messages and EXTERNAL authentication only and han
 - Wiping is best effort: the secret buffer and the received secret are overwritten, but copies made while marshalling (the
   array of byte values, the message buffers, the standard input and output buffers) are not. `lico-cred` sets itself
   non-dumpable. The processes are short-lived.
-- A provider whose account has a registered credential gets the keyring's bus address and runtime directory so its key
-  helper can answer. Every process the provider starts inherits them and can reach the whole Secret Service of the session,
-  not only Lico's entries. Avoiding this needs a helper that talks to the host over a private socket; it is an owner decision.
+- Since M01-P05 S01 a provider whose account has a registered credential no longer receives the keyring's bus: its key helper asks a
+  private broker socket of the session (abstract name, same-user peers only), and a host thread runs the credential command. A process of
+  the provider's tree can get that one account's key, nothing else of the keyring; any process of the same user can too while the session
+  runs, since the broker checks the peer's user only.
 - A hostile bus peer is bounded (messages of at most 1 MiB, container nesting of at most 16, a 20 s limit per call) but a
   fake-bus test does not exist.
 - Two `lico-cred` calls at once are serialized by a lock around the metadata file; the keyring itself is not locked.

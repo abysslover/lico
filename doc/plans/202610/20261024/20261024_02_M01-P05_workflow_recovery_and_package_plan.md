@@ -157,3 +157,11 @@ approved. Windows is specification step 6 and needs its own milestone.
   test, download or experiment existed.
 - 2026-10-24: G2 approved as drafted with every recommendation; the package became a single self-contained executable (owner decision
   above). No step has run: S01 to S05 are not started. G3 and G4 are pending.
+- 2026-10-24: S01 done. A persisted session registry and restart recovery: sessions return as `disconnected` with their account
+  binding, provider session id, generation, history and the time of their last state; a purged session does not return; each log
+  frame is checked on start and a torn, out-of-order or zero-filled tail is set aside in `.damaged` files and reported; logs sync
+  about once a second; a damaged or forged registry stops the host. The purge-during-resume race is tested (a deleted session gets no
+  process, log or workspace). The keyring exposure decision is done: a provider gets a private per-session key broker instead of the
+  keyring's bus. Three tests; mutations caught: sessions recovered as running, frames not checked beyond their length (found only
+  after a zero-filled-tail case was added) and registry ids not validated. Limits: no checksum (damage inside a frame is not
+  detected), a log can lose its last second on a power cut, live provider processes do not survive a host restart (by design).
