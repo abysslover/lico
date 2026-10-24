@@ -25,6 +25,12 @@ TIMEOUT_MS = 2000.0
 RESTART_TIMEOUT_MS = 10000.0
 
 
+def display_geometry() -> str:
+    """The X screen: the 1200x800 viewport times the display scale."""
+    width, height = (int(v) * rig_module.DISPLAY_SCALE for v in VIEWPORT.split("x"))
+    return f"{width}x{height}x24"
+
+
 def _mib(kb: float) -> float:
     return kb / 1024.0
 
@@ -40,7 +46,7 @@ class Rig:
 
     def __enter__(self) -> "Rig":
         self.tmp = private_dir()
-        self.xvfb = Xvfb(f"{VIEWPORT}x24")
+        self.xvfb = Xvfb(display_geometry())
         self.host = self.reader = self.conn = None
         try:
             sessions, producing, history, rate = self.args
@@ -74,7 +80,7 @@ class Rig:
         self.tmp.cleanup()
 
     def scope(self, name: str, extra: dict | None = None) -> dict:
-        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree", "output": output_kind(), "accounts_on_host": rig_module.ACCOUNTS}
+        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree", "output": output_kind(), "accounts_on_host": rig_module.ACCOUNTS, "display_scale": rig_module.DISPLAY_SCALE, "client_args": rig_module.CLIENT_ARGS.get(self.candidate, [])}
         scope.update(extra or {})
         return scope
 

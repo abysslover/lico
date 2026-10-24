@@ -177,3 +177,9 @@ approved. Windows is specification step 6 and needs its own milestone.
   private directory, status is polled once a second (idle CPU is re-measured in S03), the list shows no scroll bar and is not
   scrollable beyond the window, long lines wrap by an estimate that is verified against the layout, nothing here is accessible to a
   screen reader, and C2 keeps its older view and is not extended.
+- 2026-10-24: S03 (code part) done. The first view follows the display scale (sizes are logical sizes times the factor; the list is
+  clipped to its column), the list's ages are coarse (under a minute, then minutes) so an idle client does not redraw, and a flood of
+  frames (more than 8 draws in a second) is drawn at 10 frames a second, because one frame of the first view costs about 35 ms of
+  software drawing (a burst such as an activation is still drawn at once). The measurement rig takes `--ui` and `--scale 1|2` (the X
+  screen is scaled and the toolkit told the factor). One test: 100 agent-shaped lines a second keep the client under 55% of a core
+  (99% without the cap) and the text stays within about a second of the host's newest. The measurement runs follow.

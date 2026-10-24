@@ -16,7 +16,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Ime, WindowEvent};
 use winit::keyboard::{Key, NamedKey};
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 const VISIBLE_LINES: usize = 40;
@@ -26,6 +26,8 @@ const FONT_PX: f32 = 14.0;
 const LINE_HEIGHT: usize = 18;
 const BACKGROUND: u32 = 0xFF10_1418;
 const NEUTRAL: u32 = 0xFF20_2020;
+const BURST_DRAWS: usize = 8; // draws within a second that count as a flood
+const MIN_FRAME: std::time::Duration = std::time::Duration::from_millis(100); // 10 frames a second while flooded (one frame of the first view takes about 35 ms of software drawing)
 
 enum Ev {
     Sock(String),
@@ -73,6 +75,7 @@ struct App {
     resyncs: i64,
     subscribed: bool,
     ui: ui::UiState,
+    recent_draws: VecDeque<std::time::Instant>, // draws in the last second: a burst is drawn at once, a sustained flood at a capped rate
 }
 
 fn json_escape(s: &str) -> String {
@@ -205,8 +208,9 @@ impl App {
         self.load_fonts();
         let Some(context) = self.context.as_ref() else { return };
         let surface = if self.ui.enabled { None } else { Some(Surface::new(context, window.clone()).expect("surface")) };
+        let scale = self.ui.scale.max(1.0);
         let fs = self.font_system.as_mut().expect("fonts");
-        let buffer = Buffer::new(fs, Metrics::new(FONT_PX, LINE_HEIGHT as f32));
+        let buffer = Buffer::new(fs, Metrics::new(FONT_PX * scale, LINE_HEIGHT as f32 * scale));
         let rgb = 0xFF00_0000 | (u32::from_str_radix(id.get(1..7).unwrap_or("0"), 16).unwrap_or(0) & 0xFF_FFFF);
         self.view = Some(View {
             lines: VecDeque::new(), surface, buffer, swash: SwashCache::new(), session_rgb: rgb, seq_rgb: 0xFF00_0000,
@@ -453,6 +457,7 @@ impl App {
     }
 
     fn draw(&mut self) {
+        self.recent_draws.push_back(std::time::Instant::now());
         if self.ui.enabled {
             return self.draw_ui();
         }
@@ -514,6 +519,7 @@ impl ApplicationHandler<Ev> for App {
             .with_inner_size(LogicalSize::new(1200.0, 800.0));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         window.set_ime_allowed(true);
+        self.ui.scale = window.scale_factor() as f32;
         self.context = Some(Context::new(window.clone()).expect("context"));
         if self.ui.enabled {
             self.load_fonts();
@@ -590,11 +596,25 @@ impl ApplicationHandler<Ev> for App {
         }
     }
 
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        event_loop.set_control_flow(ControlFlow::Wait);
         if self.dirty {
-            self.dirty = false;
-            if let Some(w) = &self.window {
-                w.request_redraw();
+            let now = std::time::Instant::now();
+            while self.recent_draws.front().map_or(false, |t| now.duration_since(*t) > std::time::Duration::from_secs(1)) {
+                self.recent_draws.pop_front();
+            }
+            let last = self.recent_draws.back().copied();
+            let flooded = self.recent_draws.len() >= BURST_DRAWS;
+            match last {
+                Some(t) if flooded && now.duration_since(t) < MIN_FRAME => {
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(t + MIN_FRAME)); // too many frames: the next one waits its turn
+                }
+                _ => {
+                    self.dirty = false;
+                    if let Some(w) = &self.window {
+                        w.request_redraw();
+                    }
+                }
             }
         }
     }
@@ -651,7 +671,7 @@ fn main() {
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, ..Default::default() },
+        ui: ui::UiState { enabled: ui_mode, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }

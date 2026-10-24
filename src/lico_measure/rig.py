@@ -100,6 +100,10 @@ TEXT_WORKLOAD: dict | None = None
 
 # When set, every measured host gets this many accounts (provider "claude") before the measurement starts.
 ACCOUNTS = 0
+# Extra command-line arguments for a client, by name (the shipped primary client runs its first view with --ui).
+CLIENT_ARGS: dict[str, list[str]] = {}
+# The display scale of the measured clients: the X screen is this many times larger and the toolkit is told the factor.
+DISPLAY_SCALE = 1
 
 
 def effective_history(history: int) -> int:
@@ -171,8 +175,10 @@ class Client:
                "XDG_CACHE_HOME": str(home / "cache"), "XDG_DATA_HOME": str(home / "data"),
                "XDG_RUNTIME_DIR": str(home / "run"), "GDK_BACKEND": "x11", "NO_AT_BRIDGE": "1",
                **CANDIDATE_ENV.get(name, {}), **(extra_env or {})}
+        if DISPLAY_SCALE != 1:
+            env["WINIT_X11_SCALE_FACTOR"] = str(DISPLAY_SCALE)
         self.proc = subprocess.Popen(
-            [*candidate_command(name, host_socket), *(extra_args or [])], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [*candidate_command(name, host_socket), *CLIENT_ARGS.get(name, []), *(extra_args or [])], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             text=True, env=env,
         )
         self.lines: queue.Queue[dict] = queue.Queue()

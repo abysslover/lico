@@ -69,6 +69,7 @@ pub struct UiState {
     pub header: String,
     pub bar: Option<String>,
     pub window_span: (usize, usize),
+    pub scale: f32, // the display scale factor; every size here is a logical size times this
 }
 
 fn display_cols(text: &str) -> usize {
@@ -78,7 +79,7 @@ fn display_cols(text: &str) -> usize {
 fn ago(now: u64, then: u64) -> String {
     let d = now.saturating_sub(then);
     match d {
-        0..=59 => format!("{d}s"),
+        0..=59 => "<1m".to_string(), // coarse on purpose: a list that redraws every second would never let the client idle
         60..=3599 => format!("{}m", d / 60),
         _ => format!("{}h", d / 3600),
     }
@@ -89,6 +90,14 @@ fn now_secs() -> u64 {
 }
 
 impl Row {
+    /// The short form for the narrow list: the full wording is in the header of the selected session.
+    pub fn list_state_text(&self) -> String {
+        match self.state_text().as_str() {
+            "waiting for approval" => "approval".into(),
+            other => other.to_string(),
+        }
+    }
+
     /// What a person reads: the host's state, never a guess (waiting for approval beats working).
     pub fn state_text(&self) -> String {
         if self.state == "running" && !self.approvals.is_empty() {
@@ -170,7 +179,6 @@ impl App {
         if self.ui.ticks % 5 == 1 {
             self.send("{\"op\":\"account.list\"}");
         }
-        self.dirty = true; // ages in the list move on
     }
 
     fn selected_row(&self) -> Option<&Row> {
@@ -186,6 +194,7 @@ impl App {
     }
 
     fn refresh_list(&mut self) {
+        let s = self.ui.scale.max(1.0);
         let now = now_secs();
         let mut text = String::new();
         let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
@@ -202,7 +211,7 @@ impl App {
                 let marker = if row.session == self.session { ">" } else if !row.approvals.is_empty() { "!" } else { " " };
                 let approvals = if row.approvals.is_empty() { String::new() } else { format!(" x{}", row.approvals.len()) };
                 let short: String = row.session.chars().take(7).collect();
-                rows_text.push(format!("{marker} {short} {}{approvals} {}", row.state_text(), ago(now, row.state_at)));
+                rows_text.push(format!("{marker} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at)));
             }
         }
         text.push_str(&rows_text.join("\n"));
@@ -212,21 +221,21 @@ impl App {
         }
         self.ui.list_sig = sig;
         if let Some(fs) = self.font_system.as_mut() {
-            let buffer = self.ui.list_buffer.get_or_insert_with(|| Buffer::new(fs, Metrics::new(FONT_PX, LINE_HEIGHT as f32)));
+            let buffer = self.ui.list_buffer.get_or_insert_with(|| Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s)));
             buffer.set_wrap(Wrap::None);
-            buffer.set_size(Some(LIST_W as f32), Some(4000.0));
+            buffer.set_size(Some(LIST_W as f32 * s), Some(4000.0));
             buffer.set_text(&text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
             buffer.shape_until_scroll(fs, true);
         }
         // the rows' click boxes: one logical line each, in the order they were written
         self.ui.hit_rows.clear();
-        let mut y = LIST_TOP as f32;
+        let mut y = LIST_TOP as f32 * s;
         for (provider, account) in &groups {
             let _ = (provider, account);
-            y += LINE_HEIGHT as f32; // the group heading is not a target
+            y += LINE_HEIGHT as f32 * s; // the group heading is not a target
             for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
-                self.ui.hit_rows.push((y, y + LINE_HEIGHT as f32, row.session.clone()));
-                y += LINE_HEIGHT as f32;
+                self.ui.hit_rows.push((y, y + LINE_HEIGHT as f32 * s, row.session.clone()));
+                y += LINE_HEIGHT as f32 * s;
             }
         }
         self.dirty = true;
@@ -322,6 +331,18 @@ impl App {
     // ------------------------------------------------------------------ events
     pub(crate) fn ui_window_event(&mut self, event: &WindowEvent) -> bool {
         match event {
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.ui.scale = *scale_factor as f32;
+                self.ui.list_buffer = None; // laid out again at the new size
+                self.ui.list_sig.clear();
+                self.ui.buttons = None;
+                let s = self.ui.scale.max(1.0);
+                if let Some(view) = self.view.as_mut() {
+                    view.buffer.set_metrics(Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
+                }
+                self.dirty = true;
+                false // the window's own handling still runs
+            }
             WindowEvent::ModifiersChanged(m) => {
                 self.ui.mods = m.state();
                 true
@@ -341,7 +362,7 @@ impl App {
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
                 if *state == ElementState::Pressed {
-                    if x < LIST_W as f32 {
+                    if x < LIST_W as f32 * self.ui.scale.max(1.0) {
                         if let Some((_, _, id)) = self.ui.hit_rows.iter().find(|r| y >= r.0 && y < r.1).cloned() {
                             if id != self.session {
                                 self.ui.scroll = 0;
@@ -370,7 +391,7 @@ impl App {
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
-                    MouseScrollDelta::PixelDelta(p) => (p.y / LINE_HEIGHT as f64) as isize,
+                    MouseScrollDelta::PixelDelta(p) => (p.y / (LINE_HEIGHT as f32 * self.ui.scale.max(1.0)) as f64) as isize,
                 };
                 self.scroll_by(lines);
                 true
@@ -434,7 +455,7 @@ impl App {
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "layout": {
-                "list_w": LIST_W, "rows": self.ui.hit_rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
+                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.hit_rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
                 "allow": self.ui.allow_rect, "deny": self.ui.deny_rect,
                 "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
             },
@@ -450,7 +471,10 @@ impl App {
         let size = window.inner_size();
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
         let (width, height) = (w.get() as usize, h.get() as usize);
-        let main_w = width.saturating_sub(LIST_W);
+        let s = self.ui.scale.max(1.0);
+        let list_w = (LIST_W as f32 * s) as usize;
+        let lh = LINE_HEIGHT as f32 * s;
+        let main_w = width.saturating_sub(list_w);
         self.refresh_list();
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
@@ -467,8 +491,8 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let prompt = format!("> {}[{}]", self.input, self.preedit);
-        let cols = (main_w as f32 / 8.5).max(10.0) as usize;
-        let rows_avail = (height / LINE_HEIGHT).saturating_sub(if bar.is_some() { 5 } else { 4 });
+        let cols = (main_w as f32 / (8.5 * s)).max(10.0) as usize;
+        let rows_avail = ((height as f32 / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
         let (Some(fs), Some(surface)) = (self.font_system.as_mut(), self.ui.surface.as_mut()) else { return };
         if surface.resize(w, h).is_err() {
             return;
@@ -505,7 +529,7 @@ impl App {
         };
         let view = self.view.get_or_insert_with(|| {
             // no session selected yet: a text buffer still carries the header and the draft
-            let buffer = Buffer::new(fs, Metrics::new(FONT_PX, LINE_HEIGHT as f32));
+            let buffer = Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
             super::View { lines: Default::default(), surface: None, buffer, swash: SwashCache::new(), session_rgb: 0xFF00_0000, seq_rgb: 0xFF00_0000 }
         });
         build(first, &mut text, &mut view.buffer, fs);
@@ -534,55 +558,56 @@ impl App {
                 }
             }
         }
-        self.ui.allow_rect = approval_y.map(|y| [(width - 190) as f32, y, (width - 100) as f32, y + LINE_HEIGHT as f32]);
-        self.ui.deny_rect = approval_y.map(|y| [(width - 95) as f32, y, (width - 5) as f32, y + LINE_HEIGHT as f32]);
+        self.ui.allow_rect = approval_y.map(|y| [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh]);
+        self.ui.deny_rect = approval_y.map(|y| [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh]);
         let Ok(mut buf) = surface.buffer_mut() else { return };
         buf.fill(BACKGROUND);
         fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
         fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
         // the list panel: its own column, its own background, the selected row marked
         for y in 0..height {
-            let idx = y * width + LIST_W - 1;
+            let idx = y * width + list_w - 1;
             if let Some(px) = buf.get_mut(idx) {
                 *px = 0xFF30_3840;
             }
         }
         for (y0, y1, id) in &self.ui.hit_rows {
             if *id == self.session {
-                rect(&mut buf, width, height, 0, *y0 as i32, LIST_W as i32 - 1, (*y1 - *y0) as i32, 0xFF22_3A58);
+                rect(&mut buf, width, height, 0, *y0 as i32, list_w as i32 - 1, (*y1 - *y0) as i32, 0xFF22_3A58);
             }
         }
         if let Some((a, b)) = self.ui.sel {
             let (lo, hi) = (a.min(b), a.max(b));
             for (y0, y1, idx) in &self.ui.hit_lines {
                 if *idx >= lo && *idx <= hi {
-                    rect(&mut buf, width, height, LIST_W as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, 0xFF2A_4A7A);
+                    rect(&mut buf, width, height, list_w as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, 0xFF2A_4A7A);
                 }
             }
         }
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
         let list_swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         if let Some(list) = self.ui.list_buffer.as_mut() {
-            blit(list, fs, list_swash, &mut buf, width, height, 0, LIST_TOP as i32, ink);
+            blit(list, fs, list_swash, &mut buf, width, height, 0, (LIST_TOP as f32 * s) as i32, list_w as i32 - 2, ink); // clipped to its column
         }
         if let Some(y) = approval_y {
             let (allow, deny) = self.ui.buttons.get_or_insert_with(|| {
                 let make = |fs: &mut FontSystem, label: &str| {
-                    let mut b = Buffer::new(fs, Metrics::new(FONT_PX, LINE_HEIGHT as f32));
-                    b.set_size(Some(90.0), Some(LINE_HEIGHT as f32));
+                    let mut b = Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
+                    b.set_size(Some(90.0 * s), Some(lh));
                     b.set_text(label, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
                     b.shape_until_scroll(fs, true);
                     b
                 };
                 (make(fs, " Allow"), make(fs, " Deny"))
             });
-            rect(&mut buf, width, height, (width - 190) as i32, y as i32, 90, LINE_HEIGHT as i32, 0xFF2E_6B3A);
-            rect(&mut buf, width, height, (width - 95) as i32, y as i32, 90, LINE_HEIGHT as i32, 0xFF7A_2E2E);
+            let bw = (90.0 * s) as i32;
+            rect(&mut buf, width, height, (width as f32 - 190.0 * s) as i32, y as i32, bw, lh as i32, 0xFF2E_6B3A);
+            rect(&mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, bw, lh as i32, 0xFF7A_2E2E);
             let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
-            blit(allow, fs, swash, &mut buf, width, height, (width - 190) as i32, y as i32, ink);
-            blit(deny, fs, swash, &mut buf, width, height, (width - 95) as i32, y as i32, ink);
+            blit(allow, fs, swash, &mut buf, width, height, (width as f32 - 190.0 * s) as i32, y as i32, i32::MAX, ink);
+            blit(deny, fs, swash, &mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, i32::MAX, ink);
         }
-        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, LIST_W as i32 + 4, 0, ink);
+        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + 4, 0, i32::MAX, ink);
         window.pre_present_notify();
         let _ = buf.present();
     }
@@ -598,13 +623,13 @@ fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h:
     }
 }
 
-fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, ink: Color) {
+fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
     buffer.draw(fs, swash, ink, |x, y, gw, gh, color| {
         let alpha = color.a() as u32;
         for row in 0..gh as i32 {
             for col in 0..gw as i32 {
                 let (px, py) = (x + col + ox, y + row + oy);
-                if px >= 0 && py >= 0 && (px as usize) < width && (py as usize) < height {
+                if px >= 0 && py >= 0 && px < clip_x && (px as usize) < width && (py as usize) < height {
                     let idx = py as usize * width + px as usize;
                     let dst = buf[idx];
                     let mix = |s: u8, shift: u32| {

@@ -185,3 +185,37 @@ def test_only_selected_text_reaches_the_clipboard_and_only_on_a_user_action():
             if host:
                 host.stop()
             xvfb.stop()
+
+
+def test_a_flood_of_lines_does_not_keep_the_client_at_full_cpu_and_the_text_stays_current():
+    from lico_measure.p02 import start
+    from lico_measure.procscope import cpu_seconds, tree_pids
+
+    with private_dir() as directory:
+        xvfb = Xvfb()
+        host = client = None
+        try:
+            # a session producing 100 agent-shaped lines a second, shown in the first view
+            host, log = start(directory, extra=["--text", "--payload", "110"], sessions=1, producing=1, rate=100, history=0)
+            sid = host.sessions[0]
+            client = start_client(host, xvfb.display)
+            client.send(f"show {sid}")
+            client.expect("state", "subscribed")
+            time.sleep(3.0)
+            pids = tree_pids(client.proc.pid)
+            before, began = cpu_seconds(pids, strict=True), time.monotonic()
+            time.sleep(10.0)
+            percent = (cpu_seconds(pids, strict=True) - before) / (time.monotonic() - began) * 100
+            assert percent < 55, f"{percent:.0f}% of a core while 100 lines a second arrive"
+            # capped is not stale: the lines shown are within a second of the host's newest
+            newest = Conn(host.socket).call(op="status")["sessions"][0]["seq"]
+            client.send("lines")
+            shown = client.expect("lines")["lines"]
+            last_shown = int(shown[-1][:6])
+            assert newest - last_shown <= 120, (newest, last_shown)
+        finally:
+            if client and client.proc.poll() is None:
+                client.kill()
+            if host:
+                host.stop()
+            xvfb.stop()
