@@ -213,6 +213,12 @@ open risks. M01-P05 (measured resources, failure recovery, packaging, owner end-
    accepted and that the init, assistant and result messages map as documented. It does not touch the permission flow, the
    acknowledgment by replay, resume, the key helper or any failure; those stay unverified (the capability record has an
    `observed_in_an_owner_run` section). The result and transcript are kept in the bundle's `owner_real_turn/`.
+   **First real Codex turn: also done by you, 15:35.** One turn through the adapter completed (4 records: turn started, the answer
+   as two lines, turn completed; 0 approvals): the real login in its own config directory with an empty private `HOME`, the strict
+   thread settings and the streamed answer all worked. Approvals, a command under the read-only sandbox, steering, resume and
+   failures are unverified. Both runs wrote to the same output directory, so the second overwrote the first's files; the Claude
+   files in the bundle's `owner_real_turn/` were reconstructed from what was read before (marked in the file), the Codex ones are
+   the originals. Give each run its own `--out` directory.
    **Real turns (owner-run).** `cd src && PYTHONPATH=. python3 -m lico_measure real-turn --provider claude --accept-billing --turns 1 --out DIR`
    (and `--provider codex`). It refuses an installed version other than the pinned one (Claude Code 2.1.310, Codex 0.164.0), denies
    every approval, writes an owner-only transcript and receipt, runs the provider with an empty private `HOME` and the provider's

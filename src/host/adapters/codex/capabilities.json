@@ -135,5 +135,19 @@
   "the order and exact content of approval events during a real turn",
   "whether the sandbox works on the development host (a warning says user namespaces are needed)",
   "the Claude Code terminal path (its version could not be read by the development session)"
- ]
+ ],
+ "observed_in_an_owner_run": {
+  "when": "2026-10-24 15:35 (+0900), one turn, run by the owner with `real-turn --provider codex` at commit 854870a",
+  "version": "codex-cli 0.164.0, binary sha256 b93f6811d3f653f0fb83be4050d857fb9abbb111dfa2ce160563327daff7f306",
+  "observed": [
+   "the owner's own login, found through the provider's config directory while HOME was an empty private directory, was accepted: the handshake, thread/start with approval policy `untrusted`, sandbox `read-only` and approvals reviewer `user`, and turn/start all succeeded",
+   "the answer streamed as agent-message deltas, was split into two lines and recorded, and turn/completed ended the turn",
+   "the four host records of the turn were `[turn started]`, the two answer lines and `[turn completed]`; the input reached the state `accepted` at the host"
+  ],
+  "not_observed": [
+   "any approval request (the turn needed none; 0 raised), so the real approval events and the answers to them are unverified",
+   "a command run under the read-only sandbox (the warning that its Linux sandbox needs user namespaces on this host is unconfirmed either way)",
+   "steering a running turn, resuming a thread after the process died, any failure or limit message, tool output events"
+  ]
+ }
 }

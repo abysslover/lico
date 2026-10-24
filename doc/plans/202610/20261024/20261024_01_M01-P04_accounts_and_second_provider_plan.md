@@ -242,3 +242,6 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
 - 2026-10-24: The owner ran one real Claude Code turn (2.1.310) through the adapter with the real-turn command: it completed
   (session started, one text line, turn completed; no permission request). Recorded in the capability record; the permission
   flow, the replay acknowledgment, resume, the key helper and failures remain unverified.
+- 2026-10-24: The owner also ran one real Codex turn (0.164.0) through the adapter: it completed (turn started, a two-line answer,
+  turn completed; no approval). Recorded in the Codex capability record; real approvals, a command under the sandbox, steering,
+  resume and failures remain unverified.
