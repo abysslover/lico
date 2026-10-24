@@ -65,6 +65,14 @@ def test_the_single_executable_runs_every_role_alone_in_an_empty_directory():
             state = Path(directory) / "state" / "lico"
             assert state.is_dir() and oct(state.stat().st_mode & 0o777) == "0o700"
             pid = json.loads(run(exe, env, "--socket", str(socket), "status").stdout)["pid"]        # the command line answers from the same file
+            # accounts and sessions are managed from the same command line, which finds the host by itself
+            made = json.loads(run(exe, env, "account", "create", "--provider", "codex", "--label", "Work").stdout)
+            account = made["account"]
+            listed = json.loads(run(exe, env, "account", "list").stdout)
+            assert [(a["account"], a["label"]) for a in listed["accounts"]] == [(account, "Work")]
+            assert json.loads(run(exe, env, "account", "affected", account).stdout)["sessions"] == []
+            assert run(exe, env, "account", "remove", account, "detach").returncode == 0
+            assert json.loads(run(exe, env, "account", "list").stdout)["accounts"] == []
             # closing the window does not end the host: it was started in a session of its own
             client.stdin.write("quit\n")
             client.stdin.flush()
