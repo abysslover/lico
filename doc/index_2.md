@@ -8,4 +8,4 @@
 | [M01-P02 host language decision](design/202610/20261023/00003_m01_p02_protocol/host_language_decision.md) | Measured size and memory of four conformant hosts; Rust with serde_json |
 | [M01-P02 report](reports/202610/20261023/20261023_02_M01-P02_persistent_host_report.md) | Persistent host results and hostile suite; inspection verdict pending |
 
-Back to the [first index page](README.md).
+Back to the [first index page](README.md). More documents: [page 3](index_3.md).

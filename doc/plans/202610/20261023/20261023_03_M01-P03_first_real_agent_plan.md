@@ -1,6 +1,6 @@
 # M01-P03 — First real agent path, structured input and approvals, Unicode and IME (2026-10-23)
 
-> Status: in_progress
+> Status: in_review
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
 > Branch: `phase/M01-P03-first-real-agent`
 > Motivation: attach one real, supported agent to the owned host with explicit target, input, approval and reconnect behavior, and prove Unicode and Korean input end to end, before accounts and a second provider are added.
@@ -185,3 +185,13 @@ need their own plans and approvals.
   same text and come back displayed. Red was observed by mutation of each client's filter (the client-only
   half failed with the filter weakened); the round-trip test passed on its first run. Full suite: 52 passed.
   Not yet measured with this output shape (S05); no real provider turn has run.
+- 2026-10-24: S05 done. The adapter's hostile suite found two real defects (partial lines and approval ids
+  were unbounded; approvals beyond the bound were dropped without telling the provider) that are fixed and
+  checked by mutation; the measurement commands got an agent-shaped text workload (UTF-8 lines of mixed
+  scripts, 10000-line transcripts) with scopes that state the real history and output kind, adapter scenarios
+  against the simulator (1000 inputs, 100 approvals, nine provider restarts, no loss, duplicate application or
+  misrouting), the provider's idle memory (about 122 MiB for the installed program, apart from Lico's budget),
+  an owner-run real-turn command (refuses without `--accept-billing`, at most three turns, denies every approval,
+  owner-only transcript) with a free dry run against the simulator, and a bundle generator. No target was
+  missed; A2's noisy-case CPU rose to 99% and C2's PERF-01 margin is 3.5 MiB (see the report). Ten tests in
+  total, 53 runs passed. No real provider turn was run. G3 and G4 are pending.
