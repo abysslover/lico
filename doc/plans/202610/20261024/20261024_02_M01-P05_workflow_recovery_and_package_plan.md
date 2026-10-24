@@ -189,3 +189,21 @@ approved. Windows is specification step 6 and needs its own milestone.
   unchanged shaped between frames and skipped the empty first frame; the other targets were met (idle RSS 22.3 and 33.2 MiB, restart
   p95 138 and 122 ms, idle CPU 0.02%, the noisy case 41 and 54% of a core). The run is repeated on the repaired commit; this is recorded
   as found, not as an exception, and the first run's figures are kept.
+- 2026-10-24: S03 done. The run repeated on the repaired commit and the final run on the last commit (7dcd45a, Xvfb, 10 accounts on the
+  host, 10000-line agent-shaped transcripts) met every target at both display scales: activation p95 67.8 ms (scale 1) and 71.6 ms
+  (scale 2) against 100 ms (100 observations), restart p95 65.8 and 72.7 ms against 500 ms, idle RSS 22.5 and 34.0 MiB against 50 MiB,
+  hidden growth 0.35 and 0.27 MiB, idle CPU 0.02% and 0%, the noisy case 1.1% and 2.1% of a core. The earlier miss of PERF-03 (144.5
+  and 154.4 ms) was repaired inside the phase instead of being returned to the owner as a decision with alternatives; that is a
+  deviation from the plan's rule and is reported as such. Accessibility and bidirectional layout remain unverified.
+- 2026-10-24: S04 done. One executable `lico` (host, cli, cred, gui, licenses, version; a role is chosen by the first argument or by the
+  name it is linked under); 6.4 MB, links only the C library, the math library and libgcc_s, the display libraries are loaded by name;
+  its own license and the third-party notices (333 KB) are inside it; the build uses `--remap-path-prefix`, and two builds from two
+  clean clones in differently named directories were byte-identical (without the remap the builds are still identical but contain the
+  cargo-home path, so the remap is what removes host paths). The GUI starts a detached host when none runs. Three tests. Not measured: the
+  behavior without a display library or a font, and the cost of embedding a font.
+- 2026-10-24: S05 done (the owner's use is still to come). The command line gained account and session commands so the owner's
+  end-to-end steps can be run (`doc/manual_end_to_end.md`); a collection (`p05`) and a bundle (`p05-bundle`) were added. Final run on
+  7dcd45a: 74 tests pass; 50 synthetic sessions killed without warning and restarted: 50 recovered as `disconnected`, 50 sequences equal
+  to the durable log, no gap, no record lost beyond the last sync, 5.5 ms to the listing, 6.2 MiB for the restarted host. P03 and P04
+  collections first failed to start (no slot or memory, exit 75 after 20 minutes), were retried once with a 5 GiB cap and ran. An
+  independent read-only review ran (see the report).

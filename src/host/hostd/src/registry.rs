@@ -31,6 +31,7 @@ pub struct Entry {
     pub credential_generation: u64,
     pub provider_session: Option<String>,
     pub state_at: u64,
+    pub account_removed: bool, // the account it was bound to was removed with its sessions detached
 }
 
 fn valid_session_id(id: &str) -> bool {
@@ -67,11 +68,16 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
             return Err(format!("sessions.json names an unknown provider for {session}"));
         }
         let generation = value["generation"].as_u64().filter(|g| *g >= 1).ok_or_else(|| format!("sessions.json has no valid generation for {session}"))?;
-        let account = value["account"].as_str().map(str::to_string);
+        let mut account = value["account"].as_str().map(str::to_string);
+        let mut account_removed = false;
         if let Some(id) = &account {
             match accounts.get(id) {
                 Some(a) if a.provider == provider => {}
-                _ => return Err(format!("sessions.json binds {session} to an account that does not exist or belongs to another provider")),
+                Some(_) => return Err(format!("sessions.json binds {session} to an account of another provider")),
+                None => { // removed with its sessions detached: the session stays, unbound, and says so until it is rebound
+                    account = None;
+                    account_removed = true;
+                }
             }
         }
         let provider_session = value["provider_session"].as_str().map(str::to_string);
@@ -80,7 +86,7 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
         }
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
-            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0),
+            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0), account_removed,
         });
     }
     Ok(out)
@@ -88,6 +94,8 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
 
 /// Write the registry of every live provider session (a purged session is not in it).
 pub fn save(shared: &Shared) {
+    static SAVING: std::sync::Mutex<()> = std::sync::Mutex::new(()); // one writer at a time: they share the temporary file
+    let _one = SAVING.lock().unwrap_or_else(|e| e.into_inner());
     DIRTY.store(false, Ordering::Relaxed);
     let sessions: Vec<_> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = sessions
@@ -110,8 +118,8 @@ pub fn save(shared: &Shared) {
         out.write_all(json!({"sessions": entries}).to_string().as_bytes())?;
         out.sync_all()
     });
-    if written.is_ok() {
-        let _ = std::fs::rename(&temporary, dir.join("sessions.json"));
+    if written.and_then(|_| std::fs::rename(&temporary, dir.join("sessions.json"))).is_err() {
+        DIRTY.store(true, Ordering::Relaxed); // try again at the next tick rather than forget a session
     }
 }
 
@@ -124,6 +132,9 @@ pub fn recover(shared: &Arc<Shared>) -> Result<usize, String> {
     let count = entries.len();
     for entry in entries {
         let (mut session, report) = crate::session::Session::recovered(&entry, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window);
+        if entry.account_removed {
+            session.account_issue = Some("account_removed".to_string());
+        }
         if report.torn_bytes > 0 || report.segments_set_aside > 0 {
             session.append(format!("[log recovered: {} byte(s) of a damaged tail and {} segment(s) set aside]", report.torn_bytes, report.segments_set_aside).into_bytes());
         }

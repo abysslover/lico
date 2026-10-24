@@ -1,5 +1,8 @@
 # Architecture candidates (M01-P01)
 
+Note (M01-P05): candidate `a2_cosmic` was moved into the product as the `gui` role of the single executable (`src/host/hostd`, built by
+`src/host/hostd/build-release.sh`); the table below records the measured candidates of M01-P01 and is not the current build.
+
 Minimal clients for the synthetic host in `src/lico_host`. Both take
 commands on stdin (`show ID [CURSOR]`, `hide`, `status`, `hoststatus`, `quit`)
 and print one JSON object per line. They exist to be measured, not shipped.

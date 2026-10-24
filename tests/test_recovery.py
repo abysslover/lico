@@ -144,7 +144,7 @@ def test_a_torn_log_tail_or_a_damaged_registry_is_reported_and_never_replayed_as
         # a damaged or forged registry stops the host instead of guessing
         for content, word in (("{not json", "sessions.json"),
                               (json.dumps({"sessions": [{"session": "../../etc/x", "provider": "codex", "generation": 1}]}), "sessions.json"),
-                              (json.dumps({"sessions": [{"session": "s" + "0" * 16, "provider": "codex", "generation": 1, "account": "a" + "0" * 12}]}), "sessions.json"),
+                              (json.dumps({"sessions": [{"session": "s" + "0" * 16, "provider": "codex", "generation": 0}]}), "sessions.json"),   # a missing account is a removed one, not a forgery
                               (json.dumps({"sessions": [{"session": "s" + "0" * 16, "provider": "nothing", "generation": 1}]}), "sessions.json")):
             registry_file(directory).write_text(content)
             done = subprocess.run([str(HOSTD), "--socket", str(Path(directory) / "second.sock"), "--sessions", "0", "--producing", "0",
@@ -187,5 +187,43 @@ def test_purge_during_a_resume_leaves_no_process_log_or_workspace():
                     if b"simulator.py" in command and str(directory).encode() in command and state != "Z":
                         alive.append(int(entry))
             assert alive == [], alive                                            # the provider the resume started was stopped, not left running
+        finally:
+            host.stop()
+
+
+def test_a_session_whose_account_was_removed_with_detach_still_lets_the_host_restart_and_says_so():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn = Conn(host.socket)
+            a = account(conn, "Work")
+            made = conn.call(op="session.create", kind="codex", account=a)
+            sid = made["session"]
+            wait_for(lambda: sid in registered(directory))
+            assert conn.call(op="account.remove", account=a, sessions="detach")["ok"] == 1
+            time.sleep(1.5)                                                   # the registry is written about once a second
+        finally:
+            hard_stop(host)
+        host, log, received = codex_host(directory)                          # before the repair the host refused to start here
+        try:
+            entry = sessions(Conn(host.socket))[sid]
+            assert entry["state"] == "disconnected" and not entry.get("account") and entry["account_issue"] == "account_removed"
+        finally:
+            host.stop()
+
+
+def test_purge_removes_the_set_aside_damaged_files_of_the_session_too():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn = Conn(host.socket)
+            made = conn.call(op="session.create", kind="codex")
+            sid = made["session"]
+            conn.call(op="input", session=sid, generation=made["generation"], request_id="x", text="hello")
+            wait_for(lambda: "echo: hello" in texts(log, sid))
+            aside = Path(log) / f"{sid}.{0:020}.seg.damaged"
+            aside.write_bytes(b"conversation bytes set aside earlier")
+            assert conn.call(op="session.purge", session=sid, generation=made["generation"])["ok"] == 1
+            assert not list(Path(log).glob(f"{sid}.*"))
         finally:
             host.stop()

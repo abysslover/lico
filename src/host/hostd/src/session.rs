@@ -261,6 +261,15 @@ impl Log {
             let _ = std::fs::remove_file(Self::path_for(&self.view.dir, &self.view.id, first));
         }
         self.sizes.clear();
+        if let Ok(entries) = std::fs::read_dir(&self.view.dir) { // what was set aside from a damaged tail is part of the conversation too
+            let prefix = format!("{}.", self.view.id);
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with(&prefix) && name.ends_with(".seg.damaged") {
+                    let _ = std::fs::remove_file(entry.path());
+                }
+            }
+        }
     }
 
     fn path_for(dir: &Path, id: &str, first: i64) -> PathBuf {

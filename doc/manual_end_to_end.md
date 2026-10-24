@@ -20,7 +20,7 @@ Use the file you were given as `lico`; it has no other files and needs only the 
    **disconnected** with its history; nothing runs until you resume it: `lico session resume <session>`.
 9. If an account stops working, the list shows it against that account and nothing switches by itself. `lico account affected <id>` names its
    sessions; `lico session rebind <session> <other-account>` moves one when you decide.
-10. Remove an account: `lico account remove <id> detach` (its sessions stay, unbound) or `... end` (they end); the provider's remote login is not revoked.
+10. Remove an account: `lico account remove <id> detach` (its sessions keep running with the account's home; after a host restart they come back disconnected, unbound and marked `account_removed`, until you `session rebind` them) or `... end` (they end); the provider's remote login is not revoked.
 11. Delete a session for good: `lico session purge <session>` (its process, log and workspace).
 
 Not in this phase: creating sessions from the window (use step 4), Wayland-specific behavior, accessibility, a log checksum.

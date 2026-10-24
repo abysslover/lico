@@ -7,5 +7,8 @@
 | [M01-P04 plan](plans/202610/20261024/20261024_01_M01-P04_accounts_and_second_provider_plan.md) | Keyring-only credentials, same-provider accounts, second provider adapter; G2 approved |
 | [Future idea: chat store full-text index](design/202610/20261024/00001_future_ideas/chat_store_full_text_index.md) | The owner's idea of an updatable compressed full-text index for conversations; not planned |
 | [M01-P04 report](reports/202610/20261024/20261024_02_M01-P04_accounts_and_second_provider_report.md) | Credential store, accounts and the second provider against simulators and a throwaway keyring; inspection verdict pending |
+| [M01-P05 plan](plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | Workflow, recovery, resource acceptance and the single executable; G2 approved |
+| [M01-P05 report](reports/202610/20261024/20261024_03_M01-P05_workflow_recovery_and_single_executable_report.md) | Recovery, first view, single executable, measurements; the owner's own use and inspection pending |
+| [Owner end-to-end guide](manual_end_to_end.md) | The steps the owner runs with real accounts |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

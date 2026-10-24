@@ -99,7 +99,7 @@ pub fn run(args: Vec<String>) {
             for entry in &entries {
                 let name = name_of(entry);
                 let owner = name.split('.').next().unwrap_or("");
-                if name.ends_with(".seg") && !keep.contains(owner) {
+                if (name.ends_with(".seg") || name.ends_with(".damaged")) && !keep.contains(owner) {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
