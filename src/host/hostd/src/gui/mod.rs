@@ -1,6 +1,7 @@
 //! The primary client (formerly candidate A2): winit, softbuffer and cosmic-text (shaping, font fallback).
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
+mod panel;
 mod ui;
 
 use std::collections::{HashMap, VecDeque};
@@ -68,6 +69,7 @@ struct App {
     view: Option<View>,
     font_system: Option<FontSystem>,
     sock: UnixStream,
+    socket: String,
     session: String,
     cursor: i64,
     dups: i64,
@@ -735,7 +737,7 @@ pub fn run(args: Vec<String>) {
     let mut app = App {
         stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
-        window: None, context: None, view: None, font_system: None, sock,
+        window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
         ui: ui::UiState { enabled: ui_mode, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
     };

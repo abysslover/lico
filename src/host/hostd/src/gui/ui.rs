@@ -69,6 +69,7 @@ pub struct UiState {
     pub header: String,
     pub bar: Option<String>,
     pub window_span: (usize, usize),
+    pub panel: Option<super::panel::Panel>, // new session, accounts and sign-in, in place of the transcript
     pub scale: f32, // the display scale factor; every size here is a logical size times this
 }
 
@@ -175,6 +176,7 @@ impl App {
 
     pub(crate) fn ui_tick(&mut self) {
         self.ui.ticks += 1;
+        self.panel_tick();
         self.send("{\"op\":\"status\"}");
         if self.ui.ticks % 5 == 1 {
             self.send("{\"op\":\"account.list\"}");
@@ -328,6 +330,11 @@ impl App {
     /// Copy is a user action: only a non-empty selection, only from the key chord.
     fn copy_selection(&mut self) {
         let Some(text) = self.selection_text() else { return };
+        self.copy_text(text);
+    }
+
+    /// Put text on the clipboard: always the result of a person's own key.
+    pub(crate) fn copy_text(&mut self, text: String) {
         if text.len() > COPY_LIMIT {
             return; // larger than one transfer; refused rather than cut
         }
@@ -410,6 +417,9 @@ impl App {
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                if self.panel_key(event) {
+                    return true;
+                }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
                 match &event.logical_key {
                     Key::Character(c) if chord && c.eq_ignore_ascii_case("c") => {
@@ -468,6 +478,7 @@ impl App {
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
+            "panel": self.panel_json(),
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.hit_rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
                 "allow": self.ui.allow_rect, "deny": self.ui.deny_rect,
@@ -492,8 +503,9 @@ impl App {
         self.refresh_list();
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
-        let header = self.header_text();
-        let bar = row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}")));
+        let panel_view = self.panel_view();
+        let header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
+        let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let prompt = format!("> {}[{}]", self.input, self.preedit);
@@ -503,8 +515,11 @@ impl App {
         if surface.resize(w, h).is_err() {
             return;
         }
-        let lines: Vec<(i64, String)> = self.view.as_ref().map(|v| v.lines.iter().cloned().collect()).unwrap_or_default();
-        let end = lines.len().saturating_sub(self.ui.scroll.min(lines.len()));
+        let lines: Vec<(i64, String)> = match &panel_view {
+            Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
+            None => self.view.as_ref().map(|v| v.lines.iter().cloned().collect()).unwrap_or_default(),
+        };
+        let end = lines.len().saturating_sub(if panel_view.is_some() { 0 } else { self.ui.scroll.min(lines.len()) });
         let mut first = end;
         let mut used = 0;
         while first > 0 {

@@ -18,6 +18,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   account create --provider codex|claude --label TEXT\n\
   account list | default ID | affected ID | credential ID REF | remove ID detach|end\n\
+  account login ID [--device]    sign in with the provider's own login (shows the address, asks for a code when one is needed)\n\
+  account auth ID                whether the provider says the account is signed in (Codex only; Claude Code: null)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   session show ID                one session
   session purge ID               delete a session: its process, log and workspace\n\
@@ -79,6 +81,14 @@ fn expect_ok(reply: Value) -> Value {
         println!("{reply}");
         std::process::exit(2);
     }
+}
+
+/// Like `expect_ok` but prints nothing: for the repeated polls of a login.
+fn quiet_ok(reply: Value) -> Value {
+    if reply["ok"] != json!(1) {
+        die(2, &reply.to_string());
+    }
+    reply
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
@@ -149,6 +159,33 @@ pub fn run(args: Vec<String>) {
         ["account", "create", ..] => {
             let (Some(provider), Some(label)) = (flag(&args, "--provider"), flag(&args, "--label")) else { die(1, USAGE) };
             expect_ok(call(&mut connect(&socket), json!({"op": "account.create", "provider": provider, "label": label})));
+        }
+        ["account", "login", id, ..] => {
+            let mut conn = connect(&socket);
+            let method = if args.iter().any(|a| a == "--device") { "device" } else { "browser" };
+            quiet_ok(call(&mut conn, json!({"op": "account.login.start", "account": id, "method": method})));
+            let mut shown = false;
+            loop {
+                let status = quiet_ok(call(&mut conn, json!({"op": "account.login.status", "account": id})));
+                if let (false, Some(url)) = (shown, status["url"].as_str()) {
+                    eprintln!("Open this address in your browser and sign in:\n{url}");
+                    shown = true;
+                }
+                if status["needs_code"] == json!(true) {
+                    eprint!("Paste the code the browser shows, then press Enter: ");
+                    let mut code = String::new();
+                    std::io::stdin().read_line(&mut code).ok();
+                    quiet_ok(call(&mut conn, json!({"op": "account.login.input", "account": id, "code": code.trim()})));
+                }
+                match status["state"].as_str().unwrap_or("") {
+                    "succeeded" => return eprintln!("signed in"),
+                    state @ ("failed" | "cancelled" | "timed_out") => die(1, &format!("login {state}")),
+                    _ => std::thread::sleep(Duration::from_millis(500)),
+                }
+            }
+        }
+        ["account", "auth", id] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "account.login.status", "account": id, "check": true})));
         }
         ["account", "list"] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "account.list"})));

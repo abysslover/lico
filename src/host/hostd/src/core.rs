@@ -18,14 +18,18 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 23] = [
+pub const OPS: [&str; 27] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
 
 pub struct Config {
+    pub login_bin: Option<PathBuf>, // a test double for the providers' login commands
+    pub login_args: Vec<String>,
+    pub login_timeout: u64, // seconds a login may last
     pub log_dir: PathBuf,
     pub agent: PathBuf,
     pub retain: usize,
@@ -62,6 +66,7 @@ pub struct Shared {
     pub started: Instant,
     pub pending_creates: AtomicUsize,
     pub accounts: Mutex<crate::accounts::Accounts>,
+    pub logins: crate::login::Logins,
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;

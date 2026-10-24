@@ -17,6 +17,7 @@ mod host;
 mod http;
 mod ipc;
 mod keyring;
+mod login;
 mod payload;
 mod registry;
 mod session;

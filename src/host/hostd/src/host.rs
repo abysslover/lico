@@ -59,6 +59,9 @@ pub fn run(args: Vec<String>) {
     let agent_default = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-synth-agent"))).unwrap_or_default();
     let cfg = Config {
         log_dir: log_dir.clone(),
+        login_bin: if args.iter().any(|a| a == "--login-bin") { Some(PathBuf::from(arg("--login-bin", ""))) } else { None },
+        login_timeout: arg("--login-timeout", "300").parse().expect("login-timeout"),
+        login_args: args.windows(2).filter(|w| w[0] == "--login-arg").map(|w| w[1].clone()).collect(),
         agent: PathBuf::from(arg("--agent", agent_default.to_str().unwrap_or(""))),
         retain: arg("--retain", "2048").parse().expect("retain"),
         window: arg("--window", "64").parse::<usize>().expect("window").max(session::SNAPSHOT_LINES),
@@ -117,7 +120,7 @@ pub fn run(args: Vec<String>) {
     let history: u64 = arg("--history", "5000").parse().expect("history");
     let size = cfg.payload;
     let accounts_dir = cfg.accounts_dir.clone();
-    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))) });
+    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))), logins: Mutex::new(HashMap::new()) });
     registry::recover(&shared).unwrap_or_else(|why| refuse(&why)); // sessions of an earlier run come back as disconnected
     {
         // durability policy: the logs are synced to disk about once a second while records arrive, and the registry is
