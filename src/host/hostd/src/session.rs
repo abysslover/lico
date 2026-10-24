@@ -172,6 +172,19 @@ impl Log {
         self.sizes.iter().sum()
     }
 
+    /// Delete every segment file of this session.
+    pub fn purge(&mut self) {
+        self.writer = None;
+        for (first, _) in self.view.segments.drain(..) {
+            let _ = std::fs::remove_file(Self::path_for(&self.view.dir, &self.view.id, first));
+        }
+        self.sizes.clear();
+    }
+
+    fn path_for(dir: &Path, id: &str, first: i64) -> PathBuf {
+        dir.join(format!("{}.{:020}.seg", id, first))
+    }
+
     pub fn append(&mut self, seq: i64, data: &[u8]) -> std::io::Result<()> {
         let full = self.view.segments.last().map_or(true, |s| s.1 >= self.segment_records);
         if full || self.writer.is_none() {
@@ -274,6 +287,7 @@ impl InputState {
 
 pub struct Session {
     pub id: String,
+    pub purged: bool, // the session was deleted: nothing may be written for it again
     pub generation: u64,
     pub producing: bool,
     pub state: State,
@@ -308,6 +322,7 @@ impl Session {
         let log = Log::new(dir, &id, retain);
         Session {
             id,
+            purged: false,
             generation: 1,
             codex: None,
             codex_thread: None,
@@ -345,13 +360,17 @@ impl Session {
         self.log.view()
     }
 
+    pub fn purge_log(&mut self) {
+        self.log.purge();
+    }
+
     pub fn disk_bytes(&self) -> usize {
         self.log.disk_bytes()
     }
 
     pub fn append(&mut self, data: Vec<u8>) {
-        if self.log_failed {
-            return; // a session whose log cannot be written ends; nothing more is announced
+        if self.log_failed || self.purged {
+            return; // a failed log ends the session; a purged session never writes again
         }
         let seq = self.next_seq;
         if let Err(error) = self.log.append(seq, &data) {

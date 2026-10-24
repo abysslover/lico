@@ -86,7 +86,7 @@ pub fn valid_text(value: &Value) -> bool {
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
         "hello" | "status" | "session.list" | "resources" => &[],
-        "session.resume" => &["session", "generation"],
+        "session.resume" | "session.purge" => &["session", "generation"],
         "snapshot" | "unsubscribe" => &["session"],
         "subscribe" => &["session", "after"],
         "session.create" => &["kind"],
@@ -101,9 +101,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
-            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume", "generation") => in_range(value, 1, i64::MAX),
+            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume" | "session.purge", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
             ("session.create", "kind") => matches!(value.as_str(), Some("synthetic" | "codex")),
             ("session.create", "rate") => in_range(value, 0, 10_000),
@@ -148,6 +148,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "session.list" => core::session_list(shared),
         "resources" => core::resources(shared),
         "session.resume" => core::session_resume(shared, &session, generation.unwrap_or(0)),
+        "session.purge" => core::session_purge(shared, &session, generation.unwrap_or(0)),
         "session.create" => core::session_create(
             shared,
             text(&request, "kind"),

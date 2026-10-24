@@ -166,3 +166,10 @@ need their own plans and approvals.
   of one guard survived because a second independent guard also refuses; a combined mutation was
   caught). The host's records equal the reference mapping for the recorded turn. Everything here is
   simulated; no real provider turn has run.
+- 2026-10-23: S03 done. A provider process gets an explicit environment (`PATH`, `HOME`, `LANG` and
+  `CODEX_HOME` only; synthetic agents `PATH` and `LANG`) and runs in a private per-session workspace
+  under the host's workspace root (mode 0700); `session.purge` ends a session's process and removes its
+  log and workspace and nothing else, and a purged session can never write again. Two tests, each checked
+  with mutations. The environment allowlist was written in S02, so its test was first run against existing
+  code (red was observed by mutation, not before code); the purge test was red before the purge existed.
+  The log is not fsynced and drafts are lost when a GUI is killed (unchanged).

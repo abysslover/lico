@@ -18,8 +18,8 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 14] = [
-    "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "input",
+pub const OPS: [&str; 15] = [
+    "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources",
 ];
 pub const REPLAY_CHUNK: usize = 256;
@@ -97,6 +97,7 @@ fn spawn_agent(command: Command) -> std::io::Result<Child> {
 
 extern "C" {
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
+    fn kill(pid: i32, sig: i32) -> i32;
 }
 
 pub fn random_hex(bytes: usize) -> String {
@@ -126,6 +127,12 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
         .stderr(Stdio::null());
     if stay {
         command.arg("--stay");
+    }
+    command.env_clear(); // an agent gets no part of the host's environment
+    for key in ["PATH", "LANG"] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
     }
     unsafe {
         command.pre_exec(|| {
@@ -304,6 +311,37 @@ fn start_codex_session(shared: &Arc<Shared>) -> Result<Arc<Mutex<Session>>, &'st
     crate::codex::start(shared, &session)?;
     shared.sessions.write().unwrap().push(session.clone());
     Ok(session)
+}
+
+/// Delete a session: end its process, remove its log and its workspace, and forget it. Nothing of
+/// another session is touched, and nothing of this one can be written again.
+pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
+    let found = find(shared, session).ok_or("unknown_session")?;
+    let (id, pid, subs) = {
+        let mut s = found.lock().unwrap();
+        check_generation(&s, Some(generation))?;
+        s.purged = true;
+        s.state = State::Exited;
+        s.input_tx = None;
+        s.codex = None;
+        s.approvals.clear();
+        let pid = s.agent_pid;
+        if pid != 0 {
+            unsafe { kill(pid as i32, 9) };
+        }
+        s.purge_log();
+        let subs: Vec<Arc<Sub>> = s.subs.drain(..).collect();
+        (s.id.clone(), pid, subs)
+    };
+    let _ = pid;
+    for sub in subs {
+        // viewers are told to resynchronise; their next request finds no such session
+        sub.push(crate::session::encode(obj(json!({"ev": "overflow", "session": id}))));
+    }
+    shared.sessions.write().unwrap().retain(|s| s.lock().unwrap().id != id);
+    shared.views.lock().unwrap().retain(|_, v| v.session != id);
+    let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&id));
+    Ok(obj(json!({"session": id})))
 }
 
 /// Bring a disconnected session back with a new provider process and a new generation.

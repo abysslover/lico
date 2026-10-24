@@ -7,11 +7,13 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "crash"     exits abruptly after acknowledging the turn
   "slow:N"    N output lines, one every 100 ms, so a turn is still running
   "bad"       malformed, oversize and endless messages
+  "env"       reports the names (never the values) of its environment, its working directory and its mode
   otherwise   echoes the text back, character for character
 """
 
 import argparse
 import json
+import os
 import queue
 import sys
 import threading
@@ -100,6 +102,12 @@ def handle(message):
             for k in range(count):
                 scheduled.append((now + 0.1 * (k + 1), ("delta", f"tick {k}\n")))
             scheduled.append((now + 0.1 * (count + 1), ("done", None)))
+        elif text == "env":
+            iid = f"env-{turn_counter}"
+            lines_out = [f"ENV {name}" for name in sorted(os.environ)] + [f"CWD {os.getcwd()}", f"CWDMODE {oct(os.stat('.').st_mode & 0o777)[2:]}"]
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": iid, "delta": "\n".join(lines_out) + "\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text == "bad":
             sys.stdout.write("this is not json\n")
             sys.stdout.write(json.dumps({"method": "item/agentMessage/delta", "params": {"itemId": "x"}}) + "\n")

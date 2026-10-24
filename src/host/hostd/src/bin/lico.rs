@@ -14,7 +14,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
   session create [--rate N] [--history N]\n\
-  session show ID                one session\n\
+  session show ID                one session
+  session purge ID               delete a session: its process, log and workspace\n\
   session send ID TEXT [--request-id RID]
                                  send input; the request id is printed first, so after a timeout the
                                  same command with --request-id RID cannot send the text twice
@@ -126,6 +127,11 @@ fn main() {
                 }
             }
             expect_ok(call(&mut connect(&socket), request));
+        }
+        ["session", "purge", id] => {
+            let mut conn = connect(&socket);
+            let generation = session_generation(&mut conn, id);
+            expect_ok(call(&mut conn, json!({"op": "session.purge", "session": id, "generation": generation})));
         }
         ["session", "show", id] => {
             let mut conn = connect(&socket);

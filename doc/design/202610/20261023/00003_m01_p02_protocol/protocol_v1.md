@@ -33,6 +33,7 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `subscribe` | oracle | yes | start the live stream; `after` is the client cursor; `snapshot: true` asks for the latest screen first |
 | `unsubscribe` | oracle | yes | stop the stream, keep the cursor |
 | `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) or a provider session (`kind` `codex`: one provider process and one thread) |
+| `session.purge` | host | yes | delete a session: its process is ended, its log segments and its workspace are removed and the session is forgotten; nothing of any other session is touched and nothing of this one can be written again (local socket and `lico session purge` only, not on HTTP) |
 | `session.resume` | host | yes | bring a disconnected provider session back with a new provider process that resumes the same thread; the execution generation rises by one, so every older target is stale |
 | `session.list` | host | no | id, generation, state (`running`, `exited` or `disconnected`) and last sequence of every session |
 | `input` | host | yes | send text to a session's agent: needs the target generation and a client request id; the reply and later `input` events give the state `accepted`, `submitted` (written to the agent) and `observed` (the agent acted on it) separately |
@@ -127,3 +128,13 @@ is never sent again. A provider that goes away makes the session `disconnected` 
 (commands and file changes) become host approvals bound to exactly one provider request and
 answered at most once; every other provider request (tokens, tools, attestation, elicitation,
 permission grants) is answered with an error. Provider output is sanitized into one-line records.
+
+## Isolation of real output (M01-P03)
+
+A provider process gets an explicit environment: only `PATH`, `HOME`, `LANG` and, when the host has
+it, `CODEX_HOME` (the provider finds its own login state through these; Lico never reads it). Nothing
+else of the host's environment reaches it, and synthetic agents get only `PATH` and `LANG`. Each session
+has a private workspace directory named by its session id under the host's workspace root (mode 0700),
+which is the provider's working directory. The durable log of a provider session holds conversation
+content: it is sensitive, owner-only (0700 directory, 0600 files), retained by record count and removed
+by `session.purge`; it is never uploaded and the host has no telemetry.
