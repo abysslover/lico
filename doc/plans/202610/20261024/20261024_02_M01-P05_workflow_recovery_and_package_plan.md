@@ -207,3 +207,7 @@ approved. Windows is specification step 6 and needs its own milestone.
   to the durable log, no gap, no record lost beyond the last sync, 5.5 ms to the listing, 6.2 MiB for the restarted host. P03 and P04
   collections first failed to start (no slot or memory, exit 75 after 20 minutes), were retried once with a 5 GiB cap and ran. An
   independent read-only review ran (see the report).
+- 2026-10-24: Reporting correction after the owner's review: the GUI experiments' "host" memory had included the agent processes the host
+  started; it is now the host program alone, with host plus agents as a separate figure (host 16.8 MiB and host plus agents 217 MiB with 100
+  sessions). The GUI runs were repeated on commit f51a3a9 and met every target at both scales (activation p95 72.1 and 67.7 ms, idle RSS 23.0
+  and 33.9 MiB); the figures quoted in the S03 and S05 entries above come from the earlier run on 7dcd45a.

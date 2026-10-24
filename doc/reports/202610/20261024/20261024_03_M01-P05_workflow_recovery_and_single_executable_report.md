@@ -27,19 +27,22 @@
 
 ## Results (Xvfb, X11, no compositor, software drawing; 10 accounts on the host; 10000-line agent-shaped transcripts; simulator providers)
 
-GUI runs and `p02 --text` on commit 7dcd45a, the `p05` collection on 5ce5005 (the later commit changed only registry and log-purge code
-after the review; the GUI numbers were not re-measured and are expected to be unaffected, which is an expectation, not a measurement).
+GUI runs on commit f51a3a9 (re-run after a reporting correction, below), `p02 --text` on 7dcd45a, the `p05` collection on 5ce5005. The
+commits after 7dcd45a changed only registry, log-purge and reporting code; the earlier GUI run on 7dcd45a gave the same picture (activation p95
+67.8 and 71.6 ms, idle RSS 22.5 and 34.0 MiB) and is kept in the bundle's history of this report, not as a result.
 
 | Target | Scale 1 | Scale 2 | Limit |
 |---|---|---|---|
-| Idle RSS of the client | 22.5 MiB | 34.0 MiB | 50 MiB |
-| Hidden-session growth | 0.35 MiB | 0.27 MiB | 10 MiB |
-| Activation p95 (n=100) | 67.8 ms | 71.6 ms | 100 ms |
-| Restart p95 (n=100) | 65.8 ms | 72.7 ms | 500 ms |
-| Idle CPU (n=1, 60 s) | 0.02 % | 0 % | 0.5 % |
-| Noisy case CPU | 1.1 % | 2.1 % | (no limit set in this phase; 99 % before the cap) |
+| Idle RSS of the client (the client's own process tree) | 23.0 MiB | 33.9 MiB | 50 MiB |
+| Hidden-session growth | 0.09 MiB | 0.21 MiB | 10 MiB |
+| Activation p95 (n=100) | 72.1 ms | 67.7 ms | 100 ms |
+| Restart p95 (n=100) | 70.5 ms | 83.0 ms | 500 ms |
+| Idle CPU (n=1, 60 s) | 0.00 % | 0.02 % | 0.5 % |
+| Noisy case CPU | 1.0 % | 2.0 % | (no limit set in this phase; 99 % before the cap) |
 
-- Host idle 8.3 MiB, 217 MiB with 100 sessions (host and client reported separately). Display server memory is reported apart.
+- **Host program memory** (its own process only, not the agent processes it started): 6.1 MiB idle with one session, 7.3 MiB with 10
+  sessions, 16.8 MiB with 100 sessions (10000-line transcripts). The agent processes are a separate category: host plus agents was
+  217 MiB with 100 sessions, almost all of it the 100 synthetic agent processes. Display server memory is reported apart too.
 - Restart recovery: 50 synthetic sessions with history, host killed with SIGKILL and restarted: 50 recovered, 50 `disconnected`, 50
   sequence numbers equal to the durable log, no gap, 6.4 ms to the listing, 6.2 MiB for the restarted host, one session resumed under a
   new generation.
@@ -48,6 +51,12 @@ after the review; the GUI numbers were not re-measured and are expected to be un
   twice, 100 approvals answered once each.
 
 ## Deviation and misses, plainly
+
+- **A reporting error, corrected.** The first run's "host process tree" figures (27 MiB with 10 sessions, 217 MiB with 100) summed the host
+  and the agent processes it started, and my first summary called that the host's memory. The owner pointed out that Lico's RSS is Lico's own
+  process, not the processes it runs. The measurement now reports the host program alone and the agents apart (figures above); the client
+  figure (PERF-01, PERF-02) was always the client's own process tree and did not change in kind. The `p02` and `p04` host figures were already
+  host-process-only with the agents listed separately.
 
 - **PERF-03 was missed** on the first run of the first view (commit 0a74709): activation p95 144.5 ms at scale 1 and 154.4 ms at scale 2
   (limit 100 ms). The plan says a miss stops the phase and returns a decision with at least three alternatives. I did not do that: I
