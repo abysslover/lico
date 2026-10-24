@@ -205,6 +205,24 @@ def cmd_p02_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_p03_bundle(args: argparse.Namespace) -> int:
+    from .bundle_p03 import build, screens
+
+    dirty = _git("status", "--porcelain")
+    if dirty and not args.allow_dirty:
+        print("refusing to build a bundle from a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
+        return 2
+    runs = [Path(args.p03), Path(args.p02), *[Path(p) for p in args.raw]]
+    receipts = [json.loads((d / "receipt.json").read_text()) for d in runs]
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    shots = screens(out / "screens")
+    build([Path(p) for p in args.raw], json.loads((Path(args.p02) / "p02.json").read_text()),
+          json.loads((Path(args.p03) / "p03.json").read_text()), shots, out / "screens", out,
+          "python -m lico_measure " + " ".join(sys.argv[1:]), _git("rev-parse", "HEAD"), receipts)
+    return 0
+
+
 def cmd_providers(args: argparse.Namespace) -> int:
     from .providers import record_codex
 
@@ -254,6 +272,13 @@ def main() -> int:
     p02b.add_argument("--out", required=True)
     p02b.add_argument("--allow-dirty", action="store_true")
     p02b.set_defaults(func=cmd_p02_bundle)
+    p03b = sub.add_parser("p03-bundle", help="generate the M01-P03 inspection bundle")
+    p03b.add_argument("--p03", required=True, help="output directory of the p03 command")
+    p03b.add_argument("--p02", required=True, help="output directory of the p02 --text command")
+    p03b.add_argument("--raw", required=True, nargs="+", help="raw output directories of the run --text command")
+    p03b.add_argument("--out", required=True)
+    p03b.add_argument("--allow-dirty", action="store_true")
+    p03b.set_defaults(func=cmd_p03_bundle)
     prov = sub.add_parser("providers", help="record the capability data of an installed provider")
     prov.add_argument("provider", choices=["codex"])
     prov.set_defaults(func=cmd_providers)

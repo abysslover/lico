@@ -167,6 +167,51 @@ def _pending(control: ProtoConn, sid: str) -> list:
     return [s for s in control.call(op="status")["sessions"] if s["session"] == sid][0].get("approvals", [])
 
 
+def simulated_session_demo() -> dict:
+    """One simulated session end to end, as a watcher sees it: an input, a turn with two approvals
+    (one answered after a forged and a stale attempt), a vanished provider and the resumed session."""
+    events: list[dict] = []
+    with private_dir() as directory:
+        host, log, _received = _simulated_host(directory)
+        try:
+            control, watcher = ProtoConn(host.socket), ProtoConn(host.socket, timeout=1.0)
+            made = control.call(op="session.create", kind="codex")
+            sid, generation = made["session"], made["generation"]
+            watcher.call(op="subscribe", session=sid, after=-1, snapshot=True)
+
+            def collect() -> None:
+                while True:
+                    try:
+                        events.append(watcher.read())
+                    except (OSError, EOFError):
+                        return
+
+            def step(label: str, reply: dict) -> None:
+                events.append({"step": label, "reply": reply})
+
+            step("input fixture", control.call(op="input", session=sid, generation=generation, request_id="demo-1", text="fixture"))
+            for _ in range(2):
+                pending = _until(lambda: _pending(control, sid))
+                number = pending[0]["approval_id"]
+                step("approval forged", control.call(op="approval.answer", session=sid, generation=generation, approval_id=number + 1000, answer="allow"))
+                step("approval stale generation", control.call(op="approval.answer", session=sid, generation=generation + 1, approval_id=number, answer="allow"))
+                step("approval answered", control.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow"))
+                step("approval answered again", control.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow"))
+            _until(lambda: _settled(control, sid, "demo-1") and not _pending(control, sid))
+            step("input crash", control.call(op="input", session=sid, generation=generation, request_id="demo-2", text="crash"))
+            _until(lambda: _state(control, sid) == "disconnected")
+            step("input while disconnected", control.call(op="input", session=sid, generation=generation, request_id="demo-3", text="lost?"))
+            resumed = control.call(op="session.resume", session=sid, generation=generation)
+            step("session.resume", resumed)
+            step("old generation after resume", control.call(op="input", session=sid, generation=generation, request_id="demo-4", text="old target"))
+            step("input after resume", control.call(op="input", session=sid, generation=resumed["generation"], request_id="demo-5", text="resumed 한글 ok"))
+            time.sleep(1.0)
+            collect()
+            return {"events": events, "session_log": [p.decode() for _, p in read_log(log, sid)]}
+        finally:
+            host.stop()
+
+
 def provider_evidence() -> dict:
     """What is pinned and what is not: copied from the capability record, never inferred."""
     record = json.loads(CAPABILITIES.read_text())
@@ -245,11 +290,12 @@ def hostile_adapter_check() -> dict:
     result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(REPO / "tests" / "test_codex_adapter.py"),
                              "-k", "hostile"], capture_output=True, text=True, cwd=REPO,
                             env=dict(os.environ, PYTHONPATH=str(REPO / "src") + os.pathsep + str(REPO)))
-    return {"passed": result.returncode == 0, "summary": (result.stdout.strip().splitlines() or [""])[-1],
-            "seconds": round(time.monotonic() - began, 1)}
+    lines = result.stdout.strip().splitlines()
+    return {"passed": result.returncode == 0, "summary": (lines or [""])[-1], "seconds": round(time.monotonic() - began, 1),
+            "failure": [l for l in lines if l.startswith("E ")][:8] if result.returncode else []}
 
 
 def collect_p03() -> dict:
     return {"adapter_integrity": adapter_integrity(), "hostile_adapter": hostile_adapter_check(),
             "provider_evidence": provider_evidence(), "provider_memory": provider_idle_memory(),
-            "real_turn_dry_run": real_turn_dry_run()}
+            "real_turn_dry_run": real_turn_dry_run(), "simulated_session": simulated_session_demo()}
