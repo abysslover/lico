@@ -102,7 +102,13 @@ fn clean(text: &str) -> String {
         .collect()
 }
 
+/// While a panel is open the input line may hold a sign-in code: nothing typed is echoed to standard output then.
+static QUIET_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn emit_ime(kind: &str, text: &str) {
+    if QUIET_INPUT.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
     println!("{{\"ev\":\"ime\",\"kind\":\"{}\",\"text\":\"{}\"}}", kind, json_escape(text));
     let _ = std::io::stdout().flush();
 }

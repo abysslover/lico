@@ -383,6 +383,9 @@ impl App {
                 let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
                 if *state == ElementState::Pressed {
                     if x < LIST_W as f32 * self.ui.scale.max(1.0) {
+                        if self.ui.panel.is_some() {
+                            return true; // a panel owns the input line: leaving for another session would carry its text along
+                        }
                         if let Some((_, _, id)) = self.ui.hit_rows.iter().find(|r| y >= r.0 && y < r.1).cloned() {
                             if id != self.session {
                                 self.ui.scroll = 0;

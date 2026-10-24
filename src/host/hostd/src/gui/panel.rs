@@ -36,8 +36,14 @@ pub struct Panel {
 
 impl App {
     fn host_call(&self, request: Value) -> Value {
+        self.host_call_within(request, 8)
+    }
+
+    /// One request on a connection of its own, waiting at most `seconds` for the reply (the window stands still meanwhile).
+    fn host_call_within(&self, request: Value, seconds: u64) -> Value {
         let Ok(mut conn) = UnixStream::connect(&self.socket) else { return json!({"ok": 0, "error": "host_unreachable"}) };
-        conn.set_read_timeout(Some(Duration::from_secs(8))).ok();
+        conn.set_read_timeout(Some(Duration::from_secs(seconds))).ok();
+        conn.set_write_timeout(Some(Duration::from_secs(seconds))).ok();
         let mut line = request.to_string();
         line.push('\n');
         if conn.write_all(line.as_bytes()).is_err() {
@@ -72,10 +78,15 @@ impl App {
         }
     }
 
+    fn sync_quiet(&self) {
+        super::QUIET_INPUT.store(self.ui.panel.is_some(), std::sync::atomic::Ordering::Relaxed);
+    }
+
     pub(crate) fn panel_open(&mut self, step: Step) {
         let stash = std::mem::take(&mut self.input);
         self.preedit.clear();
         self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, stash });
+        self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
         }
@@ -90,6 +101,7 @@ impl App {
             self.input = p.stash;
             self.preedit.clear();
         }
+        self.sync_quiet();
         self.dirty = true;
     }
 
@@ -186,7 +198,7 @@ impl App {
         if p.step != Step::Login || p.account.is_empty() {
             return;
         }
-        let reply = self.host_call(json!({"op": "account.login.status", "account": p.account}));
+        let reply = self.host_call_within(json!({"op": "account.login.status", "account": p.account}), 2);
         let finished = reply["state"] == json!("succeeded");
         if let Some(p) = self.ui.panel.as_mut() {
             p.login = reply;
@@ -201,7 +213,12 @@ impl App {
     fn start_login(&mut self, method: &str) {
         let account = self.ui.panel.as_ref().map(|p| p.account.clone()).unwrap_or_default();
         self.host_call(json!({"op": "account.login.cancel", "account": account}));
-        std::thread::sleep(Duration::from_millis(250));
+        for _ in 0..20 {
+            if !matches!(self.host_call(json!({"op": "account.login.status", "account": account}))["state"].as_str(), Some("waiting" | "browser" | "code")) {
+                break; // the cancelled login has ended
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
         let reply = self.host_call(json!({"op": "account.login.start", "account": account, "method": method}));
         if let Some(p) = self.ui.panel.as_mut() {
             p.step = Step::Login;
@@ -228,6 +245,9 @@ impl App {
                 }
             }
             return false;
+        }
+        if event.repeat {
+            return true; // a held key is not a second, deliberate press (a confirmation needs two)
         }
         let text_mode = self.text_mode();
         if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
@@ -374,7 +394,15 @@ impl App {
         if copy {
             self.copy_text(url);
         } else {
-            let started = std::process::Command::new("xdg-open").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok();
+            let started = match std::process::Command::new("xdg-open").arg(&url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+                Ok(mut child) => {
+                    std::thread::spawn(move || {
+                        let _ = child.wait(); // reaped, so it does not stay a zombie
+                    });
+                    true
+                }
+                Err(_) => false,
+            };
             if let (false, Some(p)) = (started, self.ui.panel.as_mut()) {
                 p.notice = "xdg-open is not available: copy the address (Ctrl+Shift+C) and open it yourself.".into();
             }
@@ -392,6 +420,12 @@ impl App {
     fn action_key(&mut self, key: char) {
         let Some(p) = self.ui.panel.as_ref() else { return };
         let account = p.account.clone();
+        let pending = p.confirm;
+        if !matches!(key, 'd' | 'e') {
+            if let Some(p) = self.ui.panel.as_mut() {
+                p.confirm = None; // any other key withdraws a pending removal
+            }
+        }
         match key {
             's' => self.start_login("browser"),
             'f' => {
@@ -402,10 +436,16 @@ impl App {
                 }
             }
             'd' | 'e' => {
-                let confirmed = p.confirm == Some(key);
+                let confirmed = pending == Some(key);
                 let sessions = if key == 'd' { "detach" } else { "end" };
                 if !confirmed {
                     let affected = self.host_call(json!({"op": "account.affected", "account": account}));
+                    if affected["ok"] != json!(1) {
+                        if let Some(p) = self.ui.panel.as_mut() {
+                            p.notice = "Could not list the sessions bound to it: nothing was removed.".into();
+                        }
+                        return;
+                    }
                     let names: Vec<String> = affected["sessions"].as_array().into_iter().flatten().filter_map(|s| s.as_str().map(|s| s.chars().take(7).collect())).collect();
                     if let Some(p) = self.ui.panel.as_mut() {
                         p.confirm = Some(key);

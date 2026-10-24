@@ -76,6 +76,7 @@ def test_one_login_per_account_and_cancel_or_timeout_ends_the_process():
             assert conn.call(op="account.login.cancel", account=a)["ok"] == 1
             wait_for(lambda: login_status(conn, a)["state"] == "cancelled")
             wait_for(lambda: not alive(pid_a))                                                # the process is gone, not just marked
+            assert login_status(conn, a)["url"] is None and not login_status(conn, a)["needs_code"]   # a finished login leaves no address behind
             pid_b = int((home_of(directory, b) / "home" / "pid").read_text())
             wait_for(lambda: login_status(conn, b)["state"] == "timed_out", timeout=10)       # the other one runs out of time
             wait_for(lambda: not alive(pid_b))

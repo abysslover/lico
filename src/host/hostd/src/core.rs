@@ -421,6 +421,7 @@ pub fn account_remove(shared: &Arc<Shared>, account: &str, sessions: &str) -> Re
     if reference.is_some() && !credential_command(shared, &["status"]) {
         return Err("credential_store_unavailable");
     }
+    let _ = crate::login::cancel(shared, account); // a sign-in in progress ends with the account
     let affected: Vec<(String, u64)> = sessions_of(shared, account).iter().map(|s| {
         let s = s.lock().unwrap();
         (s.id.clone(), s.generation)

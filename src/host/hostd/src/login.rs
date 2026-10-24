@@ -4,7 +4,7 @@
 
 use serde_json::json;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -13,6 +13,10 @@ use crate::core::{spawn_provider_process, Reply, Shared};
 use crate::session::obj;
 
 const MAX_CODE: usize = 4096;
+
+extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+}
 
 pub struct Login {
     state: &'static str, // waiting, browser, code, succeeded, failed, cancelled, timed_out
@@ -83,8 +87,16 @@ fn strip_ansi(line: &str) -> String {
 
 fn read_output(login: Arc<Mutex<Login>>, stream: impl std::io::Read + Send + 'static) {
     std::thread::spawn(move || {
-        for line in BufReader::new(stream).lines().map_while(Result::ok) {
-            let line = strip_ansi(&line);
+        let mut reader = BufReader::new(stream);
+        let mut bytes = Vec::new();
+        loop {
+            bytes.clear();
+            // at most 8 KiB of a line is kept, and a byte that is not UTF-8 never ends the reading: the pipe is always drained
+            match reader.by_ref().take(8192).read_until(b'\n', &mut bytes) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+            let line = strip_ansi(&String::from_utf8_lossy(&bytes));
             let mut l = login.lock().unwrap();
             if l.url.is_none() {
                 if let Some(at) = line.find("https://") {
@@ -122,6 +134,7 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
     private_environment(&mut command, shared, account)?;
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = spawn_provider_process(command).map_err(|_| "login_unavailable")?;
+    let pid = child.id();
     let login = Arc::new(Mutex::new(Login { state: "waiting", url: None, needs_code: false, exit_code: None, started: Instant::now(), cancel: false, stdin: child.stdin.take() }));
     if let Some(out) = child.stdout.take() {
         read_output(login.clone(), out);
@@ -137,6 +150,9 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
         if let Some(status) = finished {
             l.exit_code = status.code();
             l.stdin = None;
+            l.url = None; // what the provider printed is for the sign-in in progress only
+            l.needs_code = false;
+            unsafe { kill(-(pid as i32), 9) }; // helpers the login started go with it
             if running(l.state) {
                 l.state = if status.success() { "succeeded" } else { "failed" };
             }
@@ -145,7 +161,10 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
         if l.cancel || l.started.elapsed() > timeout {
             l.state = if l.cancel { "cancelled" } else { "timed_out" };
             l.stdin = None;
+            l.url = None;
+            l.needs_code = false;
             drop(l);
+            unsafe { kill(-(pid as i32), 9) }; // the whole group: a wrapper's helper may hold the callback port
             let _ = child.kill();
             let _ = child.wait();
             return;
@@ -202,7 +221,8 @@ pub fn status(shared: &Arc<Shared>, account: &str, check: bool) -> Reply {
 fn signed_in(shared: &Shared, account: &str) -> Option<bool> {
     let mut command = command_of(shared, "codex", &["login", "status"]);
     private_environment(&mut command, shared, account).ok()?;
-    let mut child = command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().ok()?;
+    command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let mut child = spawn_provider_process(command).ok()?;
     let began = Instant::now();
     loop {
         if let Some(status) = child.try_wait().ok()? {

@@ -31,22 +31,23 @@ def test_new_session_dialog_creates_a_session_bound_to_the_chosen_account():
         try:
             host, log = panel_host(directory)
             conn = Conn(host.socket)
-            work = account(conn, "Work")
+            first = account(conn, "Work")
+            work = account(conn, "Other")                                     # the second account: choosing it must matter
             client = start_client(host, xvfb.display)
             assert ui(client)["panel"] is None                                # nothing is open until a person asks
             xdo(xvfb.display, "key", "ctrl+n")
             assert panel_of(client, lambda p: True)["title"].startswith("New session: which provider")
             xdo(xvfb.display, "key", "1")
             body = panel_of(client, lambda p: "which account" in p["title"])["body"]
-            assert "1  Work  (default)" in body and "n  a new account" in body
-            xdo(xvfb.display, "key", "1")
-            assert panel_of(client, lambda p: p["title"] == "New session: codex / Work")
+            assert "1  Work  (default)" in body and "2  Other" in body and "n  a new account" in body
+            xdo(xvfb.display, "key", "2")
+            assert panel_of(client, lambda p: p["title"] == "New session: codex / Other")
             assert conn.call(op="status")["sessions"] == []                  # choosing creates nothing
             xdo(xvfb.display, "key", "Return")
             state = ui(client, lambda u: u["panel"] is None and len(u["rows"]) == 1)
             made = conn.call(op="status")["sessions"]
             assert len(made) == 1 and made[0]["account"] == work and made[0]["provider"] == "codex"
-            assert state["rows"][0]["label"] == "Work" and state["selected"] == made[0]["session"]
+            assert first != work and state["rows"][0]["label"] == "Other" and state["selected"] == made[0]["session"]
             # a new account is made in the window, with the input line as its text field, and backing out creates no session
             xdo(xvfb.display, "key", "ctrl+n")
             panel_of(client, lambda p: True)
@@ -57,7 +58,7 @@ def test_new_session_dialog_creates_a_session_bound_to_the_chosen_account():
             xdo(xvfb.display, "type", "Home")
             xdo(xvfb.display, "key", "Return")
             assert panel_of(client, lambda p: p["title"] == "New session: codex / Home")
-            assert sorted(a["label"] for a in conn.call(op="account.list")["accounts"]) == ["Home", "Work"]
+            assert sorted(a["label"] for a in conn.call(op="account.list")["accounts"]) == ["Home", "Other", "Work"]
             xdo(xvfb.display, "key", "Escape")
             ui(client, lambda u: u["panel"] is None)
             assert len(conn.call(op="status")["sessions"]) == 1
@@ -79,6 +80,19 @@ def test_sign_in_panel_shows_the_url_takes_a_pasted_code_and_clears_it():
             work = account(conn, "Work")
             client = start_client(host, xvfb.display)
             reader = PixelReader(xvfb.display)
+            class Recording:                                                   # everything the client prints, to look for the code in it
+                def __init__(self, queue):
+                    self.queue, self.seen = queue, []
+
+                def __getattr__(self, name):
+                    return getattr(self.queue, name)
+
+                def get(self, *args, **kwargs):
+                    message = self.queue.get(*args, **kwargs)
+                    self.seen.append(message)
+                    return message
+
+            client.lines = Recording(client.lines)
             xdo(xvfb.display, "key", "ctrl+a")
             assert "1  codex / Work  (default)" in panel_of(client, lambda p: p["title"] == "Accounts")["body"]
             xdo(xvfb.display, "key", "1")
@@ -96,6 +110,7 @@ def test_sign_in_panel_shows_the_url_takes_a_pasted_code_and_clears_it():
             xdo(xvfb.display, "key", "Return")
             state = ui(client, lambda u: u["panel"] is not None and "Signed in." in u["panel"]["body"])
             assert state["panel"]["input"] == "" and "CANARYCODE9" not in json.dumps(state)      # cleared from the window at once
+            assert not [m for m in client.lines.seen if m.get("ev") == "ime" and m.get("text")], "the input line was echoed to standard output while the code was typed"
             account_dir = home_of(directory, work)
             assert (account_dir / "home" / "received_code").read_text() == "CANARYCODE9" and (account_dir / "codex" / "auth.json").exists()
             xdo(xvfb.display, "key", "Escape")
