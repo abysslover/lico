@@ -164,6 +164,14 @@ def cmd_p02_bundle(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_providers(args: argparse.Namespace) -> int:
+    from .providers import record_codex
+
+    cap = record_codex()
+    print(json.dumps({"version": cap["version"]["cli"], "server_requests": len(cap["server_requests"])}))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="lico_measure", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,6 +200,9 @@ def main() -> int:
     p02b.add_argument("--out", required=True)
     p02b.add_argument("--allow-dirty", action="store_true")
     p02b.set_defaults(func=cmd_p02_bundle)
+    prov = sub.add_parser("providers", help="record the capability data of an installed provider")
+    prov.add_argument("provider", choices=["codex"])
+    prov.set_defaults(func=cmd_providers)
     args = parser.parse_args()
     return args.func(args)
 

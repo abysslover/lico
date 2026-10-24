@@ -143,3 +143,16 @@ need their own plans and approvals.
 - 2026-10-23: G2 approved as written. Branch created from the documentation commit that carries
   the P02 work; this documentation-only commit records the approval. No step has run: S01 to S05
   are not started. G3 and G4 are pending.
+- 2026-10-23: S01 done. The installed Codex 0.163.0 was inspected with a private empty home and
+  a minimal environment (no sign-in, no model turn): the app-server speaks JSON lines on
+  standard input and output, its handshake works without credentials, `account/read` reports no
+  account and that sign-in is required, and a warning says its Linux sandbox needs user
+  namespaces on this host. The protocol schema the binary generates (105 client requests, 85
+  notifications, 10 server requests) is pinned by hash in a capability record that also lists
+  what is unsupported and what is unverified. A reference mapping turns provider messages into
+  one-line host records and approvals (escape sequences and control characters removed, an
+  approval answer bound to exactly one provider request, requests the client cannot serve
+  answered with an error); recorded fixtures are valid for the provider's own schema. Two tests,
+  each checked with mutations. The code was written before its tests (no red-before-code run);
+  red was observed by mutation. Not yet verified: any signed-in behavior, the exact approval
+  events of a real turn, and the Claude Code path (not run by this session).

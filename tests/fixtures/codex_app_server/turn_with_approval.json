@@ -1,0 +1,273 @@
+[
+ {
+  "dir": "server",
+  "msg": {
+   "method": "thread/started",
+   "params": {
+    "thread": {
+     "id": "th-1",
+     "cliVersion": "0.163.0",
+     "createdAt": 1,
+     "cwd": "/work/session",
+     "ephemeral": true,
+     "modelProvider": "example",
+     "preview": "",
+     "projectId": null,
+     "sessionId": "se-1",
+     "source": "appServer",
+     "status": {
+      "type": "idle"
+     },
+     "turns": [],
+     "updatedAt": 1
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "turn/started",
+   "params": {
+    "threadId": "th-1",
+    "turn": {
+     "id": "tu-1",
+     "items": [],
+     "status": "inProgress"
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/started",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "startedAtMs": 1,
+    "item": {
+     "id": "it-a",
+     "type": "agentMessage",
+     "text": ""
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/agentMessage/delta",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-a",
+    "delta": "안녕하세요. 작업을 "
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/agentMessage/delta",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-a",
+    "delta": "시작합니다.\n두 번째 줄 é 漢字 🙂\r\n"
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/agentMessage/delta",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-a",
+    "delta": "\u001b[2J\u001b]0;title\u0007hidden controls\u0000 and tab\tdone"
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/completed",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "completedAtMs": 2,
+    "item": {
+     "id": "it-a",
+     "type": "agentMessage",
+     "text": "..."
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/started",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "startedAtMs": 3,
+    "item": {
+     "id": "it-c",
+     "type": "commandExecution",
+     "command": "ls -la",
+     "commandActions": [],
+     "cwd": "/work/session",
+     "status": "inProgress"
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "id": 7,
+   "method": "item/commandExecution/requestApproval",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-c",
+    "startedAtMs": 3,
+    "command": "ls -la",
+    "reason": "list the workspace"
+   }
+  }
+ },
+ {
+  "dir": "user",
+  "request_id": 7,
+  "answer": "allow"
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "serverRequest/resolved",
+   "params": {
+    "threadId": "th-1",
+    "requestId": 7
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/commandExecution/outputDelta",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-c",
+    "delta": "total 0\nfile-한글.txt"
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "item/completed",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "completedAtMs": 4,
+    "item": {
+     "id": "it-c",
+     "type": "commandExecution",
+     "command": "ls -la",
+     "commandActions": [],
+     "cwd": "/work/session",
+     "status": "completed",
+     "exitCode": 0
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "id": 9,
+   "method": "account/chatgptAuthTokens/refresh",
+   "params": {
+    "reason": "unauthorized"
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "thread/tokenUsage/updated",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "tokenUsage": {
+     "last": {
+      "cachedInputTokens": 0,
+      "inputTokens": 1,
+      "outputTokens": 1,
+      "reasoningOutputTokens": 0,
+      "totalTokens": 2
+     },
+     "total": {
+      "cachedInputTokens": 0,
+      "inputTokens": 1,
+      "outputTokens": 1,
+      "reasoningOutputTokens": 0,
+      "totalTokens": 2
+     }
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "id": 11,
+   "method": "item/fileChange/requestApproval",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "itemId": "it-f",
+    "startedAtMs": 5,
+    "reason": "write notes"
+   }
+  }
+ },
+ {
+  "dir": "user",
+  "request_id": 11,
+  "answer": "deny"
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "error",
+   "params": {
+    "threadId": "th-1",
+    "turnId": "tu-1",
+    "willRetry": false,
+    "error": {
+     "message": "network unavailable"
+    }
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "method": "turn/completed",
+   "params": {
+    "threadId": "th-1",
+    "turn": {
+     "id": "tu-1",
+     "items": [],
+     "status": "completed"
+    }
+   }
+  }
+ }
+]

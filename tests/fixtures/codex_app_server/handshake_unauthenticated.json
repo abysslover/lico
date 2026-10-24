@@ -1,0 +1,56 @@
+[
+ {
+  "dir": "client",
+  "msg": {
+   "id": 1,
+   "method": "initialize",
+   "params": {
+    "clientInfo": {
+     "name": "lico-probe",
+     "title": "Lico probe",
+     "version": "0.0.0"
+    },
+    "capabilities": {}
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "id": 1,
+   "result": {
+    "userAgent": "lico-probe/0.163.0 (Linux; x86_64)",
+    "codexHome": "<private home>",
+    "platformFamily": "unix",
+    "platformOs": "linux"
+   }
+  }
+ },
+ {
+  "dir": "client",
+  "msg": {
+   "method": "initialized"
+  }
+ },
+ {
+  "dir": "client",
+  "msg": {
+   "id": 2,
+   "method": "account/read",
+   "params": {
+    "refreshToken": false
+   }
+  }
+ },
+ {
+  "dir": "server",
+  "msg": {
+   "id": 2,
+   "result": {
+    "account": null,
+    "requiresOpenaiAuth": true,
+    "workspaceRouting": null
+   }
+  }
+ }
+]

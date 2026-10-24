@@ -1,0 +1,138 @@
+{
+ "schema": "lico.provider_capabilities.v1",
+ "provider": "codex",
+ "path": "codex app-server over standard input and output (JSON lines)",
+ "version": {
+  "cli": "0.163.0",
+  "pinned": true,
+  "checked": "2026-10-23",
+  "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn"
+ },
+ "protocol_schema": {
+  "generated_with": "codex app-server generate-json-schema",
+  "sha256": {
+   "ClientRequest.json": "6b10888f163f569922d42c41e94a98b4261258abc7581c14eca867c3b125dc6f",
+   "ServerRequest.json": "f339be472737a0003efa25fba2e6e6c9237e621cd065b6d6995c51256e9dc1fb",
+   "ServerNotification.json": "8e719512bc26bb3871fcf7b378b79abf912d82787609c0ad418b71f179d0883f",
+   "ClientNotification.json": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a"
+  },
+  "client_requests": 105,
+  "server_requests": [
+   "account/chatgptAuthTokens/refresh",
+   "applyPatchApproval",
+   "attestation/generate",
+   "execCommandApproval",
+   "item/commandExecution/requestApproval",
+   "item/fileChange/requestApproval",
+   "item/permissions/requestApproval",
+   "item/tool/call",
+   "item/tool/requestUserInput",
+   "mcpServer/elicitation/request"
+  ],
+  "server_notifications": 85
+ },
+ "handshake": [
+  "initialize",
+  "initialized"
+ ],
+ "observed_without_credentials": {
+  "initialize": "answers with userAgent, codexHome, platformFamily and platformOs",
+  "account/read": {
+   "account": null,
+   "requiresOpenaiAuth": true
+  },
+  "thread/list": "an empty list",
+  "configWarning": "the Linux sandbox uses bubblewrap and needs access to create user namespaces (reported on the development host)"
+ },
+ "client_requests": {
+  "mapped": [
+   "initialize",
+   "thread/start",
+   "thread/resume",
+   "thread/turns/list",
+   "thread/items/list",
+   "turn/start",
+   "turn/steer",
+   "turn/interrupt",
+   "thread/unsubscribe"
+  ],
+  "not_forwarded": "every other client request of the schema is refused by the adapter"
+ },
+ "server_requests": {
+  "account/chatgptAuthTokens/refresh": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "applyPatchApproval": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "attestation/generate": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "execCommandApproval": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "item/commandExecution/requestApproval": {
+   "decision": "mapped_to_host_approval",
+   "note": "becomes a host approval bound to its id"
+  },
+  "item/fileChange/requestApproval": {
+   "decision": "mapped_to_host_approval",
+   "note": "becomes a host approval bound to its id"
+  },
+  "item/permissions/requestApproval": {
+   "decision": "mapped_to_host_approval",
+   "note": "becomes a host approval bound to its id"
+  },
+  "item/tool/call": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "item/tool/requestUserInput": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  },
+  "mcpServer/elicitation/request": {
+   "decision": "answered_with_error",
+   "note": "answered with a JSON-RPC error; the adapter supplies no tokens, tools or attestations"
+  }
+ },
+ "notifications": {
+  "mapped": [
+   "item/agentMessage/delta",
+   "item/commandExecution/outputDelta",
+   "item/started",
+   "item/completed",
+   "turn/started",
+   "turn/completed",
+   "error",
+   "serverRequest/resolved",
+   "thread/started",
+   "thread/status/changed"
+  ],
+  "others": "ignored and counted, never an error"
+ },
+ "unsupported": [
+  {
+   "what": "websocket and unix transports",
+   "reason": "the provider documents websocket as experimental and unsupported"
+  },
+  {
+   "what": "account login and token refresh by Lico",
+   "reason": "sign-in stays with the provider's own storage until M01-P04"
+  },
+  {
+   "what": "dynamic tools, attestation and MCP elicitation",
+   "reason": "no consumer exists in this phase; answered with an error"
+  }
+ ],
+ "unverified": [
+  "thread/start and turn/start with a signed-in account (no sign-in was used; no model turn ran)",
+  "the order and exact content of approval events during a real turn",
+  "whether the sandbox works on the development host (a warning says user namespaces are needed)",
+  "the Claude Code terminal path (its version could not be read by the development session)"
+ ]
+}
