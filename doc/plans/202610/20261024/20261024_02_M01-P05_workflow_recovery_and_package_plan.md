@@ -1,10 +1,10 @@
 # M01-P05 — User-facing workflow, resource acceptance, failure recovery and a reproducible Linux package (2026-10-24)
 
-> Status: draft
+> Status: in_progress
 > Milestone: [M01](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
-> Branch: `phase/M01-P05-workflow-recovery-package` (not created; created from the reviewed documentation commit after approval)
+> Branch: `phase/M01-P05-workflow-recovery-package`
 > Motivation: turn the measured foundation into something the owner can actually use end to end, prove it survives the failures that matter, re-measure it as shipped, and produce a package a clean public clone can rebuild.
-> Approval: G2 **pending**. Nothing below is approved, built or measured. M01-P01 to M01-P04 gates G3 and G4 pending.
+> Approval: G2 approved 2026-10-24: the plan as drafted with every recommendation, except decision 6 (the package format), which the owner replaced by a single self-contained executable (see "Owner decision on the package"). M01-P01 to M01-P04 gates G3 and G4 pending. G3 and G4 for this phase pending.
 
 ## Basis recorded from M01-P01 to M01-P04
 
@@ -36,10 +36,11 @@ Codex allow path unobserved, accessibility and bidirectional layout unchecked.
    of a live process); the plan states this to the user instead of hiding it.
 3. **Resource acceptance on the shipped binaries**: every PERF target re-measured with the real workflow UI, with the package size
    (PERF-07), idle and peak RSS and PSS per process category, fonts and display configuration, at more than one display scale.
-4. **A reproducible Linux package**: a clean public clone, with only public inputs and a pinned toolchain, builds the same package
-   twice (same checksums), containing the host, the command line, the credential command, the primary client, the complete MIT
-   license and the third-party notices of every bundled dependency, with no host path, no local instruction file and no private
-   data. The first format is a plain archive with an install script; other formats are for later.
+4. **One self-contained executable**: a clean public clone, with only public inputs and a pinned toolchain, builds the same single
+   file twice (same checksums). That one file is the host, the command line, the credential command and the primary client (one
+   program with subcommands), carries the complete MIT license and the third-party notices of every bundled dependency inside
+   itself, needs no file beside it and holds no host path, local instruction file or private data. It depends on the system's C library
+   and loads the display and input libraries of the machine when it starts (see "Owner decision on the package").
 5. **The owner's own use**: a checklist and a script the owner follows with the real accounts (sign in per account, two sessions, an
    approval, a GUI restart, a host restart, a removal), its transcript kept private; the bundle carries the sanitized evidence only.
 
@@ -63,12 +64,12 @@ with the owner before building.
 | S01 | Persisted session registry, restart recovery (every session returns `disconnected` with its bindings and history; a resume action per provider), log durability policy, detection of a torn tail or a damaged registry; a test of the purge and resume race | `test_host_restart_recovers_sessions_as_disconnected_with_bindings_and_history`; `test_a_torn_log_tail_or_a_damaged_registry_is_reported_and_never_replayed_as_data` |
 | S02 | The first view in the primary client: session list by workspace with state and time, selected session with provider, account and model beside the input, approvals visible for hidden sessions, scrollback on demand, selection and copy as a user action, resize | `test_session_list_shows_state_account_and_a_pending_approval_while_the_session_is_hidden`; `test_older_history_is_read_on_demand_without_replaying_the_transcript`; `test_only_selected_text_reaches_the_clipboard_and_only_on_a_user_action` |
 | S03 | Re-measure every target on the real UI at two display scales, with package size and every process category; repair of the noisy-case CPU if the owner wants it (decision below); accessibility and bidirectional layout stated as checked or unverified | the existing measurement reports must carry the new workload, scale and scope or fail (`test_measurement_report_requires_scope_and_samples` extended); no new test unless a repair is built |
-| S04 | The reproducible package: build script, archive, license notices, checksums, a dependency license check, a guard that the archive holds no private file or host path | `test_a_clean_clone_builds_the_same_package_twice_without_private_or_host_content`; `test_every_bundled_dependency_has_its_license_notice` |
+| S04 | The single executable: one program with subcommands replacing the separate binaries, build script, embedded license notices, checksums, a dependency license check, a guard that the file holds no private content or host path | `test_the_single_executable_runs_every_role_alone_in_an_empty_directory`; `test_a_clean_clone_builds_the_same_executable_twice_without_private_or_host_content`; `test_every_bundled_dependency_has_its_license_notice` |
 | S05 | The owner's end-to-end script and checklist, the phase report and the inspection bundle, an independent read-only reviewer (announced first), fixes | none (the owner's use is evidence, not a test) |
 
 Tests are named to define failure behavior; none exists until approved work runs. Each step observes red, implements the minimum,
 observes green and commits only a green result. Reuse existing checks; at most three new core tests per step. This plan proposes
-eight; the actual count is reported.
+nine; the actual count is reported.
 
 ## Measurement contract and acceptance
 
@@ -78,9 +79,9 @@ returns a decision with at least three alternatives; nothing is relaxed.
 | Criterion | Workload and required evidence | Fails or stays unverified when |
 |---|---|---|
 | PERF-01 to PERF-06 on the real UI | both clients that remain shipped, the first view with several sessions, hidden sessions, 10000-line transcripts, 100 observations where required, two display scales | a target missed, a process of the tree omitted, fewer samples, only one scale |
-| PERF-07 inventory | archive size, installed size, binaries and what each links, idle and peak RSS/PSS per category, fonts, display configuration | a missing value shown as zero, or package size and process memory merged |
+| PERF-07 inventory | executable size on disk, what it links and loads, idle and peak RSS/PSS per process category (a process of the executable's host role and of its client role are separate processes), fonts, display configuration | a missing value shown as zero, or package size and process memory merged |
 | Recovery | host killed with sessions running, with a draft in the GUI, with a log write in flight: every session `disconnected`, no record lost that was durable, no duplicate, none replayed from a torn tail | any session shown running that has no process, any lost durable record, any ambiguous input resent |
-| Reproducibility | two builds from a clean clone, checksums compared, the archive searched for private files, host paths and canaries | differing checksums, a private file or a canary in the archive |
+| Reproducibility | two builds from a clean clone, checksums compared, the executable searched for private content, host paths and canaries | differing checksums, a private string or a canary in the file |
 | Owner's use | the owner's checklist completed with real accounts, with the failures and surprises recorded | claimed without the owner's own record |
 
 p95 is nearest rank on a monotonic clock with the sample count published.
@@ -90,8 +91,8 @@ p95 is nearest rank on a monotonic clock with the sample count published.
 The registry adds stored user data (session ids, provider, account binding, provider session ids, workspace paths): owner-only modes,
 no secret values, no conversation content, purge removes its entry, and the file is covered by the secret-sink scan. The log
 remains sensitive data (owner-only, retention limit, purge). The copy action is the only way text reaches the clipboard; terminal
-content stays untrusted display data. The package contains no `CLAUDE.md`, `AGENTS.md`, local instructions, receipts, host paths,
-runtime bindings, dashboard or card references or names of outside systems; a guard checks the archive as it checks the tree. A real
+content stays untrusted display data. The executable contains no `CLAUDE.md`, `AGENTS.md`, local instructions, receipts, host paths,
+runtime bindings, dashboard or card references or names of outside systems; a guard checks the file as it checks the tree. A real
 turn or login happens only in the owner's own script with the owner's caps. Hostile cases: a damaged or forged registry (an id of
 another session, a path outside the workspace root, an account that does not exist), a log with a torn tail or a forged length, a
 resume of a session whose provider session id is hostile, a copy request from agent text.
@@ -100,7 +101,7 @@ resume of a session whose provider session id is hostile, a copy request from ag
 
 Proposed local bundle: `private/manual_inspection/YYYYMM/YYYYMMDD/004_M01-P05_workflow_recovery_package/`. It shows the first view
 with several sessions in each state, an approval raised in a hidden session, scrollback, the host killed and restarted with every
-session returned as `disconnected` and resumed, the resource tables at two scales, the package listing and checksums of two builds,
+session returned as `disconnected` and resumed, the resource tables at two scales, the executable's size, links and checksums of two builds,
 and, if the owner provides it, the sanitized account of the owner's own use. The bundle is generated by a public command under
 `src/` from a clean commit with a receipt; an independent reviewer checks the measurements; the verdict stays pending until
 actually observed.
@@ -119,11 +120,31 @@ actually observed.
    reattach protocol that no provider documents; it is left out.
 5. **The keyring reaching every process of a provider.** A helper that talks to the host over a private socket removes it.
    Recommended: do it in S01, before a real key is registered.
-6. **Package format.** Recommended: a plain archive with an install script first; AppImage or a distribution package later.
+6. **Package format** — replaced by the owner: a single executable (see below).
 7. **The public repository.** A clean-clone rebuild needs the source readable by a clean checkout; publication and the first public
    push (with the history inspection the specification requires) are the owner's and Pri's to arrange.
 8. **Spend.** Rough, unverified estimate for the phase: S01 5 to 8, S02 10 to 15, S03 5 to 8, S04 6 to 10, S05 8 to 12 US dollars, 35 to 55 in all
    including the reviewer; the owner's stated remaining limit is about 73 dollars. Measurement quality and sample counts are not traded for cost.
+
+## Owner decision on the package (2026-10-24)
+
+The owner's final goal is one executable that runs by itself, like curl: a completely built single file, which is the product's reason
+to exist and fits its design philosophy; some hard work to get there is accepted. This replaces decision 6 and changes the plan:
+
+- **One program, several roles.** The host, the command line, the credential command and the primary client become subcommands of
+  one executable. A role is a separate process (the client and the host are still different processes, so the client's measured
+  memory is not the host's); the client starts the host if none runs. The test agent, the simulators and the measurement tools are
+  not part of it.
+- **What "single file" can honestly mean.** It needs no file beside it and has the license notices and any data inside it. It still
+  needs the machine's C library, and a graphical program cannot avoid the machine's display system: the display and input libraries are
+  loaded by name when the client starts (the primary client already does this), and fonts come from the system. A fully static file
+  would have to give up the display system on this platform; this plan does not claim it. The step records exactly what the file links
+  and loads, what happens without a display library or a font (a clear message, never a crash), and the cost of embedding a font
+  (a Hangul and CJK font is large) as a measured alternative, not an assumption.
+- **No download without approval.** Merging the host and the client into one program reuses crates already in the offline cache; a
+  new target or toolchain component (for example a static C library target) is announced with its exact version first.
+- **Risks to measure, not assume:** the client's idle memory with the host's code in the same file (file-backed pages count in RSS only
+  when touched), the file size, startup time, and that a build is byte-identical twice.
 
 ## Out of scope
 
@@ -133,4 +154,6 @@ approved. Windows is specification step 6 and needs its own milestone.
 ## Progress
 
 - 2026-10-24: Draft prepared from the M01-P01 to M01-P04 evidence and the specification's delivery section. No branch, implementation,
-  test, download or experiment exists. G2 pending.
+  test, download or experiment existed.
+- 2026-10-24: G2 approved as drafted with every recommendation; the package became a single self-contained executable (owner decision
+  above). No step has run: S01 to S05 are not started. G3 and G4 are pending.
