@@ -93,3 +93,6 @@ revoking a login at the provider, P07 and later.
 
 - 2026-10-24: Draft prepared after the owner's use of the P05 executable. No branch, implementation, test, download or experiment exists. G2 pending.
 - 2026-10-24: G2 approved as drafted with every recommendation. S01 to S04 are not started.
+- 2026-10-25: S01 to S03 done and reviewed; S04 (the owner's own sign-in) is pending. Seven tests added; every target met at both scales on commit 93bbb6a
+  (activation p95 70.6 and 71.5 ms, idle RSS 23.0 and 34.0 MiB; host program 16.1 MiB with 100 sessions). One independent review: ten findings, the
+  ones with a concrete failure fixed, the rest listed as limits in the report. The real providers' login output was only simulated.

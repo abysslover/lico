@@ -1,27 +1,31 @@
-# Owner end-to-end use of Lico (M01-P05)
+# Owner end-to-end use of Lico (M01-P06)
 
-This is for the person who owns the accounts. Lico never reads a provider's login files and never stores a provider
-secret; each account only has a private directory that the provider itself fills when you sign in there.
-A real session can be billed by the provider. Nothing here is run by the development session.
+This is for the person who owns the accounts. Lico never reads a provider's login files and never stores a provider secret; each
+account only has a private directory that the provider itself fills when you sign in. A real session can be billed by the provider.
+Nothing here is run by the development session, and the sign-in of Claude Code and Codex has only been tried against a test double:
+what you see first is the evidence.
 
-State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`); the host socket is `$XDG_RUNTIME_DIR/lico/host.sock`.
-Use the file you were given as `lico`; it has no other files and needs only the C library.
+State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`). Use the file you were given as `lico`; it has no other files.
 
-1. Start the window: `lico gui` (a host is started if none runs, detached from the window). `lico version` and `lico licenses` need no host.
-2. Make an account per provider login you want, with a label you will recognise:
-   `lico account create --provider codex --label Work` (prints the account id `aNNN...`).
-3. Sign in once inside that account's private directory, with the provider's own command and your own browser:
-   `CODEX_HOME=<state>/accounts/<id>/codex codex login` (Claude Code: `CLAUDE_CONFIG_DIR=<state>/accounts/<id>/claude claude`, then `/login`).
-4. Start a session on it: `lico session create --kind codex --account <id>` (prints the session id). It appears in the window's list under the account.
-5. Send work: `lico session send <session> "your text"`; watch with `lico session watch <session>` or in the window.
-6. Approvals appear in the window (and `lico approval answer <session> <n> allow|deny`); the list shows which hidden session waits.
-7. Close the window: the host and the sessions keep running; open it again with `lico gui`.
-8. Stop the host (`lico status` prints its `pid`; send it SIGTERM, or SIGKILL to see a crash) and start the window again: every session is listed as
-   **disconnected** with its history; nothing runs until you resume it: `lico session resume <session>`.
-9. If an account stops working, the list shows it against that account and nothing switches by itself. `lico account affected <id>` names its
-   sessions; `lico session rebind <session> <other-account>` moves one when you decide.
-10. Remove an account: `lico account remove <id> detach` (its sessions keep running with the account's home; after a host restart they come back disconnected, unbound and marked `account_removed`, until you `session rebind` them) or `... end` (they end); the provider's remote login is not revoked.
-11. Delete a session for good: `lico session purge <session>` (its process, log and workspace).
+## In the window (`lico gui`)
 
-Not in this phase: creating sessions from the window (use step 4), Wayland-specific behavior, accessibility, a log checksum.
-Write down anything that surprised you; that is the evidence the phase is judged on.
+1. `lico gui` starts the window (and a host if none runs). On the first screen: **Ctrl+N** new session, **Ctrl+A** accounts.
+2. **Ctrl+N**: press `1` (codex) or `2` (claude), then the number of an account, or `n` to make one (type a label, Enter).
+   Then **Enter** starts the session, or **L** signs the account in first.
+3. **Sign in**: the window shows the address the provider printed. **Ctrl+Shift+C** copies it, **Ctrl+O** opens it in the browser (only when
+   you press it). If the provider asks for a code, paste it into the input line and press Enter; it is cleared at once and never echoed.
+   For Codex, **D** switches to the device-code sign-in. **Esc** leaves and ends an unfinished sign-in.
+4. **Ctrl+A**: pick an account for sign-in (S), default (F), or removal: **D** (its sessions stay, unbound) or **E** (ends them); the window names the
+   sessions first and asks for the same key again. The provider's own login is not revoked.
+5. Pick a session in the list; approvals, history, selection and copy work as before.
+
+## On the command line (same host)
+
+- `lico account create --provider codex --label Work`, `lico account login ID [--device]`, `lico account auth ID` (Codex says if it is signed in;
+  Claude Code: null), `lico session create --kind codex --account ID`, `lico session send ID TEXT`, `lico session watch ID`,
+  `lico session resume ID`, `lico session rebind ID ACCOUNT` (not in the window yet), `lico session purge ID`, `lico account remove ID detach|end`.
+- Restart check: `lico status` shows the host pid; stop it (SIGTERM, or SIGKILL for a crash) and start `lico gui` again: every session is
+  **disconnected** with its history until you resume it.
+
+Not in this phase: renaming an account, rebinding from the window, Wayland-specific behavior, accessibility. Write down anything that surprised you
+(especially the first real sign-in of each provider: the address, a code prompt, a failure); that is the evidence the phase is judged on.
