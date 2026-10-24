@@ -91,6 +91,21 @@ def credential_store_costs(reads: int = 100) -> dict:
     return {"measurements": measurements, "observations": observations}
 
 
+def real_turn_dry_run() -> dict:
+    """The owner's real-turn command for Claude Code run against its simulator: it must finish its turn,
+    deny both permission requests and leave an owner-only transcript. The script's own check, not a provider result."""
+    from . import real_turn
+    from .rig import REPO
+
+    simulator = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
+    with private_dir() as directory:
+        out = Path(directory) / "dry"
+        result = real_turn.run(out, 1, "fixture", str(simulator), provider="claude")
+        mode = oct((out / "transcript.txt").stat().st_mode & 0o777)
+    return {"simulated": result["simulated"], "provider": result["provider"], "turns": [t.get("finished") for t in result["turns"]],
+            "records": result["records"], "approvals_denied": result["approvals_denied"], "transcript_mode": mode}
+
+
 # ------------------------------------------------------------------ the Claude adapter against its simulator
 def _claude_host(directory: str, env_overrides: dict | None = None) -> tuple:
     from .p02 import start
