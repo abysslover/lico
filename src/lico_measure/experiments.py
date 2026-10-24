@@ -104,6 +104,11 @@ class Rig:
         return scopes
 
 
+def host_only_kb(scopes: dict, host_pid: int) -> int:
+    """The host program's own resident memory: its process, not the agent processes it started."""
+    return sum(p.rss_kb for p in scopes["host"].processes if p.pid == host_pid)
+
+
 def _load_info() -> dict:
     return {"loadavg": os.getloadavg(), "t": time.time()}
 
@@ -121,7 +126,7 @@ def _idle_once(candidate: str) -> dict:
         rig.client.expect("state", "loaded")
         rig.show(sid)
         time.sleep(SETTLE_S)
-        reads: dict[str, list[float]] = {k: [] for k in ("rss", "pss", "anon", "file", "host", "display", "peak")}
+        reads: dict[str, list[float]] = {k: [] for k in ("rss", "pss", "anon", "file", "host", "host_only", "display", "peak")}
         for _ in range(5):
             scopes = rig.trees()
             gui = scopes["gui"].processes
@@ -132,6 +137,7 @@ def _idle_once(candidate: str) -> dict:
             reads["anon"].append(_mib(sum(p.anon_kb for p in gui)))
             reads["file"].append(_mib(sum(p.file_kb for p in gui)))
             reads["host"].append(_mib(scopes["host"].rss_kb))
+            reads["host_only"].append(_mib(host_only_kb(scopes, rig.host.pid)))
             reads["display"].append(_mib(scopes["display"].rss_kb))
             reads["peak"].append(_mib(sum(p.hwm_kb for p in gui)))
             time.sleep(1.0)
@@ -162,7 +168,8 @@ def idle_memory(candidate: str) -> dict:
             build_measurement("gui_peak_rss_mib", scope, column("peak")),
             build_measurement("gui_idle_rss_anon_mib", scope, column("anon")),
             build_measurement("gui_idle_rss_file_mib", scope, column("file")),
-            build_measurement("host_idle_rss_mib", dict(scope, process_scope="host process tree"), column("host")),
+            build_measurement("host_idle_rss_mib", dict(scope, process_scope="host program only (not its agent processes)"), column("host_only")),
+            build_measurement("host_and_agents_idle_rss_mib", dict(scope, process_scope="host program and the agent processes it started"), column("host")),
             build_measurement("display_server_idle_rss_mib",
                               dict(scope, process_scope="virtual display server"), column("display")),
         ],
@@ -174,7 +181,7 @@ def idle_memory(candidate: str) -> dict:
     }
 
 
-def _cycle_and_measure(candidate: str, sessions: int) -> tuple[float, float]:
+def _cycle_and_measure(candidate: str, sessions: int) -> tuple[float, float, float]:
     with Rig(candidate, sessions=sessions, producing=0, history=500) as rig:
         rig.client.send("load")
         rig.client.expect("state", "loaded")
@@ -185,19 +192,21 @@ def _cycle_and_measure(candidate: str, sessions: int) -> tuple[float, float]:
         rig.show(rig.host.sessions[0])
         time.sleep(SETTLE_S)
         scopes = rig.trees()
-        return _mib(scopes["gui"].rss_kb), _mib(scopes["host"].rss_kb)
+        return _mib(scopes["gui"].rss_kb), _mib(host_only_kb(scopes, rig.host.pid)), _mib(scopes["host"].rss_kb)
 
 
 def hidden_growth(candidate: str, repetitions: int = 3) -> dict:
     """PERF-02: GUI RSS growth from 10 to 100 background sessions, views released."""
-    small, large, host_small, host_large = [], [], [], []
+    small, large, host_small, host_large, tree_small, tree_large = [], [], [], [], [], []
     for _ in range(repetitions):
-        gui, host = _cycle_and_measure(candidate, 10)
+        gui, host, tree = _cycle_and_measure(candidate, 10)
         small.append(gui)
         host_small.append(host)
-        gui, host = _cycle_and_measure(candidate, 100)
+        tree_small.append(tree)
+        gui, host, tree = _cycle_and_measure(candidate, 100)
         large.append(gui)
         host_large.append(host)
+        tree_large.append(tree)
     scope = {"candidate": candidate, "workload": "10 vs 100 sessions, each shown once then hidden",
              "process_scope": "gui process tree", "viewport": VIEWPORT, "output": output_kind(), "history": effective_history(500)}
     return {
@@ -205,8 +214,10 @@ def hidden_growth(candidate: str, repetitions: int = 3) -> dict:
             build_measurement("hidden_growth_rss_mib", scope, [b - a for a, b in zip(small, large)]),
             build_measurement("gui_rss_10_sessions_mib", scope, small),
             build_measurement("gui_rss_100_sessions_mib", scope, large),
-            build_measurement("host_rss_10_sessions_mib", dict(scope, process_scope="host process tree"), host_small),
-            build_measurement("host_rss_100_sessions_mib", dict(scope, process_scope="host process tree"), host_large),
+            build_measurement("host_rss_10_sessions_mib", dict(scope, process_scope="host program only (not its agent processes)"), host_small),
+            build_measurement("host_rss_100_sessions_mib", dict(scope, process_scope="host program only (not its agent processes)"), host_large),
+            build_measurement("host_and_agents_rss_10_sessions_mib", dict(scope, process_scope="host program and the agent processes it started"), tree_small),
+            build_measurement("host_and_agents_rss_100_sessions_mib", dict(scope, process_scope="host program and the agent processes it started"), tree_large),
         ],
         "observations": {"pairing": "delta i = repetition i at 100 minus repetition i at 10",
                          "load": _load_info()},
