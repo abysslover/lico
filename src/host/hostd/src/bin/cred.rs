@@ -35,7 +35,12 @@ fn fail(error: &keyring::Error) -> ! {
     std::process::exit(error.exit_code());
 }
 
+extern "C" {
+    fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
+}
+
 fn main() {
+    unsafe { prctl(4, 0, 0, 0, 0) }; // PR_SET_DUMPABLE 0: no core dump or ptrace read of a secret in memory
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 3 || args[0] != "--data-dir" {
         usage("--data-dir DIR and a command are required");
@@ -93,7 +98,11 @@ fn main() {
                 usage("the secret is read from standard input: pipe it in");
             }
             let mut secret = Vec::new();
-            let _ = std::io::stdin().lock().take(8192).read_to_end(&mut secret);
+            let _ = std::io::stdin().lock().take(8193).read_to_end(&mut secret);
+            if secret.len() > 8192 {
+                keyring::wipe_secret(&mut secret);
+                usage("the secret is longer than 8192 bytes");
+            }
             if secret.last() == Some(&b'\n') {
                 secret.pop();
             }

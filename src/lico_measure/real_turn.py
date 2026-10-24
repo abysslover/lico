@@ -6,8 +6,10 @@ recorded. Lico does not read, copy or move the provider's sign-in state: the pro
 finds its own, exactly as when run by hand. Each turn can be billed to the owner's account;
 nothing runs unless the owner passes `--accept-billing`.
 
-The provider runs with approval policy "untrusted" and a read-only sandbox. Every approval it
-asks for is DENIED here, and counted, because nobody is watching this script.
+Codex runs with approval policy "untrusted" and a read-only sandbox; Claude Code runs in its default
+permission mode and, unbound, loads the owner's own settings (whose allow rules and hooks can widen what it
+may do without asking). Every approval a provider asks for is DENIED here, and counted, because nobody
+is watching this script.
 
     python -m lico_measure real-turn --accept-billing --turns 1 --out DIR [--prompt TEXT]
 
@@ -51,14 +53,15 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: 
     binary = str(Path(provider_bin).resolve()) if provider_bin else shutil.which(provider)   # the provider runs in a private directory
     if not binary:
         raise SystemExit(f"the {provider} program was not found on PATH (use --provider-bin for another one)")
+    simulated = binary.endswith(".py")                 # a protocol simulator; a real program given with --provider-bin is still pinned
     receipt = _receipt(binary)
-    if not provider_bin and _pinned(provider) not in receipt["provider_version"] and not allow_unpinned:
+    if not simulated and _pinned(provider) not in receipt["provider_version"].replace("(", " ").replace(")", " ").split() and not allow_unpinned:
         raise SystemExit(f"installed {provider} reports {receipt['provider_version']!r}; the adapter is pinned to {_pinned(provider)}. "
                          "Nothing was run. Pass --allow-unpinned-version to run anyway (behavior is then unverified).")
     os.umask(0o077)                                  # everything written here is the owner's alone
     out.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(out, 0o700)
-    result: dict = {"provider_program": Path(binary).name, "turns_requested": turns, "simulated": bool(provider_bin),
+    result: dict = {"provider_program": Path(binary).name, "turns_requested": turns, "simulated": simulated,
                     "approvals_denied": 0, "turns": [], "receipt": receipt, "provider": provider}
     # The provider keeps its own sign-in in its own home (CODEX_HOME), which is passed on as a path and never
     # read here. Its HOME is an empty private directory, so a command it runs does not find the owner's files
@@ -68,7 +71,7 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: 
         provider_home = Path(directory) / "provider_home"
         provider_home.mkdir(mode=0o700)
         variable = PROVIDERS[provider]["home"]
-        if provider_bin:                              # a dry run never points anything at the owner's provider home
+        if simulated:                                 # a dry run never points anything at the owner's provider home
             keep_home = str(Path(directory) / "provider_own_home")
         else:
             keep_home = os.environ.get(variable) or str(Path.home() / PROVIDERS[provider]["default_home"])
@@ -77,7 +80,7 @@ def run(out: Path, turns: int, prompt: str, provider_bin: str | None, provider: 
 
         flag = "--" + provider
         program = [flag, binary]
-        if binary.endswith(".py"):                  # a protocol simulator for a free dry run
+        if simulated:                               # a protocol simulator for a free dry run
             fixture = (REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json" if provider == "codex"
                        else REPO / "tests" / "fixtures" / "claude_stream" / "turn_with_permission.json")
             program = [flag, sys.executable, flag + "-arg", "-I", flag + "-arg", binary, flag + "-arg", "--fixture", flag + "-arg", str(fixture)]

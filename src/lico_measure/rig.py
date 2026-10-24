@@ -98,6 +98,10 @@ def host_impls() -> list[str]:
 TEXT_WORKLOAD: dict | None = None
 
 
+# When set, every measured host gets this many accounts (provider "claude") before the measurement starts.
+ACCOUNTS = 0
+
+
 def effective_history(history: int) -> int:
     return TEXT_WORKLOAD["history"] if TEXT_WORKLOAD and history >= 100 else history
 

@@ -45,6 +45,13 @@ class Rig:
         try:
             sessions, producing, history, rate = self.args
             self.host = Host(self.tmp.name, sessions, producing, rate=rate, history=history)
+            if rig_module.ACCOUNTS:                       # the host holds accounts while the clients are measured
+                from .p02 import ProtoConn
+
+                setup = ProtoConn(self.host.socket)
+                for k in range(rig_module.ACCOUNTS):
+                    assert setup.call(op="account.create", provider="claude", label=f"Account {k}")["ok"] == 1
+                setup.close()
             self.reader = PixelReader(self.xvfb.display)
             self.conn = HostConn(self.host.socket)
             if self.with_client:
@@ -67,7 +74,7 @@ class Rig:
         self.tmp.cleanup()
 
     def scope(self, name: str, extra: dict | None = None) -> dict:
-        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree", "output": output_kind()}
+        scope = {"candidate": self.candidate, "workload": name, "process_scope": "gui process tree", "output": output_kind(), "accounts_on_host": rig_module.ACCOUNTS}
         scope.update(extra or {})
         return scope
 

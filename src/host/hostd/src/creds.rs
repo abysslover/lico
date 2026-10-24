@@ -34,7 +34,23 @@ fn save(dir: &Path, entries: &[Value]) -> std::io::Result<()> {
     std::fs::rename(&temporary, file(dir))
 }
 
+extern "C" {
+    fn flock(fd: i32, operation: i32) -> i32;
+}
+
+/// An exclusive lock for a read-modify-write of the metadata (released when the file closes).
+fn locked(dir: &Path) -> std::io::Result<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
+    let lock = std::fs::OpenOptions::new().write(true).create(true).truncate(false).mode(0o600).open(dir.join(".credentials.lock"))?;
+    if unsafe { flock(lock.as_raw_fd(), 2) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(lock)
+}
+
 pub fn add(dir: &Path, reference: &str, provider: &str, account: &str, kind: &str, masked_label: &str) -> std::io::Result<()> {
+    let _lock = locked(dir)?;
     let mut entries = list(dir)?;
     entries.push(json!({
         "ref": reference, "provider": provider, "account": account, "kind": kind, "masked_label": masked_label,
@@ -48,6 +64,7 @@ pub fn find(dir: &Path, reference: &str) -> std::io::Result<Option<Value>> {
 }
 
 pub fn remove(dir: &Path, reference: &str) -> std::io::Result<()> {
+    let _lock = locked(dir)?;
     let entries: Vec<Value> = list(dir)?.into_iter().filter(|e| e["ref"] != reference).collect();
     save(dir, &entries)
 }

@@ -4,7 +4,7 @@
 //! account home (the owner signs in there with the provider's own command) and Lico never reads it.
 
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
@@ -30,6 +30,7 @@ pub struct Accounts {
     dir: PathBuf,
     list: Vec<Account>,
     defaults: HashMap<String, String>,
+    managed: HashSet<String>, // providers that have had an account: they never run unbound again, even after the last removal
 }
 
 pub fn provider_variable(provider: &str) -> Option<&'static str> {
@@ -41,11 +42,16 @@ pub fn provider_variable(provider: &str) -> Option<&'static str> {
 }
 
 impl Accounts {
-    pub fn load(dir: &Path) -> Accounts {
+    /// A missing file is no accounts; a file that cannot be read or parsed is an error, never "no accounts"
+    /// (which would let sessions run in the host's own provider home).
+    pub fn load(dir: &Path) -> Result<Accounts, String> {
         let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
-        let mut accounts = Accounts { dir: dir.to_path_buf(), list: Vec::new(), defaults: HashMap::new() };
-        if let Ok(text) = std::fs::read_to_string(dir.join("accounts.json")) {
-            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        let mut accounts = Accounts { dir: dir.to_path_buf(), list: Vec::new(), defaults: HashMap::new(), managed: HashSet::new() };
+        match std::fs::read_to_string(dir.join("accounts.json")) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("cannot read accounts.json: {e}")),
+            Ok(text) => {
+                let value = serde_json::from_str::<Value>(&text).map_err(|e| format!("accounts.json is not valid: {e}"))?;
                 for entry in value["accounts"].as_array().into_iter().flatten() {
                     if let (Some(id), Some(provider), Some(label)) = (entry["account"].as_str(), entry["provider"].as_str(), entry["label"].as_str()) {
                         accounts.list.push(Account { id: id.into(), provider: provider.into(), label: label.into(), credential_generation: entry["credential_generation"].as_u64().unwrap_or(1), credential_ref: entry["credential_ref"].as_str().map(str::to_string) });
@@ -56,15 +62,22 @@ impl Accounts {
                         accounts.defaults.insert(provider.clone(), id.into());
                     }
                 }
+                for provider in value["managed"].as_array().into_iter().flatten().filter_map(Value::as_str) {
+                    accounts.managed.insert(provider.to_string());
+                }
+                for account in &accounts.list {
+                    accounts.managed.insert(account.provider.clone());
+                }
             }
         }
-        accounts
+        Ok(accounts)
     }
 
     fn save(&self) -> std::io::Result<()> {
         let value = json!({
             "accounts": self.list.iter().map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "credential_generation": a.credential_generation, "credential_ref": a.credential_ref})).collect::<Vec<_>>(),
             "defaults": self.defaults,
+            "managed": self.managed,
         });
         let temporary = self.dir.join(format!(".accounts.{}.tmp", std::process::id()));
         let mut out = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&temporary)?;
@@ -85,6 +98,7 @@ impl Accounts {
         }
         let account = Account { id: id.clone(), provider: provider.into(), label: label.into(), credential_generation: 1, credential_ref: None };
         self.list.push(account.clone());
+        self.managed.insert(provider.to_string());
         self.defaults.entry(provider.to_string()).or_insert_with(|| id.clone()); // a provider's first account is its default
         if self.save().is_err() {
             self.list.pop();
@@ -109,7 +123,7 @@ impl Accounts {
 
     /// True when the provider has accounts: a session of that provider then never runs unbound.
     pub fn any_for(&self, provider: &str) -> bool {
-        self.list.iter().any(|a| a.provider == provider)
+        self.managed.contains(provider) || self.list.iter().any(|a| a.provider == provider)
     }
 
     /// Remove an account; its home is removed too unless `keep_home`. A default that pointed at it is

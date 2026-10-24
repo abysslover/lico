@@ -180,6 +180,13 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     let (tx, rx) = mpsc::sync_channel::<(String, Option<String>)>(1024);
     {
         let mut s = session.lock().unwrap();
+        if s.purged {
+            // the session was purged while this process started: it is stopped, never attached
+            drop(s);
+            unsafe { kill(-(pid as i32), 9) };
+            let _ = child.wait();
+            return Err("busy");
+        }
         s.agent_pid = pid;
         s.process_group = true;
         s.provider = "claude";
@@ -248,7 +255,8 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
     let mut s = session.lock().unwrap();
     match message["type"].as_str() {
         Some("system") if message["subtype"] == "init" => {
-            if let Some(id) = message["session_id"].as_str().filter(|id| id.len() <= 64) {
+            // the id is handed back as an argument on resume: letters, digits, dash and underscore only, never a leading dash
+            if let Some(id) = message["session_id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64 && !id.starts_with('-') && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')) {
                 s.codex_thread = Some(id.to_string());
             }
             let model = clip(message["model"].as_str().unwrap_or(""), 60);

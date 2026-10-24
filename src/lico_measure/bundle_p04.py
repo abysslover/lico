@@ -46,7 +46,7 @@ td,th{{border:1px solid #bbb;padding:3px 6px;vertical-align:top;font-size:12px}}
 Every provider result is from a protocol <b>simulator</b> (a test double); every keyring is a <b>throwaway private</b> one with canary values.
 No real account, login, keyring or provider turn was used. Xvfb (X11, no compositor, software rendering); Wayland, GPU, other input methods,
 other Secret Service implementations than gnome-keyring 46.1, and accessibility are unverified.</p>
-<h2>GUI targets with agent-shaped UTF-8 output (10000-line transcripts), accounts and credential store present</h2>
+<h2>GUI targets with agent-shaped UTF-8 output (10000-line transcripts); the host holds 10 accounts, no credential operation runs while a client is measured</h2>
 <table><tr><th>ID</th><th>Measurement</th><th>Target</th>{head}</tr>{''.join(rows)}</table>
 <h2>Host memory with agent-shaped transcripts</h2>
 <table><tr><th>Metric</th><th>Workload</th><th>Scope</th><th>Value</th><th>Samples</th></tr>{_table(p02['host_resources']['measurements'])}</table>
@@ -79,7 +79,7 @@ binary hashes and the workload. Open `index.html`.
 
 ## What to look at
 
-- The GUI targets and host memory with agent-shaped output, now with accounts and the credential store present.
+- The GUI targets and host memory with agent-shaped output; the host holds 10 accounts (no credential operation runs during a client measurement: the credential command is started on demand and ends).
 - The credential store: its cost, and what it prints when the keyring is ready, locked, without a default keyring,
   without a Secret Service and without a session bus (it never stores a secret anywhere else).
 - A canary key searched for in every non-secret sink, after the scanner is shown to find a planted one.

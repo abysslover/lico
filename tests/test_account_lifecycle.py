@@ -10,6 +10,7 @@ from lico_protocol.claude_mapping import map_stream
 from tests.test_account_helpers import account, add_credential
 from tests.test_claude_adapter import argv_of, claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import wait_for
+from tests.test_credential_store import cred
 
 
 def test_account_failure_never_switches_account_or_paid_mode():
@@ -50,6 +51,10 @@ def test_account_failure_never_switches_account_or_paid_mode():
             conn.call(op="input", session=sid, generation=generation + 1, request_id="ok", text="hello")
             wait_for(lambda: "echo: hello" in records(log, sid))
             wait_for(lambda: "issue" not in {e["account"]: e for e in conn.call(op="account.list")["accounts"]}[a])
+            # a provider that has had accounts never runs unbound again, even when none is left
+            for acc in (a, b):
+                assert conn.call(op="account.remove", account=acc, sessions="end")["ok"] == 1
+            assert conn.call(op="account.list")["accounts"] == [] and conn.call(op="session.create", kind="claude")["error"] == "unknown_account"
         finally:
             host.stop()
 
@@ -101,5 +106,28 @@ def test_removal_names_affected_sessions_and_leaves_other_accounts_histories_and
             assert gone["ok"] == 1 and gone["affected"] == [s_c] and gone["home"] == "removed"
             assert conn.call(op="snapshot", session=s_c)["error"] == "unknown_session" and not (Path(directory) / "accounts" / c).exists()
             assert status_of(conn, s_b)["state"] == "running" and (b_home / "claude" / "marker.txt").exists()
+            # replacing an account's key removes the old one from the keyring
+            replaced = add_credential(conn, keyring, directory, b, "canary-key-b2-5f19")
+            assert cred(keyring.env, data, "helper", "--ref", refs["b"]).returncode == 4
+            assert cred(keyring.env, data, "helper", "--ref", replaced).stdout.strip() == "canary-key-b2-5f19"
+            # when the keyring cannot be reached nothing is removed, and the answer says why
+            keyring.lock()
+            before = conn.call(op="account.list")["accounts"]
+            assert conn.call(op="account.remove", account=b, sessions="detach")["error"] == "credential_store_unavailable"
+            assert conn.call(op="account.list")["accounts"] == before and status_of(conn, s_b)["state"] == "running"
         finally:
             host.stop()
+
+
+def test_a_corrupt_accounts_file_stops_the_host_instead_of_running_sessions_unbound():
+    import subprocess
+
+    from lico_measure.p02 import HOSTD
+
+    with private_dir() as directory:
+        accounts = Path(directory) / "accounts"
+        accounts.mkdir(mode=0o700)
+        (accounts / "accounts.json").write_text("{not json")
+        done = subprocess.run([str(HOSTD), "--socket", str(Path(directory) / "host.sock"), "--sessions", "0", "--producing", "0"],
+                              capture_output=True, text=True, timeout=15)
+        assert done.returncode != 0 and "accounts.json" in done.stderr and not (Path(directory) / "host.sock").exists()

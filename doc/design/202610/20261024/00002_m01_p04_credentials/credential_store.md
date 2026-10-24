@@ -39,6 +39,18 @@ transfer algorithm, so a secret crosses the owner-only session bus unencrypted (
 algorithm is not implemented; a process with the same user's access can already do what this client
 does); it speaks little-endian messages and EXTERNAL authentication only and handles no prompt.
 
+## Memory and exposure notes
+
+- Wiping is best effort: the secret buffer and the received secret are overwritten, but copies made while marshalling (the
+  array of byte values, the message buffers, the standard input and output buffers) are not. `lico-cred` sets itself
+  non-dumpable. The processes are short-lived.
+- A provider whose account has a registered credential gets the keyring's bus address and runtime directory so its key
+  helper can answer. Every process the provider starts inherits them and can reach the whole Secret Service of the session,
+  not only Lico's entries. Avoiding this needs a helper that talks to the host over a private socket; it is an owner decision.
+- A hostile bus peer is bounded (messages of at most 1 MiB, container nesting of at most 16, a 20 s limit per call) but a
+  fake-bus test does not exist.
+- Two `lico-cred` calls at once are serialized by a lock around the metadata file; the keyring itself is not locked.
+
 ## Where the loopback control token stands
 
 The host writes the loopback listener's token to a 0600 file when it starts and creates it new

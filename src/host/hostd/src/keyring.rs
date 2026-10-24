@@ -48,7 +48,7 @@ fn remote(error: BusError, locked_hint: bool) -> Error {
         BusError::NoBus => Error::NoBus,
         BusError::Remote(name) if name.ends_with("ServiceUnknown") || name.ends_with("NameHasNoOwner") => Error::NoService,
         BusError::Remote(name) if name.ends_with("IsLocked") || locked_hint => Error::Locked,
-        BusError::Remote(name) => Error::Failed(name),
+        BusError::Remote(name) => Error::Failed(name.chars().filter(|c| c.is_ascii_graphic()).take(80).collect()), // a peer's text is shown plain and short
         BusError::Protocol(why) => Error::Failed(why.into()),
     }
 }

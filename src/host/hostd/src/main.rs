@@ -117,7 +117,7 @@ fn main() {
     let history: u64 = arg("--history", "5000").parse().expect("history");
     let size = cfg.payload;
     let accounts_dir = cfg.accounts_dir.clone();
-    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir)) });
+    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))) });
     for index in 0..sessions {
         let live = index < producing;
         if core::start_session(&shared, live, if live { rate } else { 0 }, history, size, !live).is_err() {

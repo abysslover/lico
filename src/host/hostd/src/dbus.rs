@@ -135,6 +135,7 @@ fn marshal(buf: &mut Vec<u8>, value: &Value) {
 struct Reader<'a> {
     data: &'a [u8],
     pos: usize,
+    depth: usize,
 }
 
 impl Reader<'_> {
@@ -172,6 +173,13 @@ impl Reader<'_> {
 
     /// Read one complete type from `sig` starting at `*at`.
     fn value(&mut self, sig: &[u8], at: &mut usize) -> Result<Value, Error> {
+        self.depth += 1;
+        let parsed = if self.depth > MAX_DEPTH { Err(Error::Protocol("nested too deeply")) } else { self.value_inner(sig, at) };
+        self.depth -= 1;
+        parsed
+    }
+
+    fn value_inner(&mut self, sig: &[u8], at: &mut usize) -> Result<Value, Error> {
         let c = *sig.get(*at).ok_or(Error::Protocol("bad signature"))? as char;
         *at += 1;
         Ok(match c {
@@ -252,6 +260,8 @@ fn complete_type_end(sig: &[u8], start: usize) -> Result<usize, Error> {
 }
 
 const MAX_MESSAGE: usize = 1 << 20;
+const MAX_DEPTH: usize = 16; // a hostile peer cannot overflow the stack with nested containers
+const CALL_DEADLINE: Duration = Duration::from_secs(20); // a peer that streams unrelated messages cannot hold a call forever
 
 #[derive(Debug)]
 pub enum Error {
@@ -273,7 +283,7 @@ fn unescape(text: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&text[i + 1..i + 3], 16) {
+            if let Some(b) = std::str::from_utf8(&bytes[i + 1..i + 3]).ok().and_then(|hex| u8::from_str_radix(hex, 16).ok()) {
                 out.push(b);
                 i += 3;
                 continue;
@@ -367,7 +377,11 @@ impl Conn {
         for byte in payload.iter_mut() {
             *byte = 0; // the payload may hold a secret
         }
+        let deadline = std::time::Instant::now() + CALL_DEADLINE;
         loop {
+            if std::time::Instant::now() > deadline {
+                return Err(Error::NoBus);
+            }
             let (kind, reply_serial, error_name, signature, mut reply_body) = self.read_message()?;
             if reply_serial != Some(serial) || (kind != 2 && kind != 3) {
                 continue; // a signal or a message for someone else
@@ -376,7 +390,7 @@ impl Conn {
                 wipe(&mut reply_body);
                 return Err(Error::Remote(error_name.unwrap_or_default()));
             }
-            let mut reader = Reader { data: &reply_body, pos: 0 };
+            let mut reader = Reader { data: &reply_body, pos: 0, depth: 0 };
             let sig = signature.unwrap_or_default();
             let mut values = Vec::new();
             let mut at = 0;
@@ -409,7 +423,7 @@ impl Conn {
         self.stream.read_exact(&mut rest).map_err(|_| Error::NoBus)?;
         let mut whole = fixed.to_vec();
         whole.extend_from_slice(&rest);
-        let mut reader = Reader { data: &whole, pos: 16 };
+        let mut reader = Reader { data: &whole, pos: 16, depth: 0 };
         let (mut reply_serial, mut error_name, mut signature) = (None, None, None);
         while reader.pos < 16 + fields_len {
             reader.align(8);

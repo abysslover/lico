@@ -45,9 +45,17 @@ def _peak_rss_mib(env: dict, data: str, *args: str, stdin: str | None = None) ->
 
 def credential_store_costs(reads: int = 100) -> dict:
     """What the hand-written Secret Service client costs, with the keyring unlocked, locked and absent."""
+    from .stats import percentile_nearest_rank
+
     measurements, observations = [], {"binary_bytes": CRED.stat().st_size}
     scope = {"candidate": "lico-cred (hand-written D-Bus client, no new dependency)", "process_scope": "one lico-cred process",
              "output": "canary secret in a throwaway keyring"}
+
+    def add(metric: str, workload: str, samples: list, unit: str) -> None:
+        measurements.append(build_measurement(metric, dict(scope, workload=workload), samples, unit=unit))
+        if unit == "ms":
+            observations[f"{metric}: {workload}: p95 (nearest rank)"] = round(percentile_nearest_rank(list(samples), 0.95), 2)
+
     with PrivateKeyring() as keyring, private_dir() as data:
         added, _, _ = _run(keyring.env, data, "add", "--provider", "claude", "--account", "a-1", "--kind", "api_key", "--label", "key ending b7", stdin=CANARY + "\n")
         reference = json.loads(added.stdout)["ref"]
@@ -60,44 +68,27 @@ def credential_store_costs(reads: int = 100) -> dict:
             done, elapsed, _ = _run(keyring.env, data, "add", "--provider", "claude", "--account", f"a-{k}", "--kind", "api_key", "--label", "key ending", stdin=CANARY + "\n")
             assert done.returncode == 0
             adds_ms.append(elapsed)
-        peaks = [_peak_rss_mib(keyring.env, data, "helper", "--ref", reference) for _ in range(10)]
-        measurements += [
-            build_measurement("credential_read_ms", dict(scope, workload="helper read, keyring unlocked, one process per read"), reads_ms),
-            build_measurement("credential_write_ms", dict(scope, workload="add, keyring unlocked"), adds_ms),
-            build_measurement("credential_process_peak_rss_mib", dict(scope, workload="one helper read"), peaks),
-        ]
+        add("credential_read_ms", "helper read, keyring unlocked, one process per read", reads_ms, "ms")
+        add("credential_write_ms", "add, keyring unlocked", adds_ms, "ms")
+        add("credential_process_peak_rss_mib", "one helper read, keyring unlocked", [_peak_rss_mib(keyring.env, data, "helper", "--ref", reference) for _ in range(10)], "MiB")
         keyring.lock()
         closed_ms = []
-        for _ in range(20):
+        for _ in range(reads):
             done, elapsed, _ = _run(keyring.env, data, "helper", "--ref", reference)
             assert done.returncode == 3 and done.stdout == ""
             closed_ms.append(elapsed)
-        measurements.append(build_measurement("credential_fail_closed_ms", dict(scope, workload="read while the keyring is locked"), closed_ms))
+        add("credential_fail_closed_ms", "read while the keyring is locked", closed_ms, "ms")
+        add("credential_process_peak_rss_mib", "one failed read, keyring locked", [_peak_rss_mib(keyring.env, data, "helper", "--ref", reference) for _ in range(10)], "MiB")
     with PrivateKeyring(daemon=False) as keyring, private_dir() as data:
         env = {k: v for k, v in keyring.env.items() if k != "DBUS_SESSION_BUS_ADDRESS"}
         absent_ms = []
-        for _ in range(20):
+        for _ in range(reads):
             done, elapsed, _ = _run(env, data, "status")
             assert done.returncode == 3
             absent_ms.append(elapsed)
-        measurements.append(build_measurement("credential_fail_closed_ms", dict(scope, workload="status with no session bus"), absent_ms))
+        add("credential_fail_closed_ms", "status with no session bus", absent_ms, "ms")
+        add("credential_process_peak_rss_mib", "status with no session bus", [_peak_rss_mib(env, data, "status") for _ in range(10)], "MiB")
     return {"measurements": measurements, "observations": observations}
-
-
-def real_turn_dry_run() -> dict:
-    """The owner's real-turn command for Claude Code run against its simulator: it must finish its turn,
-    deny both permission requests and leave an owner-only transcript. The script's own check, not a provider result."""
-    from . import real_turn
-    from .p03 import SIMULATOR  # noqa: F401  (the Codex simulator is used by the P03 dry run)
-    from .rig import REPO
-
-    simulator = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
-    with private_dir() as directory:
-        out = Path(directory) / "dry"
-        result = real_turn.run(out, 1, "fixture", str(simulator), provider="claude")
-        mode = oct((out / "transcript.txt").stat().st_mode & 0o777)
-    return {"simulated": result["simulated"], "provider": result["provider"], "turns": [t.get("finished") for t in result["turns"]],
-            "records": result["records"], "approvals_denied": result["approvals_denied"], "transcript_mode": mode}
 
 
 # ------------------------------------------------------------------ the Claude adapter against its simulator
@@ -247,19 +238,54 @@ def claude_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconne
 
 
 # ------------------------------------------------------------------ secrets in sinks
+def _scan(directory: str, keyring, host, extra: dict[str, list[bytes]], canary: bytes) -> dict:
+    """Search every non-secret sink for a value: the one function used for the control and for the real run."""
+    from .procscope import tree_pids
+
+    sinks: dict[str, list[bytes]] = dict(extra)
+    sinks["files of the run and of the keyring"] = [p.read_bytes() for root in (directory, keyring.root) for p in Path(root).rglob("*") if p.is_file()]
+    sinks["host standard error"] = [(Path(directory) / "host.err").read_bytes()] if (Path(directory) / "host.err").exists() else []
+    pids = set()
+    for root in [host.pid, *keyring.pids()]:
+        pids.update(tree_pids(root))
+    commands, environments = [], []
+    for pid in pids:
+        try:
+            commands.append(Path(f"/proc/{pid}/cmdline").read_bytes())
+            environments.append(Path(f"/proc/{pid}/environ").read_bytes())
+        except OSError:
+            pass
+    sinks["command lines of the run's processes"] = commands
+    sinks["environments of the run's processes"] = environments
+    return {name: {"items": len(items), "occurrences": sum(item.count(canary) for item in items)} for name, items in sinks.items()}
+
+
 def secret_sink_scan() -> dict:
     """A canary key in the throwaway keyring, attached to an account and used by a provider session: every non-secret
-    sink is searched for it (files of the run and of the keyring, command lines and environments of every process of
-    the run, protocol replies, the host's standard error, the credential list), and the scanner is first shown to find
-    a canary planted in a file, so an empty result means something."""
+    sink listed below is searched for it. The same scan function first runs on a canary planted in a file and in the
+    environment of a process, so an empty result means something. Not covered: crash output (the host produced none),
+    the repository's fixtures, the bundle (searched by hand after it is built) and the argv and environment of
+    lico-cred itself (it ends before they can be read; its argv is built by this function and holds no secret)."""
     from .p02 import ProtoConn, read_log
-    from .procscope import tree_pids
 
     canary = "canary-key-sink-scan-7a2c19e4"
     with PrivateKeyring() as keyring, private_dir() as directory:
         host, log, received = _claude_host(directory, env_overrides=keyring.env)
         try:
             control = ProtoConn(host.socket)
+            # the control: the same scan must find a canary planted in a file and in a live process's environment
+            planted = Path(directory) / "planted.txt"
+            planted.write_text("planted: " + canary)
+            holder = subprocess.Popen(["sleep", "30"], env={"PLANTED": canary, "PATH": "/usr/bin:/bin"})
+            try:
+                found = _scan(directory, keyring, host, {}, canary.encode())
+                holder_pids = [holder.pid]
+                environ_hit = canary.encode() in Path(f"/proc/{holder.pid}/environ").read_bytes()
+            finally:
+                holder.kill()
+                holder.wait()
+                planted.unlink()
+            control_result = {"finds_a_planted_file": found["files of the run and of the keyring"]["occurrences"] >= 1, "environment_of_a_process_is_readable": environ_hit}
             account = control.call(op="account.create", provider="claude", label="Scan")["account"]
             done = subprocess.run([str(CRED), "--data-dir", str(Path(directory) / "credentials"), "add", "--provider", "claude", "--account", account,
                                    "--kind", "api_key", "--label", "key ending 19e4"], env=keyring.env, input=canary + "\n", capture_output=True, text=True)
@@ -269,32 +295,17 @@ def secret_sink_scan() -> dict:
             sid, generation = made["session"], made["generation"]
             control.call(op="input", session=sid, generation=generation, request_id="k", text="keyenv")
             _until(lambda: any(p.startswith(b"key sha256") for _, p in read_log(log, sid)))
+            # errors are provoked so that their texts are searched too
+            errors = [control.call(op="account.credential", account=account, credential_ref="0" * 32), control.call(op="account.remove", account="a" + "0" * 12, sessions="end"),
+                      control.call(op="session.rebind", session=sid, generation=generation, account=account), control.call(op="input", session=sid, generation=generation + 9, request_id="e", text="x")]
             replies = json.dumps([control.call(op="status"), control.call(op="account.list"), control.call(op="account.affected", account=account),
-                                  control.call(op="resources"), control.call(op="session.list")])
-            listing = subprocess.run([str(CRED), "--data-dir", str(Path(directory) / "credentials"), "list"], env=keyring.env, capture_output=True, text=True).stdout
-            sinks: dict[str, list[bytes]] = {"protocol replies": [replies.encode()], "credential list": [listing.encode()]}
-            files = [p for root in (directory, keyring.root) for p in Path(root).rglob("*") if p.is_file()]
-            sinks["files of the run and of the keyring"] = [p.read_bytes() for p in files]
-            pids = set()
-            for root in [host.pid, *keyring.pids()]:
-                pids.update(tree_pids(root))
-            commands, environments = [], []
-            for pid in pids:
-                try:
-                    commands.append(Path(f"/proc/{pid}/cmdline").read_bytes())
-                    environments.append(Path(f"/proc/{pid}/environ").read_bytes())
-                except OSError:
-                    pass
-            sinks["command lines of the run's processes"] = commands
-            sinks["environments of the run's processes"] = environments
-            planted = Path(directory) / "planted.txt"
-            planted.write_text("a canary planted to prove the scanner can see: " + canary)
-            detects = canary.encode() in planted.read_bytes()
-            planted.unlink()
-            result = {"scanner_finds_a_planted_canary": detects,
-                      "sinks": {name: {"items": len(items), "occurrences": sum(item.count(canary.encode()) for item in items)} for name, items in sinks.items()},
-                      "processes_scanned": len(pids)}
-            result["occurrences_total"] = sum(v["occurrences"] for v in result["sinks"].values())
+                                  control.call(op="resources"), control.call(op="session.list"), errors])
+            listing = subprocess.run([str(CRED), "--data-dir", str(Path(directory) / "credentials"), "list"], env=keyring.env, capture_output=True, text=True)
+            bad = subprocess.run([str(CRED), "--data-dir", str(Path(directory) / "credentials"), "helper", "--ref", "0" * 32], env=keyring.env, capture_output=True, text=True)
+            sinks = _scan(directory, keyring, host, {"protocol replies and errors": [replies.encode()],
+                                                     "credential list and a failed helper's output": [(listing.stdout + listing.stderr + bad.stdout + bad.stderr).encode()]}, canary.encode())
+            result = {"control": control_result, "sinks": sinks, "occurrences_total": sum(v["occurrences"] for v in sinks.values()),
+                      "not_covered": ["crash output (none produced)", "the repository's fixtures", "the bundle (searched by hand)", "argv and environment of lico-cred itself"]}
             return {"measurements": [], "observations": result}
         finally:
             host.stop()
@@ -326,8 +337,9 @@ def accounts_host_memory(repetitions: int = 3) -> dict:
                 finally:
                     host.stop()
         scope = {"candidate": "host:hostd", "workload": label, "process_scope": "host process", "output": "accounts and simulated Claude sessions"}
-        measurements += [build_measurement("host_rss_mib", scope, rss), build_measurement("host_pss_mib", scope, pss),
-                         build_measurement("agents_total_rss_mib", dict(scope, process_scope="provider simulator processes (Python test doubles, not the real provider)"), agents)]
+        measurements += [build_measurement("host_rss_mib", scope, rss), build_measurement("host_pss_mib", scope, pss)]
+        if sessions:       # without sessions there are no provider processes: no row, not a zero
+            measurements.append(build_measurement("agents_total_rss_mib", dict(scope, process_scope="provider simulator processes (Python test doubles, not the real provider)"), agents))
     return {"measurements": measurements, "observations": {}}
 
 

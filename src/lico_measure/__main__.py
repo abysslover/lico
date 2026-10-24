@@ -69,6 +69,9 @@ def cmd_run(args: argparse.Namespace) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     text = _text_workload(args)
+    from . import rig
+
+    rig.ACCOUNTS = args.accounts
     names = args.only.split(",") if args.only else list(EXPERIMENTS)
     results: dict = {"candidates": {}}
     receipt = {
@@ -78,7 +81,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "binary_sha256": _binary_hashes(args.candidates.split(",")),
         "workload": {"record_bytes": (text or {}).get("payload", 1024), "rate_per_second": 100, "stream_duration_s": 30,
                      "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60,
-                     "text_workload": text},
+                     "text_workload": text, "accounts_on_host": args.accounts},
     }
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))  # kept even if a run aborts
     for candidate in receipt["candidates"]:
@@ -284,6 +287,7 @@ def main() -> int:
     run.add_argument("--only", default="")
     run.add_argument("--allow-dirty", action="store_true")
     run.add_argument("--text", action="store_true", help="agent-shaped UTF-8 output and 10000-line transcripts")
+    run.add_argument("--accounts", type=int, default=0, help="accounts the host holds while the clients are measured")
     run.set_defaults(func=cmd_run)
     bundle = sub.add_parser("bundle", help="generate the inspection bundle from raw output")
     bundle.add_argument("--raw", required=True, nargs="+", help="raw output directories, later ones win per candidate")

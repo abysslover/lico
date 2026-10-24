@@ -228,6 +228,13 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     }
     {
         let mut s = session.lock().unwrap();
+        if s.purged {
+            // the session was purged while this process started: it is stopped, never attached
+            drop(s);
+            unsafe { kill(-(pid as i32), 9) };
+            let _ = child.wait();
+            return Err("busy");
+        }
         s.agent_pid = pid;
         s.process_group = true;
         s.provider = "codex";

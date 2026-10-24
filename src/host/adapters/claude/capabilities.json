@@ -78,6 +78,14 @@
   "how a run without a sign-in or with a failing apiKeyHelper reports the failure on the stream",
   "the full list of result subtypes and of tool_result content shapes",
   "whether queued user messages keep their order across an interrupted or failed turn",
-  "any real turn: nothing here was recorded from a running provider"
+  "any real turn: nothing here was recorded from a running provider",
+  "whether a real `claude -p` delivers permission requests as control_request messages without an extra flag (the Agent SDK is believed to pass a permission-prompt option for this; none is passed here). If it does not, the provider raises no approval and denies what is not pre-allowed: the safe direction, but no approval would ever reach the host",
+  "the mapping of a result's api_error_status (401 and 403 to authentication_failed, 402 to billing_error, 429 to rate_limit) used for account issues; only the api_retry error categories are documented",
+  "whether the apiKeyHelper of --settings is honoured in -p mode, and what a failing helper does: the provider may fall back to a login in the same account home, so 'nothing switches authentication mode' describes Lico's behavior only",
+  "that an unmarked failure to replay a user message leaves the input `submitted` for good: after 1024 unacknowledged inputs every input answers busy until a resume",
+  "an oversize provider line (over 256 KB) is dropped without an answer, so a request carried by it is never refused and the provider may wait for it"
+ ],
+ "exposure": [
+  "an account with a registered credential gets the keyring's session bus address and runtime directory in its provider's environment so the key helper can reach the keyring; every process the provider starts, tools the model drives included, inherits them and can reach the whole Secret Service of the session (not only Lico's entries) over the plain transfer. A helper that talks to the host over a private socket instead would avoid this; it is an owner decision"
  ]
 }

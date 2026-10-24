@@ -401,37 +401,49 @@ pub fn account_remove(shared: &Arc<Shared>, account: &str, sessions: &str) -> Re
         accounts.get(account).ok_or("unknown_account")?;
         (accounts.credential_ref(account), accounts.homes(account).is_some())
     };
+    // nothing is removed if the credential store cannot be reached: its state is checked before anything changes
+    if reference.is_some() && !credential_command(shared, &["status"]) {
+        return Err("credential_store_unavailable");
+    }
     let affected: Vec<(String, u64)> = sessions_of(shared, account).iter().map(|s| {
         let s = s.lock().unwrap();
         (s.id.clone(), s.generation)
     }).collect();
-    // the key goes first: if the credential store cannot be reached, nothing is removed
-    let mut credential = "none";
-    if let Some(reference) = &reference {
-        let mut command = Command::new(&shared.cfg.cred_bin);
-        command.arg("--data-dir").arg(&shared.cfg.cred_dir).args(["remove", "--ref", reference]).env_clear().stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        for key in ["PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
-            if let Some(value) = std::env::var_os(key) {
-                command.env(key, value);
-            }
-        }
-        match command.status() {
-            Ok(status) if status.success() => credential = "removed",
-            _ => return Err("credential_store_unavailable"),
-        }
-    }
     if sessions == "end" {
         for (id, generation) in &affected {
             let _ = session_purge(shared, id, *generation as i64);
         }
+        // a session that resumed, or was created, meanwhile is still bound: the account stays rather than lose its home under it
+        if !sessions_of(shared, account).is_empty() {
+            return Err("busy");
+        }
     }
-    let keep_home = sessions == "detach" && !affected.is_empty();
+    let mut credential = "none";
+    if let Some(reference) = &reference {
+        if !credential_command(shared, &["remove", "--ref", reference]) {
+            return Err("credential_store_unavailable");
+        }
+        credential = "removed";
+    }
+    let keep_home = sessions == "detach" && !sessions_of(shared, account).is_empty();
     shared.accounts.lock().unwrap().remove(account, keep_home)?;
     Ok(obj(json!({
         "account": account, "metadata_removed": true, "credential": credential, "remote_revocation": "not_performed",
         "home": if !home_exists { "none" } else if keep_home { "kept" } else { "removed" },
         "affected": affected.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
     })))
+}
+
+/// Run the credential command (the keyring's bus is passed on); true when it succeeded.
+fn credential_command(shared: &Shared, args: &[&str]) -> bool {
+    let mut command = Command::new(&shared.cfg.cred_bin);
+    command.arg("--data-dir").arg(&shared.cfg.cred_dir).args(args).env_clear().stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    for key in ["PATH", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR"] {
+        if let Some(value) = std::env::var_os(key) {
+            command.env(key, value);
+        }
+    }
+    command.status().map_or(false, |status| status.success())
 }
 
 /// Attach a credential of the store to an account: it must exist, belong to this account and its provider.
@@ -442,7 +454,12 @@ pub fn account_credential(shared: &Shared, account: &str, reference: &str) -> Re
         Some(entry) if entry["account"] == account && entry["provider"] == provider => {}
         _ => return Err("bad_request"),
     }
+    let old = shared.accounts.lock().unwrap().credential_ref(account);
     shared.accounts.lock().unwrap().set_credential(account, reference)?;
+    // a replaced key is not left behind in the keyring
+    if let Some(old) = old.filter(|old| old != reference) {
+        credential_command(shared, &["remove", "--ref", &old]);
+    }
     Ok(obj(json!({"account": account})))
 }
 
@@ -472,6 +489,7 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         let previous = (s.account.clone(), s.credential_generation, s.codex_thread.take());
         s.account = Some(bound.0.clone());
         s.credential_generation = bound.1;
+        s.account_issue = None; // a failure of the old account is not shown against the new one
         s.generation += 1; // every target of the old execution is stale from now on
         previous
     };
