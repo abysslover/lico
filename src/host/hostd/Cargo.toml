@@ -18,6 +18,10 @@ path = "src/bin/lico.rs"
 name = "lico-synth-agent"
 path = "src/bin/synth_agent.rs"
 
+[[bin]]
+name = "lico-cred"
+path = "src/bin/cred.rs"
+
 [dependencies]
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 

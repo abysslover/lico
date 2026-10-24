@@ -182,3 +182,15 @@ clean-clone release (M01-P05), Windows, remote access. M01-P05 needs its own pla
 - 2026-10-24: Draft prepared from the M01-P03 evidence and the provider documentation read on
   this date. No branch, implementation, test, download or experiment existed.
 - 2026-10-24: G2 approved as drafted. No step has run: S01 to S05 are not started. G3 and G4 are pending.
+- 2026-10-24: S01 done. A Secret Service client written by hand (no new dependency, no download) and a
+  `lico-cred` command store, read and remove a secret in a throwaway private keyring, keep opaque
+  references and masked labels in a 0600 metadata file, take the secret from standard input only, and fail
+  closed (exit 3 with an action, nothing stored elsewhere) when the bus, the service or the default keyring
+  is missing or locked. Two tests, each checked with a mutation (a copy of the secret in a file; a plaintext
+  fallback). The code was written before its tests ran against it (red was the missing binary, then a bug in
+  the test itself). Indicative cost: 407 KB binary, 1.9 MiB per process, 1.6 ms median read. Tested against
+  gnome-keyring 46.1 only; the loopback control token stays a 0600 file (see the design note).
+- 2026-10-24: The installed Codex changed from 0.163.0 to 0.164.0 between S01 test runs; the capability test
+  failed as designed. The record was regenerated for 0.164.0 (one more client request, a changed notification
+  schema; the server requests, which the adapter answers, are identical); the recorded fixtures are still valid
+  against the new schema and the adapter tests pass. Real-provider behavior of 0.164.0 is unverified.

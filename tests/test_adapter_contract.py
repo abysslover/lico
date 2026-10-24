@@ -12,6 +12,9 @@ from lico_protocol.codex_mapping import Mapper
 FIXTURES = REPO / "tests" / "fixtures" / "codex_app_server"
 
 
+PINNED = "0.164.0"      # the version the capability record describes; a new installed version must fail this test until re-recorded
+
+
 def test_adapter_capabilities_pin_the_version_and_mark_unverified():
     with tempfile.TemporaryDirectory(dir=REPO / "private" / "scratch") as scratch:
         home = Path(scratch)
@@ -21,7 +24,7 @@ def test_adapter_capabilities_pin_the_version_and_mark_unverified():
     cap = json.loads(CAPABILITIES.read_text())
     # the recorded data describes exactly the installed provider
     assert problems(cap, installed, inventory) == []
-    assert cap["version"]["pinned"] and cap["version"]["cli"] == installed == "0.163.0"
+    assert cap["version"]["pinned"] and cap["version"]["cli"] == installed == PINNED
     assert set(cap["server_requests"]) == set(inventory["server_requests"])
     assert cap["unverified"] and all(item.get("reason") for item in cap["unsupported"])
     # the recorded unauthenticated handshake agrees with what the capability data says was observed

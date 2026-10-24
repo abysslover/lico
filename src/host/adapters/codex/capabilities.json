@@ -3,20 +3,21 @@
  "provider": "codex",
  "path": "codex app-server over standard input and output (JSON lines)",
  "version": {
-  "cli": "0.163.0",
+  "cli": "0.164.0",
   "pinned": true,
-  "checked": "2026-10-23",
-  "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn"
+  "checked": "2026-10-24",
+  "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
+  "fixtures_recorded_with": "0.163.0 (still valid against the 0.164.0 schema, checked by the contract test)"
  },
  "protocol_schema": {
   "generated_with": "codex app-server generate-json-schema",
   "sha256": {
-   "ClientRequest.json": "6b10888f163f569922d42c41e94a98b4261258abc7581c14eca867c3b125dc6f",
+   "ClientRequest.json": "9b89e2459362d20cec67a429ef9430fe6b0e9fb8bd87d445d4c9a6acccd87450",
    "ServerRequest.json": "f339be472737a0003efa25fba2e6e6c9237e621cd065b6d6995c51256e9dc1fb",
-   "ServerNotification.json": "8e719512bc26bb3871fcf7b378b79abf912d82787609c0ad418b71f179d0883f",
+   "ServerNotification.json": "0352806952c06bf4b802b45966ca8d6f6442464aeebd816db74158da784d3c1c",
    "ClientNotification.json": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a"
   },
-  "client_requests": 105,
+  "client_requests": 106,
   "server_requests": [
    "account/chatgptAuthTokens/refresh",
    "applyPatchApproval",
