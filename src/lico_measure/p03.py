@@ -128,10 +128,14 @@ def adapter_integrity(inputs: int = 1000, turns_with_approvals: int = 50, reconn
                 state = control.call(op="input.status", session=sessions[k % 2]["id"], request_id=f"in-{k:05d}").get("state", "unknown")
                 tally[state] = tally.get(state, 0) + 1
             result["input_states"] = tally
-            result["approvals"] = _approvals(control, host, received, sessions, turns_with_approvals)
+            result["approvals"] = _approvals(control, log, received, sessions, turns_with_approvals)
             return {"measurements": [], "observations": result}
         finally:
             host.stop()
+
+
+def _completed(log: Path, sid: str) -> int:
+    return sum(1 for _, p in read_log(log, sid) if p == b"[turn completed]")
 
 
 def _state(control: ProtoConn, sid: str) -> str:
@@ -143,12 +147,13 @@ def _settled(control: ProtoConn, sid: str, request_id: str) -> bool:
     return state in ("observed", "failed")
 
 
-def _approvals(control: ProtoConn, host, received: Path, sessions: list[dict], turns: int) -> dict:
+def _approvals(control: ProtoConn, log: Path, received: Path, sessions: list[dict], turns: int) -> dict:
     """Fixture turns raise two approvals each. Answers are sent with forged, stale and repeated attempts around them."""
     answered = forged_refused = stale_refused = repeat_refused = raised = 0
     base = len([m for m in _provider_messages(received) if "result" in m and m.get("id") in (7, 11)])
     for k in range(turns):
         s = sessions[k % 2]
+        completed_before = _completed(log, s["id"])
         reply = control.call(op="input", session=s["id"], generation=s["generation"], request_id=f"fx-{k}", text="fixture")
         assert reply["ok"] == 1, reply
         for _ in range(2):
@@ -160,7 +165,7 @@ def _approvals(control: ProtoConn, host, received: Path, sessions: list[dict], t
             ok = control.call(op="approval.answer", session=s["id"], generation=s["generation"], approval_id=number, answer="allow" if (k % 2) else "deny")
             answered += ok.get("ok") == 1
             repeat_refused += control.call(op="approval.answer", session=s["id"], generation=s["generation"], approval_id=number, answer="allow").get("error") == "unknown_approval"
-        _until(lambda: _settled(control, s["id"], f"fx-{k}") and not _pending(control, s["id"]))
+        _until(lambda: _completed(log, s["id"]) > completed_before and not _pending(control, s["id"]))
     time.sleep(1.0)
     replies = [m for m in _provider_messages(received) if "result" in m and m.get("id") in (7, 11)]
     decisions = [m["result"].get("decision") for m in replies[base:]]
@@ -205,7 +210,7 @@ def simulated_session_demo() -> dict:
                 step("approval stale generation", control.call(op="approval.answer", session=sid, generation=generation + 1, approval_id=number, answer="allow"))
                 step("approval answered", control.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow"))
                 step("approval answered again", control.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer="allow"))
-            _until(lambda: _settled(control, sid, "demo-1") and not _pending(control, sid))
+            _until(lambda: _completed(log, sid) >= 1 and not _pending(control, sid))   # the turn is over: a new input starts a turn, not a steer
             step("input crash", control.call(op="input", session=sid, generation=generation, request_id="demo-2", text="crash"))
             _until(lambda: _state(control, sid) == "disconnected")
             step("input while disconnected", control.call(op="input", session=sid, generation=generation, request_id="demo-3", text="lost?"))
