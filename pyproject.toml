@@ -8,3 +8,6 @@ license = { text = "MIT" }
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+# The daily run leaves out the acceptance group (the clean-clone build); it has its own command: `pytest -m acceptance tests`.
+addopts = "-m 'not acceptance'"
+markers = ["acceptance: proves a property of the build recipe or of a publication, not of every source edit; run when the recipe files change, at the end of a phase and before a publication"]

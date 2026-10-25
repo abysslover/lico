@@ -7,6 +7,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
+
 from lico_measure import notices
 from lico_measure.p02 import HOSTD_DIR
 from lico_measure.rig import REPO, Xvfb, private_dir
@@ -88,6 +90,7 @@ def test_the_single_executable_runs_every_role_alone_in_an_empty_directory():
             xvfb.stop()
 
 
+@pytest.mark.acceptance                                          # two clean release builds: a property of the build recipe, run by `pytest -m acceptance tests`
 def test_a_clean_clone_builds_the_same_executable_twice_without_private_or_host_content():
     with private_dir() as directory:
         digests = []
