@@ -180,6 +180,50 @@ def test_in_the_real_tree_a_window_change_leaves_the_host_and_credential_tests_a
     print(f"real map: gui/ui.rs -> {len(real(HOSTD + 'gui/ui.rs')[1])} of {len(REAL_TESTS)} test files; core.rs -> {len(real(HOSTD + 'core.rs')[1])}; a test file -> 2 (itself and the size guard)")
 
 
+def test_the_rust_scan_reads_grouped_imports_nested_groups_aliases_and_ignores_comments(tmp_path):
+    source = """
+use crate::{a, b::{c, d}, e as f, g::h::{self, i}};
+use crate::{
+    j,
+    // k is only talked about
+    l as m,
+};
+use crate::n::o;
+pub(in crate::p) fn q() {}
+/* crate::r */
+"""
+    names, unreadable = testmap.crate_names(source)
+    assert names == {"a", "b", "e", "g", "j", "l", "n", "p"} and unreadable == []
+    sources = {"core.rs": "use crate::{session, gui::Thing};\n", "session.rs": "", "gui/mod.rs": "", "host.rs": "use crate::{accounts, core};\n", "accounts.rs": ""}
+    for path, text in sources.items():
+        (tmp_path / HOSTD / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / HOSTD / path).write_text(text)
+    uses = testmap.rust_uses([HOSTD + n for n in sources], tmp_path)
+    assert uses["core"] == {"session", "gui"} and uses["host"] == {"accounts", "core"}
+
+
+def test_in_the_real_tree_host_and_credcmd_use_the_modules_their_grouped_imports_name():
+    uses = testmap.rust_uses(REAL_FILES)
+    assert {"accounts", "core", "http", "ipc", "registry", "session"} <= uses["host"]           # use crate::{accounts, core, http, ipc, registry, session};
+    assert uses["credcmd"] == {"creds", "keyring"}                                                # use crate::{creds, keyring};
+    assert "host" in testmap.rust_dependents(uses, "http") and "credcmd" in testmap.rust_dependents(uses, "keyring")
+    print("host uses", sorted(uses["host"]), "| credcmd uses", sorted(uses["credcmd"]))
+
+
+def test_a_crate_path_the_scan_cannot_read_makes_its_module_use_everything_and_says_so(tmp_path):
+    for name, text in TREE.items():
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_text(text)
+    (tmp_path / HOSTD / "gui/mod.rs").write_text("mod ui;\nuse crate::*;\n")                    # a glob of the crate root: no module is named
+    unreadable = []
+    uses = testmap.rust_uses(sorted(TREE), tmp_path, unreadable)
+    assert uses["gui"] == {"core", "keyring", "unified"} and [m for m, _ in unreadable] == ["gui"]
+    result = testmap.select([HOSTD + "keyring.rs"], tmap=TMAP, files=sorted(TREE), root=tmp_path)
+    assert "gui::" in result.cargo and any("gui" in w and "crate::" in w for w in result.warnings)
+    assert any(line.startswith("# warning") for line in testmap.render(result, EVERY).splitlines())
+    print(result.warnings[0])
+
+
 def test_the_cargo_job_hands_several_module_filters_to_the_test_binary_not_to_cargo(tmp_path):
     # `cargo test --bin lico a:: b::` is refused ("unexpected argument"); libtest takes any number of filters after `--` (a core.rs change found this)
     argv = suite.cargo_job(["core::", "gui::", "session::"], tmp_path).argv

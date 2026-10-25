@@ -32,6 +32,7 @@ class Selection:
     cargo: set = field(default_factory=set)         # cargo test filters; "" means the whole binary's tests
     acceptance: list = field(default_factory=list)  # the changed files that make the acceptance run due
     reasons: list = field(default_factory=list)     # (changed file, why)
+    warnings: list = field(default_factory=list)    # what the scan could not read and therefore assumed the worst of
 
     def tests(self, every_file):
         return sorted(every_file) if self.everything else sorted(self.files & set(every_file))
@@ -143,8 +144,59 @@ def rust_module(path):
     return path.removeprefix(HOSTD).split("/")[0].removesuffix(".rs")
 
 
-def rust_uses(files, root=REPO):
-    """top-level module -> the top-level modules whose code it names with `crate::`."""
+def _group_heads(rest):
+    """`rest` starts at the `{` of a `use` group: the first path segment of each item at the group's own level (what is nested deeper
+    belongs to that item), or None where the group or an item is not a plain path (a glob, `self`, unbalanced braces)."""
+    depth, current, items = 0, [], []
+    for ch in rest:
+        if ch == "{":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        elif ch == "," and depth == 1:
+            items.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    else:
+        return None
+    items.append("".join(current))
+    heads = []
+    for item in (i.strip() for i in items):
+        if not item:                                                  # a trailing comma
+            continue
+        head = re.match(r"(\w+)(?:\s*$|\s*::|\s+as\b)", item)
+        if head is None or head.group(1) in ("self", "super", "crate"):
+            return None
+        heads.append(head.group(1))
+    return heads
+
+
+def crate_names(text):
+    """(the top-level modules a Rust source names through `crate::`, what it names in a shape this scan cannot read).
+    Read: `crate::name::...` and a group `crate::{a, b::{c, d}, e as f}` in any layout. Comments are not code. Anything else after
+    `crate::` (a glob, a path that continues on no name) is returned as unreadable, never skipped."""
+    text = re.sub(r"//[^\n]*|/\*.*?\*/", " ", text, flags=re.S)
+    names, unreadable = set(), []
+    for match in re.finditer(r"\bcrate::", text):
+        rest = text[match.end():]
+        name = re.match(r"\w+", rest)
+        if name:
+            names.add(name.group(0))
+        elif rest.startswith("{") and (heads := _group_heads(rest)) is not None:
+            names |= set(heads)
+        else:
+            unreadable.append(text[match.start():match.end() + 24].split("\n")[0])
+    return names, unreadable
+
+
+def rust_uses(files, root=REPO, unreadable=None):
+    """top-level module -> the top-level modules whose code it names with `crate::`. A module with a `crate::` path the scan cannot
+    read is assumed to use every other module (default-deny: more is selected, never less) and is appended to `unreadable`."""
     texts = {}
     for path in files:
         module = rust_module(path)
@@ -152,10 +204,16 @@ def rust_uses(files, root=REPO):
             texts.setdefault(module, []).append((Path(root) / path).read_text(errors="replace"))
     uses = {}
     for module, parts in texts.items():
-        used = set()
+        used, bad = set(), []
         for text in parts:
-            used |= set(re.findall(r"\bcrate::(\w+)", text))
+            names, unread = crate_names(text)
+            used |= names
+            bad += unread
         uses[module] = (used & set(texts)) - {module}
+        if bad:
+            uses[module] = set(texts) - {module}
+            if unreadable is not None:
+                unreadable.append((module, bad[0]))
     return uses
 
 
@@ -178,10 +236,12 @@ def select(paths, tmap=None, files=None, root=REPO):
     files = files if files is not None else tracked(root)
     test_files = [f for f in files if re.fullmatch(r"tests/test_[^/]+\.py", f)]
     graph = python_graph(files, root)
-    uses = rust_uses(files, root)
+    unreadable = []
+    uses = rust_uses(files, root, unreadable)
     areas_of_file = tmap.get("areas", {})
     module_areas = tmap.get("rust", {}).get("modules", {})
     result = Selection()
+    result.warnings = [f"rust module {m} names `{snippet}` in a shape the scan cannot read: assumed to use every module" for m, snippet in unreadable]
 
     def runs(test_file, areas):
         """Does this test file start a process that runs code of these areas? A file the map does not list is assumed to."""
@@ -243,7 +303,8 @@ def select(paths, tmap=None, files=None, root=REPO):
 
 
 def render(result, every_file):
-    lines = [f"# {reason[1]}  <- {reason[0]}" for reason in result.reasons]
+    lines = [f"# warning: {w}" for w in result.warnings]
+    lines += [f"# {reason[1]}  <- {reason[0]}" for reason in result.reasons]
     if result.cargo:
         lines.append("cargo " + ("(all unit tests)" if "" in result.cargo else " ".join(sorted(result.cargo))))
     lines += result.tests(every_file)
