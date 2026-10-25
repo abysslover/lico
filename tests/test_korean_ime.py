@@ -1,8 +1,9 @@
 import pytest
 
+from lico_measure import legacy
 from lico_measure.ime import SENTENCE_KEYS, SENTENCE_TEXT, CompositionRig, composition_run
 
-CANDIDATES = ["a", "a2", "b", "c2"]
+CANDIDATES = legacy.clients(["a", "a2", "b", "c2"])
 
 
 @pytest.mark.parametrize("name", CANDIDATES)

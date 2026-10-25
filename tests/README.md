@@ -3,7 +3,8 @@
 The suite is `tests/test_*.py` (pytest) and the Rust unit tests (`cargo test --bin lico`). Tests use synthetic fixtures and
 meaningful failure conditions: host and window lifetime, snapshot and delta continuity, account isolation, an unavailable keyring,
 secret canaries in every sink. Unit, integration and acceptance evidence stay distinct: the **acceptance** group (a clean clone
-builds the same executable twice) has its own command and its own triggers; the daily run leaves it out.
+builds the same executable twice) has its own command and its own triggers; the daily run leaves it out, and so it does the **legacy**
+group (`lico_measure.legacy`: the retired prototype clients and hosts, kept and runnable, outside the receipts and the budget).
 
 ## Commands
 
@@ -17,6 +18,7 @@ Run them in the heavy lane (`pri-heavy --label lico --cap 5G --wait 3600 -- …`
 | `… run --cold` | ignore receipts (the cold run is the whole suite with none skipped) |
 | `… select --changed [BASE]` | print what a change needs, run nothing |
 | `… acceptance` | the clean-clone build; due when a trigger of `testmap.toml` changes, and before a merge or a release |
+| `… legacy` | the retired prototypes (candidate clients a, b, c, c2, d; host prototypes rust_std, rust_serde, c), marker `legacy_candidates`; on demand, with binaries built by hand; never in `run` |
 | `pytest -p lico_measure.ledger --ledger FILE tests` | the ledger: per test wall time and peak memory of the whole process tree |
 
 `budget.toml`: 15 s per test unless an entry gives more with a written reason; the cold run fails over 180 s and the memory over 2 GiB
@@ -33,7 +35,7 @@ Rust module runs; a changed file nobody declared selects everything. `size_allow
 3. **Which class is it, and what does it cost?** Class from the ledger (`python -m lico_measure.ledger_report LEDGER.json`):
    L0 unit (no process), L1 protocol (a host, no display), L2 a window client without a display, L3 end to end on an X server,
    A acceptance (a build or a clone). A new L3 test needs a reason; the ledger gives its seconds and peak MiB. Over 15 s needs an
-   entry in `budget.toml`.
+   entry in `budget.toml`. Never parametrize a daily test over a retired prototype: `legacy.clients([...])` marks them.
 4. **Can it share a fixture?** One X server, one host or one input method per module (`captures.ProductWindow`,
    `ime.CompositionRig`) instead of one per test, without making a test depend on the one before it. Wait for a condition
    (the frame counter, a line in the log, a state in the status), never for a fixed sleep.

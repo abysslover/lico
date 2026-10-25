@@ -224,6 +224,30 @@ def test_a_crate_path_the_scan_cannot_read_makes_its_module_use_everything_and_s
     print(result.warnings[0])
 
 
+LEGACY_FILES = ["tests/test_korean_ime.py", "tests/test_view_lifecycle.py", "tests/test_client_integration.py", "tests/test_unicode_clients.py",
+                "tests/test_protocol_conformance.py"]
+
+
+def collected(*options):
+    done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *options, *LEGACY_FILES],
+                          cwd=testmap.REPO, capture_output=True, text=True)
+    return [line for line in done.stdout.splitlines() if "::" in line]
+
+
+def test_the_retired_prototype_clients_and_hosts_run_only_behind_the_legacy_marker():
+    daily = collected()
+    legacy = collected("-o", "addopts=", "-m", "legacy_candidates")
+    ids = lambda rows: sorted(row.split("[")[1].rstrip("]") for row in rows if "[" in row)
+    assert daily and legacy
+    retired = {"a", "b", "c", "c2", "d", "rust_std", "rust_serde"}                                      # clients a b c c2 d; hosts rust_std rust_serde c
+    assert set(ids(legacy)) <= retired
+    assert not set(ids(daily)) & retired, ids(daily)                                                   # the daily run has none of them
+    assert {"a2"} <= set(ids(daily)) and {"oracle", "hostd"} <= set(ids(daily))                        # the product under its old name, the reference host and the product host stay
+    assert {"a", "b", "c", "c2", "d", "rust_std", "rust_serde"} == set(ids(legacy))                    # nothing is deleted: the marker selects them
+    assert not any("[a2]" in row or "[oracle]" in row or "[hostd]" in row for row in legacy)
+    print(f"daily rows of the five files: {len(daily)}; behind the marker: {len(legacy)} ({', '.join(sorted(set(ids(legacy))))})")
+
+
 def test_the_cargo_job_hands_several_module_filters_to_the_test_binary_not_to_cargo(tmp_path):
     # `cargo test --bin lico a:: b::` is refused ("unexpected argument"); libtest takes any number of filters after `--` (a core.rs change found this)
     argv = suite.cargo_job(["core::", "gui::", "session::"], tmp_path).argv

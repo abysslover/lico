@@ -4,6 +4,7 @@ import time
 
 import pytest
 
+from lico_measure import legacy
 from lico_measure.rig import Host, host_impls, private_dir
 from lico_protocol import v1
 
@@ -48,7 +49,7 @@ class Conn:
         self.sock.close()
 
 
-@pytest.mark.parametrize("impl", host_impls())
+@pytest.mark.parametrize("impl", legacy.hosts(host_impls()))
 def test_protocol_rejects_unknown_fields_and_oversize(impl):
     with private_dir() as directory:
         host = Host(directory, sessions=2, producing=0, history=100, retain=50, impl=impl)
@@ -94,7 +95,7 @@ def test_protocol_rejects_unknown_fields_and_oversize(impl):
             host.stop()
 
 
-@pytest.mark.parametrize("impl", host_impls())
+@pytest.mark.parametrize("impl", legacy.hosts(host_impls()))
 def test_cursor_contract_no_gap_no_duplicate(impl):
     with private_dir() as directory:
         host = Host(directory, sessions=1, producing=1, rate=200, history=300, retain=50, impl=impl)

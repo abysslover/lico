@@ -7,6 +7,7 @@ import time
 
 import pytest
 
+from lico_measure import legacy
 from lico_measure.ime import InputMethod, _focus
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
@@ -14,7 +15,7 @@ from lico_measure.xpixel import PixelReader
 
 from tests.test_codex_adapter import codex_host, new_session, sent, texts, wait_for
 
-CLIENTS = ["a2", "c2"]
+CLIENTS = legacy.clients(["a2", "c2"])
 DANGEROUS = ["\x1b", "\x07", "\x08", "\r", "\x85", "‮", "‬", "\u2028", "\u2029", "\u200e", "\u200f"]
 
 
