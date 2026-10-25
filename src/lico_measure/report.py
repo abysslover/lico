@@ -38,6 +38,11 @@ TARGETS = {
     "idle_cpu_percent": Target(0.5, "% of one core", "max", 1, "PERF-05", min_interval_s=60.0),
 }
 
+# limits that hold the product to a cost without being part of the candidate decision (which weighs every entry of TARGETS)
+PRODUCT_LIMITS = {
+    "noisy_cpu_percent": Target(5.0, "% of one core", "max", 1, "PERF-05", min_interval_s=60.0),
+}
+
 _REDUCERS = {
     "p95": lambda s: percentile_nearest_rank(s, 0.95),
     "max": max,
@@ -54,7 +59,7 @@ def build_measurement(metric: str, scope: dict, samples: list, unit: str | None 
     for value in samples:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
             raise ReportError("every sample must be a finite number; a missing value is not zero")
-    target = TARGETS.get(metric)
+    target = TARGETS.get(metric) or PRODUCT_LIMITS.get(metric)
     statistic = target.statistic if target else "median"
     value = _REDUCERS[statistic](list(samples))
     record = {

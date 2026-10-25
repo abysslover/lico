@@ -2,6 +2,7 @@
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
 mod controls;
+mod fonts;
 mod menu;
 mod panel;
 mod ui;
@@ -180,7 +181,7 @@ impl App {
 
     fn load_fonts(&mut self) {
         if self.font_system.is_none() {
-            self.font_system = Some(FontSystem::new()); // scans the installed fonts
+            self.font_system = Some(fonts::system(self.ui.faces.plain));
         }
     }
 
@@ -475,6 +476,11 @@ impl App {
             }
             Some("status") => self.emit_state("status"),
             Some("ui") => self.ui_dump(),
+            Some("redraw") => {
+                if let Some(window) = &self.window {
+                    window.request_redraw(); // a frame with nothing changed: what it costs is what the dump's frame counters show
+                }
+            }
             Some("lines") => {
                 let shown: Vec<String> = self.view.iter().flat_map(|v| v.lines.iter()).map(|l| format!("\"{}\"", json_escape(&l.1))).collect();
                 println!("{{\"ev\":\"lines\",\"lines\":[{}]}}", shown.join(","));
@@ -828,7 +834,7 @@ pub fn run(args: Vec<String>) {
         input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }

@@ -30,6 +30,8 @@ pub struct Controls {
     pub hits: Vec<Hit>,
     labels: HashMap<String, (Buffer, f32)>,
     scale: f32,
+    /// How many labels were shaped since the start (a label whose text and scale are unchanged is shaped once and reused).
+    pub shapes: u64,
 }
 
 impl Controls {
@@ -51,6 +53,7 @@ impl Controls {
             b.set_text(text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
             b.shape_until_scroll(fs, true);
             let width = b.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
+            self.shapes += 1;
             self.labels.insert(text.to_string(), (b, width));
         }
         self.labels.get_mut(text).unwrap()

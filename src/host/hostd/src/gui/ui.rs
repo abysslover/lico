@@ -8,9 +8,9 @@ use std::io::Write;
 use std::num::NonZeroU32;
 use std::sync::{mpsc, Arc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color, Family, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache};
+use cosmic_text::{Buffer, BufferLine, Color, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache};
 use serde_json::{json, Value};
 use softbuffer::Surface;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -48,8 +48,21 @@ pub enum ListItem {
     Row(String, String), // session id, text
 }
 
+/// What the frames cost, measured by the window itself (microseconds, since the start): the numbers the dump shows so a cost is read, not guessed.
+#[derive(Default, Clone)]
+pub struct FrameStats {
+    pub frames: u64,
+    pub total_us: u64,
+    pub layout_us: u64, // placing the transcript lines (shaping new text)
+    pub paint_us: u64, // controls, bar, text blits
+    pub present_us: u64,
+    pub last_us: u64,
+}
+
 #[derive(Default)]
 pub struct UiState {
+    pub stats: FrameStats,
+    pub faces: super::fonts::Faces,
     pub enabled: bool,
     pub markers: bool,
     pub rows: Vec<Row>,
@@ -703,6 +716,7 @@ impl App {
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(),
             "menu": self.menu_json(),
+            "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes},
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
@@ -718,6 +732,7 @@ impl App {
 
     // ------------------------------------------------------------------ drawing
     pub(crate) fn draw_ui(&mut self) {
+        let started = Instant::now();
         let Some(window) = self.window.clone() else { return };
         let size = window.inner_size();
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
@@ -782,17 +797,17 @@ impl App {
         let base = 1 + bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
-        let build = |first: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
+        let faces = &mut self.ui.faces;
+        let mut build = |first: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
             let mut pool: HashMap<String, Vec<BufferLine>> = HashMap::new();
             for line in std::mem::take(&mut buffer.lines) {
                 pool.entry(line.text().to_string()).or_default().push(line);
             }
-            let attrs = Attrs::new().family(Family::Monospace);
             let mut wanted: Vec<&str> = text.split('\n').collect();
             wanted.extend(lines[first..end].iter().map(|l| l.1.as_str()));
             wanted.push(&prompt);
             for line_text in wanted {
-                let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, AttrsList::new(&attrs), Shaping::Advanced));
+                let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, faces.line(fs, line_text), Shaping::Advanced));
                 buffer.lines.push(line);
             }
             buffer.set_scroll(Scroll::default());
@@ -820,6 +835,7 @@ impl App {
             build(first, &mut text, &mut view.buffer, fs);
         }
         self.ui.window_span = (first, end);
+        let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();
         let mut approval_y = None;
@@ -939,8 +955,18 @@ impl App {
                 }
             }
         }
+        let painted = Instant::now();
         window.pre_present_notify();
         let _ = buf.present();
+        let done = Instant::now();
+        let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
+        let stats = &mut self.ui.stats;
+        stats.frames += 1;
+        stats.layout_us += us(started, laid_out);
+        stats.paint_us += us(laid_out, painted);
+        stats.present_us += us(painted, done);
+        stats.last_us = us(started, done);
+        stats.total_us += stats.last_us;
     }
 }
 
