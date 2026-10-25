@@ -78,7 +78,7 @@ def test_ctrl_v_pastes_a_sign_in_code_that_is_then_accepted_like_a_typed_one_and
             panel_of(client, lambda p: p["text_entry"])
             own(xvfb.display, "CANARYCODE9")
             xdo(xvfb.display, "key", "ctrl+v")
-            ui(client, lambda u: u["panel"]["input"] == "CANARYCODE9")
+            ui(client, lambda u: u["panel"]["input_len"] == 11)
             assert not [m for m in client.lines.seen if m.get("ev") == "ime" and m.get("text")]      # a paste is not echoed to standard output
             xdo(xvfb.display, "key", "Return")                                                    # accepted only by the person's own Enter
             state = ui(client, lambda u: u["panel"] is not None and "Signed in." in u["panel"]["body"])

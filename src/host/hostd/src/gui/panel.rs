@@ -31,6 +31,7 @@ pub struct Panel {
     pub accounts: Vec<(String, String, String, bool)>, // id, provider, label, default
     pub login: Value,
     pub confirm: Option<char>,
+    pub last_error: String, // the host's raw error word of the last failed step: in the ui dump only
     pub opened: bool, // the browser was opened for this sign-in attempt
     pub stash: String, // what was typed in the input line before the panel took it over
 }
@@ -91,7 +92,7 @@ impl App {
     pub(crate) fn panel_open(&mut self, step: Step) {
         let stash = std::mem::take(&mut self.input);
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, opened: false, stash });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), opened: false, stash });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -113,6 +114,20 @@ impl App {
 
     pub(crate) fn text_mode(&self) -> bool {
         self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Label || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
+    }
+
+    /// The sign-in code is being typed: it is drawn as stars and never put in the window's model.
+    pub(crate) fn code_entry(&self) -> bool {
+        self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Login) && self.text_mode()
+    }
+
+    /// What the input line shows: the text itself, or one star per character of a code (at most 64).
+    pub(crate) fn shown_input(&self) -> String {
+        if self.code_entry() {
+            "*".repeat(self.input.chars().count().min(64))
+        } else {
+            self.input.clone()
+        }
     }
 
     fn account_name(p: &Panel) -> String {
@@ -193,7 +208,7 @@ impl App {
 
     pub(crate) fn panel_json(&self) -> Value {
         match (self.panel_view(), self.ui.panel.as_ref()) {
-            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.input}),
+            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.input.chars().count(), "error": p.last_error}),
             _ => Value::Null,
         }
     }
@@ -330,7 +345,12 @@ impl App {
                 let reply = self.host_call(json!({"op": "account.login.input", "account": account, "code": text}));
                 if let Some(p) = self.ui.panel.as_mut() {
                     p.login["needs_code"] = json!(false);
-                    p.notice = if reply["ok"] == json!(1) { "Code sent.".into() } else { format!("The code was not accepted: {}", reply["error"].as_str().unwrap_or("unknown")) };
+                    p.last_error = reply["error"].as_str().unwrap_or("").to_string();
+                    p.notice = match (reply["ok"] == json!(1), p.last_error.as_str()) {
+                        (true, _) => "Code sent.".into(),
+                        (false, "no_code_expected") => "The sign-in did not take the code (no code was expected yet).".into(),
+                        _ => "The sign-in did not take the code.".into(),
+                    };
                 }
             }
             _ => {}

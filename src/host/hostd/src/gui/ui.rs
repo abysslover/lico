@@ -583,7 +583,7 @@ impl App {
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
-        let prompt = format!("> {}[{}]", self.input, self.preedit);
+        let prompt = if self.code_entry() { format!("> {}", self.shown_input()) } else { format!("> {}[{}]", self.input, self.preedit) }; // a code is never drawn
         let cols = (main_w as f32 / (8.5 * s)).max(10.0) as usize;
         let rows_avail = ((height as f32 / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
         let (Some(fs), Some(surface)) = (self.font_system.as_mut(), self.ui.surface.as_mut()) else { return };

@@ -53,7 +53,7 @@ def test_the_window_takes_a_pasted_code_for_the_real_prompt_and_opens_one_clean_
             assert any("paste it below" in line for line in shown["body"])
             own(xvfb.display, "CANARYCODE9")
             xdo(xvfb.display, "key", "ctrl+v")
-            ui(client, lambda u: u["panel"]["input"] == "CANARYCODE9")
+            ui(client, lambda u: u["panel"]["input_len"] == 11)
             xdo(xvfb.display, "key", "Return")
             state = ui(client, lambda u: u["panel"] is not None and "Signed in." in u["panel"]["body"])
             assert "CANARYCODE9" not in __import__("json").dumps(state)
