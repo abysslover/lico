@@ -2,6 +2,7 @@
 for the purpose, and on the real map. No process of the product runs here."""
 import argparse
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -237,6 +238,24 @@ def test_a_selection_of_everything_ignores_receipts_because_a_file_nobody_declar
     assert suite.use_receipts(argparse.Namespace(receipts=False, cold=False), testmap.Selection(everything=True)) == (False, None)    # not asked: nothing to say
     assert suite.use_receipts(argparse.Namespace(receipts=True, cold=True), testmap.Selection()) == (False, None)
     print("--changed --receipts with an undeclared file:", why)
+
+
+def test_pytest_collecting_nothing_passes_only_for_a_file_the_map_names_as_acceptance_only(tmp_path):
+    job = suite.pytest_job("tests/test_x.py", tmp_path)
+    job.rc = 5                                                                                      # pytest: no test was collected
+    assert not suite.passed(job, set()) and not suite.passed(job, {"tests/test_other.py"})          # a mistyped marker must not print ok
+    assert suite.passed(job, {"tests/test_x.py"})
+    job.rc = 0
+    assert suite.passed(job, set())
+    job.rc = 1
+    assert not suite.passed(job, {"tests/test_x.py"})
+    assert not suite.passed(suite.cargo_job([], tmp_path), set())                                   # not a pytest job: 0 only
+    only = REAL["acceptance"]["only"]
+    assert all(f in REAL_TESTS for f in only)
+    for f in only:                                                                                  # the daily run really collects nothing from them
+        done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", f], cwd=testmap.REPO, capture_output=True, text=True)
+        assert done.returncode == 5, (f, done.stdout[-300:])
+    print("files the map names as acceptance-only (rc 5 is a pass for these and a failure for any other):", ", ".join(only) or "none")
 
 
 # --- budget ----------------------------------------------------------------------------------------------------

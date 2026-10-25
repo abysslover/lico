@@ -87,6 +87,10 @@ everything = [
 ]
 
 [acceptance]
+# Test files whose every test is marked `acceptance` or `legacy_candidates`: the daily run collects nothing from them (pytest rc 5),
+# and only for these files is that a pass - anywhere else a file that collects nothing fails the run. None today.
+only = []
+
 # The clean-clone build (tests/test_single_executable.py, mark `acceptance`, 80 s, 3.5 GiB) is due when one of these changes, and
 # before a merge or a release. Run it with: python -m lico_measure.suite acceptance
 triggers = [

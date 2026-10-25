@@ -125,9 +125,10 @@ def execute(job, slot, env):
     return job
 
 
-def passed(job):
-    """pytest 5 = every test was left out (the file holds only acceptance tests); cargo and the rest: 0."""
-    return job.rc == 0 or (job.ledger is not None and job.rc == 5)
+def passed(job, acceptance_only):
+    """rc 0; or pytest's 5 (nothing collected) for a file the map names as acceptance-only, whose every test the daily run leaves out.
+    Anywhere else nothing collected is a mistake - a mistyped marker, an addopts that deselects everything - and not a pass."""
+    return job.rc == 0 or (job.rc == 5 and job.ledger is not None and job.name in acceptance_only)
 
 
 # --- run ------------------------------------------------------------------------------------------------------
@@ -175,6 +176,7 @@ def run(args):
 
     graph = testmap.python_graph(files)
     tmap, hashes, binary_hashes = testmap.load_map(), {}, receipts.binaries()
+    acceptance_only = set(tmap.get("acceptance", {}).get("only", []))
     keys = {f: receipts.key(f, graph, tmap, files, hashes, binary_hashes) for f in wanted}
     skipped = []
     if use_receipt:
@@ -234,7 +236,7 @@ def run(args):
                 slots.put(slot)
             finished.append(job)
             count = len(job.rows) or "-"
-            print(f"[{time.monotonic() - began:6.1f} s] {'ok  ' if passed(job) else 'FAIL'} {job.name}  {count} tests  {job.seconds:.1f} s  (worker {job.slot})", flush=True)
+            print(f"[{time.monotonic() - began:6.1f} s] {'ok  ' if passed(job, acceptance_only) else 'FAIL'} {job.name}  {count} tests  {job.seconds:.1f} s  (worker {job.slot})", flush=True)
 
     threading.Thread(target=sampler, daemon=True).start()
     threads = [threading.Thread(target=worker) for _ in range(workers)]
@@ -256,7 +258,7 @@ def run(args):
     wall = time.monotonic() - began
 
     rows = [dict(row, worker=job.slot) for job in finished for row in job.rows]
-    failing = [job for job in finished if not passed(job)]
+    failing = [job for job in finished if not passed(job, acceptance_only)]
     for job in failing:
         tail = job.log.read_text(errors="replace").splitlines()[-40:]
         print(f"\n--- {job.name} (rc {job.rc}), the end of {job.log.relative_to(REPO)}\n" + "\n".join(tail))
@@ -265,13 +267,13 @@ def run(args):
     peak = round(tree.run_peak / 2 ** 20, 1)
     seen = {job.name: job.seconds for job in finished if job.ledger}
     for job in finished:
-        if job.ledger and passed(job):
+        if job.ledger and passed(job, acceptance_only):
             receipts.record(job.name, keys[job.name], len(job.rows), job.seconds)
         elif job.ledger:
             receipts.forget(job.name)
     if run_cargo and not cargo_skipped:
         cargo = next(j for j in finished if j.ledger is None)
-        if passed(cargo):
+        if passed(cargo, acceptance_only):
             receipts.record("cargo", cargo_key, 0, cargo.seconds)
         else:
             receipts.forget("cargo")
