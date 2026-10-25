@@ -47,7 +47,7 @@ def test_login_runs_in_the_accounts_directory_and_nothing_of_it_reaches_log_regi
             account_dir = home_of(directory, who)
             seen = json.loads((account_dir / "home" / "seen.json").read_text())
             assert (account_dir / "codex" / "auth.json").exists() and (account_dir / "home" / "received_code").read_text() == "CANARYCODE9"
-            assert set(seen["env"]) <= {"HOME", "CODEX_HOME", "NO_COLOR", "PATH", "LANG", "PWD", "SHLVL", "_", "LC_CTYPE"}, seen["env"]   # no display, no bus, none of the host's variables
+            assert set(seen["env"]) <= {"HOME", "CODEX_HOME", "NO_COLOR", "BROWSER", "PATH", "LANG", "PWD", "SHLVL", "_", "LC_CTYPE"}, seen["env"]   # no display, no bus, none of the host's variables
             assert seen["cwd"] == str(account_dir / "home") and seen["words"] == ["login"]
             # the code and the URL's state are in no sink of the host: log, registry, standard error, its command line
             files = [p for d in ("log", "registry") for p in (Path(directory) / d).rglob("*") if p.is_file()] + [Path(directory) / "host.err"]

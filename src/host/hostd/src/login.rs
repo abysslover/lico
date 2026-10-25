@@ -4,7 +4,7 @@
 
 use serde_json::json;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::Write;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -55,7 +55,8 @@ fn command_of(shared: &Shared, provider: &str, words: &[&str]) -> Command {
 /// The private environment of a login: the account's directories and nothing else of the host's (no display, so the browser is the person's to open).
 fn private_environment(command: &mut Command, shared: &Shared, account: &str) -> Result<(), &'static str> {
     let homes = shared.accounts.lock().unwrap().homes(account).ok_or("unknown_account")?;
-    command.env_clear().env("HOME", &homes.home).env(homes.variable, &homes.provider_home).env("NO_COLOR", "1");
+    // BROWSER names a harmless command: the provider's own attempt to open the address then does nothing and the window is the only opener (one tab)
+    command.env_clear().env("HOME", &homes.home).env(homes.variable, &homes.provider_home).env("NO_COLOR", "1").env("BROWSER", "/usr/bin/true");
     for key in ["PATH", "LANG"] {
         if let Some(value) = std::env::var_os(key) {
             command.env(key, value);
@@ -65,18 +66,34 @@ fn private_environment(command: &mut Command, shared: &Shared, account: &str) ->
     Ok(())
 }
 
+/// Remove terminal escape sequences (CSI, and OSC such as the hyperlinks of OSC 8, ended by BEL or ESC \\) and control characters.
 fn strip_ansi(line: &str) -> String {
     let mut out = String::new();
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                for d in chars.by_ref() {
-                    if d.is_ascii_alphabetic() {
-                        break;
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    for d in chars.by_ref() {
+                        if d.is_ascii_alphabetic() {
+                            break;
+                        }
                     }
                 }
+                Some(']') => {
+                    chars.next();
+                    while let Some(d) = chars.next() {
+                        if d == '\u{7}' {
+                            break;
+                        }
+                        if d == '\u{1b}' {
+                            chars.next_if_eq(&'\\');
+                            break;
+                        }
+                    }
+                }
+                _ => {}
             }
         } else if !c.is_control() || c == '\t' {
             out.push(c);
@@ -85,33 +102,73 @@ fn strip_ansi(line: &str) -> String {
     out
 }
 
-fn read_output(login: Arc<Mutex<Login>>, stream: impl std::io::Read + Send + 'static) {
-    std::thread::spawn(move || {
-        let mut reader = BufReader::new(stream);
-        let mut bytes = Vec::new();
-        loop {
-            bytes.clear();
-            // at most 8 KiB of a line is kept, and a byte that is not UTF-8 never ends the reading: the pipe is always drained
-            match reader.by_ref().take(8192).read_until(b'\n', &mut bytes) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {}
+/// The sign-in address of a printed line: the target of an OSC 8 hyperlink when there is one, else the first address of the visible text.
+/// It stops at a space, an escape or a bell, so what follows a link is never glued to it.
+fn address_of(raw: &str) -> Option<String> {
+    let take = |s: &str| -> String { s.chars().take_while(|c| !c.is_whitespace() && !c.is_control()).collect() };
+    let mut rest = raw;
+    while let Some(at) = rest.find("\u{1b}]8;") {
+        let after = &rest[at + 4..];
+        if let Some(semi) = after.find(';') {
+            let target = take(&after[semi + 1..]);
+            if target.starts_with("https://") {
+                return Some(target);
             }
-            let line = strip_ansi(&String::from_utf8_lossy(&bytes));
-            let mut l = login.lock().unwrap();
-            if l.url.is_none() {
-                if let Some(at) = line.find("https://") {
-                    let url: String = line[at..].chars().take_while(|c| !c.is_whitespace()).collect();
-                    l.url = Some(url.trim_end_matches(|c: char| ".,;)".contains(c)).to_string());
-                    if running(l.state) {
-                        l.state = "browser";
+        }
+        rest = &rest[at + 4..];
+    }
+    let plain = strip_ansi(raw);
+    let at = plain.find("https://")?;
+    let url = take(&plain[at..]);
+    Some(url.trim_end_matches(|c: char| ".,;)".contains(c)).to_string())
+}
+
+/// Notes that the provider asks for a code (its wording, with or without a newline after it).
+fn asks_for_code(l: &mut Login, text: &str) -> bool {
+    let text = strip_ansi(text).to_lowercase();
+    if text.contains("paste code") || text.contains("enter the code") {
+        l.needs_code = true;
+        if running(l.state) {
+            l.state = "code";
+        }
+        return true;
+    }
+    false
+}
+
+fn read_output(login: Arc<Mutex<Login>>, mut stream: impl std::io::Read + Send + 'static) {
+    std::thread::spawn(move || {
+        // What the provider prints is read as it comes, not by lines: its prompt for a code ends without a newline. At most 8 KiB are
+        // kept and the pipe is always drained; a byte that is not UTF-8 never stops the reading.
+        let mut pending: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 1024];
+        loop {
+            let n = match stream.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            pending.extend_from_slice(&chunk[..n]);
+            if pending.len() > 8192 {
+                pending.drain(..pending.len() - 4096);
+            }
+            while let Some(newline) = pending.iter().position(|b| *b == b'\n') {
+                let raw = String::from_utf8_lossy(&pending[..newline]).into_owned();
+                pending.drain(..=newline);
+                let mut l = login.lock().unwrap();
+                if l.url.is_none() {
+                    if let Some(url) = address_of(&raw) {
+                        l.url = Some(url);
+                        if running(l.state) {
+                            l.state = "browser";
+                        }
                     }
                 }
+                asks_for_code(&mut l, &raw);
             }
-            if line.to_lowercase().contains("paste code") || line.to_lowercase().contains("enter the code") {
-                l.needs_code = true;
-                if running(l.state) {
-                    l.state = "code";
-                }
+            // the prompt of a code has no newline: the bytes so far are looked at too
+            let mut l = login.lock().unwrap();
+            if asks_for_code(&mut l, &String::from_utf8_lossy(&pending)) {
+                pending.clear();
             }
         }
     });
