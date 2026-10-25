@@ -93,6 +93,7 @@ impl App {
     }
 
     pub(crate) fn panel_open(&mut self, step: Step) {
+        self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
         self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash });
@@ -530,3 +531,7 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "panel_tests.rs"]
+mod tests;

@@ -245,6 +245,7 @@ impl App {
     }
 
     fn hide(&mut self) {
+        self.panel_close(); // a panel's text (a sign-in code) is never parked as a draft: the panel gives back the draft it took
         if !self.session.is_empty() {
             // a composition in progress is committed to the session it was typed for
             let pending = std::mem::take(&mut self.preedit);
@@ -265,9 +266,8 @@ impl App {
             self.send(&msg);
         }
         self.subscribed = false;
-        let cursor = self.cursor;
         if let Some(m) = self.meta.iter_mut().find(|m| m.id == self.session) {
-            m.cursor = cursor; // navigation metadata survives; the view does not
+            m.cursor = self.cursor; // navigation metadata survives; the view does not
         }
         if self.view.take().is_some() && !self.ui.enabled {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines

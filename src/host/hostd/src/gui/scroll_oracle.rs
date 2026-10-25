@@ -13,7 +13,7 @@ use super::{fonts, App, View, BACKGROUND, FONT_PX, LINE_HEIGHT};
 
 const GARBAGE: u32 = 0xFF12_3456;
 
-fn app(scale: f32, no_scroll_step: bool) -> App {
+pub(super) fn app(scale: f32, no_scroll_step: bool) -> App {
     let (sock, peer) = UnixStream::pair().expect("a socket pair");
     std::mem::forget(peer); // the window may write to the host; nobody reads
     let mut app = App {
