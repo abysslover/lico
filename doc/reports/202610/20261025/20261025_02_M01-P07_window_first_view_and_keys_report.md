@@ -65,6 +65,26 @@ compare `input_len`. A first run of the pixel test failed by 80 pixels because t
 scale 1 on eee81cb: 22.85 MiB (limit 50), host 6.05 MiB. A hazard found: the reproducibility test, run inside the suite with the shared build directory exported, rebuilds the committed state into that directory, so a binary built before the
 suite can be replaced by the committed one; build again before taking captures from it.
 
+## S06: a host of another build (008)
+
+The installed build changes nothing while the old host daemon runs (the login supervisor lives in the host). `status` now carries `build` and `logins_running`, `host.stop` ends a host over its own socket (`busy` while sessions or a sign-in exist unless `--force`), and the window compares builds at start:
+idle host of another build -> replaced, header says so; busy -> left alone, header names the way out (`lico host stop`, process id). Tests (2): red with the check switched off (`assert ('older build' in 'select a session')`), green: 2 passed; the test host is "another build" by one appended byte.
+A host older than this step cannot be asked to stop (no such operation): its process has to be ended by pid once; the clean-clone reproducibility test now builds in its own target directory because it replaced the shared binary other tests use.
+
+## S08 and 011: permissions by default, approvals, edge margins (010, 011)
+
+- **Cause of "requires approval":** the Claude command line had `--permission-mode default` and no `--permission-prompt-tool stdio`: the program then refuses a tool that needs approval by itself and sends no request, so the window never saw one.
+- **Flags chosen:** new Claude session `--permission-mode bypassPermissions --permission-prompt-tool stdio` (`default` instead of `bypassPermissions` in ask mode); the documentation says `--dangerously-skip-permissions` is the same as `--permission-mode bypassPermissions`.
+  Evidence (real `claude` 2.1.310, private home, nothing signed in, no model call): the program accepted every combination tried (it waited for input instead of printing an unknown-option error). What it still asks in bypass mode, by the documentation:
+  `AskUserQuestion`, plan approval (`ExitPlanMode`), explicit `ask` rules, organization-controlled connector tools, recognized critical-path removals. A real approval request cannot be provoked without a model call, so the request/response shape is the documented and
+  already tested one (`can_use_tool`, allow with `updatedInput`, deny with a message) and the simulator now behaves as documented (it refuses with "requires approval" when the prompt tool is missing, and in bypass mode runs ordinary tools without asking). Stated limit: nothing here was seen from a real model turn.
+- **Codex:** `approvalPolicy never` and sandbox `danger-full-access` were sent to the real `codex app-server` (private home, no login, no turn) and came back as `never` and `dangerFullAccess`; ask mode keeps `untrusted` and `read-only`.
+- **Window:** the header shows `mode: auto (permissions skipped)` or `mode: asks for approval`; the new-session panel has `M` to switch; Y / N answer the first pending approval of the selected session when the input line is empty; the list marks sessions with approvals (`!`); `lico session create --mode default`.
+- **Tests (4 new, 3 older ones moved to ask mode where they test the ask path):** default start flags and modes for both providers, exact allow/deny replies and the auto-mode behaviour (an ordinary tool needs no approval, a question still asks), Y/N in the window, and the pixel test for the edges.
+  Red before: the session `mode` field was refused (`bad_request`) and, for 011, `AssertionError: (1, 1203, 1199, 1200)` (a light pixel in the last column). Mutation: removing the prompt tool fails two tests (`'--permission-prompt-tool' is not in list`). Green: whole suite `99 passed in 412.80 s`.
+- **011 cause:** the text area was as wide as the window although it is drawn 4 px right of the list, so the last 4 px of a line of wide glyphs fell outside the window (the Hangul glyph at the edge); it now keeps 4 px from the list and from the edge for the output, the prompt row and the panel text. The list also had no left margin (its first letter touched the edge): it has 4 px now. Checked at scale 1 and 2 and at a window width of 1203 px.
+- Idle client RSS at scale 1 on 6cad8f0: 22.92 MiB (limit 50), host 6.11 MiB. Not done: `A` (allow for the rest of the session), shortening of secrets and paths in the prompt.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back
