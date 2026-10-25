@@ -72,6 +72,7 @@ pub struct UiState {
     pub window_span: (usize, usize),
     pub proxy: Option<winit::event_loop::EventLoopProxy<super::Ev>>, // for the answer of a paste, which is fetched off the event loop
     pub paste_pending: bool,
+    pub host_notice: Option<String>, // the host runs another build than this window (or was replaced): one line, always shown
     pub flash: Option<String>, // a one-line notice outside the panels, until the next key
     pub panel: Option<super::panel::Panel>, // new session, accounts and sign-in, in place of the transcript
     pub scale: f32, // the display scale factor; every size here is a logical size times this
@@ -193,6 +194,14 @@ impl App {
 
     /// The target beside the input: provider, account, model and state of the selected session, as the host reports them.
     fn header_text(&self) -> String {
+        let base = self.header_base();
+        match &self.ui.host_notice {
+            Some(n) => format!("{base} | {n}"),
+            None => base,
+        }
+    }
+
+    fn header_base(&self) -> String {
         match self.selected_row() {
             Some(r) => {
                 let model = if r.model.is_empty() { "model not reported".to_string() } else { r.model.clone() };
@@ -577,6 +586,9 @@ impl App {
         let row = self.selected_row().cloned();
         let panel_view = self.panel_view();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
+        if let (Some(_), Some(n)) = (&panel_view, &self.ui.host_notice) {
+            header = format!("{header} | {n}");
+        }
         if let (None, Some(flash)) = (&panel_view, &self.ui.flash) {
             header = format!("{header} | {flash}");
         }

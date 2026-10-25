@@ -20,6 +20,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   account list | default ID | affected ID | credential ID REF | remove ID detach|end\n\
   account login ID [--device]    sign in with the provider's own login (shows the address, asks for a code when one is needed)\n\
   account auth ID                whether the provider says the account is signed in (Codex only; Claude Code: null)\n\
+  host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   session show ID                one session
   session purge ID               delete a session: its process, log and workspace\n\
@@ -186,6 +187,10 @@ pub fn run(args: Vec<String>) {
         }
         ["account", "auth", id] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "account.login.status", "account": id, "check": true})));
+        }
+        ["host", "stop", ..] => {
+            let force = args.iter().any(|a| a == "--force");
+            expect_ok(call(&mut connect(&socket), json!({"op": "host.stop", "force": force})));
         }
         ["account", "list"] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "account.list"})));

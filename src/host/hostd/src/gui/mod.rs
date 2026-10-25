@@ -672,6 +672,45 @@ impl ApplicationHandler<Ev> for App {
 }
 
 /// The host's socket for this user, starting the host (detached, with its own state directory) when none answers.
+/// One request on a connection of its own; the reply, or None when the host does not answer.
+fn host_once(socket: &str, request: &str) -> Option<serde_json::Value> {
+    let mut conn = UnixStream::connect(socket).ok()?;
+    conn.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok()?;
+    conn.write_all(format!("{request}\n").as_bytes()).ok()?;
+    for line in BufReader::new(conn).lines().map_while(Result::ok) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
+            if v.get("ok").is_some() {
+                return Some(v);
+            }
+        }
+    }
+    None
+}
+
+/// A host built from another executable than this window: replaced when it holds no sessions and no sign-in, otherwise left alone and named.
+/// Nothing is ended by name: the host is asked over its own socket.
+fn reconcile_host(socket: &mut String) -> Option<String> {
+    let status = host_once(socket, "{\"op\":\"status\"}")?;
+    if status["build"].as_str() == Some(crate::core::build_id()) {
+        return None;
+    }
+    let pid = status["pid"].as_u64().unwrap_or(0);
+    let busy = status["sessions"].as_array().map_or(0, |a| a.len()) > 0 || status["logins_running"].as_u64().unwrap_or(0) > 0;
+    if !busy {
+        if host_once(socket, "{\"op\":\"host.stop\"}").map_or(false, |r| r["ok"] == serde_json::json!(1)) {
+            for _ in 0..60 {
+                if UnixStream::connect(&*socket).is_err() {
+                    *socket = ensure_host();
+                    return Some("The host of an older build was replaced.".into());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        return Some(format!("The host runs an older build and could not be ended from here: end its process {pid}."));
+    }
+    Some(format!("The host runs an older build; close it when the sessions are done: lico host stop (process {pid})."))
+}
+
 fn ensure_host() -> String {
     let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
         eprintln!("lico: XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket");
@@ -735,7 +774,9 @@ pub fn run(args: Vec<String>) {
     // `lico gui` is the product: it finds (or starts) the host itself and shows the first view; the name the
     // measurement harness uses keeps the older bare view unless it is given --ui
     let product = args[0] == "lico-gui";
-    let socket = arg("--socket").unwrap_or_else(|| ensure_host());
+    let explicit = arg("--socket");
+    let mut socket = explicit.clone().unwrap_or_else(|| ensure_host());
+    let host_notice = if explicit.is_none() { reconcile_host(&mut socket) } else { None };
     let sock = match UnixStream::connect(&socket) {
         Ok(sock) => sock,
         Err(e) => {
@@ -781,7 +822,7 @@ pub fn run(args: Vec<String>) {
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, proxy: Some(proxy_for_paste), ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }

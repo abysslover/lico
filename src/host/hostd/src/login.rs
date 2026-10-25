@@ -232,6 +232,11 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
     Ok(obj(json!({"account": account, "state": "waiting"})))
 }
 
+/// How many sign-ins are running now.
+pub fn running_count(shared: &Shared) -> usize {
+    shared.logins.lock().unwrap().values().filter(|l| running(l.lock().unwrap().state)).count()
+}
+
 /// A pasted code goes to the process's standard input and nowhere else.
 pub fn input(shared: &Shared, account: &str, code: &str) -> Reply {
     if code.is_empty() || code.len() > MAX_CODE || code.chars().any(char::is_control) {

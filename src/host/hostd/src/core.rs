@@ -18,10 +18,10 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 27] = [
+pub const OPS: [&str; 28] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -298,7 +298,35 @@ fn status_entry(s: &Session) -> Value {
 pub fn status(shared: &Shared) -> Reply {
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(&s.lock().unwrap())).collect();
-    Ok(obj(json!({"pid": std::process::id(), "sessions": entries})))
+    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries})))
+}
+
+/// Which executable this process runs: a hash of its own file as it was started (a replaced file on disk does not change it), so a window and a host
+/// can tell whether they come from the same build.
+pub fn build_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in std::fs::read("/proc/self/exe").unwrap_or_default() {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0100_0000_01b3);
+        }
+        format!("{h:016x}")
+    })
+}
+
+/// End this host (the explicit way to replace it): refused while sessions or a sign-in exist, unless forced. The registry is written first.
+pub fn host_stop(shared: &Arc<Shared>, force: bool) -> Reply {
+    let sessions = shared.sessions.read().unwrap().len();
+    if !force && (sessions > 0 || crate::login::running_count(shared) > 0) {
+        return Err("busy");
+    }
+    crate::registry::save(shared);
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(300)); // the reply goes out first
+        std::process::exit(0);
+    });
+    Ok(obj(json!({"stopping": true, "sessions": sessions})))
 }
 
 pub fn session_one(shared: &Shared, session: &str) -> Reply {

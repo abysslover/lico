@@ -44,6 +44,7 @@ INVENTORY = {
     "account.affected": {"state": "host", "mutates": False},
     "account.remove": {"state": "host", "mutates": True},
     "history": {"state": "host", "mutates": False},
+    "host.stop": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -79,7 +80,7 @@ REPLIES = {
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
-                  COMMON_REPLY_OPTIONAL),
+                  {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "input": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},

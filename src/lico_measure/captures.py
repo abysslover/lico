@@ -24,7 +24,8 @@ GRAY_THRESHOLD = 140  # text is light on a near-black background
 
 
 class ProductWindow:
-    def __init__(self, stdin_open: bool = True, ime: bool = False) -> None:
+    def __init__(self, stdin_open: bool = True, ime: bool = False, host_binary: Path | None = None, host_sessions: int = 0) -> None:
+        self.host_binary, self.host_sessions, self.old_host = host_binary, host_sessions, None
         self.stdin_open = stdin_open
         self.ime = ime
 
@@ -39,6 +40,12 @@ class ProductWindow:
         self.env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(Path(self.directory) / "home"), "XDG_RUNTIME_DIR": str(self.runtime),
                     "XDG_STATE_HOME": str(Path(self.directory) / "state"), "DISPLAY": self.xvfb.display}
         self.socket = str(self.runtime / "lico" / "host.sock")
+        self.old_pid = None
+        if self.host_binary:              # a host started from another build, at the socket the window will look for
+            (self.runtime / "lico").mkdir(mode=0o700, exist_ok=True)
+            self.old_host = subprocess.Popen([str(self.host_binary), "host", "--socket", self.socket, "--state-dir", str(Path(self.directory) / "state" / "lico"),
+                                              "--sessions", str(self.host_sessions), "--producing", "0"], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+            self.old_pid = json.loads(self.old_host.stdout.readline())["pid"]
         self.method = None
         if self.ime:                      # a private ibus with the Hangul engine, bound to this display
             from .ime import InputMethod
@@ -155,6 +162,8 @@ class ProductWindow:
                 os.kill(host_pid, signal.SIGTERM)      # the host this window started, by its pid, found through its own socket
             except OSError:
                 pass
+        if self.old_host and self.old_host.poll() is None:
+            self.old_host.terminate()          # the one this window started, by its handle
         if self.method:
             self.method.stop()
         self.xvfb.stop()

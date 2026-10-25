@@ -33,6 +33,7 @@ fn main() {
         ("lico-host", _) => host::run(args),
         ("lico-cred", _) => credcmd::run(args),
         ("lico-candidate-a2", _) => gui::run(args),
+        (_, Some("host")) if args.get(2).map(String::as_str) == Some("stop") => cli::run(args), // `lico host stop` asks a running host to end
         (_, Some("host")) => host::run(shifted("lico-host")),
         (_, Some("cred")) => credcmd::run(shifted("lico-cred")),
         (_, Some("gui")) => gui::run(shifted("lico-gui")),

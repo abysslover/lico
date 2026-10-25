@@ -85,7 +85,7 @@ pub fn valid_text(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "status" | "session.list" | "resources" | "account.list" => &[],
+        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" => &[],
         "session.resume" | "session.purge" => &["session", "generation"],
         "session.rebind" => &["session", "generation", "account"],
         "account.create" => &["provider", "label"],
@@ -118,6 +118,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.create", "account") | ("session.rebind", "account") | ("account.default", "account") | ("account.credential", "account") | ("account.credential", "credential_ref") | ("account.affected", "account") | ("account.remove", "account") => valid_str(value, 64),
             ("account.login.start", "account") | ("account.login.cancel", "account") | ("account.login.status", "account") | ("account.login.input", "account") => valid_str(value, 64),
             ("account.login.start", "method") => matches!(value.as_str(), Some("browser" | "device")),
+            ("host.stop", "force") => value.is_boolean(),
             ("account.login.status", "check") => value.is_boolean(),
             ("account.login.input", "code") => matches!(value, Value::String(s) if !s.is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)),
             ("account.remove", "sessions") => matches!(value.as_str(), Some("detach" | "end")),
@@ -185,6 +186,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "account.login.start" => crate::login::start(shared, text(&request, "account"), if text(&request, "method").is_empty() { "browser" } else { text(&request, "method") }),
         "account.login.input" => crate::login::input(shared, text(&request, "account"), text(&request, "code")),
         "account.login.status" => crate::login::status(shared, text(&request, "account"), request.get("check").and_then(Value::as_bool).unwrap_or(false)),
+        "host.stop" => core::host_stop(shared, request.get("force").and_then(Value::as_bool).unwrap_or(false)),
         "account.login.cancel" => crate::login::cancel(shared, text(&request, "account")),
         "account.remove" => core::account_remove(shared, text(&request, "account"), text(&request, "sessions")),
         "account.credential" => core::account_credential(shared, text(&request, "account"), text(&request, "credential_ref")),
