@@ -1,0 +1,21 @@
+[package]
+name = "lico-toolkit-iced"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# M01-P07a candidate: iced 0.14.0 with its tiny-skia (CPU) renderer, no wgpu. The menu bar comes from iced_aw 0.14.1
+# (iced has no menu bar widget of its own); iced_aw is a separate, community-maintained crate.
+[dependencies]
+iced = { version = "=0.14.0", default-features = false, features = ["tiny-skia", "x11", "advanced", "advanced-shaping", "thread-pool"] }
+iced_aw = { version = "=0.14.1", default-features = false, features = ["menu"] }
+lico-toolkit-common = { path = "../toolkit_common" }
+
+[profile.release]
+opt-level = 2
+debug = false
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = true
