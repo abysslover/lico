@@ -160,7 +160,7 @@ def run(args):
     if why_not:
         print(why_not, flush=True)
     jobs = []
-    tree = Tree(os.getpid())            # the whole run is measured from here, the build included: the workers are its children
+    tree = Tree(os.getpid())            # the one tree and the one sampler: the whole run is measured from here, the build included
     tree.where = "the build"
     stop = threading.Event()
     clock0 = time.monotonic()
@@ -170,7 +170,7 @@ def run(args):
             tree.where = f"{time.monotonic() - clock0:.0f} s into the run: " + (", ".join(j.name for j in jobs if j.slot and j.rc is None) or "the build")
             tree.sample()                                    # a new peak keeps the text above: what was running when it was reached
 
-    threading.Thread(target=sampler, daemon=True).start()
+    threading.Thread(target=sampler, name="suite-sampler", daemon=True).start()
     build_line, build_s = ensure_build(files)
     print(build_line, flush=True)
 
@@ -200,6 +200,7 @@ def run(args):
         else:
             jobs.insert(0, cargo_job([] if cargo_filters is None else cargo_filters, out))
     if not jobs:
+        stop.set()
         print(f"nothing to run: {len(skipped)} file(s) skipped by receipt")
         return 0
 
@@ -211,17 +212,7 @@ def run(args):
     workers = max(1, min(args.workers, len(jobs)))
     for n in range(workers):
         slots.put(n + 1)
-    tree = Tree(os.getpid())
-    tree.where = "run"
-    stop = threading.Event()
-    began = time.monotonic()
-
-    def sampler():
-        while not stop.wait(INTERVAL):
-            before = tree.run_peak
-            tree.sample()
-            if tree.run_peak > before:                       # a new peak: what was running
-                tree.where = f"{time.monotonic() - began:.0f} s into the run: " + ", ".join(j.name for j in jobs if j.slot and j.rc is None)
+    began = time.monotonic()                                 # the cold-run limit counts from here: the tests, not the build
 
     def worker():
         while True:
@@ -238,7 +229,6 @@ def run(args):
             count = len(job.rows) or "-"
             print(f"[{time.monotonic() - began:6.1f} s] {'ok  ' if passed(job, acceptance_only) else 'FAIL'} {job.name}  {count} tests  {job.seconds:.1f} s  (worker {job.slot})", flush=True)
 
-    threading.Thread(target=sampler, daemon=True).start()
     threads = [threading.Thread(target=worker) for _ in range(workers)]
     try:
         for t in threads:
@@ -279,7 +269,7 @@ def run(args):
             receipts.forget("cargo")
     receipts.save_durations(seen)
 
-    document = {"collect_s": 0, "total_s": round(wall, 1), "peak_rss_mib": peak, "peak_at": tree.run_peak_at, "workers": workers,
+    document = {"total_s": round(wall, 1), "peak_rss_mib": peak, "peak_at": tree.run_peak_at, "workers": workers,
                 "files": len(todo), "skipped_by_receipt": len(skipped) + int(cargo_skipped), "build_s": round(build_s, 1),
                 "tests": sorted(rows, key=lambda r: -r.get("wall_s", 0))}
     if args.ledger:

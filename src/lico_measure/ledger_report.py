@@ -38,7 +38,8 @@ def areas(document):
 
 def table(document, top=15):
     tests, total = document["tests"], document["total_s"]
-    lines = [f"{len(tests)} tests, {total} s in all (collection {document['collect_s']} s), peak {document['peak_rss_mib']} MiB at {document['peak_at']}", ""]
+    collection = f" (collection {document['collect_s']} s)" if "collect_s" in document else ""         # a suite document (several workers) has none
+    lines = [f"{len(tests)} tests, {total} s in all{collection}, peak {document['peak_rss_mib']} MiB at {document['peak_at']}", ""]
     lines += ["| s | share | peak MiB | class | test |", "|---:|---:|---:|---|---|"]
     for t in tests[:top]:
         lines.append(f"| {t['wall_s']:.1f} | {100 * t['wall_s'] / total:.1f} % | {t['peak_rss_mib']:.0f} | {classify(t['kinds'])} | {t['nodeid'].removeprefix('tests/')[:90]} |")

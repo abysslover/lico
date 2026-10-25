@@ -3,6 +3,7 @@ for the purpose, and on the real map. No process of the product runs here."""
 import argparse
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -256,6 +257,41 @@ def test_pytest_collecting_nothing_passes_only_for_a_file_the_map_names_as_accep
         done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", f], cwd=testmap.REPO, capture_output=True, text=True)
         assert done.returncode == 5, (f, done.stdout[-300:])
     print("files the map names as acceptance-only (rc 5 is a pass for these and a failure for any other):", ", ".join(only) or "none")
+
+
+def test_a_run_measures_with_one_tree_and_one_sampler_started_before_the_build(tmp_path, monkeypatch):
+    # run() once built the Tree, the stop flag and the sampler twice: the first sampler thread went on, through the rebound names, sampling the second Tree too
+    trees, at_build = [], []
+
+    class Spy(suite.Tree):
+        def __init__(self, root):
+            super().__init__(root)
+            self.samples = 0
+            trees.append(self)
+
+        def sample(self):
+            self.samples += 1
+            return super().sample()
+
+    def fake_build(files):
+        at_build.append(len(trees))
+        return "build: skipped (test)", 0.0
+
+    monkeypatch.setattr(suite, "Tree", Spy)
+    monkeypatch.setattr(suite, "INTERVAL", 0.05)
+    monkeypatch.setattr(suite, "ensure_build", fake_build)
+    monkeypatch.setattr(suite, "LOGS", tmp_path / "logs")
+    monkeypatch.setattr(receipts, "DIRECTORY", tmp_path / "receipts")
+    small = tmp_path / "test_small.py"
+    small.write_text("import time\n\ndef test_small():\n    time.sleep(0.4)\n")
+    asked = argparse.Namespace(changed=None, paths=[str(small)], receipts=False, cold=False, workers=1, ledger=None)
+    assert suite.run(asked) == 0
+    assert len(trees) == 1 and at_build == [1], (len(trees), at_build)                              # one tree, there before the build
+    settled = trees[0].samples
+    assert settled >= 2
+    time.sleep(0.3)
+    assert trees[0].samples == settled, "a sampler thread is still running after the run"
+    print(f"one Tree, started before the build, {settled} samples, stopped with the run")
 
 
 # --- budget ----------------------------------------------------------------------------------------------------
