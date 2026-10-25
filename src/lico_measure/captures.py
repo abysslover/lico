@@ -33,8 +33,17 @@ class ProductWindow:
         self.path_prefix, self.before_window, self.env_extra, self.host_args = path_prefix, before_window, env_extra or {}, host_args or []
         self.stdin_open = stdin_open
         self.ime = ime
+        self._dir = self.xvfb = self.runtime = self.socket = self.method = self.proc = None   # what __enter__ has started so far: __exit__ ends that and nothing else
 
     def __enter__(self) -> "ProductWindow":
+        try:
+            self._start()
+        except BaseException:             # a `with` does not call __exit__ when __enter__ raises: what was started is stopped here
+            self.__exit__()
+            raise
+        return self
+
+    def _start(self) -> None:
         self._dir = private_dir()
         self.directory = self._dir.__enter__()
         self.xvfb = Xvfb()
@@ -66,7 +75,6 @@ class ProductWindow:
         self.events: queue.Queue = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
         self._wait_ready()
-        return self
 
     def _read(self) -> None:
         for line in self.proc.stdout:
@@ -198,18 +206,20 @@ class ProductWindow:
 
     def __exit__(self, *exc) -> None:
         host_pid = None
-        try:
-            done = subprocess.run([str(LICO), "--socket", self.socket, "status"], env=self.env, capture_output=True, text=True, timeout=5)
-            host_pid = json.loads(done.stdout).get("pid")
-        except (OSError, ValueError, subprocess.TimeoutExpired):
-            pass
-        if self.alive():
-            self.proc.terminate()
-        try:
-            self.proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
-            self.proc.wait()
+        if self.socket:
+            try:
+                done = subprocess.run([str(LICO), "--socket", self.socket, "status"], env=self.env, capture_output=True, text=True, timeout=5)
+                host_pid = json.loads(done.stdout).get("pid")
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                pass
+        if self.proc:
+            if self.alive():
+                self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
         if host_pid and Path(f"/proc/{host_pid}").exists():
             try:
                 os.kill(host_pid, signal.SIGTERM)      # the host this window started, by its pid, found through its own socket
@@ -219,9 +229,12 @@ class ProductWindow:
             self.old_host.terminate()          # the one this window started, by its handle
         if self.method:
             self.method.stop()
-        self.xvfb.stop()
-        shutil.rmtree(self.runtime, ignore_errors=True)
-        self._dir.__exit__(None, None, None)
+        if self.xvfb:
+            self.xvfb.stop()
+        if self.runtime:
+            shutil.rmtree(self.runtime, ignore_errors=True)
+        if self._dir:
+            self._dir.__exit__(None, None, None)
 
 
 def capture_three(out: Path) -> dict:

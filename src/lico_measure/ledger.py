@@ -3,13 +3,17 @@
 
     PYTHONPATH=src python -m pytest -p lico_measure.ledger --ledger private/t025/ledger.json tests
 
-Without --ledger the plugin does nothing. It does not change what a test sees: no environment variable, no subreaper, no signal.
+Without --ledger the plugin records nothing. It does not change what a test sees: no environment variable, no subreaper. It does one
+thing with a signal, with or without --ledger: SIGTERM (what `timeout`, the suite runner and a job queue send) ends pytest the way Ctrl+C
+does, so the `with` blocks of the rigs run their `__exit__` and the hosts, displays and folders they started are stopped. A second TERM,
+while they are closing, ends the process at once; SIGKILL cannot be handled.
 The memory is the sum of the resident sets of the tree, sampled every 100 ms and at the edges of each test; pages that
 several processes share (the binary's text, libc) are counted once per process, so the figure is an upper bound.
 A process stays in the tree after its parent died if it was seen in the tree before (a detached host); one that is born and
 orphaned between two samples is missed."""
 import json
 import os
+import signal
 import threading
 import time
 from pathlib import Path
@@ -151,6 +155,12 @@ class Ledger:
 
 
 _ledger = None
+_previous_term = []      # the SIGTERM handler that stood before ours, while ours is installed
+
+
+def end_like_ctrl_c(signum, frame):
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)      # a second TERM kills at once, whatever the cleanup is doing
+    raise KeyboardInterrupt
 
 
 def pytest_addoption(parser):
@@ -159,11 +169,19 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     global _ledger
+    if threading.current_thread() is threading.main_thread():
+        previous = signal.signal(signal.SIGTERM, end_like_ctrl_c)
+        _previous_term[:] = [signal.SIG_DFL if previous is None else previous]
     out = config.getoption("--ledger")
     if out:
         Path(out).with_suffix(".jsonl").unlink(missing_ok=True)
         _ledger = Ledger(out)
         _ledger.sampler.start()
+
+
+def pytest_unconfigure(config):
+    if _previous_term and threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, _previous_term.pop())
 
 
 def pytest_collection_finish(session):

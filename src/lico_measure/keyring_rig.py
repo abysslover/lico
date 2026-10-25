@@ -28,6 +28,14 @@ class PrivateKeyring:
         base = REPO / "private" / "kr"
         base.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.root = base / secrets.token_hex(3)      # kept short: the daemon's control socket lives under it
+        self.procs: list[subprocess.Popen] = []
+        try:                                          # a `with` does not call __exit__ when the constructor raises: what was started is stopped here
+            self._start(daemon, unlock)
+        except BaseException:
+            self.stop()
+            raise
+
+    def _start(self, daemon: bool, unlock: bool) -> None:
         for name in ("home", "data", "run", "cache"):
             (self.root / name).mkdir(parents=True, mode=0o700)
         address = f"unix:abstract=lico-kr-{os.getpid()}-{secrets.token_hex(4)}"
@@ -38,7 +46,6 @@ class PrivateKeyring:
         config.write_text(f"<busconfig><type>session</type><listen>{address}</listen><auth>EXTERNAL</auth>"
                           "<policy context='default'><allow send_destination='*' eavesdrop='true'/>"
                           "<allow eavesdrop='true'/><allow own='*'/></policy></busconfig>")
-        self.procs: list[subprocess.Popen] = []
         bus = subprocess.Popen(["dbus-daemon", f"--config-file={config}", "--nofork", "--print-address"],
                                stdout=subprocess.PIPE, text=True, env=self.env)
         self.procs.append(bus)
@@ -64,7 +71,6 @@ class PrivateKeyring:
             if done.returncode == 0 and (not expect_default or '"/"' not in done.stdout):
                 return
             time.sleep(0.2)
-        self.stop()
         raise RuntimeError("the private Secret Service did not start")
 
     def lock(self) -> None:

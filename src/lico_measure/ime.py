@@ -27,6 +27,14 @@ class InputMethod:
     """dbus session bus + ibus-daemon with the Hangul engine, bound to one display."""
 
     def __init__(self, display: str) -> None:
+        self.bus = self.daemon = self.cache = self.config = None
+        try:                                        # a `with` does not call __exit__ when the constructor raises: what was started is stopped here
+            self._start(display)
+        except BaseException:
+            self.stop()
+            raise
+
+    def _start(self, display: str) -> None:
         home = _client_home()
         # the daemon's socket lives under its cache directory; keep that path short (Unix socket limit)
         root = REPO / "private" / "k"
@@ -68,7 +76,6 @@ class InputMethod:
             if done.returncode == 0:
                 break
             if time.monotonic() > deadline:
-                self.stop()
                 raise RuntimeError("the Hangul engine did not start")
             time.sleep(0.3)
         self.client_env = {"DBUS_SESSION_BUS_ADDRESS": address, "GTK_IM_MODULE": "ibus",
@@ -76,6 +83,8 @@ class InputMethod:
 
     def stop(self) -> None:
         for proc in (self.daemon, self.bus):
+            if proc is None:
+                continue
             try:
                 pids = tree_pids(proc.pid)
             except Exception:
@@ -86,8 +95,10 @@ class InputMethod:
                 except OSError:
                     pass
             proc.wait()
-        shutil.rmtree(self.cache, ignore_errors=True)
-        self.config.unlink(missing_ok=True)
+        if self.cache:
+            shutil.rmtree(self.cache, ignore_errors=True)
+        if self.config:
+            self.config.unlink(missing_ok=True)
 
 
 def _focus(display: str) -> None:
