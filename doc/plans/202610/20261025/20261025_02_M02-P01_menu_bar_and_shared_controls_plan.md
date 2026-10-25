@@ -30,3 +30,6 @@ Re-measure idle RSS, hidden growth, activation and restart p95 with `--menu` at 
 ## Progress
 
 - 2026-10-25: Plan written; steps follow.
+- 2026-10-25: Done. The guard first refused the branch name (a mailbox note went to the lead); the prefix was allowed and the work committed unchanged (0460de4). The bar (File, Session, View, Help), the entries with their keys and greyed reasons, F10 / Alt+letter /
+  arrows / Enter / Esc, mouse, Ctrl+Q, Help panels (Keys, About) and `gui/controls.rs` (labels, buttons, list rows) used by the bar, the entries, Allow / Deny, the session list and the hint line. Tests: 5 new (`tests/test_menu_bar.py`); red `KeyError: 'menu'` x5;
+  a mutation (a greyed entry runs anyway) fails the click test; the whole suite is green. The measurement with `--menu` at both scales met every target (see the report). Not done: close and rename session (no host operation for rename; close is a purge that needs a confirmation design).
