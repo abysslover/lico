@@ -386,13 +386,11 @@ pub fn host_stop(shared: &Arc<Shared>, force: bool, build: Option<&str>) -> Repl
     if STOPPING.swap(true, Ordering::SeqCst) {
         return Err("stopping");
     }
-    // The stop is the way out of a stuck host, so it must not depend on the state it gets out of: whatever the work below waits for (a session lock
-    // held for seconds by the log's fsync, a lock that a panic poisoned), the process ends after at most this long.
-    std::thread::spawn(|| {
-        std::thread::sleep(STOP_REPLY_DELAY + STOP_DEADLINE);
-        std::process::exit(0);
-    });
-    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::registry::save(shared)));
+    // The stop is the way out of a stuck host, so the reply must not wait for the state it gets out of: the registry save takes every session lock and
+    // syncs a file, which can take seconds (a lock held by the log's fsync) or panic (a poisoned lock). It gets a budget of its own; a save that is
+    // still running when the process ends changes nothing, the registry is renamed into place only at its end.
+    let for_save = shared.clone();
+    within(STOP_SAVE_BUDGET, move || crate::registry::save(&for_save));
     let shared = shared.clone();
     std::thread::spawn(move || {
         std::thread::sleep(STOP_REPLY_DELAY); // the reply goes out first
@@ -409,8 +407,27 @@ pub fn host_stop(shared: &Arc<Shared>, force: bool, build: Option<&str>) -> Repl
         end_providers(&sessions, STOP_DEADLINE / 2);
         std::process::exit(0);
     });
+    // Whatever the work above waits for (a session lock held for seconds, a lock that a panic poisoned), the process ends after at most this long
+    // from the reply.
+    std::thread::spawn(|| {
+        std::thread::sleep(STOP_REPLY_DELAY + STOP_DEADLINE);
+        std::process::exit(0);
+    });
     Ok(obj(json!({"stopping": true, "sessions": sessions})))
 }
+
+/// Run `work` on a thread of its own and wait for it at most `budget`: true when it finished, false when it was still running (it goes on without the
+/// caller) or panicked (nothing of the caller is poisoned). The caller is never held longer than the budget.
+pub fn within(budget: Duration, work: impl FnOnce() + Send + 'static) -> bool {
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = done.send(std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).is_ok());
+    });
+    finished.recv_timeout(budget).unwrap_or(false)
+}
+
+/// How long the reply of host.stop waits for the registry to be written.
+const STOP_SAVE_BUDGET: Duration = Duration::from_millis(1500);
 
 const STOP_REPLY_DELAY: Duration = Duration::from_millis(300);
 /// The longest the stop takes after the reply, below the 3 s that a window waits for the old host to end.
@@ -1071,5 +1088,68 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn within_returns_by_the_budget_whatever_the_work_does() {
+        let from = Instant::now();
+        assert!(within(Duration::from_secs(2), || {}), "a quick job finishes inside the budget");
+        assert!(from.elapsed() < Duration::from_millis(500));
+        let from = Instant::now();
+        assert!(!within(Duration::from_millis(300), || thread::sleep(Duration::from_secs(3))), "a slow job is given up");
+        assert!(from.elapsed() >= Duration::from_millis(300) && from.elapsed() < Duration::from_millis(1500), "it took {:?}", from.elapsed());
+        let from = Instant::now();
+        assert!(!within(Duration::from_secs(2), || panic!("the work panicked on purpose")), "a panic is not a finished job");
+        assert!(from.elapsed() < Duration::from_millis(500), "a panic returns at once, it took {:?}", from.elapsed());
+        assert!(within(Duration::from_secs(2), || {}), "the caller is not poisoned by it");
+    }
+
+    const CHILD: &str = "LICO_STOP_REPLY_CHILD";
+
+    /// The stop ends the process it runs in, so this test runs itself again in a child process (the first half) and the child (the second half) asks
+    /// host_stop for a stop while one session lock is held for 8 s, then prints how long the reply took.
+    #[test]
+    fn the_stop_reply_does_not_wait_for_a_session_lock_that_is_held() {
+        if std::env::var(CHILD).is_err() {
+            let from = Instant::now();
+            let done = Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "core::tests::the_stop_reply_does_not_wait_for_a_session_lock_that_is_held", "--nocapture", "--test-threads=1"])
+                .env(CHILD, "1")
+                .output()
+                .unwrap();
+            let text = String::from_utf8_lossy(&done.stdout).to_string();
+            let reply = text.lines().find_map(|l| l.split("REPLY ms=").nth(1)).unwrap_or_else(|| panic!("the process ended without a reply: {text}"));
+            assert!(reply.ends_with("ok=true"), "the stop was refused: {reply}");
+            let reply: u64 = reply.split_whitespace().next().unwrap().parse().unwrap();
+            assert!(reply < 2000, "the reply took {reply} ms");
+            assert!(from.elapsed() < Duration::from_secs(7), "the process did not end by itself: {:?}", from.elapsed());
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("lico_core_reply_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = Config {
+            login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
+            queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
+            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"),
+            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false,
+        };
+        let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
+        let shared = Arc::new(Shared {
+            cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
+            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()),
+        });
+        let held = Arc::new(Mutex::new(Session::new("held".to_string(), false, &dir, 100, 100)));
+        shared.sessions.write().unwrap().push(held.clone());
+        let (locked, now) = mpsc::channel();
+        thread::spawn(move || {
+            let _guard = held.lock().unwrap(); // held for long, like the log's fsync under load
+            locked.send(()).unwrap();
+            thread::sleep(Duration::from_secs(8));
+        });
+        now.recv().unwrap();
+        let from = Instant::now();
+        let reply = host_stop(&shared, true, None);
+        println!("REPLY ms={} ok={}", from.elapsed().as_millis(), reply.is_ok());
+        thread::sleep(Duration::from_secs(20)); // the stop ends this process long before
     }
 }
