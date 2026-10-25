@@ -113,8 +113,18 @@ def effective_history(history: int) -> int:
     return TEXT_WORKLOAD["history"] if TEXT_WORKLOAD and history >= 100 else history
 
 
+def mixed_script_text() -> bool:
+    """The standard --text workload: most of its lines hold a right-to-left word or a combining accent, which take the exact (old) font path."""
+    return bool(TEXT_WORKLOAD) and TEXT_WORKLOAD.get("flag") is None
+
+
 def output_kind() -> str:
-    return "agent-shaped UTF-8 text lines" if TEXT_WORKLOAD else "synthetic bytes shown as hex"
+    if not TEXT_WORKLOAD:
+        return "synthetic bytes shown as hex"
+    if mixed_script_text():
+        return ("agent-shaped UTF-8 text lines, mixed-script (right-to-left words and combining accents on most lines: those lines take the exact font path; "
+                "the noisy case is reported with this text and has no limit)")
+    return "agent-shaped UTF-8 text lines, realistic (English, Korean, ideographs, symbols, emoji, code; no right-to-left or combining characters)"
 
 
 class Host:
@@ -127,7 +137,7 @@ class Host:
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")
         extra_args = list(extra_args or [])
         if TEXT_WORKLOAD:
-            extra_args += ["--text", "--payload", str(TEXT_WORKLOAD["payload"])]
+            extra_args += [TEXT_WORKLOAD.get("flag", "--text"), "--payload", str(TEXT_WORKLOAD["payload"])]
             history = effective_history(history)
             retain = max(retain, TEXT_WORKLOAD["history"] + 2000)   # the durable log really keeps the long transcripts
         self.proc = subprocess.Popen(

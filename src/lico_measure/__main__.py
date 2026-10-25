@@ -51,13 +51,16 @@ def _binary_hashes(candidates: list[str]) -> dict:
 
 TEXT_WORKLOAD = {"payload": 110, "history": 10000,
                  "shape": "UTF-8 lines of mixed scripts (Latin, Korean, ideographs, Hebrew, emoji, a combining accent, code), about 110 bytes"}
+# the same generator, size, rate and history with an arrow and a check mark where the standard one has a Hebrew word and a combining accent: the text the 5 % limit is judged on
+REALISTIC_TEXT_WORKLOAD = {"payload": 110, "history": 10000, "flag": "--realistic-text",
+                           "shape": "UTF-8 lines of Latin, Korean, ideographs, symbols, emoji and code, about 110 bytes (no right-to-left or combining characters)"}
 
 
 def _text_workload(args: argparse.Namespace) -> dict | None:
     """With --text, synthetic sessions produce agent-shaped UTF-8 lines and long transcripts."""
     from . import rig
 
-    rig.TEXT_WORKLOAD = TEXT_WORKLOAD if args.text else None
+    rig.TEXT_WORKLOAD = REALISTIC_TEXT_WORKLOAD if getattr(args, "realistic_text", False) else TEXT_WORKLOAD if args.text else None
     return rig.TEXT_WORKLOAD
 
 
@@ -335,6 +338,7 @@ def main() -> int:
     run.add_argument("--only", default="")
     run.add_argument("--allow-dirty", action="store_true")
     run.add_argument("--text", action="store_true", help="agent-shaped UTF-8 output and 10000-line transcripts")
+    run.add_argument("--realistic-text", action="store_true", help="the same with ordinary words only (no right-to-left, no combining characters); the noisy limit is judged on this text")
     run.add_argument("--ui", action="store_true", help="run the primary client with its first view (the shipped behavior)")
     run.add_argument("--menu", action="store_true", help="with --ui: the menu bar too (the product window always has it)")
     run.add_argument("--scale", type=int, default=1, choices=[1, 2], help="display scale of the measured clients")

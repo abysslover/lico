@@ -362,7 +362,7 @@ def idle_cpu(candidate: str) -> dict:
             time.sleep(SETTLE_S)
             gui, display = _cpu_percent(rig, IDLE_INTERVAL_S, rig.host.sessions[0])
             scope = rig.scope(name, {"viewport": VIEWPORT, "interval_s": IDLE_INTERVAL_S})
-            metric = "idle_cpu_percent" if producing == 0 else "noisy_cpu_percent"
+            metric = "idle_cpu_percent" if producing == 0 else "noisy_mixed_text_cpu_percent" if rig_module.mixed_script_text() else "noisy_cpu_percent"   # the limit is on realistic text
             out.append(build_measurement(metric, scope, [gui]))
             out.append(build_measurement(
                 "display_server_" + metric, dict(scope, process_scope="virtual display server"), [display]))

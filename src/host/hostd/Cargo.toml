@@ -31,3 +31,21 @@ lto = false
 codegen-units = 16
 panic = "abort"
 strip = true
+
+# The unit tests shape and draw thousands of lines (the fonts differential): the text libraries run at the speed of the product, the program itself is unchanged.
+[profile.dev.package.cosmic-text]
+opt-level = 2
+[profile.dev.package.harfrust]
+opt-level = 2
+[profile.dev.package.read-fonts]
+opt-level = 2
+[profile.dev.package.skrifa]
+opt-level = 2
+[profile.dev.package.swash]
+opt-level = 2
+[profile.dev.package.ttf-parser]
+opt-level = 2
+[profile.dev.package.fontdb]
+opt-level = 2
+[profile.dev.package.zeno]
+opt-level = 2

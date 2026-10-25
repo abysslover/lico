@@ -1,7 +1,8 @@
 //! Fonts for the transcript. A line cost about a millisecond to shape because, with the family `monospace`, cosmic-text goes through
 //! every monospace face for each word and scans all installed faces again for each word the first font lacks. The face a character
-//! lands on never changes, so the first monospace face is named once and each character that it lacks is looked up once; text that
-//! needs more than a lookup per character (combining marks, joined and right-to-left scripts, Indic, Thai, Jamo, flags) keeps the old search.
+//! lands on never changes, so the first monospace face is named once and each character that it lacks is looked up once. That is only
+//! sound where the shape of a character does not depend on its neighbours, so a line takes this path only if every character of it is
+//! on a whitelist of such characters (default-deny); any other line is shaped whole with `monospace`, the old search.
 
 use std::collections::HashMap;
 
@@ -22,6 +23,7 @@ pub struct Faces {
     scratch: Option<Buffer>,
     pub lines: u64,
     pub probes: u64,
+    pub exact: u64, // lines given whole to the old search because a character in them is not known to be independent of its neighbours
 }
 
 /// The font list of the installed fonts, with faces that share family, weight, style and stretch given distinct family names
@@ -52,18 +54,19 @@ pub fn system(plain: bool) -> FontSystem {
     FontSystem::new_with_locale_and_db(locale, db)
 }
 
-/// Characters that are drawn together with the one before them: combining marks, joiners, variation selectors, skin tones.
-fn extends(c: char) -> bool {
-    matches!(c as u32,
-        0x0300..=0x036F | 0x0483..=0x0489 | 0x0591..=0x05BD | 0x05BF | 0x05C1..=0x05C2 | 0x05C4..=0x05C5 | 0x05C7
-        | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x200B..=0x200F | 0x20D0..=0x20FF | 0x3099..=0x309A | 0xFE00..=0xFE0F | 0xFE20..=0xFE2F
-        | 0x1F3FB..=0x1F3FF | 0xE0100..=0xE01EF)
-}
+/// Characters whose face and shape do not depend on their neighbours: Latin, Greek, Cyrillic, punctuation, symbols, kana, ideographs, Hangul syllables,
+/// full-width forms, emoji. A line made only of these is split into spans by character; a line with any other character (right-to-left, joined, stacked,
+/// conjoining or combining text, joiners and other zero-width or directional controls, variation selectors, flags, skin tones, tags, private use, unassigned)
+/// is shaped whole with the family `monospace`, the old search, so it draws what it always drew.
+const INDEPENDENT: [(u32, u32); 22] = [
+    (0x20, 0x7E), (0xA0, 0xAC), (0xAE, 0x2FF), (0x370, 0x482), (0x48A, 0x52F), (0x1E00, 0x1FFF), (0x2010, 0x2027), (0x2030, 0x205E), (0x2070, 0x20CF),
+    (0x2100, 0x2BFF), (0x3000, 0x3029), (0x3030, 0x3098), (0x309B, 0x33FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xAC00, 0xD7A3), (0xF900, 0xFAFF),
+    (0xFF01, 0xFFEF), (0x1F000, 0x1F1E5), (0x1F200, 0x1F3FA), (0x1F400, 0x1FAFF), (0x20000, 0x2FA1F),
+];
 
-/// Scripts whose shape depends on the neighbours (joining, reordering, stacking, conjoining) or pairs that become one glyph (flags):
-/// not looked up one character at a time.
-fn left_to_search(c: char) -> bool {
-    matches!(c as u32, 0x0600..=0x0FFF | 0x1000..=0x11FF | 0x1780..=0x18AF | 0xA960..=0xA97F | 0xD7B0..=0xD7FF | 0xFB50..=0xFDFF | 0xFE70..=0xFEFF | 0x1F1E6..=0x1F1FF)
+fn independent(c: char) -> bool {
+    let c = c as u32;
+    INDEPENDENT.iter().any(|&(low, high)| (low..=high).contains(&c))
 }
 
 impl Faces {
@@ -83,24 +86,16 @@ impl Faces {
         if text.bytes().all(|b| (0x20..0x7F).contains(&b)) {
             return list;
         }
+        if !text.chars().all(independent) {
+            return self.whole();
+        }
         let mut chars: Vec<(usize, usize, u16)> = Vec::new(); // byte range and face of each character
-        let mut joined = false;
         for (i, c) in text.char_indices() {
-            let together = extends(c) || joined;
-            if together {
-                if let Some(last) = chars.last_mut() {
-                    last.2 = UNKNOWN; // the cluster is shaped as a whole, by the old search
-                }
-            }
-            let k = if together || left_to_search(c) {
-                UNKNOWN
-            } else if c.is_ascii() {
-                0
-            } else {
-                self.face_of(fs, c)
-            };
-            joined = c == '\u{200D}';
+            let k = if c.is_ascii() { 0 } else { self.face_of(fs, c) };
             chars.push((i, i + c.len_utf8(), k));
+        }
+        if chars.iter().any(|c| c.2 == UNKNOWN) {
+            return self.whole(); // a character that does not check out: the old search for the whole line
         }
         let mut run: Option<(usize, usize, u16)> = None;
         for (start, end, k) in chars {
@@ -116,6 +111,12 @@ impl Faces {
         list
     }
 
+    /// The old search for a whole line.
+    fn whole(&mut self) -> AttrsList {
+        self.exact += 1;
+        AttrsList::new(&Attrs::new().family(Family::Monospace))
+    }
+
     fn base(&self) -> Attrs<'_> {
         match &self.primary {
             Some(face) if self.named_base => Attrs::new().family(Family::Name(&face.0)).weight(face.1).style(face.2).stretch(face.3),
@@ -125,8 +126,7 @@ impl Faces {
 
     fn span(&self, list: &mut AttrsList, run: Option<(usize, usize, u16)>) {
         match run {
-            Some((start, end, UNKNOWN)) if self.named_base => list.add_span(start..end, &Attrs::new().family(Family::Monospace)),
-            Some((start, end, k)) if k != 0 && k != UNKNOWN => {
+            Some((start, end, k)) if k != 0 => {
                 let (name, weight, style, stretch) = &self.named[k as usize - 1];
                 list.add_span(start..end, &Attrs::new().family(Family::Name(name)).weight(*weight).style(*style).stretch(*stretch));
             }
@@ -195,5 +195,262 @@ impl Faces {
         };
         self.by_char.insert(c, k);
         k
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmic_text::{BufferLine, Color, LayoutGlyph, LineEnding, SwashCache};
+    use std::collections::HashSet;
+
+    /// How a line was drawn: the glyphs as laid out and every rectangle handed to the blit, which is what the pixels are made of.
+    #[derive(PartialEq, Debug)]
+    struct Drawn {
+        glyphs: Vec<(u16, u32, u32, u32, usize, usize)>,
+        rects: Vec<(i32, i32, u32, u32, u32)>,
+        fonts: usize,
+    }
+
+    /// The fast fonts and the old search side by side, the way the measurement client has them with and without `--plain-fonts`.
+    struct Pair {
+        fast: FontSystem,
+        plain: FontSystem,
+        faces: Faces,
+        plain_faces: Faces,
+        swash: SwashCache,
+        plain_swash: SwashCache,
+    }
+
+    fn draw(fs: &mut FontSystem, swash: &mut SwashCache, faces: &mut Faces, text: &str) -> Drawn {
+        let mut buffer = Buffer::new(fs, Metrics::new(15.0, 18.0));
+        buffer.set_size(Some(1400.0), Some(60.0));
+        buffer.lines = vec![BufferLine::new(text, LineEnding::None, faces.line(fs, text), Shaping::Advanced)];
+        buffer.shape_until_scroll(fs, true);
+        let mut glyphs = Vec::new();
+        let mut fonts = HashSet::new();
+        for run in buffer.layout_runs() {
+            for g in run.glyphs {
+                let g: &LayoutGlyph = g;
+                fonts.insert(g.font_id);
+                glyphs.push((g.glyph_id, g.x.to_bits(), g.y.to_bits(), g.w.to_bits(), g.start, g.end));
+            }
+        }
+        let mut rects = Vec::new();
+        buffer.draw(fs, swash, Color::rgb(0xE0, 0xE0, 0xE0), |x, y, w, h, color| rects.push((x, y, w, h, color.0)));
+        Drawn { glyphs, rects, fonts: fonts.len() }
+    }
+
+    impl Pair {
+        fn new() -> Self {
+            Pair { fast: system(false), plain: system(true), faces: Faces::new(false), plain_faces: Faces::new(true), swash: SwashCache::new(), plain_swash: SwashCache::new() }
+        }
+
+        /// None when the two draw the same, else what differs.
+        fn differs(&mut self, text: &str) -> Option<String> {
+            let a = draw(&mut self.fast, &mut self.swash, &mut self.faces, text);
+            let b = draw(&mut self.plain, &mut self.plain_swash, &mut self.plain_faces, text);
+            if a.glyphs != b.glyphs || a.rects != b.rects {
+                let first = a.glyphs.iter().zip(&b.glyphs).position(|(x, y)| x != y);
+                return Some(format!("{:?}: {} glyphs against {}, first difference at {:?}, {} rects against {}", text.escape_unicode().to_string(), a.glyphs.len(), b.glyphs.len(), first, a.rects.len(), b.rects.len()));
+            }
+            None
+        }
+
+        fn fonts_of(&mut self, text: &str) -> usize {
+            draw(&mut self.fast, &mut self.swash, &mut self.faces, text).fonts
+        }
+    }
+
+    /// Every range of the whitelist with its neighbours: the lines that take the fast path.
+    const WHITELISTED: &[&str] = &[
+        "Hello, world! fn main() { let x = 42; } src/lib.rs:12 --flag=value",
+        "파일을 읽습니다 read파일 file파일.rs 한글Hangul 안녕하세요, world",
+        "漢字 日本語 ひらがな カタカナ ｶﾀｶﾅ 한자漢字 漢字kana かな漢字",
+        "Привет мир Hello Привет Ёё Ђђ Ѣѣ Αβγ ΑΒΓ άέήίόύώ Γειά σου κόσμε",
+        "→ ✓ ✗ ★ ☆ © ® ™ € £ ¥ ° ± × ÷ ≤ ≥ ≠ ∞ ∑ √ ∂ ← ↑ ↓ ↔ ⇐ ⇒ ∀ ∃ ∅ ∈ ∉ ∋ ∏",
+        "┌─┬─┐ │ │ │ ├─┼─┤ └─┴─┘ ▀▄█▌▐░▒▓ ■□▲△▼▽◆◇○● ⠁⠃⠉⠙⠑ ⣿⣀⡇",
+        "🙂😀🚀🎉👍 ✨ ❤ ☀ ⭐ 🀄🃏 🅰🅱🆎🆑🆗 🈁🈂🈚🈯 🌀🌍🍀🍎🎂 🐀🐶👀👑💡💻📁🔥🔑 😁😂🤣😭🙏 🚂🚗🛑 🤔🤖🥳🧠🦄 🪄🪐",
+        "ＡＢＣ１２３！？（）　全角 ｱｲｳ ￡￥ ㅋㅋㅋ ㅎㅎ ㅠㅠ ㅇㅇ ㈠㈡ ㊀㊁ ㍿ ㎏㎎㎝",
+        "— … “ ” ‘ ’ – • ‹ › « » † ‡ ‰ ¿ ¡ § ¶",
+        "Tiếng Việt àáâãäå çèéêë ĀāĂă ŁłŃń Ǆǅ Ạạ Ảả Ấấ Ềề ỹ",
+        "豈 更 車 「」『』【】〈〉《》〒〓 〃々〆〇",
+        "℃ ℉ № ℮ Ⅰ Ⅱ Ⅲ ⅰ ⅱ ⅓ ⅔ ⌘ ⌥ ⇧ ⌫ ⏎ ⏩ ☀ ☁ ☂ ☃ ★ ☎ ☑ ♠ ♣ ♥ ♦ ⚠ ⚡ ✂ ✅ ✈ ✉ ✔ ✖ ❄ ❌ ❓ ➕ ➖ ➡ ⤴ ⤵ ⬅ ⬆ ⬇ ⬛ ⬜",
+        "a가b나c다 한A글B 漢a字b かA な 가漢 나か 다ㅋ 한→글 ✓완료 🙂파일 Привет파일 α한",
+        "  leading and trailing spaces  ",
+        "tab-free text with Ünïcödé and 한국어 and 日本語 and emoji 🙂 in one line that is long enough to wrap around the edge of the window and go on",
+    ];
+
+    /// Lines with a character whose shape depends on its neighbours, or that no font has: all of them go whole to the old search.
+    const EXACT: &[&str] = &[
+        "x שלום,עולם y",
+        "x שלום,123 b",
+        "שלום/한",
+        "שלום 한국어 world",
+        "한국어 שלום, 123",
+        "אבג hello",
+        "مرحبا بالعالم 123",
+        "hello مرحبا, 한국어",
+        "مرحبا/한",
+        "ab אבג,cd",
+        "\u{5D0} starts with a right-to-left letter",
+        "각\u{11A8} 한\u{1161} \u{1100}\u{1161}\u{11A8} \u{1112}\u{1161}\u{11AB}",
+        "한\u{200B}글 \u{FEFF}한글 한\u{200B}",
+        "a\u{200B}b \u{200C}\u{200D} a\u{200E}b \u{202A}c\u{202C}",
+        "❤\u{FE0F} ☀\u{FE0F} 1\u{FE0F}\u{20E3}",
+        "👨\u{200D}👩\u{200D}👧 👩\u{200D}💻",
+        "🇰🇷 🇺🇸 🇯🇵",
+        "👍🏽 👍🏿 🧑🏻\u{200D}💻",
+        "e\u{301} a\u{300} n\u{303} x\u{20D7}",
+        "\u{1D15E}\u{1D165} \u{1D157}\u{1D165}\u{1D16E}",
+        "नमस्ते दुनिया",
+        "สวัสดีชาวโลก",
+        "ជំរាបសួរ ម៉ាស៊ីន",
+        "tab\tseparated",
+        "\u{E000} private use",
+        "tags \u{E0067}\u{E0062}",
+    ];
+
+    /// A small generator with a fixed seed, so a failure is the same failure on the next run.
+    struct Seed(u64);
+    impl Seed {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+        fn below(&mut self, n: usize) -> usize {
+            (self.next() % n as u64) as usize
+        }
+    }
+
+    #[test]
+    fn whitelisted_lines_are_drawn_as_the_old_search_draws_them_and_never_reach_it() {
+        let mut pair = Pair::new();
+        let mut fonts = 0;
+        let mut routed = Vec::new();
+        for text in WHITELISTED {
+            let before = pair.faces.exact;
+            if let Some(why) = pair.differs(text) {
+                panic!("{why}");
+            }
+            if pair.faces.exact != before {
+                let odd: Vec<String> = text.chars().filter(|&c| !independent(c) || pair.faces.by_char.get(&c) == Some(&UNKNOWN)).map(|c| format!("U+{:04X}", c as u32)).collect();
+                routed.push(format!("{text:?} ({})", odd.join(" ")));
+            }
+            fonts = fonts.max(pair.fonts_of(text));
+        }
+        assert!(routed.is_empty(), "whitelisted lines were given to the exact path: {routed:?}");
+        assert!(pair.faces.probes > 50, "the lines must reach the lookup of characters ({} probes)", pair.faces.probes);
+        assert!(fonts >= 3 || pair.faces.named.len() >= 3, "the corpus must use several faces, or comparing proves nothing");
+    }
+
+    #[test]
+    fn random_pairs_and_triples_of_whitelisted_characters_are_drawn_as_the_old_search_draws_them() {
+        let mut pair = Pair::new();
+        let mut seed = Seed(0x9E37_79B9_7F4A_7C15);
+        pair.faces.prepare(&mut pair.fast);
+        // characters of every range that some face draws, a handful per range, so each range is met with its neighbours
+        let mut pool: Vec<char> = Vec::new();
+        for &(low, high) in INDEPENDENT.iter() {
+            let mut kept = 0;
+            for _ in 0..400 {
+                if kept == 40 {
+                    break;
+                }
+                let c = char::from_u32(low + (seed.next() % (high - low + 1) as u64) as u32).expect("a scalar value");
+                if pair.faces.face_of(&mut pair.fast, c) != UNKNOWN {
+                    pool.push(c);
+                    kept += 1;
+                }
+            }
+        }
+        assert!(pool.len() > 300, "{} characters in the pool", pool.len());
+        let mut wrong = Vec::new();
+        for i in 0..1200 {
+            let mut text = String::new();
+            if i % 5 == 0 {
+                text.push('a');
+            }
+            for _ in 0..2 + i % 2 {
+                text.push(pool[seed.below(pool.len())]);
+            }
+            if i % 7 == 0 {
+                text.push_str(" x");
+            }
+            if let Some(why) = pair.differs(&text) {
+                wrong.push(why);
+            }
+        }
+        assert!(wrong.is_empty(), "{} lines differ, the first: {}", wrong.len(), wrong[0]);
+        assert_eq!(pair.faces.exact, 0, "a line of known whitelisted characters was given to the exact path");
+    }
+
+    #[test]
+    fn lines_with_a_neighbour_dependent_character_take_the_exact_path_whole_and_look_the_same() {
+        let mut pair = Pair::new();
+        for text in EXACT {
+            if let Some(why) = pair.differs(text) {
+                panic!("{why}");
+            }
+        }
+        assert_eq!(pair.faces.exact, EXACT.len() as u64, "every listed line must be shaped whole by the old search");
+    }
+
+    #[test]
+    fn a_character_that_does_not_check_out_sends_its_whole_line_to_the_exact_path() {
+        // a character whose face the name does not pick (or that no face draws) is UNKNOWN in the memo; here three are made so, whatever the fonts of this machine
+        let mut pair = Pair::new();
+        pair.faces.prepare(&mut pair.fast);
+        let unknown = ['é', '한', '✓'];
+        for c in unknown {
+            pair.faces.by_char.insert(c, UNKNOWN);
+        }
+        let mut lines = 0;
+        for c in unknown {
+            for text in [format!("a{c}b"), format!("글{c}자 x"), format!("{c}{c}"), format!("→{c}😀")] {
+                if let Some(why) = pair.differs(&text) {
+                    panic!("{why}");
+                }
+                lines += 1;
+            }
+        }
+        assert_eq!(pair.faces.exact, lines, "each of these lines holds a character that does not check out and must go whole to the exact path");
+        for text in ["no such character here", "글자 → 😀 plain"] {
+            assert!(pair.differs(text).is_none());
+        }
+        assert_eq!(pair.faces.exact, lines, "a line without such a character stays on the fast path");
+    }
+
+    #[test]
+    fn what_is_not_known_to_be_independent_is_never_on_the_whitelist() {
+        // the classes a line must never be split inside: every code point of them is outside the whitelist
+        let excluded: &[(u32, u32)] = &[
+            (0x00, 0x1F), (0x7F, 0xA0 - 1), (0xAD, 0xAD), // controls, soft hyphen
+            (0x300, 0x36F), (0x483, 0x489), (0x20D0, 0x20FF), (0x3099, 0x309A), (0x302A, 0x302F), (0x1AB0, 0x1AFF), (0x1DC0, 0x1DFF), (0xFE20, 0xFE2F), // combining marks
+            (0x590, 0x8FF), (0xFB1D, 0xFDFF), (0xFE70, 0xFEFF), (0x10800, 0x10FFF), (0x1E800, 0x1EFFF), // right-to-left and joining scripts
+            (0x900, 0x1CFF), (0xA800, 0xABFF), // Indic, Thai, Lao, Tibetan, Myanmar, Khmer, and the other complex scripts
+            (0x1100, 0x11FF), (0xA960, 0xA97F), (0xD7B0, 0xD7FF), // conjoining and extended jamo
+            (0x200B, 0x200F), (0x202A, 0x202E), (0x2060, 0x206F), (0xFEFF, 0xFEFF), // zero-width and directional controls
+            (0xFE00, 0xFE0F), (0xE0100, 0xE01EF), // variation selectors
+            (0x1F1E6, 0x1F1FF), (0x1F3FB, 0x1F3FF), (0xE0000, 0xE007F), // regional indicators, skin tones, tags
+            (0xE000, 0xF8FF), (0xF0000, 0x10FFFF), // private use
+            (0xD800, 0xDFFF), (0x30000, 0xEFFFF), // surrogates (not chars), unassigned planes
+        ];
+        let mut wrong = Vec::new();
+        for &(low, high) in excluded {
+            for code in low..=high {
+                if let Some(c) = char::from_u32(code) {
+                    if independent(c) {
+                        wrong.push(format!("U+{code:04X}"));
+                        if wrong.len() > 5 {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "on the whitelist although they are not independent of their neighbours: {wrong:?}");
     }
 }

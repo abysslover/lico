@@ -27,8 +27,13 @@ fn main() {
     let history: i64 = arg("--history", "0").parse().unwrap_or(0);
     let rate: f64 = arg("--rate", "0").parse().unwrap_or(0.0);
     let size: usize = arg("--payload", "1024").parse().unwrap_or(1024);
-    let text_mode = args.iter().any(|a| a == "--text"); // records are UTF-8 lines shaped like agent output
-    let line_for = move |seq: i64| if text_mode { payload::text_line(seq, size).into_bytes() } else { payload::payload(seq, size) };
+    let realistic = args.iter().any(|a| a == "--realistic-text"); // the same lines with ordinary words only
+    let text_mode = realistic || args.iter().any(|a| a == "--text"); // records are UTF-8 lines shaped like agent output
+    let line_for = move |seq: i64| match (text_mode, realistic) {
+        (true, true) => payload::realistic_line(seq, size).into_bytes(),
+        (true, false) => payload::text_line(seq, size).into_bytes(),
+        _ => payload::payload(seq, size),
+    };
     let stay = args.iter().any(|a| a == "--stay"); // an idle agent keeps handling input after its history
     let out: Out = Arc::new(Mutex::new(std::io::stdout()));
     let writer = out.clone();

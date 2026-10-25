@@ -48,6 +48,7 @@ pub struct Config {
     pub accounts_dir: PathBuf,
     pub registry_dir: PathBuf,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
+    pub realistic_text: bool, // ... with ordinary words only: no right-to-left word, no combining accent (implies text)
 }
 
 const MAX_AGENT_LINE: usize = 16 * 1024;
@@ -199,7 +200,7 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
         command.arg("--stay");
     }
     if shared.cfg.text {
-        command.arg("--text");
+        command.arg(if shared.cfg.realistic_text { "--realistic-text" } else { "--text" });
         session.lock().unwrap().text_mode = true;
     }
     command.env_clear(); // an agent gets no part of the host's environment
@@ -1131,7 +1132,7 @@ mod tests {
             login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
             queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
             claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"),
-            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false,
+            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false, realistic_text: false,
         };
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
         let shared = Arc::new(Shared {

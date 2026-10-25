@@ -68,13 +68,14 @@ def test_an_unchanged_frame_shapes_no_line_and_probes_no_character():
             xvfb.stop()
 
 
-def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortcuts():
+@pytest.mark.parametrize("workload", ["--text", "--realistic-text"])
+def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortcuts(workload):
     with private_dir() as directory:
         xvfb = Xvfb()
         host = client = None
         try:
-            # Korean, ideographs, Hebrew, an emoji, a combining accent, code and ASCII lines (the text workload)
-            host, _ = start(directory, extra=["--text", "--payload", "110"], sessions=1, producing=0, history=60)
+            # Korean, ideographs, an emoji, code and ASCII lines; with --text also Hebrew and a combining accent (the exact path), with --realistic-text an arrow and a check mark
+            host, _ = start(directory, extra=[workload, "--payload", "110"], sessions=1, producing=0, history=60)
             sid = host.sessions[0]
             shots = {}
             for name, args in (("fast", []), ("plain", ["--plain-fonts"])):
@@ -101,6 +102,34 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
             if host:
                 host.stop()
             xvfb.stop()
+
+
+def test_the_two_text_workloads_take_the_two_font_paths():
+    """The realistic text is all on the fast path; the standard mixed-script text has right-to-left and combining lines, which go whole to the exact path."""
+    found = {}
+    for name, flag in (("realistic", "--realistic-text"), ("mixed", "--text")):
+        with private_dir() as directory:
+            xvfb = Xvfb()
+            host = client = None
+            try:
+                host, _ = start(directory, extra=[flag, "--payload", "110"], sessions=1, producing=0, history=60)
+                client = client_on(host, xvfb.display)
+                show(client, host.sessions[0], 35)
+                client.send("lines")
+                lines = client.expect("lines")["lines"]
+                found[name] = (ui(client)["frame"], lines)
+            finally:
+                if client and client.proc.poll() is None:
+                    client.kill()
+                if host:
+                    host.stop()
+                xvfb.stop()
+    (real, real_lines), (mixed, mixed_lines) = found["realistic"], found["mixed"]
+    assert real["lines_shaped"] >= 30 and real["lines_exact"] == 0, real
+    assert not any("שלום" in line or "\u0301" in line for line in real_lines)
+    assert any("\u2192" in line for line in real_lines) and any("\u2713" in line for line in real_lines)
+    assert mixed["lines_shaped"] >= 30 and mixed["lines_exact"] * 2 > mixed["lines_shaped"], mixed         # most of the standard lines hold a Hebrew word or a combining accent
+    assert any("שלום" in line for line in mixed_lines) and any("\u0301" in line for line in mixed_lines)
 
 
 def test_the_noisy_case_has_a_limit_of_five_percent_of_a_core():

@@ -49,7 +49,7 @@ pub fn run(args: Vec<String>) {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text] [--http-port P --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -82,7 +82,8 @@ pub fn run(args: Vec<String>) {
         cred_dir: PathBuf::from(arg("--cred-dir", base.join("credentials").to_str().unwrap_or("credentials"))),
         accounts_dir: PathBuf::from(arg("--accounts-dir", base.join("accounts").to_str().unwrap_or("accounts"))),
         registry_dir: PathBuf::from(arg("--registry-dir", base.join("registry").to_str().unwrap_or("registry"))),
-        text: args.iter().any(|a| a == "--text"),
+        text: args.iter().any(|a| a == "--text" || a == "--realistic-text"),
+        realistic_text: args.iter().any(|a| a == "--realistic-text"),
     };
     {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};

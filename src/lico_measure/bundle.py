@@ -29,6 +29,7 @@ CRITERIA = [
     ("PERF-04", "restart_p95_ms", "GUI restart, first correct frame"),
     ("PERF-05", "idle_cpu_percent", "Idle GUI CPU, 60 s"),
     ("PERF-05", "noisy_cpu_percent", "Noisy case: visible session producing 100 records/s"),
+    ("PERF-05", "noisy_mixed_text_cpu_percent", "Noisy case with mixed-script text (right-to-left, combining): reported, no limit"),
     ("PERF-07", "gui_peak_rss_mib", "Peak RSS (sum of per-process high-water marks)"),
     ("PERF-07", "host_idle_rss_mib", "Host process RSS, reported separately"),
     ("PERF-07", "display_server_idle_rss_mib", "Virtual display server RSS, reported separately"),
