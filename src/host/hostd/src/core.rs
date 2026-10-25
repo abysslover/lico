@@ -95,7 +95,61 @@ pub fn spawn_provider_process(mut command: Command) -> std::io::Result<Child> {
             Ok(())
         });
     }
-    spawn_agent(command)
+    let child = spawn_agent(command)?;
+    note_provider(child.id());
+    Ok(child)
+}
+
+/// The provider processes of this host with the start time of each, kept OUTSIDE every session lock: the stop reaches a provider even when its
+/// session is stuck behind a lock that is held for long or poisoned.
+static PROVIDERS: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
+
+/// (start time, process group) of a process; the fields are counted after the last `)` because the name may hold spaces and brackets.
+fn stat_start_group(pid: u32) -> Option<(String, u32)> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let fields: Vec<&str> = stat.rsplit_once(") ")?.1.split(' ').collect();
+    Some((fields.get(19)?.to_string(), fields.get(2)?.parse().ok()?))
+}
+
+pub(crate) fn note_provider(pid: u32) {
+    let mut list = PROVIDERS.lock().unwrap_or_else(|e| e.into_inner());
+    list.retain(|(p, start)| stat_start_group(*p).map_or(false, |(s, _)| s == *start)); // the ones that ended are forgotten
+    if let Some((start, _)) = stat_start_group(pid) {
+        list.push((pid, start));
+    }
+}
+
+/// Kill the group of every provider that is still the process that was noted (a pid that was reused is not signalled) and still leads its group.
+fn end_listed_groups() {
+    let list = PROVIDERS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    for (pid, start) in list {
+        if stat_start_group(pid).map_or(false, |(s, group)| s == start && group == pid) {
+            unsafe { kill(-(pid as i32), 9) };
+        }
+    }
+}
+
+/// End every provider of this host. It returns whatever state the sessions are in: the groups are killed by the pids kept outside the locks first,
+/// then each session is taken with `try_lock` (a poisoned lock is used through its inner value; a lock that stays held is given up after `wait`).
+pub fn end_providers(sessions: &[Arc<Mutex<Session>>], wait: Duration) {
+    end_listed_groups();
+    let until = Instant::now() + wait;
+    for session in sessions {
+        loop {
+            match session.try_lock() {
+                Ok(mut s) => {
+                    s.stop_process();
+                    break;
+                }
+                Err(std::sync::TryLockError::Poisoned(p)) => {
+                    p.into_inner().stop_process();
+                    break;
+                }
+                Err(std::sync::TryLockError::WouldBlock) if Instant::now() < until => thread::sleep(Duration::from_millis(10)),
+                Err(std::sync::TryLockError::WouldBlock) => break,
+            }
+        }
+    }
 }
 
 fn spawn_agent(command: Command) -> std::io::Result<Child> {
@@ -111,6 +165,7 @@ fn spawn_agent(command: Command) -> std::io::Result<Child> {
 }
 
 extern "C" {
+    fn kill(pid: i32, signal: i32) -> i32;
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
     fn setsid() -> i32;
 }
@@ -324,26 +379,42 @@ pub fn host_stop(shared: &Arc<Shared>, force: bool, build: Option<&str>) -> Repl
     if build.map_or(false, |b| b != build_id()) {
         return Err("build_changed");
     }
-    let sessions = shared.sessions.read().unwrap().len();
+    let sessions = shared.sessions.read().unwrap_or_else(|e| e.into_inner()).len();
     if !force && (sessions > 0 || crate::login::running_count(shared) > 0) {
         return Err("busy");
     }
     if STOPPING.swap(true, Ordering::SeqCst) {
         return Err("stopping");
     }
-    crate::registry::save(shared);
+    // The stop is the way out of a stuck host, so it must not depend on the state it gets out of: whatever the work below waits for (a session lock
+    // held for seconds by the log's fsync, a lock that a panic poisoned), the process ends after at most this long.
+    std::thread::spawn(|| {
+        std::thread::sleep(STOP_REPLY_DELAY + STOP_DEADLINE);
+        std::process::exit(0);
+    });
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::registry::save(shared)));
     let shared = shared.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(300)); // the reply goes out first
+        std::thread::sleep(STOP_REPLY_DELAY); // the reply goes out first
         // a provider left behind goes on with its turn (claude does, after its input ends) and would meet the one that resumes the session
-        let sessions: Vec<_> = shared.sessions.read().unwrap().clone();
-        for session in sessions {
-            session.lock().unwrap().stop_process();
-        }
+        let until = Instant::now() + STOP_DEADLINE / 2;
+        let sessions: Vec<_> = loop {
+            match shared.sessions.try_read() {
+                Ok(list) => break list.clone(),
+                Err(std::sync::TryLockError::Poisoned(p)) => break p.into_inner().clone(),
+                Err(std::sync::TryLockError::WouldBlock) if Instant::now() < until => thread::sleep(Duration::from_millis(10)),
+                Err(std::sync::TryLockError::WouldBlock) => break Vec::new(),
+            }
+        };
+        end_providers(&sessions, STOP_DEADLINE / 2);
         std::process::exit(0);
     });
     Ok(obj(json!({"stopping": true, "sessions": sessions})))
 }
+
+const STOP_REPLY_DELAY: Duration = Duration::from_millis(300);
+/// The longest the stop takes after the reply, below the 3 s that a window waits for the old host to end.
+const STOP_DEADLINE: Duration = Duration::from_millis(2400);
 
 pub fn session_one(shared: &Shared, session: &str) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
@@ -947,5 +1018,58 @@ pub fn replay(session: &Arc<Mutex<Session>>, sub: &Arc<Sub>, id: &str, mut curso
             }
             cursor = seq;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn provider() -> Child {
+        let mut command = Command::new("sleep");
+        command.arg("60");
+        unsafe {
+            command.pre_exec(|| {
+                setsid(); // its own group, like a provider
+                Ok(())
+            });
+        }
+        let child = command.spawn().expect("sleep");
+        note_provider(child.id());
+        child
+    }
+
+    #[test]
+    fn the_stop_returns_and_ends_the_providers_whatever_state_a_session_lock_is_in() {
+        let dir = std::env::temp_dir().join(format!("lico_core_stop_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let session = |id: &str| Arc::new(Mutex::new(Session::new(id.to_string(), false, &dir, 100, 100)));
+        let (held, poisoned, free) = (session("held"), session("poisoned"), session("free"));
+        let p = poisoned.clone();
+        let _ = thread::spawn(move || {
+            let _guard = p.lock().unwrap();
+            panic!("a session lock poisoned on purpose");
+        })
+        .join();
+        assert!(poisoned.is_poisoned());
+        let (h, held_now) = (held.clone(), mpsc::channel());
+        thread::spawn(move || {
+            let _guard = h.lock().unwrap(); // held for long, like the log's fsync under load
+            held_now.0.send(()).unwrap();
+            thread::sleep(Duration::from_secs(6));
+        });
+        held_now.1.recv().unwrap();
+        let mut providers = [provider(), provider(), provider()]; // none is a session's own pid: only the list outside the locks can reach them
+        let from = Instant::now();
+        end_providers(&[held, poisoned, free], Duration::from_millis(500));
+        assert!(from.elapsed() < Duration::from_secs(3), "the stop took {:?}", from.elapsed());
+        for provider in providers.iter_mut() {
+            let until = Instant::now() + Duration::from_secs(2);
+            while provider.try_wait().unwrap().is_none() {
+                assert!(Instant::now() < until, "a provider survived the stop");
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
