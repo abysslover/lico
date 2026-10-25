@@ -314,6 +314,24 @@ def test_a_host_that_ends_without_an_answer_is_not_called_replaced_by_another_wi
             assert "another window" not in w.ui()["header"]                                                      # nobody else was seen to do it
 
 
+def test_a_host_that_another_window_replaced_at_once_is_still_a_host_this_window_ended():
+    """The window that stopped the old host must not need to see the socket empty: a new host (another window's) can answer in the same instant."""
+    with private_dir() as directory:
+        env = {"FAKE_HOST_BUILD": "00000000000000aa", "FAKE_HOST_STOP": "handover", "FAKE_HOST_SUCCESSOR": fnv(LICO), "FAKE_HOST_LIFETIME": "60"}
+        with ProductWindow(host_binary=fake_host(directory), env_extra=env) as w:
+            old = w.old_pid
+            try:
+                wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
+                try:
+                    wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)                              # this window stopped the old host: it is the one that restarts
+                except AssertionError:
+                    raise AssertionError(f"the old host is gone and a new one answers, but this window did not take it as its own restart: header={w.ui()['header']!r}") from None
+                assert status(w)["pid"] != old and not alive(old)
+            finally:
+                if status(w).get("pid") not in (None, old):
+                    os.kill(status(w)["pid"], 9)
+
+
 def test_a_bad_request_to_session_create_says_the_host_is_an_older_build():
     with private_dir() as directory:
         env = {"FAKE_HOST_BUILD": fnv(LICO), "FAKE_HOST_ERROR": "bad_request"}                                  # the same build, so the window leaves it alone
@@ -427,7 +445,9 @@ def test_two_windows_at_once_make_one_host_and_one_set_of_resumes():
                 for m in w.made:
                     assert found[m["session"]]["generation"] == m["generation"] + 1, f"resumed more than once\n{explain(w, second)}"   # once, by the window that stopped the old host
                 assert not alive(old) and len(host_processes(w)) == 1, f"the old host is alive or there is not one host\n{explain(w, second)}"
-                reached("a header says what happened", lambda: header_has(w, NEW_LINE.format(n=2)) or header_has(w, "replaced by another window"), 20, w, second)
+                kinds = {"restarted": NEW_LINE.format(n=2), "replaced by another window": "replaced by another window", "host ended": "The host ended and a new one answers"}
+                reached("a header says what happened", lambda: any(header_has(w, text) for text in kinds.values()), 20, w, second)
+                print("FIRST_WINDOW_HEADER", [kind for kind, text in kinds.items() if header_has(w, text)], "second:", second.header())      # tallied by the loaded runs (pytest -s)
         finally:
             for p in other:
                 p.proc.terminate()

@@ -5,7 +5,9 @@ id at all, like the hosts before build ids). Every operation except status and a
 (default unknown_op). When FAKE_HOST_CHILD names a file, the host starts a long sleep of its own (a provider that outlives its host) and writes the pid
 there. FAKE_HOST_PROVIDER names a file: the host then starts a provider the way the real old build did (its own session, the parent-death signal set, so the
 kernel ends it with the host) that starts a helper which stays in its group; both pids are written there ("child helper"). FAKE_HOST_STOP=exit makes
-host.stop answer ok and end the process at once (`os._exit`), as the real host does after its stop; FAKE_HOST_STOP=die ends it without any answer. It prints one line with its pid when it listens,
+host.stop answer ok and end the process at once (`os._exit`), as the real host does after its stop; FAKE_HOST_STOP=die ends it without any answer;
+FAKE_HOST_STOP=handover answers ok, starts a successor of the build named in FAKE_HOST_SUCCESSOR on the same socket, waits until it listens and only then exits, so nothing ever
+sees the socket without a listener (another window's new host coming up at once). FAKE_HOST_LIFETIME=N ends the process after N seconds. It prints one line with its pid when it listens,
 like the real host."""
 
 import json
@@ -56,11 +58,21 @@ def serve(conn):
                     stream.write(json.dumps({"v": 1, "ok": 1, "id": request.get("id"), "stopping": True}) + "\n")
                     stream.flush()
                     os._exit(0)                                                      # the kernel ends only the provider (its parent-death signal), not the helper
+                if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "handover":
+                    stream.write(json.dumps({"v": 1, "ok": 1, "id": request.get("id"), "stopping": True}) + "\n")
+                    stream.flush()
+                    successor = subprocess.Popen([sys.executable, "-I", os.path.abspath(__file__), "--socket", path], stdout=subprocess.PIPE, text=True,
+                                                 env={**os.environ, "FAKE_HOST_BUILD": os.environ["FAKE_HOST_SUCCESSOR"], "FAKE_HOST_STOP": ""})
+                    successor.stdout.readline()                                      # it listens now, on the same path
+                    os._exit(0)
                 stream.write(json.dumps(answer(request)) + "\n")
                 stream.flush()
             except (ValueError, OSError):
                 return
 
+
+if os.environ.get("FAKE_HOST_LIFETIME"):
+    threading.Timer(float(os.environ["FAKE_HOST_LIFETIME"]), lambda: os._exit(0)).start()
 
 if os.environ.get("FAKE_HOST_CHILD"):
     child = subprocess.Popen(["sleep", "300"], start_new_session=True)       # leads its own group, as a provider does

@@ -83,11 +83,18 @@ fn in_the_middle(entry: &Value) -> bool {
     entry["state"] == json!("running") && (entry["activity"] == json!("working") || entry["approvals"].as_array().map_or(false, |a| !a.is_empty()))
 }
 
-fn gone(socket: &str, within: Duration) -> bool {
+/// The host that was asked to stop has ended when nothing listens, or when what answers is another process: another window's new host can come up on the same
+/// path before this one has looked, so an empty socket is not something to wait for.
+fn gone(socket: &str, old: Option<u64>, within: Duration) -> bool {
     let from = Instant::now();
     loop {
         if UnixStream::connect(socket).is_err() {
             return true;
+        }
+        if let Some(old) = old {
+            if status_of(socket).map_or(false, |s| s["pid"].as_u64() != Some(old)) {
+                return true;
+            }
         }
         if from.elapsed() >= within {
             return false;
@@ -131,7 +138,7 @@ fn stop(socket: &str, status: &Value) -> Stopped {
     }
     match reply {
         Some(r) if r["ok"] == json!(1) => {
-            if gone(socket, Duration::from_secs(3)) {
+            if gone(socket, pid, Duration::from_secs(3)) {
                 Stopped::Here
             } else {
                 Stopped::Failed(format!("its process {} did not end", pid.map_or("?".to_string(), |p| p.to_string())))
@@ -146,7 +153,7 @@ fn stop(socket: &str, status: &Value) -> Stopped {
             }
             match pid {
                 Some(pid) if end_by_pid(socket, pid) => {
-                    if gone(socket, Duration::from_secs(3)) {
+                    if gone(socket, Some(pid), Duration::from_secs(3)) {
                         Stopped::Here
                     } else {
                         Stopped::Failed(format!("its process {pid} did not end"))
