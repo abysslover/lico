@@ -294,6 +294,59 @@ fn script(scale: f32) {
     next += 1;
     p.shift("a row of the list changes");
 
+    // the clock of a working session: a status line appears under the last record, counts on without a new line, and goes with the turn
+    p.both(|app| {
+        let row = app.ui.rows.iter_mut().find(|r| r.session == "session-s2").unwrap();
+        row.state = "running".into();
+        row.activity = "working".into();
+        row.busy_since = 1000;
+        row.last_event_at = 1000;
+        app.ui.fixed_now = Some(1003);
+    });
+    p.push(&lines(next, 1));
+    next += 1;
+    p.shift("a turn opens: the status line appears");
+    assert_eq!(p.on.app.status_line(false).as_deref(), Some("… working (3 s)"), "the segment is about a status line that is there");
+    for (second, burst) in [(1004, 0), (1005, 0), (1006, 1), (1007, 3), (1008, 0), (1066, 1), (1067, 0)] {
+        p.both(|app| app.ui.fixed_now = Some(second));
+        p.push(&lines(next, burst));
+        next += burst as i64;
+        p.shift(&format!("the clock reads {second} with {burst} new lines"));
+        assert_eq!(p.on.app.status_line(false), Some(format!("… working ({})", super::ui::clock_text(second - 1000))));
+    }
+    p.both(|app| {
+        let row = app.ui.rows.iter_mut().find(|r| r.session == "session-s2").unwrap();
+        row.stalled = true;
+        app.ui.fixed_now = Some(1100);
+    });
+    p.shift("the host says the session is silent: the status line is longer");
+    assert_eq!(p.on.app.status_line(false).as_deref(), Some("… no output for 1 m 40 s (working 1 m 40 s)"));
+    p.push(&lines(next, 2));
+    next += 2;
+    p.shift("lines arrive under a silent status");
+    p.both(|app| {
+        let row = app.ui.rows.iter_mut().find(|r| r.session == "session-s2").unwrap();
+        row.stalled = false;
+        row.last_event_at = 1100;
+        app.ui.fixed_now = Some(1101);
+    });
+    p.shift("the silence ends");
+    p.both(|app| app.ui.scroll = 4);
+    p.full("scrolled back while a turn works", Cause::Scrollback);
+    p.both(|app| app.ui.scroll = 0);
+    p.full("back at the bottom while a turn works", Cause::Scrollback);
+    p.both(|app| {
+        let row = app.ui.rows.iter_mut().find(|r| r.session == "session-s2").unwrap();
+        row.activity = "idle".into();
+        row.busy_since = 0;
+        row.stalled = false;
+    });
+    p.push(&lines(next, 1));
+    next += 1;
+    p.shift("the turn ends: the status line goes");
+    assert_eq!(p.on.app.status_line(false), None);
+    p.both(|app| app.ui.fixed_now = None);
+
     // a line that is not new changes
     p.both(|app| {
         let view = app.view.as_mut().unwrap();

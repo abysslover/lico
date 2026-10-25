@@ -277,7 +277,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         }
         if s.state == State::Running && s.codex.is_some() {
             s.set_state(State::Disconnected);
-            s.busy = false;
+            s.set_busy(false);
             s.codex = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
             record(&mut s, "[provider disconnected]");
@@ -325,6 +325,7 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
 // ------------------------------------------------------------------- messages
 fn handle_message(session: &Arc<Mutex<Session>>, message: &Value, cwd: &str) {
     let mut s = session.lock().unwrap();
+    s.heard();
     let method = message.get("method").and_then(Value::as_str);
     // an id is a number or a short string: it is echoed back to the provider, so it must stay small
     if !message.get("id").map_or(true, |id| id.is_i64() || id.as_str().map_or(false, |s| s.len() <= 64)) {
@@ -482,14 +483,14 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = params.pointer("/turn/id").and_then(Value::as_str).map(str::to_string);
             }
-            s.busy = true;
+            s.set_busy(true);
             record(s, "[turn started]");
         }
         "turn/completed" => {
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = None;
             }
-            s.busy = false;
+            s.set_busy(false);
             record(s, &format!("[turn {}]", text("/turn/status")));
         }
         "error" => record(s, &format!("[error] {}", text("/error/message"))),

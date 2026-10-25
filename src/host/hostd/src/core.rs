@@ -324,6 +324,12 @@ pub fn hello(shared: &Shared) -> Reply {
     Ok(obj(json!({"protocol": 1, "host": "lico-host", "max_request": MAX_REQUEST, "retain": shared.cfg.retain, "ops": OPS})))
 }
 
+/// How long a working session may say nothing before the status calls it stalled (`LICO_STALL_S` changes it, for tests).
+fn stall_secs() -> u64 {
+    static SECS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *SECS.get_or_init(|| std::env::var("LICO_STALL_S").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(30))
+}
+
 fn status_entry(s: &Session) -> Value {
     let mut entry = json!({
         "session": s.id, "generation": s.generation, "seq": s.last_seq(), "producing": s.producing,
@@ -338,6 +344,13 @@ fn status_entry(s: &Session) -> Value {
     }
     if !s.provider.is_empty() && s.state == State::Running {
         entry["activity"] = json!(if s.busy { "working" } else { "idle" });
+        if s.busy {
+            // the host's own clock for the open turn; a turn that waits for a person's answer is not a hang
+            let quiet = crate::session::now_secs().saturating_sub(s.last_event_at);
+            entry["busy_since"] = json!(s.busy_since);
+            entry["last_event_at"] = json!(s.last_event_at);
+            entry["stalled"] = json!(s.approvals.is_empty() && quiet >= stall_secs());
+        }
     }
     if let Some(account) = &s.account {
         entry["account"] = json!(account);

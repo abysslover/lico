@@ -82,7 +82,7 @@ pub fn send_input(s: &mut Session, request_id: &str, text: &str) -> Result<(), &
         link.pending_inputs.remove(&uuid);
         return Err(code);
     }
-    s.busy = true; // a user message is in flight: the turn it starts is over when the provider's result says so
+    s.set_busy(true); // a user message is in flight: the turn it starts is over when the provider's result says so
     Ok(())
 }
 
@@ -246,7 +246,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
         if s.state == State::Running && s.claude.is_some() {
             s.set_state(State::Disconnected);
-            s.busy = false;
+            s.set_busy(false);
             s.stop_broker();
             s.claude = None; // its approvals and unanswered requests are stale now
             s.approvals.clear();
@@ -279,6 +279,7 @@ fn approval_prompt(tool: &str, input: &Value) -> String {
 
 fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
     let mut s = session.lock().unwrap();
+    s.heard();
     match message["type"].as_str() {
         Some("system") if message["subtype"] == "init" => {
             // the id is handed back as an argument on resume: letters, digits, dash and underscore only, never a leading dash
@@ -335,7 +336,7 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
             }
         }
         Some("result") => {
-            s.busy = false;
+            s.set_busy(false);
             // an authentication or limit failure is shown against the account; nothing is retried under another one
             let status_issue = match message["api_error_status"].as_i64() {
                 Some(401) | Some(403) => Some("authentication_failed"),

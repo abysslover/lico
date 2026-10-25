@@ -41,6 +41,9 @@ pub struct Row {
     pub approvals: Vec<(i64, String)>,
     pub issue: String,
     pub mode: String,
+    pub busy_since: u64,    // the host's start of the open turn (unix seconds), 0 when none
+    pub last_event_at: u64, // when the provider last said anything
+    pub stalled: bool,      // the host's own judgement: working, nothing to answer, and silent for its stall time
 }
 
 #[derive(Clone)]
@@ -106,6 +109,7 @@ pub struct UiState {
     pub composed: Option<Composed>, // the last frame in the surface's buffer, for the scroll step
     pub no_scroll_step: bool, // measurement client only: every frame is a full repaint
     pub fonts_gen: u64, // changes when the font system is replaced
+    pub fixed_now: Option<u64>, // tests only: the second that the clocks of working sessions count from
 }
 
 fn display_cols(text: &str) -> usize {
@@ -121,8 +125,33 @@ fn ago(now: u64, then: u64) -> String {
     }
 }
 
+impl App {
+    /// The second that the clocks count from (the wall clock; a test may fix it so that two windows read the same one).
+    pub(crate) fn clock_now(&self) -> u64 {
+        self.ui.fixed_now.unwrap_or_else(now_secs)
+    }
+}
+
 fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// The clock of an open turn, as a sentence part: "37 s", "2 m 05 s", "1 h 02 m".
+pub fn clock_text(secs: u64) -> String {
+    match secs {
+        0..=59 => format!("{secs} s"),
+        60..=3599 => format!("{} m {:02} s", secs / 60, secs % 60),
+        _ => format!("{} h {:02} m", secs / 3600, secs % 3600 / 60),
+    }
+}
+
+/// The same for the narrow list: "37s", "2m05s", "1h02m".
+pub fn clock_compact(secs: u64) -> String {
+    match secs {
+        0..=59 => format!("{secs}s"),
+        60..=3599 => format!("{}m{:02}s", secs / 60, secs % 60),
+        _ => format!("{}h{:02}m", secs / 3600, secs % 3600 / 60),
+    }
 }
 
 impl Row {
@@ -131,6 +160,34 @@ impl Row {
         match self.state_text().as_str() {
             "waiting for approval" => "approval".into(),
             other => other.to_string(),
+        }
+    }
+
+    /// Seconds the open turn has been running: only while the host says the session works and nothing waits for a person.
+    pub fn working_for(&self, now: u64) -> Option<u64> {
+        (self.state == "running" && self.activity == "working" && self.approvals.is_empty() && self.busy_since > 0).then(|| now.saturating_sub(self.busy_since))
+    }
+
+    /// Seconds without anything from the provider, once the host calls the working session stalled.
+    pub fn silent_for(&self, now: u64) -> Option<u64> {
+        self.working_for(now).filter(|_| self.stalled).map(|_| now.saturating_sub(self.last_event_at))
+    }
+
+    /// The state with the clock of an open turn, for the header.
+    pub fn state_with_clock(&self, now: u64) -> String {
+        match (self.working_for(now), self.silent_for(now)) {
+            (Some(w), Some(q)) => format!("working {}, no output for {}", clock_text(w), clock_text(q)),
+            (Some(w), None) => format!("working {}", clock_text(w)),
+            _ => self.state_text(),
+        }
+    }
+
+    /// The state and the age for the narrow list: the clock of an open turn in place of the coarse age.
+    pub fn list_parts(&self, now: u64) -> (String, String) {
+        match (self.working_for(now), self.silent_for(now)) {
+            (_, Some(q)) => ("silent".into(), clock_compact(q)),
+            (Some(w), None) => ("working".into(), clock_compact(w)),
+            _ => (self.list_state_text(), ago(now, self.state_at)),
         }
     }
 
@@ -170,6 +227,9 @@ impl App {
                 approvals,
                 issue: entry["account_issue"].as_str().unwrap_or("").into(),
                 mode: entry["mode"].as_str().unwrap_or("").into(),
+                busy_since: entry["busy_since"].as_u64().unwrap_or(0),
+                last_event_at: entry["last_event_at"].as_u64().unwrap_or(0),
+                stalled: entry["stalled"].as_bool().unwrap_or(false),
             });
         }
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
@@ -219,6 +279,21 @@ impl App {
         }
     }
 
+    /// The last line of the transcript while the selected session works: "… working (37 s)", or how long it has said nothing.
+    /// Not part of the transcript (nothing is stored or copied); shown only at the live end and not behind a panel.
+    pub(crate) fn status_line(&self, panel_shown: bool) -> Option<String> {
+        if panel_shown || self.ui.scroll != 0 || self.ui.behind {
+            return None;
+        }
+        let row = self.selected_row()?;
+        let now = self.clock_now();
+        match (row.working_for(now), row.silent_for(now)) {
+            (Some(w), Some(q)) => Some(format!("… no output for {} (working {})", clock_text(q), clock_text(w))),
+            (Some(w), None) => Some(format!("… working ({})", clock_text(w))),
+            _ => None,
+        }
+    }
+
     pub(crate) fn selected_row(&self) -> Option<&Row> {
         self.ui.rows.iter().find(|r| r.session == self.session)
     }
@@ -245,7 +320,7 @@ impl App {
                     "default" => " | mode: asks for approval",
                     _ => "",
                 };
-                format!("{} | {} | {} | {}{mode}{issue}", r.provider, self.label_of(&r.account), model, r.state_text())
+                format!("{} | {} | {} | {}{mode}{issue}", r.provider, self.label_of(&r.account), model, r.state_with_clock(self.clock_now()))
             }
             None if self.session.is_empty() => "select a session".into(),
             None => format!("{} | not listed", self.session),
@@ -262,7 +337,7 @@ impl App {
 
     /// The list as the host last said it: group headings and rows with their numbers; the boxes are made when it is drawn (see `draw_ui`).
     fn refresh_list(&mut self) {
-        let now = now_secs();
+        let now = self.clock_now();
         let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
         for row in &self.ui.rows {
             let key = (row.provider.clone(), row.account.clone());
@@ -282,7 +357,9 @@ impl App {
                 number += 1;
                 self.ui.numbered.push(row.session.clone());
                 let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
-                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at))));
+                // a working session shows its clock here: the list changes once a second while a turn is open, and that is what redraws the window
+                let (state, age) = row.list_parts(now);
+                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {state}{approvals} {age}")));
             }
         }
         let sig: String = items.iter().map(|i| match i { ListItem::Heading(t) => t.clone(), ListItem::Row(_, t) => t.clone() }).collect::<Vec<_>>().join("\n");
@@ -295,6 +372,7 @@ impl App {
 
     // ------------------------------------------------------------------ lines of the selected session
     pub(crate) fn push_line(&mut self, seq: i64, text: String) {
+        let turn_edge = self.ui.enabled && text.starts_with("[turn ");
         let Some(view) = self.view.as_mut() else { return };
         if self.ui.behind {
             self.cursor = seq; // the tail is not buffered while far into older history; the cursor still follows
@@ -310,6 +388,9 @@ impl App {
         view.seq_rgb = 0xFF00_0000 | (seq as u32 & 0xFF_FFFF);
         self.cursor = seq;
         self.dirty = true;
+        if turn_edge {
+            self.send("{\"op\":\"status\"}"); // a turn began or ended: the clock is told so now, not at the next tick
+        }
     }
 
     pub(crate) fn scroll_by(&mut self, lines: isize) {
@@ -760,7 +841,7 @@ impl App {
             .collect();
         let view = self.view.as_ref();
         let dump = json!({
-            "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(),
+            "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
             "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
@@ -847,10 +928,11 @@ impl App {
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
+        let status = self.status_line(panel_view.is_some());
         let prompt = if self.code_entry() { format!("> {}", self.shown_input()) } else { format!("> {}[{}]", self.input, self.preedit) }; // a code is never drawn
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
-        let rows_avail = (((height as f32 - top) / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
+        let rows_avail = (((height as f32 - top) / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 } + status.is_some() as usize);
         let fs = self.font_system.as_mut()?;
         let lines: Vec<(i64, String)> = match &panel_view {
             Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
@@ -883,6 +965,7 @@ impl App {
             }
             let mut wanted: Vec<&str> = text.split('\n').collect();
             wanted.extend(lines[first..end].iter().map(|l| l.1.as_str()));
+            wanted.extend(status.as_deref());
             wanted.push(&prompt);
             for line_text in wanted {
                 let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, faces.line(fs, line_text), Shaping::Advanced));
@@ -906,7 +989,7 @@ impl App {
         // the estimate of wrapped rows can be short: if the layout is taller than the area, drop the oldest line and lay out again
         for _ in 0..6 {
             let runs = view.buffer.layout_runs().count();
-            if runs <= rows_avail + base + 1 || first >= end {
+            if runs <= rows_avail + base + 1 + status.is_some() as usize || first >= end {
                 break;
             }
             first += 1;
@@ -936,6 +1019,8 @@ impl App {
             .map(|i| {
                 let key = if i + 1 == line_count {
                     scroll::Key::Prompt
+                } else if status.is_some() && i + 2 == line_count {
+                    scroll::Key::Status
                 } else if i >= base && first + (i - base) < end {
                     scroll::Key::Transcript(lines[first + (i - base)].0)
                 } else {
@@ -1354,6 +1439,56 @@ fn clipboard_server(rx: mpsc::Receiver<String>) {
 mod tests {
     use super::super::{fonts, BACKGROUND};
     use super::*;
+
+    fn working(busy_since: u64, last_event_at: u64, stalled: bool) -> Row {
+        Row {
+            session: "s".into(), provider: "claude".into(), account: String::new(), model: "m".into(), state: "running".into(), state_at: 100, activity: "working".into(),
+            generation: 1, approvals: Vec::new(), issue: String::new(), mode: String::new(), busy_since, last_event_at, stalled,
+        }
+    }
+
+    #[test]
+    fn the_clock_of_an_open_turn_is_read_in_seconds_then_minutes_then_hours() {
+        let spoken: Vec<String> = [0, 7, 59, 60, 125, 3599, 3600, 7385].iter().map(|n| clock_text(*n)).collect();
+        assert_eq!(spoken, ["0 s", "7 s", "59 s", "1 m 00 s", "2 m 05 s", "59 m 59 s", "1 h 00 m", "2 h 03 m"]);
+        let narrow: Vec<String> = [0, 7, 59, 60, 125, 3599, 3600, 7385].iter().map(|n| clock_compact(*n)).collect();
+        assert_eq!(narrow, ["0s", "7s", "59s", "1m00s", "2m05s", "59m59s", "1h00m", "2h03m"]);
+    }
+
+    #[test]
+    fn a_working_session_shows_its_clock_and_a_silent_one_says_so_in_the_header_and_the_list() {
+        let row = working(1000, 1037, false);
+        assert_eq!(row.state_with_clock(1037), "working 37 s");
+        assert_eq!(row.list_parts(1037), ("working".to_string(), "37s".to_string()));
+        let quiet = working(1000, 1000, true);
+        assert_eq!(quiet.state_with_clock(1071), "working 1 m 11 s, no output for 1 m 11 s");
+        assert_eq!(quiet.list_parts(1071), ("silent".to_string(), "1m11s".to_string()));
+        // a stall flag from the host means nothing unless the session works
+        let mut idle = working(0, 0, true);
+        idle.activity = "idle".into();
+        assert_eq!(idle.state_with_clock(5000), "idle");
+        assert_eq!(idle.list_parts(5000), ("idle".to_string(), ago(5000, 100)));
+    }
+
+    #[test]
+    fn a_session_that_waits_for_a_person_has_no_clock_and_no_stall() {
+        let mut row = working(1000, 1000, true);
+        row.approvals = vec![(3, "run: ls".into())];
+        assert_eq!(row.working_for(1100), None);
+        assert_eq!(row.silent_for(1100), None);
+        assert_eq!(row.state_with_clock(1100), "waiting for approval");
+        assert_eq!(row.list_parts(1100).0, "approval");
+    }
+
+    #[test]
+    fn a_status_without_the_clock_fields_is_a_session_that_does_not_work() {
+        let mut row = working(0, 0, false);
+        row.activity = "idle".into();
+        assert_eq!((row.working_for(9), row.silent_for(9)), (None, None));
+        let mut unreported = working(0, 0, false); // the host said working but gave no start: no clock is made up
+        unreported.busy_since = 0;
+        assert_eq!(unreported.working_for(9), None);
+    }
 
     /// The blit as it was before the rows were blended directly: `Buffer::draw` and a closure per pixel.
     fn reference(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {

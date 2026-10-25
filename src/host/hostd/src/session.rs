@@ -405,6 +405,8 @@ pub struct Session {
     pub account: Option<String>, // the account this session is bound to for its whole life (until a rebind of a dead session)
     pub credential_generation: u64,
     pub busy: bool, // a turn is in progress, as the provider reported it (never inferred from silence)
+    pub busy_since: u64, // when the open turn began (unix seconds); meaningful while `busy`
+    pub last_event_at: u64, // when the provider last sent anything (unix seconds); meaningful while `busy`
     pub model: Option<String>, // the model the provider reported, never guessed
     pub account_issue: Option<String>, // what the provider reported about the account (authentication, limit); cleared by a successful turn
     pub broker_stop: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>, // ends the key broker of this session's provider
@@ -457,6 +459,8 @@ impl Session {
             account: None,
             credential_generation: 0,
             busy: false,
+            busy_since: 0,
+            last_event_at: 0,
             model: None,
             account_issue: None,
             broker_stop: None,
@@ -467,6 +471,20 @@ impl Session {
     }
 
     /// Change the state and remember when (the last known state keeps its time after a disconnect).
+    /// A turn opens or closes, as the provider says; opening stamps the start, closing forgets it.
+    pub fn set_busy(&mut self, busy: bool) {
+        if busy && !self.busy {
+            self.busy_since = now_secs();
+            self.last_event_at = self.busy_since;
+        }
+        self.busy = busy;
+    }
+
+    /// The provider said something (any message, whether or not it became a line).
+    pub fn heard(&mut self) {
+        self.last_event_at = now_secs();
+    }
+
     pub fn set_state(&mut self, state: State) {
         if self.state != state {
             self.state = state;

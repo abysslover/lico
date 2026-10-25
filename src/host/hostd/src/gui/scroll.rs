@@ -103,6 +103,7 @@ impl Extent {
 pub enum Key {
     Header,
     Transcript(i64),
+    Status, // the line "… working (37 s)" between the transcript and the prompt; not a record
     Prompt,
 }
 

@@ -7,6 +7,7 @@ user message:
   "fixture"   replays the fixture turn, waiting for the host's answer to each permission request
   "crash"     exits abruptly after the acknowledgment
   "slow:N"    N assistant lines, one every 100 ms
+  "quiet:N"   nothing at all for N tenths of a second (a turn that thinks), then one line and the result
   "env"       reports the names (never the values) of its environment
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
@@ -144,6 +145,10 @@ def turn(message):
         for k in range(int(text.split(":")[1])):
             say(f"tick {k}")
             time.sleep(0.1)
+        out(result())
+    elif text.startswith("quiet:"):
+        time.sleep(int(text.split(":")[1]) / 10)
+        say("done thinking")
         out(result())
     elif text == "env":
         say("\n".join(f"ENV {name}" for name in sorted(os.environ)))
