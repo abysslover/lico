@@ -132,6 +132,16 @@ def passed(job):
 
 # --- run ------------------------------------------------------------------------------------------------------
 
+def use_receipts(args, selection):
+    """(whether a receipt may skip a file, what to tell the reader). A selection of EVERYTHING means a changed file nobody declared:
+    such a file is in no receipt key, so a receipt cannot say it is safe to skip - the run behaves as `--cold`."""
+    if not args.receipts or args.cold:
+        return False, None
+    if selection is not None and selection.everything:
+        return False, "a changed file nobody declared selects everything (default-deny): receipts are ignored, as with --cold"
+    return True, None
+
+
 def run(args):
     files = testmap.tracked()
     every = sorted(f for f in files if re.fullmatch(r"tests/test_[^/]+\.py", f))
@@ -145,6 +155,9 @@ def run(args):
         wanted = [f for f in (args.paths or every) if f in every or Path(f).exists()]
         cargo_filters = None if not args.paths else []
     full = args.changed is None and not args.paths
+    use_receipt, why_not = use_receipts(args, selection)
+    if why_not:
+        print(why_not, flush=True)
     jobs = []
     tree = Tree(os.getpid())            # the whole run is measured from here, the build included: the workers are its children
     tree.where = "the build"
@@ -164,7 +177,7 @@ def run(args):
     tmap, hashes, binary_hashes = testmap.load_map(), {}, receipts.binaries()
     keys = {f: receipts.key(f, graph, tmap, files, hashes, binary_hashes) for f in wanted}
     skipped = []
-    if args.receipts and not args.cold:
+    if use_receipt:
         skipped = [f for f in wanted if receipts.valid(f, keys[f])]
         for f in skipped:
             print(f"skipped (receipt) {f}", flush=True)
@@ -179,7 +192,7 @@ def run(args):
     run_cargo = cargo_filters is None or bool(cargo_filters)
     cargo_skipped = False
     if run_cargo:
-        if args.receipts and not args.cold and receipts.valid("cargo", cargo_key):
+        if use_receipt and receipts.valid("cargo", cargo_key):
             cargo_skipped = True
             print("skipped (receipt) cargo test --bin lico", flush=True)
         else:

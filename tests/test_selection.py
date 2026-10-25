@@ -1,5 +1,6 @@
 """The selection of tests by changed file (src/lico_measure/testmap.py), the receipts and the budget table - on small trees written
 for the purpose, and on the real map. No process of the product runs here."""
+import argparse
 import subprocess
 import tomllib
 from pathlib import Path
@@ -225,6 +226,17 @@ def test_a_receipt_skips_a_green_unchanged_file_and_never_one_that_failed(tmp_pa
     assert receipts.valid("tests/a.py", "k1") and receipts.failed() == set()
     receipts.mark_failed("tests/a.py", True)                                                       # a failure on record beats a matching key
     assert not receipts.valid("tests/a.py", "k1")
+
+
+def test_a_selection_of_everything_ignores_receipts_because_a_file_nobody_declared_is_in_no_key():
+    asked = argparse.Namespace(receipts=True, cold=False)
+    use, why = suite.use_receipts(asked, testmap.Selection(everything=True))
+    assert use is False and "default-deny" in why and "--cold" in why                              # run everything, and say why
+    assert suite.use_receipts(asked, testmap.Selection(files={"tests/a.py"})) == (True, None)      # a narrow selection may skip a green file
+    assert suite.use_receipts(asked, None) == (True, None)                                         # a plain run with --receipts
+    assert suite.use_receipts(argparse.Namespace(receipts=False, cold=False), testmap.Selection(everything=True)) == (False, None)    # not asked: nothing to say
+    assert suite.use_receipts(argparse.Namespace(receipts=True, cold=True), testmap.Selection()) == (False, None)
+    print("--changed --receipts with an undeclared file:", why)
 
 
 # --- budget ----------------------------------------------------------------------------------------------------
