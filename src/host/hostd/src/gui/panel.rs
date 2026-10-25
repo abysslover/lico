@@ -286,6 +286,10 @@ impl App {
                         self.panel_open(Step::Accounts);
                         return true;
                     }
+                    "r" => {
+                        self.resume_session();
+                        return true;
+                    }
                     _ => {}
                 }
             }
@@ -383,7 +387,11 @@ impl App {
             self.ui.scroll = 0;
             self.show(&id, None);
         } else if let Some(p) = self.ui.panel.as_mut() {
-            p.notice = format!("The session was not created: {}", reply["error"].as_str().unwrap_or("unknown"));
+            // a host that does not know a field of the request is an older build (the window normally replaces such a host itself)
+            p.notice = match reply["error"].as_str() {
+                Some("bad_request") => "The session was not created: the host does not understand this request: it is an older build.".to_string(),
+                other => format!("The session was not created: {}", other.unwrap_or("unknown")),
+            };
         }
     }
 

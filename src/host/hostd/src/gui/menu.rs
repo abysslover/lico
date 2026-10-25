@@ -20,6 +20,7 @@ pub enum Cmd {
     GoTo(usize),
     Allow,
     Deny,
+    Resume,
     Copy,
     Paste,
     Older,
@@ -74,6 +75,7 @@ impl App {
                     v.push(Entry { label: format!("Session {}  {what}  {short}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: panel_reason });
                 }
                 let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason } else { Some("no approval is pending") };
+                v.push(Self::entry("Resume session", "Ctrl+R", Cmd::Resume, panel_reason.or(self.resume_reason())));
                 v.push(Self::entry("Allow approval", "Y", Cmd::Allow, pending));
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
                 v.push(Self::entry("Copy selected lines", "Ctrl+Shift+C", Cmd::Copy, if self.ui.sel.is_some() { None } else { Some("nothing is selected") }));
@@ -130,6 +132,7 @@ impl App {
             }
             Cmd::Allow => self.answer_approval(true),
             Cmd::Deny => self.answer_approval(false),
+            Cmd::Resume => self.resume_session(),
             Cmd::Copy => self.copy_selection(),
             Cmd::Paste => self.start_paste(b"CLIPBOARD"),
             Cmd::Older => self.scroll_by(20),

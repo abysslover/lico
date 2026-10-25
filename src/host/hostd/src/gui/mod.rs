@@ -6,6 +6,7 @@ mod fonts;
 mod menu;
 mod panel;
 mod ui;
+mod update;
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -38,6 +39,8 @@ enum Ev {
     Cmd(String),
     Tick, // once a second in the first view: ask the host for the sessions again
     Paste(Result<String, &'static str>), // the answer to a paste key: the selection's text, or why there is none
+    Host(update::Update), // the worker that brings the host to this build reports
+    SockEnded(u64), // the reader of the host connection with this serial ended: the host is gone, or was replaced
 }
 
 struct View {
@@ -75,6 +78,10 @@ struct App {
     font_system: Option<FontSystem>,
     sock: UnixStream,
     socket: String,
+    serial: u64, // which connection to the host is current (a reader that ends for an older one says nothing)
+    follow: bool, // the product window on the default socket: when the host goes away it looks for the host that took its place (it never starts one)
+    updating: bool, // the worker that replaces the host is running: the end of the connection is its doing
+    ended_meanwhile: bool, // the connection ended while the worker was running
     session: String,
     cursor: i64,
     dups: i64,
@@ -167,6 +174,60 @@ impl App {
     fn send(&mut self, line: &str) {
         let _ = self.sock.write_all(line.as_bytes());
         let _ = self.sock.write_all(b"\n");
+    }
+
+    /// The host was replaced: a connection to the new one, a view of the open session attached again (from its latest screen: the new host's
+    /// record is the one that counts), and the line that says what was done.
+    fn reconnect(&mut self, line: String) {
+        self.ui.host_notice = Some(line);
+        self.dirty = true;
+        let (Ok(sock), Some(proxy)) = (UnixStream::connect(&self.socket), self.ui.proxy.clone()) else {
+            self.ui.host_notice = Some("The new host cannot be reached; close the window and run `lico gui` again.".to_string());
+            return;
+        };
+        let Ok(reader) = sock.try_clone() else { return };
+        self.serial += 1;
+        spawn_reader(reader, proxy, self.serial);
+        self.updating = false;
+        self.ended_meanwhile = false;
+        self.sock = sock;
+        self.pending_inputs.clear();
+        self.view_id.clear();
+        self.subscribed = false;
+        self.cursor = -1;
+        for m in &mut self.meta {
+            m.cursor = -1;
+        }
+        let open = self.session.clone();
+        if !open.is_empty() {
+            self.show(&open, None);
+        }
+        self.send("{\"op\":\"status\"}");
+    }
+
+    /// The connection to the host ended. A window never starts, stops or replaces a host after its own start (an old window and a new one
+    /// could otherwise replace each other's host for ever): it says so and looks for the host that took the place, on the same socket.
+    fn on_sock_end(&mut self) {
+        if self.updating {
+            self.ended_meanwhile = true; // the worker of this window ended the host; it reports when it is done
+            return;
+        }
+        if !self.follow {
+            return;
+        }
+        self.ui.host_notice = Some("The host was replaced; reconnecting...".to_string());
+        self.dirty = true;
+        if let Some(proxy) = self.ui.proxy.clone() {
+            let socket = self.socket.clone();
+            thread::spawn(move || {
+                let update = if update::wait_for_host(&socket) {
+                    update::Update::Replaced("The host was replaced; this window is attached to the new one.".to_string())
+                } else {
+                    update::Update::Stopped("The host is gone; close this window and run `lico gui` again.".to_string())
+                };
+                let _ = proxy.send_event(Ev::Host(update));
+            });
+        }
     }
 
     fn emit_state(&self, why: &str) {
@@ -375,7 +436,7 @@ impl App {
     }
 
     fn on_sock_line(&mut self, line: &str) {
-        if self.on_input_reply(line) {
+        if self.on_input_reply(line) || self.on_resume_reply(line) {
             return;
         }
         match jstr(line, "ev") {
@@ -679,55 +740,37 @@ impl ApplicationHandler<Ev> for App {
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
             Ev::Tick => self.ui_tick(),
             Ev::Paste(result) => self.on_paste(result),
+            Ev::Host(update::Update::Line(line)) => {
+                self.ui.host_notice = Some(line);
+                self.dirty = true;
+            }
+            Ev::Host(update::Update::Stopped(line)) => {
+                // the worker is done and nothing was replaced; if the connection ended meanwhile, the host that took its place is looked for
+                self.ui.host_notice = Some(line);
+                self.dirty = true;
+                self.updating = false;
+                if std::mem::take(&mut self.ended_meanwhile) {
+                    self.on_sock_end();
+                }
+            }
+            Ev::Host(update::Update::Replaced(line)) => self.reconnect(line),
+            Ev::SockEnded(serial) if serial == self.serial => self.on_sock_end(),
+            Ev::SockEnded(_) => {}
         }
     }
 }
 
 /// The host's socket for this user, starting the host (detached, with its own state directory) when none answers.
-/// One request on a connection of its own; the reply, or None when the host does not answer.
-fn host_once(socket: &str, request: &str) -> Option<serde_json::Value> {
-    let mut conn = UnixStream::connect(socket).ok()?;
-    conn.set_read_timeout(Some(std::time::Duration::from_secs(3))).ok()?;
-    conn.write_all(format!("{request}\n").as_bytes()).ok()?;
-    for line in BufReader::new(conn).lines().map_while(Result::ok) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) {
-            if v.get("ok").is_some() {
-                return Some(v);
-            }
-        }
-    }
-    None
-}
-
-/// A host built from another executable than this window: replaced when it holds no sessions and no sign-in, otherwise left alone and named.
-/// Nothing is ended by name: the host is asked over its own socket.
-fn reconcile_host(socket: &mut String) -> Option<String> {
-    let status = host_once(socket, "{\"op\":\"status\"}")?;
-    if status["build"].as_str() == Some(crate::core::build_id()) {
-        return None;
-    }
-    let pid = status["pid"].as_u64().unwrap_or(0);
-    let busy = status["sessions"].as_array().map_or(0, |a| a.len()) > 0 || status["logins_running"].as_u64().unwrap_or(0) > 0;
-    if !busy {
-        if host_once(socket, "{\"op\":\"host.stop\"}").map_or(false, |r| r["ok"] == serde_json::json!(1)) {
-            for _ in 0..60 {
-                if UnixStream::connect(&*socket).is_err() {
-                    *socket = ensure_host();
-                    return Some("The host of an older build was replaced.".into());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-        }
-        return Some(format!("The host runs an older build and could not be ended from here: end its process {pid}."));
-    }
-    Some(format!("The host runs an older build; close it when the sessions are done: lico host stop (process {pid})."))
-}
-
 fn ensure_host() -> String {
-    let runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-        eprintln!("lico: XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket");
-        std::process::exit(2)
-    });
+    try_ensure_host().unwrap_or_else(|(message, code)| {
+        eprintln!("lico: {message}");
+        std::process::exit(code)
+    })
+}
+
+/// The same, answering with a message and an exit code instead of ending the process (the update worker must not end the window).
+fn try_ensure_host() -> Result<String, (String, i32)> {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").map_err(|_| ("XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket".to_string(), 2))?;
     let dir = std::path::Path::new(&runtime).join("lico");
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -735,12 +778,11 @@ fn ensure_host() -> String {
     }
     let socket = dir.join("host.sock").to_string_lossy().to_string();
     if UnixStream::connect(&socket).is_ok() {
-        return socket;
+        return Ok(socket);
     }
     let state = std::env::var("XDG_STATE_HOME").ok().map(std::path::PathBuf::from).or_else(|| std::env::var("HOME").ok().map(|h| std::path::Path::new(&h).join(".local/state"))).map(|p| p.join("lico"));
     let Some(state) = state else {
-        eprintln!("lico: neither XDG_STATE_HOME nor HOME is set, so there is nowhere to keep the host's state");
-        std::process::exit(2)
+        return Err(("neither XDG_STATE_HOME nor HOME is set, so there is nowhere to keep the host's state".to_string(), 2));
     };
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -768,17 +810,16 @@ fn ensure_host() -> String {
         command.spawn().ok()
     });
     if started.is_none() {
-        eprintln!("lico: could not start the host");
-        std::process::exit(3);
+        return Err(("could not start the host".to_string(), 3));
     }
+    // a second host that is started while another one is coming up ends at once, and the socket is then the other one's: either way the socket is waited for
     for _ in 0..100 {
         if UnixStream::connect(&socket).is_ok() {
-            return socket;
+            return Ok(socket);
         }
         thread::sleep(std::time::Duration::from_millis(50));
     }
-    eprintln!("lico: the host did not come up");
-    std::process::exit(3)
+    Err(("the host did not come up".to_string(), 3))
 }
 
 pub fn run(args: Vec<String>) {
@@ -787,8 +828,10 @@ pub fn run(args: Vec<String>) {
     // measurement harness uses keeps the older bare view unless it is given --ui
     let product = args[0] == "lico-gui";
     let explicit = arg("--socket");
-    let mut socket = explicit.clone().unwrap_or_else(|| ensure_host());
-    let host_notice = if explicit.is_none() { reconcile_host(&mut socket) } else { None };
+    let socket = explicit.clone().unwrap_or_else(|| ensure_host());
+    // a host of another build is replaced by a worker once the window exists (the window shows at once and says so)
+    let outdated = if explicit.is_none() { update::stale(&socket) } else { None };
+    let host_notice = outdated.as_ref().map(|_| "Updating the host to this build...".to_string());
     let sock = match UnixStream::connect(&socket) {
         Ok(sock) => sock,
         Err(e) => {
@@ -799,16 +842,10 @@ pub fn run(args: Vec<String>) {
     let reader = sock.try_clone().expect("clone");
     let event_loop = EventLoop::<Ev>::with_user_event().build().expect("event loop");
     let proxy = event_loop.create_proxy();
-    let sock_proxy = proxy.clone();
     let proxy_for_ticks = proxy.clone();
     let proxy_for_paste = proxy.clone();
-    thread::spawn(move || {
-        for line in BufReader::new(reader).lines().map_while(Result::ok) {
-            if sock_proxy.send_event(Ev::Sock(line)).is_err() {
-                break;
-            }
-        }
-    });
+    let proxy_for_update = proxy.clone();
+    spawn_reader(reader, proxy.clone(), 0);
     thread::spawn(move || {
         for line in std::io::stdin().lock().lines().map_while(Result::ok) {
             if proxy.send_event(Ev::Cmd(line)).is_err() {
@@ -832,11 +869,32 @@ pub fn run(args: Vec<String>) {
     let mut app = App {
         stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
         input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
-        window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
+        window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(), serial: 0, follow: explicit.is_none(), updating: outdated.is_some(), ended_meanwhile: false,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
         ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
+    if let Some(seen) = outdated {
+        let socket = socket.clone();
+        thread::spawn(move || {
+            let tell = |update: update::Update| {
+                let _ = proxy_for_update.send_event(Ev::Host(update));
+            };
+            update::run(&socket, seen, &|| try_ensure_host().map_err(|(message, _)| message), &tell);
+        });
+    }
     event_loop.run_app(&mut app).expect("run");
+}
+
+/// The lines of the host's socket reach the loop as events, for as long as the connection lasts.
+fn spawn_reader(reader: UnixStream, proxy: winit::event_loop::EventLoopProxy<Ev>, serial: u64) {
+    thread::spawn(move || {
+        for line in BufReader::new(reader).lines().map_while(Result::ok) {
+            if proxy.send_event(Ev::Sock(line)).is_err() {
+                return;
+            }
+        }
+        let _ = proxy.send_event(Ev::SockEnded(serial));
+    });
 }
 
 #[cfg(test)]

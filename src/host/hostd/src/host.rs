@@ -26,6 +26,7 @@ extern "C" {
     fn getrlimit(resource: i32, limit: *mut Rlimit) -> i32;
     fn setrlimit(resource: i32, limit: *const Rlimit) -> i32;
     fn getuid() -> u32;
+    fn flock(fd: i32, operation: i32) -> i32;
 }
 
 /// Raise the descriptor limit to its hard maximum: every session and connection holds a few.
@@ -89,6 +90,19 @@ pub fn run(args: Vec<String>) {
         match std::fs::metadata(&socket_dir) {
             Ok(meta) if meta.is_dir() && meta.mode() & 0o077 == 0 && meta.uid() == unsafe { getuid() } => {}
             _ => refuse("the socket directory must exist, belong to this user and have mode 0700"),
+        }
+        // one host per socket: a live one is never replaced from behind (it would lose its socket and its segments). A host of any build answers on
+        // the socket; two that start at the same moment are told apart by a lock that lives as long as the process.
+        if std::os::unix::net::UnixStream::connect(&socket).is_ok() {
+            refuse("a host is already running on this socket");
+        }
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).mode(0o600).open(format!("{socket}.lock")).unwrap_or_else(|_| refuse("cannot open the lock beside the socket"));
+            if unsafe { flock(std::os::fd::AsRawFd::as_raw_fd(&lock), 2 | 4) } != 0 {
+                refuse("a host is already starting on this socket");
+            }
+            std::mem::forget(lock); // closed (and so released) only when the process ends
         }
         // the segments of registered sessions are kept (they are recovered below); the segments of anything else
         // (synthetic sessions of an earlier run) are removed, and a directory that holds other files is never touched

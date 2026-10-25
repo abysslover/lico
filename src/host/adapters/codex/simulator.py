@@ -27,8 +27,15 @@ import time
 parser = argparse.ArgumentParser()
 parser.add_argument("--received", default="")
 parser.add_argument("--fixture", default="")
+parser.add_argument("--survive-eof", action="store_true")      # stay alive for a minute after the host's input ends (a provider that goes on with its turn)
+parser.add_argument("--grandchild", default="")                 # start a process of its own in the provider's group and write its pid here (a tool the provider started)
 parser.add_argument("--resume-delay", type=float, default=0.0)   # seconds before answering thread/resume (widens a race for a test)
 args, _ = parser.parse_known_args()
+
+if args.grandchild:
+    import subprocess
+    with open(args.grandchild, "w") as note:
+        note.write(str(subprocess.Popen([sys.executable, "-I", "-c", "import time; time.sleep(120)"], stdin=subprocess.DEVNULL).pid))
 
 lines: "queue.Queue[str | None]" = queue.Queue()
 threading.Thread(target=lambda: [lines.put(l) for l in sys.stdin] + [lines.put(None)], daemon=True).start()
@@ -199,6 +206,8 @@ while True:
     except queue.Empty:
         raw = ""
     if raw is None:
+        if args.survive_eof:
+            time.sleep(60)
         break
     if raw:
         if log:

@@ -19,7 +19,7 @@ use winit::window::Window;
 
 use super::controls::{self, Action, Controls};
 use super::menu::{MenuGeom, TITLES};
-use super::{clean, fill_rect, json_escape, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
+use super::{clean, fill_rect, json_escape, jstr, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
 
 pub const LIST_W: usize = 280;
 const LIST_TOP: usize = 40;
@@ -344,6 +344,51 @@ impl App {
             row.approvals.remove(0); // answered once: it is not offered again; the next status confirms
         }
         self.refresh_list();
+    }
+
+    /// Why the selected session cannot be resumed now (None: it can). Only a session that was disconnected can.
+    pub(crate) fn resume_reason(&self) -> Option<&'static str> {
+        match self.selected_row().map(|r| r.state.as_str()) {
+            None => Some("no session is open"),
+            Some("disconnected") => None,
+            Some("running") => Some("the session is running"),
+            Some(_) => Some("the session has ended"),
+        }
+    }
+
+    /// Ctrl+R and the Session menu: the host starts the provider again for the open session, with a new generation. The reply comes with the id
+    /// `resume` (an error is shown on the first row); the list shows the new state at the next status.
+    pub(crate) fn resume_session(&mut self) {
+        if let Some(reason) = self.resume_reason() {
+            self.ui.flash = Some(format!("Resume session: {reason}"));
+            self.dirty = true;
+            return;
+        }
+        let Some(row) = self.selected_row() else { return };
+        let msg = format!("{{\"op\":\"session.resume\",\"session\":\"{}\",\"generation\":{},\"id\":\"resume\"}}", self.session, row.generation);
+        self.send(&msg);
+        self.ui.flash = Some("Resuming the session...".to_string());
+        self.dirty = true;
+    }
+
+    /// The answer to the resume request: what the person is told.
+    pub(crate) fn on_resume_reply(&mut self, line: &str) -> bool {
+        if jstr(line, "id") != Some("resume") {
+            return false;
+        }
+        self.ui.flash = Some(if line.contains("\"ok\":1") {
+            "Session resumed.".to_string()
+        } else {
+            match jstr(line, "error") {
+                Some("bad_request") => "Resume session: the host does not know a conversation to resume yet.".to_string(),
+                Some("stale_generation") => "Resume session: the session changed; try again.".to_string(),
+                Some(other) => format!("Resume session: {other}"),
+                None => "Resume session: no answer".to_string(),
+            }
+        });
+        self.send("{\"op\":\"status\"}");
+        self.dirty = true;
+        true
     }
 
     fn selection_text(&self) -> Option<String> {
@@ -703,7 +748,7 @@ impl App {
             .iter()
             .map(|r| json!({
                 "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
-                "state": r.state, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
+                "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
                 "selected": r.session == self.session,
             }))
             .collect();

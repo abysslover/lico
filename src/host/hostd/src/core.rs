@@ -316,15 +316,30 @@ pub fn build_id() -> &'static str {
     })
 }
 
-/// End this host (the explicit way to replace it): refused while sessions or a sign-in exist, unless forced. The registry is written first.
-pub fn host_stop(shared: &Arc<Shared>, force: bool) -> Reply {
+/// End this host (the explicit way to replace it): refused while sessions or a sign-in exist, unless forced. With `build` the stop is a
+/// compare-and-stop: only a host of that build ends (`build_changed` otherwise), so a window that saw an old host cannot end the new one that another
+/// window started in its place. A second stop while one is under way is refused (`stopping`). The registry is written first.
+pub fn host_stop(shared: &Arc<Shared>, force: bool, build: Option<&str>) -> Reply {
+    static STOPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if build.map_or(false, |b| b != build_id()) {
+        return Err("build_changed");
+    }
     let sessions = shared.sessions.read().unwrap().len();
     if !force && (sessions > 0 || crate::login::running_count(shared) > 0) {
         return Err("busy");
     }
+    if STOPPING.swap(true, Ordering::SeqCst) {
+        return Err("stopping");
+    }
     crate::registry::save(shared);
-    std::thread::spawn(|| {
+    let shared = shared.clone();
+    std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(300)); // the reply goes out first
+        // a provider left behind goes on with its turn (claude does, after its input ends) and would meet the one that resumes the session
+        let sessions: Vec<_> = shared.sessions.read().unwrap().clone();
+        for session in sessions {
+            session.lock().unwrap().stop_process();
+        }
         std::process::exit(0);
     });
     Ok(obj(json!({"stopping": true, "sessions": sessions})))

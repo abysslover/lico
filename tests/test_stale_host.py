@@ -45,14 +45,19 @@ def test_an_idle_host_of_another_build_is_replaced_by_the_window():
             wait_for(lambda: status(w)["pid"] != old, timeout=15)
             assert not alive(old)                                             # asked over its socket, not killed by name
             assert status(w)["build"] == fnv(LICO)                            # the new one is this window's build
-            assert "was replaced" in w.ui()["header"]
+            wait_for(lambda: "Restarted the host (new build); resumed 0 sessions." in w.ui()["header"], timeout=10)
 
 
-def test_a_host_of_another_build_with_sessions_is_left_alone_named_and_stopped_only_when_forced():
+def test_a_host_of_another_build_with_a_session_is_replaced_too_and_the_stop_command_still_refuses_without_force():
     with private_dir() as directory:
         with ProductWindow(host_binary=older_build(directory), host_sessions=1) as w:
             old = w.old_pid
-            assert "older build" in w.ui()["header"] and alive(old) and status(w)["pid"] == old
+            wait_for(lambda: status(w)["pid"] != old, timeout=15)             # sessions do not keep an old host alive any more (S04)
+            assert not alive(old) and status(w)["build"] == fnv(LICO)
+            wait_for(lambda: "Restarted the host (new build)" in w.ui()["header"], timeout=10)
+    with private_dir() as directory:
+        with ProductWindow(host_binary=LICO, host_sessions=1) as w:           # the same build: the window leaves it alone; the stop command is the explicit way
+            old = w.old_pid
             refused = subprocess.run([str(LICO), "--socket", w.socket, "host", "stop"], env=w.env, capture_output=True, text=True, timeout=10)
             assert refused.returncode == 2 and "busy" in refused.stdout and alive(old)       # sessions exist: nothing is ended
             forced = subprocess.run([str(LICO), "--socket", w.socket, "host", "stop", "--force"], env=w.env, capture_output=True, text=True, timeout=10)

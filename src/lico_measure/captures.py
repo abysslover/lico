@@ -24,8 +24,13 @@ GRAY_THRESHOLD = 140  # text is light on a near-black background
 
 
 class ProductWindow:
-    def __init__(self, stdin_open: bool = True, ime: bool = False, host_binary: Path | None = None, host_sessions: int = 0) -> None:
+    def __init__(self, stdin_open: bool = True, ime: bool = False, host_binary: Path | None = None, host_sessions: int = 0,
+                 path_prefix: str | None = None, before_window=None, env_extra: dict | None = None, host_args: list | None = None) -> None:
+        # path_prefix: a directory put first on PATH of the host and the window (a stand-in for a provider program);
+        # before_window(self): called once the first host is up and before the window starts; env_extra: more environment for both;
+        # host_args: more arguments for the first host
         self.host_binary, self.host_sessions, self.old_host = host_binary, host_sessions, None
+        self.path_prefix, self.before_window, self.env_extra, self.host_args = path_prefix, before_window, env_extra or {}, host_args or []
         self.stdin_open = stdin_open
         self.ime = ime
 
@@ -38,14 +43,18 @@ class ProductWindow:
         for name in ("home", "state"):
             (Path(self.directory) / name).mkdir(mode=0o700)
         self.env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(Path(self.directory) / "home"), "XDG_RUNTIME_DIR": str(self.runtime),
-                    "XDG_STATE_HOME": str(Path(self.directory) / "state"), "DISPLAY": self.xvfb.display}
+                    "XDG_STATE_HOME": str(Path(self.directory) / "state"), "DISPLAY": self.xvfb.display, **self.env_extra}
+        if self.path_prefix:
+            self.env["PATH"] = f"{self.path_prefix}:{self.env['PATH']}"
         self.socket = str(self.runtime / "lico" / "host.sock")
         self.old_pid = None
         if self.host_binary:              # a host started from another build, at the socket the window will look for
             (self.runtime / "lico").mkdir(mode=0o700, exist_ok=True)
             self.old_host = subprocess.Popen([str(self.host_binary), "host", "--socket", self.socket, "--state-dir", str(Path(self.directory) / "state" / "lico"),
-                                              "--sessions", str(self.host_sessions), "--producing", "0"], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                                              "--sessions", str(self.host_sessions), "--producing", "0", *self.host_args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
             self.old_pid = json.loads(self.old_host.stdout.readline())["pid"]
+        if self.before_window:
+            self.before_window(self)
         self.method = None
         if self.ime:                      # a private ibus with the Hangul engine, bound to this display
             from .ime import InputMethod
