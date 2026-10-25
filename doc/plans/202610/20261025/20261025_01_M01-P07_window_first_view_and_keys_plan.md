@@ -53,3 +53,6 @@ Out of scope: a menu bar (one paragraph estimate in the report only), Wayland (n
   only CSI, so the address was corrupted. The login fixture of P06 printed a plain address and a prompt with a newline: a fixture that did not match the real program (the real prompt had never been captured).
   Fixed: output is read as it arrives (bounded, always drained), the code prompt is looked for in the bytes so far, OSC sequences are stripped and the address is taken from the link target or the
   first complete address; the login child gets a harmless BROWSER so the window is the only opener. New fixture with the real byte structure and made-up values.
+- 2026-10-25: S05 added (owner request): the sign-in code was drawn in clear text in the prompt row (the P06 "no echo" rule had covered output, logs and the model, not the screen). In the code step the prompt row
+  now shows one star per character (at most 64), the ui dump holds the stars and the length instead of the text, and a failed submit says plainly "The sign-in did not take the code" without the code (the raw error word
+  only in the dump). The label line and the session line stay clear text. Cost reported per step; no cost stop (owner rule of 2026-10-25).

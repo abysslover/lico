@@ -55,6 +55,16 @@ So `BROWSER` is honoured and the login child now gets `BROWSER=/usr/bin/true`: i
 which the supervisor sets, the real command printed the address as plain text, without the OSC 8 sequences the lead saw without it; both shapes are handled and tested. Idle client RSS at scale 1 on 37b667e: 23.07 MiB (limit 50), host 6.01 MiB.
 Cost of the step reached its cap of 2.5 US dollars. Honest note: the P06 fixture did not match the real program, and my plan never captured the real prompt; the same holds for Codex's output, which only the owner's success shows.
 
+## S05: the sign-in code is masked (owner request, addendum 005)
+
+In the code step the prompt row draws one `*` per typed or pasted character (at most 64); the ui dump carries the stars and `input_len`, never the text; the failed-submit notice no longer repeats the code
+("The sign-in did not take the code (no code was expected yet)." / "... did not take the code."), the raw error word is in the dump only. Backspace, Ctrl+U and paste act on the real buffer; the label and
+session lines are unchanged. Test (1 new, tests/test_mask_code_line.py): after pasting the canary the model holds eleven stars and no canary; the light pixels of the screen equal those after typing eleven `W` (the widest
+letter, so the code's own glyphs cannot be what is drawn); 80 characters draw 64 stars. Red by mutation (masking switched off): `assert ('CANARYCODE9' == '***********' ...`; green: whole suite `93 passed in 370.63 s`; the older code tests now
+compare `input_len`. A first run of the pixel test failed by 80 pixels because the screen was counted before the frame was presented; the test now waits for the frame. Capture `8_code_step_masked.png` (eleven stars). Idle client RSS at
+scale 1 on eee81cb: 22.85 MiB (limit 50), host 6.05 MiB. A hazard found: the reproducibility test, run inside the suite with the shared build directory exported, rebuilds the committed state into that directory, so a binary built before the
+suite can be replaced by the committed one; build again before taking captures from it.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back
