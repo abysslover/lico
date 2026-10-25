@@ -467,6 +467,20 @@ mod tests {
     }
 
     #[test]
+    fn words_are_cut_where_cosmic_text_cuts_them() {
+        fn spoken(text: &str) -> Vec<&str> {
+            words(text).iter().map(|&(a, b)| &text[a..b]).collect()
+        }
+        assert_eq!(spoken("ab cd"), ["ab", " ", "cd"]);
+        assert_eq!(spoken("ab  cd"), ["ab", " ", " ", "cd"], "white space is split off one character at a time");
+        assert_eq!(spoken("a\u{A0}b"), ["a\u{A0}b"], "a no-break space does not cut");
+        assert_eq!(spoken("(a)=>{b}"), ["(a)=>{b}"], "no cut between two ASCII punctuation characters");
+        assert_eq!(spoken("漢字かな"), ["漢", "字", "か", "な"], "an ideograph and a kana may break before the next");
+        assert!(words("").is_empty());
+        assert_eq!(spoken("a"), ["a"]);
+    }
+
+    #[test]
     fn what_is_not_known_to_be_independent_is_never_on_the_whitelist() {
         // the classes a line must never be split inside: every code point of them is outside the whitelist
         let excluded: &[(u32, u32)] = &[
@@ -496,4 +510,70 @@ mod tests {
         }
         assert!(wrong.is_empty(), "on the whitelist although they are not independent of their neighbours: {wrong:?}");
     }
+
+    /// Lines on which cutting a word into runs by character drew other glyphs than the old search (found by a differential of 3.5 M generated lines): a halfwidth
+    /// sound mark after a base that is not halfwidth, a letter with a stroke after a Greek or Cyrillic letter and a symbol of another face, an extension-B
+    /// ideograph without a monospace face in a word with other cut points. The decision per word keeps each of these words in one run.
+    const CUT_INSIDE_A_WORD: &[&str] = &[
+        "ĥ𤸻 \u{2BCF} Ɏ노ㆌŞﾟ",
+        "\u{1F54E}Я\u{2F4} 퇻ﾞ 덷竴\u{1F240}",
+        "\u{1F0E7}땡ͻ 탪\u{1F800}ﾟ笥\u{235F}",
+        "ш \u{1FA78}ﾟ\u{1F61A}ь \u{25A8}ҳ 훧",
+        "ἷℂẪ\u{1F580} 늗ﾟ햺ⓛ",
+        "혀螹㊃\u{1FCF} 第 㜳Φﾟ",
+        "\u{1F4F9}\u{25FD}\u{319C}醦장 ヌﾟ \u{20BC}",
+        "ʏ\u{2B66}\u{1F5A7}ﾟ\u{1F2D6} ㉝蒷 ⅱ",
+        "Ω\u{21F3}ɨ",
+        "Я\u{21F3}ɨ",
+        "Ω\u{2713}ɨ",
+        "Я\u{2713}ɨ",
+        "Ω\u{2211}ɨ",
+        "Я\u{2211}ɨ",
+        "Ω\u{21F3}ḭ",
+        "Я\u{21F3}ḭ",
+        "Ω\u{2713}ḭ",
+        "Я\u{2713}ḭ",
+        "Ω\u{2211}ḭ",
+        "Я\u{2211}ḭ",
+        "\u{1F797} Ⓡ Ў\u{21EE}ɨ\u{1F027}ϥ\u{1F6A6}",
+        "\u{1F895}䤳 \u{21B0}\u{1F274}\u{2278}\u{2805}\u{2768}ḭ",
+        "肋\u{1F752} た \u{223C}자鉘 \u{2893}ḭ",
+    ];
+
+    #[test]
+    fn lines_on_which_a_cut_inside_a_word_drew_other_glyphs_than_the_old_search_are_drawn_as_it_draws_them() {
+        let mut pair = Pair::new();
+        let wrong: Vec<String> = CUT_INSIDE_A_WORD.iter().filter_map(|text| pair.differs(text)).collect();
+        assert!(wrong.is_empty(), "{} of {} lines differ, the first: {}", wrong.len(), CUT_INSIDE_A_WORD.len(), wrong[0]);
+    }
+
+    #[test]
+    fn a_sample_of_the_whitelist_next_to_neighbours_is_drawn_as_the_old_search_draws_it_in_every_form() {
+        // each sampled character with a base of another script, a symbol of another face and a Katakana letter, in the five forms that move a cut around it:
+        // before, after, with a space between, with a no-break space either way
+        let mut pair = Pair::new();
+        pair.faces.prepare(&mut pair.fast);
+        let mut seed = Seed(0x1357_9BDF_2468_ACE0);
+        let mut pool: Vec<char> = vec!['\u{FF9E}', '\u{FF9F}', '\u{268}', '\u{1E2D}', '\u{28D8A}', '\u{FF76}', '\u{30AB}', '\u{1F6E5}'];
+        for &(low, high) in INDEPENDENT.iter() {
+            for _ in 0..6 {
+                pool.push(char::from_u32(low + (seed.next() % (high - low + 1) as u64) as u32).expect("a scalar value"));
+            }
+        }
+        let mut wrong = Vec::new();
+        let mut lines = 0;
+        for context in ["a", "Ω", "Я", "노", "カ", "✓"] {
+            for &x in &pool {
+                for text in [format!("{context}{x}"), format!("{x}{context}"), format!("{context} {x}"), format!("{context}\u{A0}{x}"), format!("{x}\u{A0}{context}")] {
+                    lines += 1;
+                    if let Some(why) = pair.differs(&text) {
+                        wrong.push(why);
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{} of {lines} lines differ, the first: {}", wrong.len(), wrong[0]);
+        assert!(pair.faces.w_single > 0 && pair.faces.w_old > 0 && pair.faces.w_base > 0, "all three decisions must have been taken: {} {} {}", pair.faces.w_base, pair.faces.w_single, pair.faces.w_old);
+    }
+
 }
