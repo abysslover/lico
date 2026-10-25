@@ -25,6 +25,7 @@
 "tests/test_first_view.py" = ["gui", "host", "synth"]
 "tests/test_folders.py" = ["cli", "host"]
 "tests/test_input_echo.py" = ["cli", "host"]
+"tests/test_input_box.py" = ["gui", "host"]
 "tests/test_frame_cost.py" = ["gui", "host", "synth"]
 "tests/test_host_control.py" = ["host", "synth"]
 "tests/test_host_core.py" = ["host", "synth"]

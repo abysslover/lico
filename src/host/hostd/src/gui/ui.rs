@@ -113,7 +113,7 @@ pub struct UiState {
 }
 
 fn display_cols(text: &str) -> usize {
-    text.chars().map(|c| if matches!(c as u32, 0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE6F | 0xFF00..=0xFF60 | 0x1F300..=0x1FAFF) { 2 } else { 1 }).sum()
+    text.chars().map(|c| if super::editor::wide(c) { 2 } else { 1 }).sum()
 }
 
 fn ago(now: u64, then: u64) -> String {
@@ -590,7 +590,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.nav_key(event) {
+                if self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -602,7 +602,7 @@ impl App {
                     Key::Named(NamedKey::Escape) => {
                         if self.ui.sel.is_some() {
                             self.ui.sel = None; // Esc with a selection only drops the selection
-                        } else if self.input.is_empty() && self.preedit.is_empty() && !self.session.is_empty() {
+                        } else if self.ed.is_empty() && self.preedit.is_empty() && !self.session.is_empty() {
                             self.go_start(); // an empty input line: back to the start screen (the session keeps running)
                         }
                         self.dirty = true;
@@ -661,8 +661,9 @@ impl App {
         }
         let Some(proxy) = self.ui.proxy.clone() else { return };
         self.ui.paste_pending = true;
+        let limit = if self.ui.panel.is_some() { 8192 } else { super::editor::PASTE_FETCH };
         thread::spawn(move || {
-            let _ = proxy.send_event(super::Ev::Paste(fetch_selection(selection)));
+            let _ = proxy.send_event(super::Ev::Paste(fetch_selection(selection, limit)));
         });
     }
 
@@ -672,13 +673,16 @@ impl App {
         if !self.paste_allowed() {
             return; // the person moved on while the owner was answering
         }
+        if self.ui.panel.is_none() {
+            return self.box_paste(result);
+        }
         match result {
             Ok(text) => {
                 let line: String = text.split(|c| c == '\n' || c == '\r').next().unwrap_or("").chars().filter(|c| !c.is_control()).collect();
                 if line.is_empty() {
                     self.paste_notice("Nothing to paste.");
                 } else {
-                    self.input.push_str(&line); // a newline ends the paste: Enter stays the person's own key
+                    self.ed.put(&line); // a newline ends the paste: Enter stays the person's own key
                 }
             }
             Err("too_large") => self.paste_notice("Paste refused: more than 8 KiB."),
@@ -788,7 +792,7 @@ impl App {
     /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
     /// one of them is never taken for an answer) and no panel is open.
     pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        if self.ui.panel.is_some() || !self.input.is_empty() || !self.preedit.is_empty() || event.repeat {
+        if self.ui.panel.is_some() || !self.ed.is_empty() || !self.preedit.is_empty() || event.repeat {
             return false;
         }
         if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
@@ -801,17 +805,6 @@ impl App {
         }
         self.dirty = true;
         true
-    }
-
-    /// Ctrl+U clears the whole input line (and only that); true when it did.
-    pub(crate) fn ui_ctrl_u(&mut self, key: &Key) -> bool {
-        match key {
-            Key::Character(c) if self.ui.mods.control_key() && c.eq_ignore_ascii_case("u") && self.preedit.is_empty() => {
-                self.input.clear();
-                true
-            }
-            _ => false,
-        }
     }
 
     fn line_at(&self, y: f32) -> Option<usize> {
@@ -849,7 +842,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -929,10 +922,12 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let prompt = if self.code_entry() { format!("> {}", self.shown_input()) } else { format!("> {}[{}]", self.input, self.preedit) }; // a code is never drawn
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
-        let rows_avail = (((height as f32 - top) / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 } + status.is_some() as usize);
+        let area_rows = ((height as f32 - top) / lh) as usize;
+        let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
+        let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
+        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + status.is_some() as usize + n_prompt - 1);
         let fs = self.font_system.as_mut()?;
         let lines: Vec<(i64, String)> = match &panel_view {
             Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
@@ -966,7 +961,7 @@ impl App {
             let mut wanted: Vec<&str> = text.split('\n').collect();
             wanted.extend(lines[first..end].iter().map(|l| l.1.as_str()));
             wanted.extend(status.as_deref());
-            wanted.push(&prompt);
+            wanted.extend(pv.rows.iter().chain(&pv.note).map(String::as_str));
             for line_text in wanted {
                 let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, faces.line(fs, line_text), Shaping::Advanced));
                 buffer.lines.push(line);
@@ -989,7 +984,7 @@ impl App {
         // the estimate of wrapped rows can be short: if the layout is taller than the area, drop the oldest line and lay out again
         for _ in 0..6 {
             let runs = view.buffer.layout_runs().count();
-            if runs <= rows_avail + base + 1 + status.is_some() as usize || first >= end {
+            if runs <= rows_avail + base + n_prompt + status.is_some() as usize || first >= end {
                 break;
             }
             first += 1;
@@ -1015,11 +1010,12 @@ impl App {
         // the scroll step: what the frame is made of, and whether the last one can be kept in part
         let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, top as i32);
         let line_count = view.buffer.lines.len();
+        self.ed.place(&view.buffer, (line_count - n_prompt, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
         let mut recs: Vec<LineRec> = (0..line_count)
             .map(|i| {
-                let key = if i + 1 == line_count {
+                let key = if i + n_prompt >= line_count {
                     scroll::Key::Prompt
-                } else if status.is_some() && i + 2 == line_count {
+                } else if status.is_some() && i + n_prompt + 1 == line_count {
                     scroll::Key::Status
                 } else if i >= base && first + (i - base) < end {
                     scroll::Key::Transcript(lines[first + (i - base)].0)
@@ -1141,6 +1137,9 @@ impl App {
         blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents }));
         for (line, extent) in frame.lines.iter_mut().zip(extents) {
             line.ext = extent;
+        }
+        if let Some([x, y, w, h]) = self.ed.caret {
+            controls::fill(&mut buf, width, height, [x, y, x + w, y + h], 0xFFE0_E0E0); // the caret of the input box: a bar, never blinking
         }
         // the permanent hint line, over whatever reaches the bottom row
         let hint_y = height as f32 - lh;
@@ -1338,8 +1337,8 @@ fn blend(dst: &mut u32, r: u32, g: u32, b: u32, alpha: u32) {
 
 /// Owns the CLIPBOARD selection with the text it was last given, until another client takes it.
 /// The text of a selection (`CLIPBOARD` or `PRIMARY`) as UTF-8, asked for through our own helper window on a connection of its own, within 500 ms.
-/// An incremental transfer or more than 8 KiB is refused rather than cut.
-fn fetch_selection(name: &[u8]) -> Result<String, &'static str> {
+/// An incremental transfer or more than `limit` bytes is refused rather than cut.
+fn fetch_selection(name: &[u8], limit: usize) -> Result<String, &'static str> {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, CreateWindowAux, WindowClass};
     use x11rb::protocol::Event;
@@ -1363,8 +1362,8 @@ fn fetch_selection(name: &[u8]) -> Result<String, &'static str> {
                     if e.property == x11rb::NONE {
                         break; // this form was refused: the next one
                     }
-                    let reply = conn.get_property(true, win, property, AtomEnum::ANY, 0, 2049).map_err(|_| "empty")?.reply().map_err(|_| "empty")?;
-                    if reply.type_ == incr || reply.bytes_after > 0 || reply.value.len() > 8192 {
+                    let reply = conn.get_property(true, win, property, AtomEnum::ANY, 0, (limit / 4 + 1) as u32).map_err(|_| "empty")?.reply().map_err(|_| "empty")?;
+                    if reply.type_ == incr || reply.bytes_after > 0 || reply.value.len() > limit {
                         return Err("too_large");
                     }
                     return Ok(String::from_utf8_lossy(&reply.value).into_owned());

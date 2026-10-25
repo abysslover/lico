@@ -36,7 +36,7 @@ pub struct Panel {
     pub last_error: String, // the host's raw error word of the last failed step: in the ui dump only
     pub mode: &'static str, // the mode a new session starts in: "auto" (permissions skipped) or "default" (asks for approval)
     pub opened: bool, // the browser was opened for this sign-in attempt
-    pub stash: String, // what was typed in the input line before the panel took it over
+    pub stash: super::editor::Parked, // what was typed in the input line before the panel took it over
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -93,7 +93,7 @@ impl App {
     }
 
     pub(crate) fn panel_open(&mut self, step: Step) {
-        let stash = std::mem::take(&mut self.input);
+        let stash = self.ed.take();
         self.preedit.clear();
         self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash });
         self.sync_quiet();
@@ -108,7 +108,7 @@ impl App {
             if p.step == Step::Login && !p.account.is_empty() {
                 self.host_call(json!({"op": "account.login.cancel", "account": p.account})); // leaving the panel ends an unfinished sign-in
             }
-            self.input = p.stash;
+            self.ed.restore(p.stash);
             self.preedit.clear();
         }
         self.sync_quiet();
@@ -127,9 +127,9 @@ impl App {
     /// What the input line shows: the text itself, or one star per character of a code (at most 64).
     pub(crate) fn shown_input(&self) -> String {
         if self.code_entry() {
-            "*".repeat(self.input.chars().count().min(64))
+            "*".repeat(self.ed.text().chars().count().min(64))
         } else {
-            self.input.clone()
+            self.ed.text().to_string()
         }
     }
 
@@ -224,7 +224,7 @@ impl App {
 
     pub(crate) fn panel_json(&self) -> Value {
         match (self.panel_view(), self.ui.panel.as_ref()) {
-            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.input.chars().count(), "error": p.last_error}),
+            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error}),
             _ => Value::Null,
         }
     }
@@ -320,7 +320,7 @@ impl App {
                 true
             }
             Key::Named(NamedKey::Enter) if text_mode => {
-                let text = std::mem::take(&mut self.input);
+                let text = self.ed.take().text();
                 self.preedit.clear();
                 self.submit_text(step, text.trim());
                 self.dirty = true;

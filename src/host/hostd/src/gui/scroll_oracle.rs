@@ -17,8 +17,8 @@ fn app(scale: f32, no_scroll_step: bool) -> App {
     let (sock, peer) = UnixStream::pair().expect("a socket pair");
     std::mem::forget(peer); // the window may write to the host; nobody reads
     let mut app = App {
-        stale_pending: false, stale_empty: false, pending_inputs: Default::default(), view_id: String::new(), generation: 1, drafts: Default::default(), sent_count: 0,
-        input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
+        stale_pending: false, stale_empty: false, pending_inputs: Default::default(), view_id: String::new(), generation: 1, sent_count: 0,
+        ed: Default::default(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: String::new(), serial: 0, follow: false, updating: false, ended_meanwhile: false,
         session: "session-s0".into(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
         ui: UiState { enabled: true, markers: false, menu: true, faces: fonts::Faces::new(false), no_scroll_step, scale, fonts_gen: 1, ..Default::default() }, recent_draws: VecDeque::new(),
@@ -231,7 +231,9 @@ fn script(scale: f32) {
     p.both(|app| app.preedit.clear());
     p.full("pre-edit ends", Cause::Preedit);
     for word in ["h", "e", "llo wor", "ld \u{d55c}\u{ae00}"] {
-        p.both(|app| app.input.push_str(word));
+        p.both(|app| {
+            app.ed.put(word);
+        });
         p.shift(&format!("typing '{word}' with no new line"));
     }
     p.push(&lines(next, 2));
@@ -239,14 +241,16 @@ fn script(scale: f32) {
     p.shift("output while a draft is typed");
 
     // marks stacked above the first letters of the draft reach into the rows of the last line; marks below the header reach into the first lines
-    p.both(|app| app.input = "e\u{301}\u{302}\u{303}\u{304}\u{305}\u{306}\u{307}\u{308}\u{309} o\u{323}\u{324}\u{325}".into());
+    p.both(|app| app.ed.set("e\u{301}\u{302}\u{303}\u{304}\u{305}\u{306}\u{307}\u{308}\u{309} o\u{323}\u{324}\u{325}".into()));
     p.push(&lines(next, 2));
     next += 2;
     p.shift("stacked marks in the draft");
     p.push(&lines(next, 1));
     next += 1;
     p.shift("stacked marks in the draft, one more line");
-    p.both(|app| app.input.clear());
+    p.both(|app| {
+        app.ed.clear();
+    });
     p.push(&lines(next, 1));
     next += 1;
     p.shift("the draft is gone");

@@ -165,7 +165,7 @@ def test_the_command_line_makes_a_session_in_a_folder_renames_it_and_sends_a_lon
         host, log, received = claude_host(directory)
 
         def run(*args, **kw):
-            return subprocess.run([str(LICO), "--socket", host.socket, *args], capture_output=True, text=True, timeout=20, **kw)
+            return subprocess.run([str(LICO), "--socket", host.socket, *args], capture_output=True, timeout=20, **{"text": True, **kw})
         try:
             made = run("session", "create", "--kind", "claude", "--cwd", "project", "--name", "cli", cwd=base)      # a relative folder is relative to where the command runs
             assert made.returncode == 0, made.stderr
@@ -183,5 +183,11 @@ def test_the_command_line_makes_a_session_in_a_folder_renames_it_and_sends_a_lon
             too_long = run("session", "send", sid, "-", input=long_text(200 * 1024))
             assert too_long.returncode == 1 and "longer than 64 KiB" in too_long.stderr
             assert len(sent_users(received)) == 1 and conn.call(op="status")["ok"] == 1
+            # Windows and old Mac line ends become LF; the limit is applied to the LF text, so 64 KiB of LF text sent with CRLF still goes
+            assert run("session", "send", sid, "-", input=b"one\r\ntwo\rthree\r\n", text=False).returncode == 0
+            crlf = long_text(v1.MAX_INPUT_TEXT).replace("\n", "\r\n").encode()
+            assert len(crlf) > v1.MAX_INPUT_TEXT and run("session", "send", sid, "-", input=crlf, text=False).returncode == 0
+            wait_for(lambda: len(sent_users(received)) == 3)
+            assert [user_text(m) for m in sent_users(received)][1:] == ["one\ntwo\nthree\n", long_text(v1.MAX_INPUT_TEXT)]
         finally:
             host.stop()

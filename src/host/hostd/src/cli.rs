@@ -96,14 +96,22 @@ fn quiet_ok(reply: Value) -> Value {
     reply
 }
 
-/// The text of an `input` read from standard input: one byte more than the host accepts, so the host says it is too long.
+/// Line ends as a paste in the window has them: CRLF and a lone CR become LF.
+fn with_lf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
+}
+
+/// The text of an `input` read from standard input, with LF line ends. Up to twice the limit is read, because a file with Windows line ends is
+/// longer as it comes than once they are LF; the limit applies to the LF text, as the host counts it.
 fn text_from_stdin() -> String {
+    let limit = crate::ipc::MAX_INPUT_TEXT;
     let mut bytes = Vec::new();
-    std::io::stdin().take(crate::ipc::MAX_INPUT_TEXT as u64 + 1).read_to_end(&mut bytes).unwrap_or_else(|e| die(1, &format!("cannot read standard input: {e}")));
-    if bytes.len() > crate::ipc::MAX_INPUT_TEXT {
+    std::io::stdin().take(2 * limit as u64 + 1).read_to_end(&mut bytes).unwrap_or_else(|e| die(1, &format!("cannot read standard input: {e}")));
+    let text = with_lf(&String::from_utf8(bytes).unwrap_or_else(|_| die(1, "standard input is not UTF-8 text")));
+    if text.len() > limit {
         die(1, "standard input is longer than 64 KiB; nothing was sent");
     }
-    String::from_utf8(bytes).unwrap_or_else(|_| die(1, "standard input is not UTF-8 text"))
+    text
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
@@ -303,5 +311,14 @@ pub fn run(args: Vec<String>) {
             expect_ok(call(&mut connect(&socket), json!({"op": "view.detach", "view": view})));
         }
         _ => die(1, USAGE),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn windows_and_old_mac_line_ends_become_lf() {
+        assert_eq!(super::with_lf("a\r\nb\rc\n\r\n\r\rd"), "a\nb\nc\n\n\n\nd");
+        assert_eq!(super::with_lf("plain\ttext 한글\n"), "plain\ttext 한글\n");
     }
 }

@@ -2,6 +2,7 @@
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
 mod controls;
+mod editor;
 mod fonts;
 mod menu;
 mod panel;
@@ -22,8 +23,7 @@ use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Sw
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, Ime, WindowEvent};
-use winit::keyboard::{Key, NamedKey};
+use winit::event::{Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -66,9 +66,8 @@ struct App {
     pending_inputs: HashMap<String, (String, String)>,
     view_id: String,
     generation: i64,
-    drafts: HashMap<String, String>,
     sent_count: u64,
-    input: String,
+    ed: editor::Editor, // the input box: the draft of the open session, the drafts of the others, what each was sent
     preedit: String,
     dirty: bool,
     quit: bool, // set by the menu or Ctrl+Q: the loop ends at the next turn
@@ -119,28 +118,6 @@ fn clean(text: &str) -> String {
 
 /// While a panel is open the input line may hold a sign-in code: nothing typed is echoed to standard output then.
 static QUIET_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Remove the last character of the input line together with what is attached to it (combining marks, joiners, variation
-/// selectors, the vowel and final jamo of a decomposed Hangul syllable); false when the line was empty.
-fn erase_last(input: &mut String) -> bool {
-    fn attached(c: char) -> bool {
-        matches!(c as u32, 0x0300..=0x036F | 0x1160..=0x11FF | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x200D | 0x20D0..=0x20FF | 0x3099..=0x309A | 0xFE00..=0xFE0F | 0xFE20..=0xFE2F | 0xE0100..=0xE01EF)
-    }
-    if input.is_empty() {
-        return false;
-    }
-    loop {
-        while input.chars().next_back().map_or(false, attached) {
-            input.pop();
-        }
-        input.pop(); // the base character
-        // a base joined to the one before it (an emoji sequence) goes with it
-        if !input.ends_with('\u{200D}') {
-            break;
-        }
-    }
-    true
-}
 
 fn emit_ime(kind: &str, text: &str) {
     if QUIET_INPUT.load(std::sync::atomic::Ordering::Relaxed) {
@@ -271,9 +248,7 @@ impl App {
         if !self.session.is_empty() {
             // a composition in progress is committed to the session it was typed for
             let pending = std::mem::take(&mut self.preedit);
-            let mut draft = std::mem::take(&mut self.input);
-            draft.push_str(&pending);
-            self.drafts.insert(self.session.clone(), draft);
+            self.ed.park(&self.session, &pending);
             if !pending.is_empty() {
                 // the input method keeps composing it (winit offers no reset without losing the
                 // input context); the first commit it sends afterwards belongs to the old session
@@ -320,7 +295,7 @@ impl App {
         let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).unwrap_or(-1);
         // an explicit cursor replays after it; otherwise ask for the latest screen
         self.cursor = after.unwrap_or(remembered);
-        self.input = self.drafts.remove(id).unwrap_or_default();
+        self.ed.resume(id);
         let msg = if after.is_none() {
             // a view is registered with the host and gets the latest screen first
             format!("{{\"op\":\"view.attach\",\"session\":\"{id}\",\"kind\":\"gui\",\"after\":{}}}", self.cursor)
@@ -362,25 +337,6 @@ impl App {
         self.dirty = true;
     }
 
-    /// Send the draft of the visible session as one input with its own request id.
-    fn send_draft(&mut self) {
-        if self.session.is_empty() || self.input.is_empty() {
-            return;
-        }
-        self.sent_count += 1;
-        let request_id = format!("gui-{}-{}", std::process::id(), self.sent_count);
-        let text = std::mem::take(&mut self.input);
-        let msg = format!(
-            "{{\"op\":\"input\",\"id\":\"{}\",\"session\":\"{}\",\"generation\":{},\"request_id\":\"{}\",\"text\":\"{}\"}}",
-            request_id, self.session, self.generation, request_id, json_escape(&text)
-        );
-        self.pending_inputs.insert(request_id.clone(), (self.session.clone(), text.clone()));
-        self.send(&msg);
-        emit_ime("sent", &text);
-        emit_ime("text", &self.input);
-        self.dirty = true;
-    }
-
     fn on_snapshot_lines(&mut self, reply: &str) {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(reply) {
             let snapshot = &parsed["snapshot"];
@@ -417,27 +373,6 @@ impl App {
             rest = &after[end..];
         }
         self.meta = meta;
-    }
-
-    /// A reply to one of our inputs carries its request id: a refused input returns to its draft.
-    fn on_input_reply(&mut self, line: &str) -> bool {
-        let Some(id) = jstr(line, "id").filter(|id| id.starts_with("gui-")) else { return false };
-        let id = id.to_string();
-        if line.contains("\"ok\":0") {
-            if let Some((session, text)) = self.pending_inputs.remove(&id) {
-                if self.session == session {
-                    self.input.insert_str(0, &text);
-                } else {
-                    let draft = self.drafts.entry(session).or_default();
-                    draft.insert_str(0, &text);
-                }
-                emit_ime("send_failed", &text);
-                self.dirty = true;
-            }
-        } else {
-            self.pending_inputs.remove(&id);
-        }
-        true
     }
 
     fn on_sock_line(&mut self, line: &str) {
@@ -558,7 +493,7 @@ impl App {
                 println!("{{\"ev\":\"lines\",\"lines\":[{}]}}", shown.join(","));
                 let _ = std::io::stdout().flush();
             }
-            Some("text") => emit_ime("text", &self.input),
+            Some("text") => emit_ime("text", self.ed.text()),
             Some("stress") => self.stress(),
             Some("hoststatus") => {
                 self.print_status = true;
@@ -575,7 +510,7 @@ impl App {
         if self.ui.enabled {
             return self.draw_ui();
         }
-        let prompt = format!("> {}[{}]", self.input, self.preedit);
+        let prompt = format!("> {}[{}]", self.ed.text(), self.preedit);
         let (Some(window), Some(view), Some(fs)) = (&self.window, self.view.as_mut(), self.font_system.as_mut()) else {
             return;
         };
@@ -664,29 +599,7 @@ impl ApplicationHandler<Ev> for App {
                     w.request_redraw();
                 }
             }
-            WindowEvent::KeyboardInput { event, .. } => {
-                // keys the input method did not take (space, digits, Latin text) arrive here
-                if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::Enter) {
-                    self.send_draft();
-                } else if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::Backspace) {
-                    // an open composition belongs to the input method (its own Backspace edits it); otherwise one press removes one character
-                    if self.preedit.is_empty() && erase_last(&mut self.input) {
-                        emit_ime("text", &self.input);
-                        self.dirty = true;
-                    }
-                } else if event.state == ElementState::Pressed && self.ui_ctrl_u(&event.logical_key) {
-                    emit_ime("text", &self.input);
-                    self.dirty = true;
-                } else if event.state == ElementState::Pressed {
-                    if let Some(text) = &event.text {
-                        if !text.chars().any(char::is_control) {
-                            self.input.push_str(text);
-                            emit_ime("text", &self.input);
-                            self.dirty = true;
-                        }
-                    }
-                }
-            }
+            WindowEvent::KeyboardInput { event, .. } => self.typed_key(&event), // keys the input method did not take (space, digits, Latin text) arrive here
             WindowEvent::Ime(ime) => {
                 match ime {
                     Ime::Preedit(text, _) => {
@@ -706,9 +619,9 @@ impl ApplicationHandler<Ev> for App {
                     }
                     Ime::Commit(text) => {
                         emit_ime("commit", &text);
-                        self.input.push_str(&text);
+                        self.ed.put(&text);
                         self.preedit.clear();
-                        emit_ime("text", &self.input);
+                        emit_ime("text", self.ed.text());
                     }
                     Ime::Enabled => emit_ime("enabled", ""),
                     Ime::Disabled => emit_ime("disabled", ""),
@@ -878,8 +791,8 @@ pub fn run(args: Vec<String>) {
         });
     }
     let mut app = App {
-        stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
-        input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
+        stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, sent_count: 0,
+        ed: Default::default(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(), serial: 0, follow: explicit.is_none(), updating: outdated.is_some(), ended_meanwhile: false,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
         ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), no_scroll_step: !product && args.iter().any(|a| a == "--no-scroll-step"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
@@ -906,28 +819,4 @@ fn spawn_reader(reader: UnixStream, proxy: winit::event_loop::EventLoopProxy<Ev>
         }
         let _ = proxy.send_event(Ev::SockEnded(serial));
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::erase_last;
-
-    fn after(text: &str) -> String {
-        let mut s = text.to_string();
-        erase_last(&mut s);
-        s
-    }
-
-    #[test]
-    fn one_press_removes_one_character_with_what_is_attached_to_it() {
-        assert_eq!(after("ab"), "a");
-        assert_eq!(after("a한"), "a");
-        assert_eq!(after("ae\u{301}"), "a"); // an accented letter in two code points
-        assert_eq!(after("a\u{1112}\u{1161}\u{11AB}"), "a"); // a decomposed Hangul syllable
-        assert_eq!(after("x\u{1F468}\u{200D}\u{1F469}"), "x"); // a joined emoji pair
-        assert_eq!(after("a\u{2764}\u{FE0F}"), "a");
-        assert_eq!(after(""), "");
-        let mut empty = String::new();
-        assert!(!erase_last(&mut empty));
-    }
 }
