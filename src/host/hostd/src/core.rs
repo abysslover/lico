@@ -784,17 +784,17 @@ pub fn input(shared: &Shared, session: &str, generation: i64, request_id: &str, 
     }
     if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, text)?;
-        s.record_input(request_id);
+        s.record_input(request_id, text);
     } else if s.claude.is_some() {
         crate::claude::send_input(&mut s, request_id, text)?;
-        s.record_input(request_id);
+        s.record_input(request_id, text);
     } else {
         if s.input_tx.is_none() {
             return Err("session_exited");
         }
         let line = format!("I {request_id} {}", payload::hex(text.as_bytes()));
         match s.input_tx.as_ref().map(|tx| tx.try_send(line)) {
-            Some(Ok(())) => s.record_input(request_id),
+            Some(Ok(())) => s.record_input(request_id, text),
             Some(Err(mpsc::TrySendError::Full(_))) => return Err("busy"),
             _ => return Err("session_exited"),
         }

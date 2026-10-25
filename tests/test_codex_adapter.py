@@ -131,7 +131,7 @@ def test_approval_round_trip_and_a_stale_or_forged_approval_is_refused():
             assert len([m for m in replies if m.get("id") in (7, 9, 11)]) == 3
             # the records are exactly what the reference mapping gives for the same recorded turn
             assert texts(log, sid) == [
-                "[turn started]", "안녕하세요. 작업을 시작합니다.", "두 번째 줄 é 漢字 🙂", "hidden controls and tab done",
+                ">> fixture", "[turn started]", "안녕하세요. 작업을 시작합니다.", "두 번째 줄 é 漢字 🙂", "hidden controls and tab done",
                 "$ ls -la", "total 0", "file-한글.txt", "[exit 0]", "[error] network unavailable", "[turn completed]",
             ]
             # viewers were told about both approvals as events

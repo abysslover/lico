@@ -65,7 +65,8 @@ def test_host_restart_recovers_sessions_as_disconnected_with_bindings_and_histor
             assert entry["state_at"] > 0 and entry["seq"] == last_seq and "approvals" not in entry
             # its history is there and its sequence continues without a gap or a duplicate
             snap = conn.call(op="snapshot", session=sid)
-            assert [line[1] for line in snap["lines"] if "hello 한글" in line[1]] == [f"echo: hello 한글 {k}" for k in range(3)]
+            assert [line[1] for line in snap["lines"] if "hello 한글" in line[1] and not line[1].startswith(">> ")] == [f"echo: hello 한글 {k}" for k in range(3)]
+            assert [line[1] for line in snap["lines"] if line[1].startswith(">> hello 한글")] == [f">> hello 한글 {k}" for k in range(3)]       # each input is echoed once, and the echo survives the restart
             assert conn.call(op="input", session=sid, generation=generation, request_id="x", text="no")["error"] == "session_disconnected"
             # it is shown as disconnected until a person resumes it, and then it works under a new generation
             resumed = conn.call(op="session.resume", session=sid, generation=generation)

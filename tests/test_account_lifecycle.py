@@ -26,7 +26,7 @@ def test_account_failure_never_switches_account_or_paid_mode():
             wait_for(lambda: "[turn failed] error_during_execution" in records(log, sid))
             failure = map_stream([{"type": "system", "subtype": "api_retry", "error": "authentication_failed"},
                                   {"type": "result", "subtype": "error_during_execution", "is_error": True, "api_error_status": 401, "errors": ["authentication failed"]}])
-            assert records(log, sid) == ["[session started] model=simulator"] + failure.records
+            assert records(log, sid) == [">> authfail", "[session started] model=simulator"] + failure.records
             # the failure is shown against that account and that session, and nothing else
             listed = {e["account"]: e for e in conn.call(op="account.list")["accounts"]}
             assert listed[a]["issue"] == "authentication_failed" and listed[a]["issue_sessions"] == [sid] and "issue" not in listed[b]

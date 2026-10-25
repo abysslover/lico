@@ -128,7 +128,7 @@ def test_older_history_is_read_on_demand_without_replaying_the_transcript():
             client.send("lines")
             shown = client.expect("lines")["lines"]
             first_seq = state["first_seq"]
-            assert first_seq < 2900 and shown[0].startswith(f"line {first_seq - 1:05d}"), (first_seq, shown[:2])   # the older text matches its sequence number
+            assert first_seq < 2900 and shown[0].startswith(f"line {first_seq - 2:05d}"), (first_seq, shown[:2])   # the older text matches its sequence number (the echo of the input and the start note come first)
             # back at the bottom the live end is there again
             xdo(xvfb.display, "key", "End")
             state = ui(client, lambda u: u["scroll"] == 0)

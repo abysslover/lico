@@ -10,6 +10,7 @@ from lico_protocol import v1
 
 from lico_measure.p02 import AGENT, LICO, ProtoConn as Conn, cli, echoes, read_log, start  # noqa: F401
 
+from tests.test_codex_adapter import wait_for
 from tests.test_folders import long_text
 
 
@@ -163,12 +164,22 @@ def test_http_requires_credential_host_and_origin():
             assert status == 200 and body["gap"] is True and "snapshot" in body
             time.sleep(1.0)
             assert echoes(log, sid) == ["fine"]
-            # IN-01: the limit is the same here as on the socket: the largest text is accepted, one byte more is refused
+            # IN-01: the limit is the same here as on the socket. The largest text is accepted and all of it arrived (the echo's
+            # marker counts the bytes the host received); one byte more is refused and nothing is delivered
+            text = long_text(v1.MAX_INPUT_TEXT)
             status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", auth,
-                                 json.dumps({"generation": 1, "request_id": "h-big", "text": long_text(v1.MAX_INPUT_TEXT)}).encode())
+                                 json.dumps({"generation": 1, "request_id": "h-big", "text": text}).encode())
             assert status == 200 and body["request_id"] == "h-big"
+            shown = sum(len(line.encode()) + 1 for line in text.split("\n")[:12])
+            total = text.count("\n") + (0 if text.endswith("\n") else 1)
+            marker = f">> [{total - 12} more lines, {len(text.encode()) - shown} bytes not shown; the agent received all of it]"
+            shown_back = lambda: [p for _, p in read_log(log, sid) if p.startswith(b">> ")]
+            wait_for(lambda: marker.encode() in shown_back())
+            before = len(shown_back())
             status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", auth,
                                  json.dumps({"generation": 1, "request_id": "h-over", "text": long_text(v1.MAX_INPUT_TEXT + 1)}).encode())
             assert status == 400 and body["error"] == "bad_request"
+            time.sleep(0.3)
+            assert len(shown_back()) == before                        # nothing delivered, nothing echoed
         finally:
             host.stop()

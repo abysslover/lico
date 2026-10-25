@@ -85,7 +85,7 @@ def test_claude_adapter_pins_the_version_and_marks_unverified_and_maps_fixtures_
                 assert conn.call(op="approval.answer", session=sid, generation=generation, approval_id=pending[0]["approval_id"], answer="allow")["ok"] == 1
             wait_for(lambda: "[turn completed]" in records(log, sid))
             # the host's records equal the reference mapping, in order, and nothing else is recorded
-            assert records(log, sid) == expected.records, records(log, sid)
+            assert records(log, sid) == [">> fixture"] + expected.records, records(log, sid)
             # each permission request got exactly one answer, for its own request id
             answers = [json.loads(l) for l in lines_of(received) if l.startswith("{") and json.loads(l).get("type") == "control_response"]
             assert [a["response"]["request_id"] for a in answers] == [w["request_id"] for w in expected.approvals]

@@ -606,7 +606,8 @@ impl Session {
         self.inputs.get(&self.key(request_id)).copied()
     }
 
-    pub fn record_input(&mut self, request_id: &str) {
+    pub fn record_input(&mut self, request_id: &str, text: &str) {
+        crate::echo::append(self, text);
         let key = self.key(request_id);
         self.inputs.insert(key, InputState::Accepted);
         self.input_order.push_back(key);
