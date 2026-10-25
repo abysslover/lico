@@ -85,30 +85,66 @@ class ProductWindow:
                     break
             except queue.Empty:
                 pass
-        time.sleep(0.8)
+        if self.stdin_open:
+            self._first_frame()
+        else:
+            time.sleep(0.8)
         if self.proc.poll() is not None:
             return
         from .ime import _focus      # no window manager here: the keyboard goes where the focus is put
 
         _focus(self.xvfb.display)
-        time.sleep(0.4)
+        self.settle(self.frames(), 0.4)
 
     def alive(self) -> bool:
         return self.proc.poll() is None
 
+    def frames(self) -> int:
+        """How many frames the window has drawn so far (its own counter in the dump); 0 when its standard input is closed and it cannot be asked."""
+        return self.ui()["frame"]["frames"] if self.stdin_open else 0
+
+    def _first_frame(self, timeout: float = 5.0) -> None:
+        end = time.monotonic() + timeout
+        while time.monotonic() < end and self.alive() and self.frames() < 1:
+            time.sleep(0.03)
+
+    def settle(self, since: int, upto: float) -> bool:
+        """Wait until the window has drawn after `since` frames and then drawn nothing for a moment (longer with an input method, whose answer comes
+        from another process). `upto` is the bound and was the fixed pause that stood here: a key that changes nothing still costs it."""
+        if not self.stdin_open:
+            time.sleep(upto)
+            return False
+        quiet = 0.3 if self.ime else 0.15
+        end = time.monotonic() + upto
+        last, changed = since, None
+        while time.monotonic() < end:
+            try:
+                frames = self.frames()
+            except (OSError, TimeoutError):
+                return True              # the window ended (a quit key): nothing more to wait for
+            if frames != last:
+                last, changed = frames, time.monotonic()
+            elif changed is not None and time.monotonic() - changed >= quiet:
+                return True
+            time.sleep(0.03)
+        return last != since
+
     def key(self, *keys: str) -> None:
+        since = self.frames()
         subprocess.run(["xdotool", "key", *keys], env=self.env, check=True)
-        time.sleep(0.9)
+        self.settle(since, 0.9)
 
     def type_text(self, text: str) -> None:
+        since = self.frames()
         subprocess.run(["xdotool", "type", "--delay", "40", text], env=self.env, check=True)
-        time.sleep(0.9)
+        self.settle(since, 0.9)
 
     def hold(self, key: str, seconds: float) -> None:
+        since = self.frames()
         subprocess.run(["xdotool", "keydown", key], env=self.env, check=True)
         time.sleep(seconds)
         subprocess.run(["xdotool", "keyup", key], env=self.env, check=True)
-        time.sleep(0.6)
+        self.settle(since, 0.6)
 
     def bright_total(self) -> int:
         data, width, height = self.gray()
@@ -116,8 +152,9 @@ class ProductWindow:
 
     def click(self, x: float, y: float, button: int = 1) -> None:
         wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
+        since = self.frames()
         subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", str(button)], env=self.env, check=True)
-        time.sleep(0.7)
+        self.settle(since, 0.7)
 
     def ui(self) -> dict:
         self.proc.stdin.write("ui\n")
@@ -127,6 +164,8 @@ class ProductWindow:
             try:
                 event = self.events.get(timeout=0.5)
             except queue.Empty:
+                if self.proc.poll() is not None:
+                    raise TimeoutError("the window ended before it answered")
                 continue
             if event.get("ev") == "ui":
                 return event

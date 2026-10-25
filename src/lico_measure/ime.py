@@ -8,6 +8,7 @@ method sees ordinary key events.
 from __future__ import annotations
 
 import os
+import queue
 import secrets
 import shutil
 import subprocess
@@ -28,9 +29,20 @@ class InputMethod:
     def __init__(self, display: str) -> None:
         home = _client_home()
         # the daemon's socket lives under its cache directory; keep that path short (Unix socket limit)
-        cache = REPO / "private" / "k"
-        shutil.rmtree(cache, ignore_errors=True)   # stale sockets of earlier private daemons
-        cache.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root = REPO / "private" / "k"
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        for old in root.iterdir():                  # stale sockets of private daemons that a killed run left (not those of runs in parallel with this one)
+            if time.time() - old.stat().st_mtime > 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        while True:                                 # a name of two characters: the Qt client cannot reach a daemon whose socket path is much longer than the old one
+            token = secrets.token_hex(1)
+            cache = root / token
+            try:
+                cache.mkdir(mode=0o700)
+                break
+            except FileExistsError:
+                continue
+        self.cache = cache
         self.env = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "LANG": "C.UTF-8", "DISPLAY": display,
             "HOME": str(home), "XDG_CONFIG_HOME": str(home / "config"), "XDG_CACHE_HOME": str(cache),
@@ -38,7 +50,8 @@ class InputMethod:
         }
         address = f"unix:abstract=lico-ime-{os.getpid()}-{secrets.token_hex(4)}"
         # a bus with no service directories: nothing is activated on it, only the processes we start
-        config = home / "run" / "private-bus.conf"
+        config = home / "run" / f"private-bus-{token}.conf"
+        self.config = config
         config.write_text(
             f"<busconfig><type>session</type><listen>{address}</listen><auth>EXTERNAL</auth>"
             "<policy context='default'><allow send_destination='*' eavesdrop='true'/>"
@@ -73,6 +86,8 @@ class InputMethod:
                 except OSError:
                     pass
             proc.wait()
+        shutil.rmtree(self.cache, ignore_errors=True)
+        self.config.unlink(missing_ok=True)
 
 
 def _focus(display: str) -> None:
@@ -101,46 +116,88 @@ def _analyse(events: list[dict]) -> dict:
     return {"committed_only_grows": grows, "final_text": committed, "ime_events": ime, "trace": trace[-40:]}
 
 
-def composition_run(candidate: str, delay_ms: int = 80, producing: int = 0) -> dict:
-    """Type the sentence through the input method into the candidate's input line."""
+class CompositionRig:
+    """One virtual display with its input method, for several runs one after the other (each run has its own host and client)."""
+
+    def __enter__(self) -> "CompositionRig":
+        self.used = False
+        self.xvfb = Xvfb()
+        try:
+            self.method = InputMethod(self.xvfb.display)
+        except BaseException:
+            self.xvfb.stop()
+            raise
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.method.stop()
+        self.xvfb.stop()
+
+    def fresh_engine(self) -> None:
+        """The Hangul engine keeps its Latin/Hangul mode for all input contexts: switching away and back starts it again in Latin mode, as a first run finds it."""
+        if not self.used:
+            self.used = True
+            return
+        for name in ("xkb:us::eng", "hangul"):
+            subprocess.run(["ibus", "engine", name], env=self.method.env, capture_output=True, check=True, timeout=10)
+
+
+def _focus_when_mapped(display: str, timeout: float = 10.0) -> None:
+    end = time.monotonic() + timeout
+    while True:
+        try:
+            return _focus(display)
+        except RuntimeError:
+            if time.monotonic() > end:
+                raise
+            time.sleep(0.1)
+
+
+def _collect(client, quiet: float, limit: float) -> list[dict]:
+    """The client's `ime` events, until none has come for `quiet` seconds (other lines, such as output, do not count) or `limit` seconds have passed."""
+    events, end = [], time.monotonic() + limit
+    last = time.monotonic()
+    while time.monotonic() < end and time.monotonic() - last < quiet:
+        try:
+            message = client.lines.get(timeout=0.05)
+        except queue.Empty:
+            continue
+        if message.get("ev") == "ime":
+            events.append(message)
+            last = time.monotonic()
+    return events
+
+
+def composition_run(candidate: str, delay_ms: int = 80, producing: int = 0, rig: CompositionRig | None = None) -> dict:
+    """Type the sentence through the input method into the candidate's input line. With `rig` the display and the input method are the rig's."""
+    if rig is None:
+        with CompositionRig() as own:
+            return composition_run(candidate, delay_ms, producing, own)
     with private_dir() as directory:
-        xvfb = Xvfb()
         host = None
-        method = None
         client = None
         try:
+            rig.fresh_engine()
             host = Host(directory, sessions=1, producing=producing, history=500)
-            method = InputMethod(xvfb.display)
-            client = Client(candidate, host.socket, xvfb.display, extra_env=method.client_env)
+            client = Client(candidate, host.socket, rig.xvfb.display, extra_env=rig.method.client_env)
             sid = host.sessions[0]
             client.send(f"show {sid}")
             client.expect("state", "subscribed")
-            time.sleep(1.0)
-            _focus(xvfb.display)
+            time.sleep(0.3)                                         # the toolkit makes its window and its input context after `ready`; none of the clients says when it is done
+            _focus_when_mapped(rig.xvfb.display)
             time.sleep(0.5)
-            while not client.lines.empty():
-                client.lines.get_nowait()
-            env = dict(os.environ, DISPLAY=xvfb.display)
+            _collect(client, quiet=0.2, limit=1.0)
+            env = dict(os.environ, DISPLAY=rig.xvfb.display)
             # the engine starts in Latin mode; its trigger key switches to Hangul
             subprocess.run(["xdotool", "key", "shift+space"], env=env, check=True)
-            time.sleep(0.5)
-            while not client.lines.empty():
-                client.lines.get_nowait()
+            _collect(client, quiet=0.3, limit=1.0)                  # what the switch said is not part of the sentence
             subprocess.run(["xdotool", "key", "--delay", str(delay_ms), *SENTENCE_KEYS], env=env, check=True)
-            time.sleep(1.0)
+            events = _collect(client, quiet=0.4, limit=4.0)
             client.send("text")
-            time.sleep(0.5)
-            events = []
-            while not client.lines.empty():
-                message = client.lines.get_nowait()
-                if message.get("ev") == "ime":
-                    events.append(message)
+            events += _collect(client, quiet=0.25, limit=2.0)
             return _analyse(events)
         finally:
             if client:
                 client.kill()
-            if method:
-                method.stop()
             if host:
                 host.stop()
-            xvfb.stop()
