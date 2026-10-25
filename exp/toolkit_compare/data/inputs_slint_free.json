@@ -1,0 +1,12 @@
+{
+ "type": "hello world",
+ "home_delete": "ello world",
+ "end_backspace": "ello worl",
+ "clipboard_after_copy": "ello worl",
+ "after_paste": "ello worlello worl",
+ "shift_arrows_delete": "ello worlello wo",
+ "select_all_delete": "",
+ "undo": "",
+ "output_selection_copy": "7 603e82a87e2147b1560bd1814de1a87d608721ab303c9c6e6354f",
+ "primary_selection": "4 62be3357380907eed2aa723583c8ff690a55d54f39fe2d6582739"
+}

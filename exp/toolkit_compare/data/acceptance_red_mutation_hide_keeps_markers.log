@@ -1,0 +1,6 @@
+E        +      where <lico_measure.xpixel.PixelReader object at 0x7bd886111730> = <harness.Scene object at 0x7bd886110890>.reader
+
+exp/toolkit_compare/test_acceptance.py:54: AssertionError
+=========================== short test summary info ============================
+FAILED exp/toolkit_compare/test_acceptance.py::test_hide_releases_the_view_and_neutralises_the_markers[egui]
+1 failed, 14 deselected in 3.31s

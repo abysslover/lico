@@ -1,0 +1,12 @@
+{
+ "type": "hello world",
+ "home_delete": "ello world",
+ "end_backspace": "ello worl",
+ "clipboard_after_copy": "ello worl",
+ "after_paste": "ello worlello worl",
+ "shift_arrows_delete": "ello worlello wo",
+ "select_all_delete": "",
+ "undo": "abc",
+ "output_selection_copy": "ello worl",
+ "primary_selection": null
+}

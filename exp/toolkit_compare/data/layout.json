@@ -1,0 +1,5 @@
+{
+ "egui": {"File": [57, 11], "Session": [97, 11], "Help": [160, 11], "entry": [700, 790], "output": [700, 300], "menu_find_clicks": [[97, 11], [170, 84]]},
+ "iced": {"File": [55, 16], "Session": [116, 16], "Help": [181, 16], "entry": [700, 785], "output": [700, 300], "menu_find_clicks": [[116, 16], [150, 100]]},
+ "slint": {"File": [20, 18], "Session": [75, 18], "Help": [130, 18], "entry": [700, 785], "output": [700, 300], "menu_find_clicks": [[75, 18], [118, 94], [250, 96]]}
+}

@@ -49,3 +49,4 @@ product.
 ## Progress
 
 - 2026-10-25: Draft written after the owner confirmed that the 50 MiB principle stays; G2 approved the same day, execution starts.
+- 2026-10-25 S01: shared protocol crate, three minimal clients (egui 0.34.3 + egui_software_backend 0.0.3, iced 0.14.0 tiny-skia + iced_aw 0.14.1, slint 1.18.1 software renderer), build script, rig adapter (exp/toolkit_compare), licence and crate inventory, acceptance tests with a red run (empty build root and a mutation of hide) and a green run (15 passed). Input checks (editing keys, clipboard, menu keyboard, Korean in the entry line and in a menu) ran on private displays. Next: the rig runs at scale 1 and 2, then the table and report.

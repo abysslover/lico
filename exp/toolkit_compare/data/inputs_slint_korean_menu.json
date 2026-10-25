@@ -1,0 +1,7 @@
+{
+ "final_find_text": "안녕하세요 한글 ",
+ "expected": "안녕하세요 한글 ",
+ "exact": true,
+ "find_note_count": 9,
+ "ime_event_kinds": []
+}
