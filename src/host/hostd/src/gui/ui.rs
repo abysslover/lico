@@ -73,6 +73,8 @@ pub struct UiState {
     pub window_span: (usize, usize),
     pub proxy: Option<winit::event_loop::EventLoopProxy<super::Ev>>, // for the answer of a paste, which is fetched off the event loop
     pub paste_pending: bool,
+    pub hint_buffer: Option<(String, Buffer)>, // the permanent hint line at the bottom, shaped again only when its text changes
+    pub numbered: Vec<String>, // the sessions in the order of the list: Alt+1..9 pick by this number
     pub host_notice: Option<String>, // the host runs another build than this window (or was replaced): one line, always shown
     pub flash: Option<String>, // a one-line notice outside the panels, until the next key
     pub panel: Option<super::panel::Panel>, // new session, accounts and sign-in, in place of the transcript
@@ -240,13 +242,18 @@ impl App {
             }
         }
         let mut rows_text = Vec::new();
+        let mut number = 0usize;
+        self.ui.numbered.clear();
         for (provider, account) in &groups {
             rows_text.push(format!("{provider} / {}", self.label_of(account)));
             for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
                 let marker = if row.session == self.session { ">" } else if !row.approvals.is_empty() { "!" } else { " " };
                 let approvals = if row.approvals.is_empty() { String::new() } else { format!(" x{}", row.approvals.len()) };
                 let short: String = row.session.chars().take(7).collect();
-                rows_text.push(format!("{marker} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at)));
+                number += 1;
+                self.ui.numbered.push(row.session.clone());
+                let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
+                rows_text.push(format!("{marker}{digit} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at)));
             }
         }
         text.push_str(&rows_text.join("\n"));
@@ -408,11 +415,7 @@ impl App {
                         }
                         if let Some((_, _, id)) = self.ui.hit_rows.iter().find(|r| y >= r.0 && y < r.1).cloned() {
                             if id != self.session {
-                                self.ui.scroll = 0;
-                                self.ui.sel = None;
-                                self.ui.behind = false;
-                                self.ui.history_pending = false;
-                                self.show(&id, None);
+                                self.switch_to(&id);
                             }
                         }
                     } else if self.inside(self.ui.allow_rect, x, y) {
@@ -441,7 +444,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.panel_key(event) || self.paste_key(event) || self.approval_key(event) {
+                if self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -451,7 +454,11 @@ impl App {
                         true
                     }
                     Key::Named(NamedKey::Escape) => {
-                        self.ui.sel = None;
+                        if self.ui.sel.is_some() {
+                            self.ui.sel = None; // Esc with a selection only drops the selection
+                        } else if self.input.is_empty() && self.preedit.is_empty() && !self.session.is_empty() {
+                            self.go_start(); // an empty input line: back to the start screen (the session keeps running)
+                        }
                         self.dirty = true;
                         true
                     }
@@ -528,6 +535,89 @@ impl App {
         self.dirty = true;
     }
 
+    /// Go to a session: its view is attached, the one before is detached (its draft stays with it).
+    pub(crate) fn switch_to(&mut self, id: &str) {
+        self.ui.scroll = 0;
+        self.ui.sel = None;
+        self.ui.behind = false;
+        self.ui.history_pending = false;
+        self.show(id, None);
+        self.dirty = true;
+    }
+
+    /// Back to the start screen: no session is shown, nothing is ended.
+    pub(crate) fn go_start(&mut self) {
+        self.ui.scroll = 0;
+        self.ui.sel = None;
+        self.ui.behind = false;
+        self.ui.history_pending = false;
+        self.hide();
+        self.dirty = true;
+    }
+
+    /// Ctrl+Tab and Ctrl+Shift+Tab: next and previous session of the list (wrapping); Alt+1..9: the session with that number.
+    pub(crate) fn nav_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if self.ui.panel.is_some() || self.ui.numbered.is_empty() {
+            return false;
+        }
+        let ids = self.ui.numbered.clone();
+        let here = ids.iter().position(|id| *id == self.session);
+        let target = match &event.logical_key {
+            Key::Named(NamedKey::Tab) if self.ui.mods.control_key() => {
+                let n = ids.len();
+                Some(match (here, self.ui.mods.shift_key()) {
+                    (None, false) => 0,
+                    (None, true) => n - 1,
+                    (Some(i), false) => (i + 1) % n,
+                    (Some(i), true) => (i + n - 1) % n,
+                })
+            }
+            Key::Character(c) if self.ui.mods.alt_key() && !self.ui.mods.control_key() => c.chars().next().and_then(|d| d.to_digit(10)).filter(|d| *d >= 1).map(|d| d as usize - 1).filter(|i| *i < ids.len()),
+            _ => None,
+        };
+        match target {
+            Some(i) if !event.repeat => {
+                if ids[i] != self.session {
+                    self.switch_to(&ids[i]);
+                }
+                true
+            }
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    /// What the start screen says while no session is shown.
+    pub(crate) fn start_lines(&self) -> Vec<String> {
+        let mut lines = vec!["No session is open.".to_string(), "Ctrl+N  new session".to_string(), "Ctrl+A  accounts and sign-in".to_string()];
+        if !self.ui.numbered.is_empty() {
+            lines.push("Alt+1 to Alt+9, Ctrl+Tab or a click on the list opens a session; they keep running when you leave them.".to_string());
+        }
+        lines
+    }
+
+    /// The permanent line at the bottom: the keys that exist, fewer of them when the window is narrow (the right-most go first).
+    pub(crate) fn hint_text(&self, width: usize, scale: f32) -> String {
+        let escape = if self.ui.panel.is_some() { Some("Esc back out") } else if !self.session.is_empty() { Some("Esc session list") } else { None };
+        let mut items = vec!["Ctrl+N new session", "Ctrl+A accounts", "Ctrl+Tab next session", "Alt+1-9 session by number"];
+        if let Some(e) = escape {
+            items.insert(2, e);
+        }
+        if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) {
+            items.insert(0, "Y allow  N deny");
+        }
+        let cols = (width as f32 / (8.5 * scale)) as usize;
+        let mut text = String::new();
+        for item in items {
+            let next = if text.is_empty() { item.to_string() } else { format!("{text}   {item}") };
+            if next.chars().count() > cols {
+                break;
+            }
+            text = next;
+        }
+        text
+    }
+
     /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
     /// one of them is never taken for an answer) and no panel is open.
     pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
@@ -585,6 +675,8 @@ impl App {
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(),
+            "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.hit_rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
                 "allow": self.ui.allow_rect, "deny": self.ui.deny_rect,
@@ -609,6 +701,7 @@ impl App {
         self.refresh_list();
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
+        let hint = self.hint_text(width, s);
         let panel_view = self.panel_view();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
         if let (Some(_), Some(n)) = (&panel_view, &self.ui.host_notice) {
@@ -757,6 +850,18 @@ impl App {
             blit(deny, fs, swash, &mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, i32::MAX, ink);
         }
         blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + (4.0 * s) as i32, 0, i32::MAX, ink);
+        // the permanent hint line, over whatever reaches the bottom row
+        let hint_y = (height as f32 - lh) as i32;
+        rect(&mut buf, width, height, 0, hint_y, width as i32, lh as i32 + 1, 0xFF18_1E26);
+        let entry = self.ui.hint_buffer.get_or_insert_with(|| (String::new(), Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s))));
+        if entry.0 != hint {
+            entry.1.set_size(Some(width as f32), Some(lh));
+            entry.1.set_text(&hint, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
+            entry.1.shape_until_scroll(fs, true);
+            entry.0 = hint.clone();
+        }
+        let hint_swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
+        blit(&mut entry.1, fs, hint_swash, &mut buf, width, height, (4.0 * s) as i32, hint_y, i32::MAX, Color::rgb(0x9A, 0xA4, 0xB0));
         window.pre_present_notify();
         let _ = buf.present();
     }
