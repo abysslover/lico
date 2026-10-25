@@ -1,6 +1,6 @@
 # Screens: what the window shows
 
-Status: v1.2 (v1.0 plus the measurements of POC-0 and S05, the D4 result and the input echo), v1.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
+Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -111,7 +111,7 @@ Long:
 | To       1 api-server     [ 2 docs ]     3 scratch                                     |
 |                                                                                        |
 | Delivery  as a file (38 KiB is more than 4 KiB). Nothing is cut.                       |
-|           Saved under Lico's handoff folder; 'docs' gets the path and the first lines. |
+|          Saved in the handoff folder of 'docs'; it gets the path and the first lines.  |
 |           The file may hold secrets from the conversation: it stays on this machine,   |
 |           owner-only, and is removed after 30 days.                                    |
 |                                                                                        |
@@ -120,7 +120,7 @@ Long:
 ```
 
 - What is sent is one of: the text in the input box, the selected lines, or the whole conversation. The receiving session is chosen from the list or by number.
-- **Up to 4 KiB** is delivered as it is. **Anything longer is saved as a file**, and the window says so first. Nothing is cut; because the file may contain secrets, it stays on this machine and only its owner can read it.
+- **Up to 4 KiB** is delivered as it is. **Anything longer is saved as a file**, and the window says so first. Nothing is cut; because the file may contain secrets, it stays on this machine, only its owner can read it, and only the receiving session is given the folder.
 
 ## 5. What the receiving session sees (P03)
 
@@ -128,7 +128,7 @@ Long:
 +- What the receiving agent gets (long content) -----------------------------------------+
 | [from session 'api-server' (a1b2c3d) | 14:02 | conversation | 38 KiB, 912 lines]       |
 | Long content, saved as a file. Read it before you answer:                              |
-|   <handoff folder>/20261026/140212_a1b2c3d_to_e4f5a6b_conversation.md                  |
+|   <your handoff folder>/20261026/140212_a1b2c3d_conversation.md                        |
 | First lines:                                                                           |
 |   # Conversation of 'api-server' (records 1201-3350 of 3350; older ones pruned)        |
 |   you: fix the failing login test                                                      |
@@ -138,7 +138,7 @@ Long:
 ```
 
 - The header makes clear that this is "sent by another session" and not text a person wrote. The window shows it as `from api-server` too.
-- For long content only the path and the first lines arrive, and the receiving agent reads the file.
+- For long content only the path and the first lines arrive, and the receiving agent reads the file. The file lies in that session's own handoff folder; no other session is given it.
 
 The start of a handoff file:
 
@@ -172,7 +172,7 @@ The start of a handoff file:
 +----------------------------------------------------------------------------------------+
 ```
 
-- It appears in the window when an agent sends to another session or creates one. Answer with the Y/N keys or the buttons. "Allow for this session" lasts only while that session is alive.
+- It appears in the window when an agent sends to another session, reads another session's conversation, or creates a session. It is asked once per call, even when the agent's own permission prompts are on. Answer with the Y/N keys or the buttons. "Allow for this session" lasts only while that session is alive.
 
 ## 7. The real screen (P05)
 

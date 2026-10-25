@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: v1.2 (v1.0 plus the measurements of POC-0 and S05, the D4 result and the input echo), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -29,7 +29,7 @@ Related documents: [planning](planning.md) · [screens](screens.md) · [test pla
 | WK-02 | The folder must be an existing directory. Otherwise the window shows the reason and no session is created. | U, W | P02 | planned |
 | WK-03 | The new-session screen offers the 10 most recent folders. The list is kept only in the host and sent nowhere. | P | P02 | planned |
 | WK-04 | Resume uses the same folder. If the folder is gone, resume is refused and the reason is shown. | P, W | P02 | planned |
-| WK-05 | A session with permission prompts on (`default`) may read and write only its work folder and the Lico handoff folder (`--add-dir`). | P | P02, P03 | planned |
+| WK-05 | A session with permission prompts on (`default`) may read and write only its work folder and its own Lico handoff folder (`--add-dir`; one per session, SC-05). | P | P02, P03 | planned |
 | WK-06 | **Deleting a session removes only the scratch folder the host made. A folder the user chose is never deleted or modified.** (Today the delete code removes `workspace_root/<session>` as a whole, which becomes dangerous the moment a folder can be chosen.) | P | P02 | planned |
 
 ## SX: creating and managing sessions (P02)
@@ -80,9 +80,9 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | SC-01 | Send the text of the input box to another session (Session > Send to session...). A picker for the receiving session opens. | W, P | P03 | planned |
 | SC-02 | Send the selected lines to another session. | W, P | P03 | planned |
 | SC-03 | Hand a whole conversation over to another session (Hand over conversation...). | W, P | P03 | planned |
-| SC-04 | **Size rule:** up to 4 KiB is delivered as it is, with a header (after IN-01 has raised the host input limit; today the host takes 512 B at most). Anything longer is saved as a file in the handoff folder and the receiving session gets a short notice (source, time, size, path, first lines) and one line on how to read it (the Read tool refuses over about 25,000 tokens, so the notice says to read in parts; in POC-0, 5 of 16 runs first hit that limit and all recovered, *measured*). **Nothing is cut.** The sending tool checks the exit code: a refused send exits 2 and the receiving session does nothing. | U, P | P03 | planned |
-| SC-05 | The handoff folder lies under Lico's state folder outside the repository (folder 0700, files 0600). It is opened with `--add-dir` so sessions with permission prompts on can read it (POC-0: with the folder opened, 0 of 4 runs asked for approval; without it, 4 of 4 did, *measured*). | P | P03 | planned |
-| SC-06 | Retention: files older than 30 days are removed, and when the total exceeds 256 MiB the oldest go first. The notice says the file may be removed later. | U | P03 | planned |
+| SC-04 | **Size rule:** up to 4 KiB is delivered as it is, with a header (after IN-01 has raised the host input limit; today the host takes 512 B at most). Anything longer is saved as a file in the receiving session's handoff folder (SC-05) and that session gets a short notice (source, time, size, path, first lines) and one line on how to read it (the Read tool refuses over about 25,000 tokens, so the notice says to read in parts; in POC-0, 5 of 16 runs first hit that limit and all recovered, *measured*). **Nothing is cut.** The sending tool checks the exit code: a refused send exits 2 and the receiving session does nothing. | U, P | P03 | planned |
+| SC-05 | **Each session has its own handoff folder** (an inbox), under Lico's state folder outside the repository (folder 0700, files 0600, laid out by receiving session and date). It is made when the session starts and removed with the session (SF-07). It is opened with `--add-dir` for **that session only**, so sessions with permission prompts on can read it (POC-0, with one folder shared by all: with the folder opened, 0 of 4 runs asked for approval; without it, 4 of 4 did, *measured*; a folder per session is the same mechanism and is checked again in P03). A session with permission prompts on can read what was sent to it and nothing sent to another session, including a whole conversation that holds secrets. A session whose program has permissions skipped can read any file of the user, as it can today, so for it the split is least privilege and not a sandbox (SF-08). | P | P03 | planned |
+| SC-06 | Retention: files older than 30 days are removed, and when the total over all handoff folders exceeds 256 MiB the oldest go first. The notice says the file may be removed later. | U | P03 | planned |
 | SC-07 | The whole conversation is built from the **provider's own record** (read by the adapter), not from the host record: the host record holds no user input and is deleted in pieces of a quarter of its retention (*measured*). The file states the first and last record numbers and, if older records have already been pruned, says so (**a pruned record never looks like the whole**). Tool calls and results are included unfolded; images are listed by size only. Whether to raise the host record retention (2,048 records today) is decided in P03 by measurement. | U, P | P03 | planned |
 | SC-08 | The receiving session sees clearly, by the header, that this is "sent by another session" and not text a person wrote. The window also shows `from <name>`. | W | P03 | planned |
 | SC-09 | Transfer log: who sent what (kind, size) to whom and when is kept in the host log. The content is not kept. | P | P03 | planned |
@@ -94,8 +94,8 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 |---|---|---|---|---|
 | AC-01 | The host serves a **tool connection** (MCP, loopback HTTP) guarded by a per-session token and attaches it with `--mcp-config` when the session starts. | P, E | P03 | planned |
 | AC-02 | Tools: list sessions, send to another session, read another session, create a session. Each has a CLI doing the same thing (people and tests use the same path without a model). | P | P03 | planned |
-| AC-03 | Sensitive tools (create a session, send to another session, write to the screen) go through an approval in the window. A session can be given "keep allowing for this session". | W, P | P03 | planned |
-| AC-04 | Runaway protection: a per-session sends-per-minute limit and a depth limit on send chains (an A to B to A cycle is stopped). When hit, the tool returns the reason. | U, P | P03 | planned |
+| AC-03 | Sensitive tools (create a session, send to another session, read another session's conversation, write to the screen) go through an approval in the window, **once per call**: a session whose program also asks before running a tool must not show the person two prompts for one call (P03 step S01 measures how to achieve this). A session can be given "keep allowing for this session". | W, P | P03 | planned |
+| AC-04 | Runaway protection: (1) a per-session sends-per-minute limit; (2) a **hop limit on exchanges between agents**: every message an agent sends carries the number of agent hops since a person last wrote into the chain, a person's input restarts the count, and a send beyond 4 hops is refused. A reply is allowed (A sends to B, B answers A: hops 1 and 2); an exchange that keeps going stops at the limit; (3) the sessions created by agents that are alive at once are capped (4 per creating session, 8 in all), and "keep allowing" never lifts the cap. When a limit is hit, the tool returns the reason with the numbers. | U, P | P03 | planned |
 | AC-05 | No new process per session (the connection is served inside the host). | M | P03 | planned |
 | AC-06 | The token is new for every session and every start, the config file is 0600 and removed when the session ends. It appears in no log and no screen. | U, P | P03 | planned |
 | AC-07 | **The first step (P03-S01) is a test:** check that the installed Claude Code really uses this tool connection in `-p stream-json` mode. If not, go with the CLI only (the agent calls `lico ...` from a shell) under the same approval rules. | E | P03 | planned |
@@ -141,13 +141,14 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| SF-01 | Sensitive actions (real screen, create a session, send to another session) do not run without an approval in the window (a per-session pre-allow excepted). | P, W | P03 to P05 | planned |
+| SF-01 | Sensitive actions (real screen, create a session, send to another session) do not run without an approval in the window (a per-session pre-allow excepted; what this does not cover is stated in SF-08). | P, W | P03 to P05 | planned |
 | SF-02 | The sign-in code appears neither on screen nor in any record (existing rule kept). | P | all | planned |
 | SF-03 | Lico actions started by an agent are kept in an audit record (what, which session, when). Message bodies and screen contents are not kept. | P | P03 to P05 | planned |
 | SF-04 | Public hygiene: handoff folders, capture folders and tokens are not placed inside the repository. Tests and documents contain no workstation paths, names or raw conversations. | U, L | all | planned |
 | SF-05 | The tool channel (P03 to P05) targets Claude Code sessions only. Other providers are out of scope. | P | P03 to P05 | planned |
 | SF-06 | Real-screen control and clipboard writing are off by default. | P | P04, P05 | planned |
 | SF-07 | Lico never deletes or modifies a folder the user chose. It removes only the scratch, handoff and capture folders it made (WK-06). | P | all | planned |
+| SF-08 | **Approvals and handoff folders are consent and least privilege, not a sandbox.** A session whose program has permissions skipped runs shell commands as the owner: it can read the owner's files and call the `lico` command line as the owner does. Lico stops unasked use of its own tool channel (SF-01), keeps each session's handoff folder to that session where the program asks first, records what agents do (SF-03), and says this limit plainly in the user documentation. A sandbox per session is outside M02. | L | P03 | planned |
 
 ## MB: memory budget (design targets, before measurement)
 
