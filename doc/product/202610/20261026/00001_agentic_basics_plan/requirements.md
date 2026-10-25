@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: v1.2 (v1.0 plus the measurements of POC-0 and S05, the D4 result and the input echo), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -69,6 +69,7 @@ Found by re-reading the code (2026-10-26). The host accepts only **512 bytes on 
 | IN-05 | Multi-line paste: text with newlines enters the box as it is. Over the limit it is not pasted and the reason is shown. | W, P | P02 | planned |
 | IN-06 | A draft over the limit is **neither dropped silently nor sent**: one line under the box says why and the draft stays. Long text is better saved to a file and sent as a path (the SC-04 rule). | W | P02 | planned |
 | IN-07 | With the box empty or on its first line, the up key recalls what this session was sent before. Drafts are kept per session when you switch sessions. | W | P02 | planned |
+| IN-08 | What is sent appears in the conversation at once (the input echo, the P02 part of SC-10): the first 12 lines or 2 KiB as lines that start with `> `, and when more was sent one line with the exact amount left out. The input box has no echo code of its own; it draws the records the host gives. **Added by the lead on 2026-10-26 03:40 (changes v1.2).** | U, W | P02 | planned |
 
 Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates).
 
@@ -85,7 +86,7 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | SC-07 | The whole conversation is built from the **provider's own record** (read by the adapter), not from the host record: the host record holds no user input and is deleted in pieces of a quarter of its retention (*measured*). The file states the first and last record numbers and, if older records have already been pruned, says so (**a pruned record never looks like the whole**). Tool calls and results are included unfolded; images are listed by size only. Whether to raise the host record retention (2,048 records today) is decided in P03 by measurement. | U, P | P03 | planned |
 | SC-08 | The receiving session sees clearly, by the header, that this is "sent by another session" and not text a person wrote. The window also shows `from <name>`. | W | P03 | planned |
 | SC-09 | Transfer log: who sent what (kind, size) to whom and when is kept in the host log. The content is not kept. | P | P03 | planned |
-| SC-10 | The host records the **inputs** it receives (typed by a person, sent by another session). A record is cut at the record limit (4,096 B today) and says it was cut; text sent by another session carries a header (`from <name>`). Today inputs are not in the host record, so the receiving session's conversation shows an answer with no question (*measured*). | U, P, W | P03 | planned |
+| SC-10 | The host records the **inputs** it receives (typed by a person, sent by another session). **P02 (input echo):** on accepting an input the host records up to the first 12 lines and 2 KiB of it as records that start with `> `, and adds one line with the exact count and size of what was left out ("the agent received all of it"). It never cuts silently. The full text is not kept in the host record (the provider's record holds it and SC-07 builds from there). A repeated request id echoes once; a refused input echoes nothing. **P03:** text sent by another session carries a header (`from <name>`). Today inputs are not in the host record, so the conversation shows an answer with no question (*measured*). | U, P, W | P02, P03 | planned |
 
 ## AC: Lico tools the agent can call (P03)
 

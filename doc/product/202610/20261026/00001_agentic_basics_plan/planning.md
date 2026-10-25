@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finishing: the test cleanup (S05) is under way and P02 starts when it is reported. Numbers in this document are **design targets** unless they are marked *measured*.
+Status: v1.2 (v1.0 plus the measurements of POC-0 and S05, the D4 result and the input echo), v1.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finished on its branch (test cleanup S05 included) and P02 is under way: its plan note is written and its host step (S02) is built and tested; the commit waits for the repository's list of approved branches to include P02 (an owner action). Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
@@ -10,8 +10,8 @@ Related documents: [requirements](requirements.md) · [screens](screens.md) · [
 |---|---|
 | Goal | Give Lico the basics of an agentic-coding tool: sessions in a real folder, sending between sessions, Lico tools the agent can call, screen capture and copy/paste, computer use, and the memory of each session shown in the window |
 | Order | **Define the features (this document), build them (P02 to P06), then optimise memory (P07).** The original philosophy stays as a hard limit: the idle window stays under 50 MiB |
-| In parallel | **POC-0**: a throwaway proof of concept, no product code, that runs the four features roughly and measures memory (see "POC-0" below). Option A, approved 2026-10-26 |
-| Now | P01 wrap-up: menu bar, fonts, scroll speed and the activity indicator are done; the **test cleanup (S05)** is in progress. P02 starts when it is reported |
+| Done first | **POC-0** (finished 2026-10-26 03:20): a throwaway proof of concept, no product code, that ran the four features roughly and measured memory (see "POC-0" below). Option A, approved 2026-10-26, started 01:05 |
+| Now | P01 is finished on its branch (menu bar, fonts, scroll speed, activity indicator, test cleanup S05: whole suite 596 s to 112 s). **P02 is under way:** plan note done, host step S02 built and tested; its commit waits for the owner's approval |
 | Owner's next step | G1 is approved (2026-10-26). The next thing that reaches the owner is the **inspection (G3) and merge (G4) at the end of P02**, together with P01 |
 
 ## Why the order changes
@@ -38,7 +38,7 @@ Milestone **M02 "Agentic-coding basics"**. It replaces P02 to P06 of the earlier
 |---|---|---|---|
 | **POC-0** facts first | The four features run roughly with no product code, and memory is measured (option A, 4 h target) | not applicable | approved, in progress |
 | **P01** menu, controls, speed | Menu bar, font and scroll speed, activity indicator, test cleanup (S05) | idle window 23.6 / 34.6 MiB at scale 1 / 2 (*measured*) | in progress |
-| **P02** sessions with a folder | New-session screen (folder, name, account, model, effort, permission), close, rename, delete, **memory shown at the right of each session**, **input-box basics** (long text, several lines, cursor movement) | window +1 MiB at most | planned |
+| **P02** sessions with a folder | New-session screen (folder, name, account, model, effort, permission), close, rename, delete, **memory shown at the right of each session**, **input-box basics** (long text, several lines, cursor movement) and the **input echo** in the conversation (IN-08) | window +1 MiB at most | planned |
 | **P03** between sessions, tool channel | Send text, selected lines or a whole conversation from session A to B (long content goes by file path); Lico tools the agent can call (list, send, read, create) | window 0, no new process per session | planned |
 | **P04** screen, copy/paste | Capture screen, window or region; clipboard (text, image) read and write; image paste; middle-button paste | temporary +6 MiB at most, returned afterwards | planned |
 | **P05** computer use | Click, type, keys, scroll; a private virtual display for the agent; the real screen only when allowed | only for the session that asks, ended with the session. One probe: virtual display 61 + helper 12 MiB (*measured*) | planned |
@@ -47,7 +47,7 @@ Milestone **M02 "Agentic-coding basics"**. It replaces P02 to P06 of the earlier
 
 Details and checks are in the [requirements](requirements.md); the look of each screen is in [screens](screens.md).
 
-## POC-0: turn assumptions into facts first (option A approved, D1 to D3 done, D4 left)
+## POC-0: turn assumptions into facts first (option A approved, D1 to D4 done)
 
 **What.** Before building the product, put throwaway tools on the existing host, run the four features roughly, and measure. The host already takes extra arguments for the Claude process (`--claude-arg`), so **no product code changes.** Target 4 hours, cap 8 hours. The result is one page with captures, numbers and a verdict (works / conditional / does not work). It replaces the values in "Working assumptions" with measurements.
 
@@ -58,7 +58,7 @@ Details and checks are in the [requirements](requirements.md); the look of each 
 | D3 X tools | In a private virtual display, does Claude work from a capture image with click, type, keys and clipboard? Time and memory of one step |
 | D4 combined | Session A copies, hands over to session B, B answers; a memory table at the end |
 
-**How.** Two helper agents ran in parallel: (1) D1 and D2 (memory, transfer), (2) D3 (X tools and the Lico window). **D1 to D3 are done.** The lead recomputed every number from the raw logs and corrected two counts in the helpers' reports (runs that first hit the read limit: 6 became 5 of 16; oversized lines dropped: "9" became 6 of 6). D4 (combined) is the lead's own run and is still to do. Every run used `claude-haiku-5-5`, so "works" is a floor on an easy task, not a statement about the model the owner will pick. The table gives the number of runs behind each figure and says "one run" where it is one.
+**How.** Two helper agents ran in parallel: (1) D1 and D2 (memory, transfer), (2) D3 (X tools and the Lico window); the lead ran D4 (the combined chain) alone. **D1 to D4 are done (2026-10-26, started 01:05, finished 03:20).** The lead recomputed every number from the raw logs and corrected two counts in the helpers' reports (runs that first hit the read limit: 6 became 5 of 16; oversized lines dropped: "9" became 6 of 6). D4 ran two sessions and a private virtual display and gave the same result three times (table below). Every run used `claude-haiku-5-5`, so "works" is a floor on an easy task, not a statement about the model the owner will pick. The table gives the number of runs behind each figure and says "one run" where it is one.
 
 | Question | Verdict | Key numbers |
 |---|---|---|
@@ -71,14 +71,22 @@ Details and checks are in the [requirements](requirements.md); the look of each 
 | Does Claude work from a screen through X tools (host in stream-json mode)? | **Works** | Read the code, click, confirm: 5 of 5 (median 9.5 s). Six small tasks in the hand-drawn Lico window, 8 of 8 each (one scorer was changed after seeing data, and said so) |
 | What about a big screenshot? | **The host drops a provider line over 256 KiB whole and leaves no trace** | 6 of 6 dropped. Real window captures are mostly over the limit, so P04 must fix it (XF-08) |
 | Memory of one session using X tools | The provider process dominates | Session tree 382 to 487 MiB RSS (Claude 260 to 300, virtual display 60 to 98, helper 29 to 44) (48 runs) |
+| Chain: read the screen, session A sends a file, session B reads it and answers (D4) | **Works** | 3 of 3 complete: the window was gone and B's answer was right on the value in the file, the line count and the order code read from the screen. Prompt to A until B's answer: 13.8, 16.3, 13.9 s (Haiku). A's calls: tool lookup once or twice, screen read 49 to 53 ms, click 124 ms, one send |
+| Approval prompts for the reading session | Opening the handoff folder with `--add-dir` opens **only the Read tool** | 200 KiB, 2 runs: one Read, 0 approvals. 1 MiB, 1 run: shell commands (wc, grep, od), 2 approvals. Proposal for P03 (not tested): a read tool of our own that reads in parts, so the receiver does not reach for the shell |
+| Memory of one session (agent plus two helpers): idle | About 120 MiB private, about 240 MiB RSS | 5 of 6 sessions: private 119.5 to 120.9, RSS 238.7 to 242.2, PSS 151 to 153. One read private 163.5, RSS 285.1 (cause unknown, one sample) |
+| The same session at its peak during a run | Private 150.5 to 176.9, RSS 274.4 to 303.4 MiB | 6 sessions. The screen helper grows from 13 to 29 MiB RSS after its first screenshot (it loads an image library; an upper bound for a Rust helper). 3 to 8 processes |
+| Two sessions, virtual display and host together | Peak sum: RSS 636.5 to 671.2, private 325.2 to 364.1, PSS 433.4 to 445.9 MiB | 3 runs. Host RSS 5.1 to 5.8 (private 0.4 to 1.0), virtual display 62.8 to 63.5 (99.8 once) |
+| The `[session started]` record of a new session | **Appears only after the first message (likely)** | Absent after 60 s in all 6 starts. The host writes it when the provider sends its `init` event (checked in the code); the provider seems to send that only after the first input, not tested separately. The window must not use this record to decide "ready to type" |
 
-The full judgements and the places of the raw data are in the lead's judgement documents (D3, D12), kept in a working folder outside git.
+Limits of D4: the screen was nearly empty (an image of 3.7 KB), so the 256 KiB line limit (XF-08) was not touched; the 1 MiB run answered with grep, so it shows "opened the file and answered right", not "read every byte"; a real X program, a heavy child process and a window manager were not measured.
+
+The full judgements and the places of the raw data are in the lead's judgement documents (D3, D12, D4), kept in a working folder outside git.
 
 **Already known (one probe, *measured*).** An external tool server (70 lines of Python) attached to `claude -p` let Claude (Haiku) read a random code from a **capture image of a private virtual display**, close a window by clicking, and capture again to confirm it was gone (5 turns, 9.7 s). One session used 281 MiB for the Claude process, 12 MiB for the tool helper and 61 MiB for the virtual display (800x500); a session using X tools costs about +73 MiB. This is one run in `-p` mode; the host's stream-json mode and the hand-drawn Lico window were checked in D3 and both work (table above).
 
 **Not done in POC-0.** Controlling the real screen, changing product code, publishing. Only a private socket and a private virtual display are used; the running host is never touched. A POC is not counted as "done".
 
-**Options and decision.** A: D1 to D4 above (half a day). B: the smallest window-visible slice (memory indicator plus a minimal send) first (2 to 3 days). C: go straight through the product path (5 days or more). **The owner chose A (2026-10-26).** B and C are reconsidered only if the POC result calls for it.
+**Options and decision.** A: D1 to D4 above (half a day). B: the smallest window-visible slice (memory indicator plus a minimal send) first (2 to 3 days). C: go straight through the product path (5 days or more). **The owner chose A (2026-10-26).** The result did not change the order or the scope of the milestone; it changed some definitions and limits (changes v1.1 and v1.2). So B and C are not chosen separately: the work goes on along the phase plans already under way (from P02). The remaining uncertainties (the size of a real window screenshot, a real X program such as a browser, a heavy child process) are measured where product code exists: P04, P05 and S06. If the owner wants another order, it changes at once.
 
 ## Decided by the owner
 
@@ -95,6 +103,7 @@ The full judgements and the places of the raw data are in the lead's judgement d
 | 2026-10-26 | **POC-0 goes ahead as option A** (no product code, D1 to D4, 4 h target and 8 h cap, 1 to 2 helper agents, in parallel with test cleanup S05) |
 | 2026-10-26 | **G1 approved**: this whole planning set (scope, order, P01 to P07, approval rhythm, phase plans G2 included). The owner answered "proceed with the recommended option" |
 | 2026-10-26 | **Input-box basics (IN-01 to IN-07) go into P02 as the recommended option A** (64 KiB per input, newline and multi-line, cursor movement, recall with the up key, per-session drafts) |
+| 2026-10-26 | **The input echo (IN-08) is decided by the lead:** the host records an accepted input as lines that start with `> `, the first 12 lines and 2 KiB, and one line with the exact amount left out. SC-10 moves from P03 to P02; only the sender header stays in P03 (changes v1.2). The owner can revert it. |
 
 Rules that keep applying: development workers are Claude-family agents only. The idle window stays under 50 MiB and fast, in one executable. The screen tools use the hand-drawn client. New sessions skip the agent's own permission prompts and use approvals inside the window. The sign-in code is never visible or logged. The host replaces itself when it meets a new build and resumes the sessions that were alive.
 
@@ -107,7 +116,7 @@ The owner proceeded with the recommended option on 2026-10-26, so these values s
 | "X" | Linux X11. Wayland is out of scope (the X server tested is always recorded) | P04, P05 |
 | How the agent calls Lico | A tool connection served directly by the host (MCP, per-session token) plus a CLI doing the same things. If the tool connection does not work, CLI only | P03 |
 | Inline size for sending | Up to 4 KiB inline, longer goes by file (2026-10-26 POC-0: the file way worked 16 of 16). The host's input limit (today 512 B of text, 4 KiB per request line) is raised first by IN-01 | P02, P03 |
-| Input-box basics (approved) | Up to 64 KiB per input (newline and tab allowed), several lines (Enter sends, Shift+Enter inserts a newline), cursor movement, recall with the up key, per-session drafts. Today: 512 B, one line, no cursor movement | P02 |
+| Input-box basics (approved) | Up to 64 KiB per input (newline and tab allowed), several lines (Enter sends, Shift+Enter inserts a newline), cursor movement, recall with the up key, per-session drafts, and what is sent is shown in the conversation folded (IN-08, added by the lead 2026-10-26). Today: 512 B, one line, no cursor movement | P02 |
 | Handoff file retention | 30 days, 256 MiB in total (oldest first when over) | P03 |
 | Host record retention (changed by POC-0, 2026-10-26) | Today 2,048 records. "The whole conversation" is built from the **provider's own record**, not the host record (the host record holds no input and is deleted in pieces). Whether to raise the host retention is decided in P03 by measurement | P03 |
 | Virtual display | 1280x800, ended after 10 minutes idle | P05 |
@@ -156,7 +165,7 @@ G3/G4:                      ^ end of P02                     ^ end of P04       
 | Memory grows as features are added | A budget per feature, one measured line per phase, a P07 pass, only two stops |
 | Tests get slow again | Test budgets, selection, receipts and size ratchet ([test plan](test_plan.md)). A phase over 180 s is not merged |
 | Controlling the real screen can do great harm if wrong | Off by default, per-session permission, a conspicuous bar, 15-minute expiry, a key that stops it at once, an action log |
-| The host record is short and holds no user input, so "the whole conversation" is cut or loses its questions | The whole conversation is built from the provider's record and an export states its range, so it never looks like the whole; P03 also records inputs (SC-10) |
+| The host record is short and holds no user input, so "the whole conversation" is cut or loses its questions | The whole conversation is built from the provider's record and an export states its range, so it never looks like the whole; P02 records inputs folded (SC-10) and P03 adds the sender header |
 | The host silently drops a provider line over 256 KiB (a big screenshot) (*measured*) | First step of P04: a streaming reader that keeps the first 8 KiB or so and an "image N KiB omitted" record (XF-08) |
 | A program a tool detached from the session survives deleting the session (one run, *measured*) | Not counted in this milestone and the tooltip says so. Ending them properly with one systemd scope per session is for the owner to decide at the P02 gate (MI-07) |
 | The host takes 512 B on one line per input, which blocks long prompts and the transfer of P03 | IN-01 (64 KiB, newline allowed) is the first host work of P02 |

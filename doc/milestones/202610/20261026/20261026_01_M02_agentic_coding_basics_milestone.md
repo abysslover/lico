@@ -4,7 +4,7 @@
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
 - Updated: 2026-10-26
-- Implementation: M02-P01 is finishing on its branch (menu bar, fonts, scroll speed and the activity indicator are written; the last step, a test cleanup, is under way). A throwaway proof of concept without product code (POC-0) runs in parallel. M02-P02 starts when the test cleanup is reported
+- Implementation: M02-P01 is finished on its branch (menu bar, fonts, scroll speed, activity indicator and the test cleanup: the whole suite went from 596 s to 112 s). A throwaway proof of concept without product code (POC-0) is finished (D1 to D4); its figures are in the planning set. M02-P02 is under way: its plan note is written and its host step is built and tested; the commit waits for the repository's list of approved branches to include the P02 branch (an owner action)
 - Next gate: G3 inspection and G4 merge approval for M02-P01 and M02-P02 together, at the end of M02-P02
 
 ## Goal
@@ -21,7 +21,9 @@ the original limit that stays in force: an idle window under 50 MiB.
 1. A session starts in an existing folder chosen at creation, can be resumed
    there, and can be closed, renamed and deleted from the window. Deleting never
    touches a folder the user chose. Input of up to 64 KiB with several lines and
-   cursor movement reaches both providers intact. (M02-P02)
+   cursor movement reaches both providers intact, and what was sent appears in
+   the conversation (the first 12 lines or 2 KiB, then one line saying how much
+   is not shown). (M02-P02)
 2. The private memory of each session (the agent and all its descendant
    processes, RSS on hover; programs a tool detached from the session are not
    counted) is shown at the right of its row and is measured only while a
@@ -72,7 +74,7 @@ items that are not part of this milestone are listed as M03 candidates in the
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M02-P01 | Menu bar and shared controls, font and scroll speed, activity indicator, and the test cleanup (S05) | `doc/plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md` on the phase branch | `doc/reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md` on the phase branch | Local bundle, verdict pending (with M02-P02) | None | in_progress |
-| M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics | Written as the phase's first step | Not produced | Not produced | None | not_started |
+| M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | `doc/plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md` on the phase branch | Not produced | Not produced | None | in_progress |
 | M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P04 | Screen capture, clipboard read and write, image paste | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | Written as the phase's first step | Not produced | Not produced | None | not_started |
