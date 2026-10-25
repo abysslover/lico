@@ -105,6 +105,28 @@ fn clean(text: &str) -> String {
 /// While a panel is open the input line may hold a sign-in code: nothing typed is echoed to standard output then.
 static QUIET_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Remove the last character of the input line together with what is attached to it (combining marks, joiners, variation
+/// selectors, the vowel and final jamo of a decomposed Hangul syllable); false when the line was empty.
+fn erase_last(input: &mut String) -> bool {
+    fn attached(c: char) -> bool {
+        matches!(c as u32, 0x0300..=0x036F | 0x1160..=0x11FF | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x200D | 0x20D0..=0x20FF | 0x3099..=0x309A | 0xFE00..=0xFE0F | 0xFE20..=0xFE2F | 0xE0100..=0xE01EF)
+    }
+    if input.is_empty() {
+        return false;
+    }
+    loop {
+        while input.chars().next_back().map_or(false, attached) {
+            input.pop();
+        }
+        input.pop(); // the base character
+        // a base joined to the one before it (an emoji sequence) goes with it
+        if !input.ends_with('\u{200D}') {
+            break;
+        }
+    }
+    true
+}
+
 fn emit_ime(kind: &str, text: &str) {
     if QUIET_INPUT.load(std::sync::atomic::Ordering::Relaxed) {
         return;
@@ -564,6 +586,15 @@ impl ApplicationHandler<Ev> for App {
                 // keys the input method did not take (space, digits, Latin text) arrive here
                 if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::Enter) {
                     self.send_draft();
+                } else if event.state == ElementState::Pressed && event.logical_key == Key::Named(NamedKey::Backspace) {
+                    // an open composition belongs to the input method (its own Backspace edits it); otherwise one press removes one character
+                    if self.preedit.is_empty() && erase_last(&mut self.input) {
+                        emit_ime("text", &self.input);
+                        self.dirty = true;
+                    }
+                } else if event.state == ElementState::Pressed && self.ui_ctrl_u(&event.logical_key) {
+                    emit_ime("text", &self.input);
+                    self.dirty = true;
                 } else if event.state == ElementState::Pressed {
                     if let Some(text) = &event.text {
                         if !text.chars().any(char::is_control) {
@@ -750,4 +781,28 @@ pub fn run(args: Vec<String>) {
         ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::erase_last;
+
+    fn after(text: &str) -> String {
+        let mut s = text.to_string();
+        erase_last(&mut s);
+        s
+    }
+
+    #[test]
+    fn one_press_removes_one_character_with_what_is_attached_to_it() {
+        assert_eq!(after("ab"), "a");
+        assert_eq!(after("a한"), "a");
+        assert_eq!(after("ae\u{301}"), "a"); // an accented letter in two code points
+        assert_eq!(after("a\u{1112}\u{1161}\u{11AB}"), "a"); // a decomposed Hangul syllable
+        assert_eq!(after("x\u{1F468}\u{200D}\u{1F469}"), "x"); // a joined emoji pair
+        assert_eq!(after("a\u{2764}\u{FE0F}"), "a");
+        assert_eq!(after(""), "");
+        let mut empty = String::new();
+        assert!(!erase_last(&mut empty));
+    }
 }

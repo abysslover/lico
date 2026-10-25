@@ -246,10 +246,10 @@ impl App {
             }
             return false;
         }
-        if event.repeat {
-            return true; // a held key is not a second, deliberate press (a confirmation needs two)
-        }
         let text_mode = self.text_mode();
+        if event.repeat && !text_mode {
+            return true; // a held key is not a second, deliberate press (a confirmation needs two); typing in the input line repeats
+        }
         if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
             // chords work while the input line is taking a code
             match (c.to_lowercase().as_str(), self.ui.mods.shift_key()) {

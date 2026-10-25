@@ -24,8 +24,9 @@ GRAY_THRESHOLD = 140  # text is light on a near-black background
 
 
 class ProductWindow:
-    def __init__(self, stdin_open: bool = True) -> None:
+    def __init__(self, stdin_open: bool = True, ime: bool = False) -> None:
         self.stdin_open = stdin_open
+        self.ime = ime
 
     def __enter__(self) -> "ProductWindow":
         self._dir = private_dir()
@@ -38,6 +39,12 @@ class ProductWindow:
         self.env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(Path(self.directory) / "home"), "XDG_RUNTIME_DIR": str(self.runtime),
                     "XDG_STATE_HOME": str(Path(self.directory) / "state"), "DISPLAY": self.xvfb.display}
         self.socket = str(self.runtime / "lico" / "host.sock")
+        self.method = None
+        if self.ime:                      # a private ibus with the Hangul engine, bound to this display
+            from .ime import InputMethod
+
+            self.method = InputMethod(self.xvfb.display)
+            self.env = {**self.env, **self.method.client_env}
         self.proc = subprocess.Popen([str(LICO), "gui"], env=self.env, stdin=subprocess.PIPE if self.stdin_open else subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         self.events: queue.Queue = queue.Queue()
@@ -76,6 +83,20 @@ class ProductWindow:
     def key(self, *keys: str) -> None:
         subprocess.run(["xdotool", "key", *keys], env=self.env, check=True)
         time.sleep(0.9)
+
+    def type_text(self, text: str) -> None:
+        subprocess.run(["xdotool", "type", "--delay", "40", text], env=self.env, check=True)
+        time.sleep(0.9)
+
+    def hold(self, key: str, seconds: float) -> None:
+        subprocess.run(["xdotool", "keydown", key], env=self.env, check=True)
+        time.sleep(seconds)
+        subprocess.run(["xdotool", "keyup", key], env=self.env, check=True)
+        time.sleep(0.6)
+
+    def bright_total(self) -> int:
+        data, width, height = self.gray()
+        return sum(1 for y in range(height) for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD)
 
     def ui(self) -> dict:
         self.proc.stdin.write("ui\n")
@@ -134,6 +155,8 @@ class ProductWindow:
                 os.kill(host_pid, signal.SIGTERM)      # the host this window started, by its pid, found through its own socket
             except OSError:
                 pass
+        if self.method:
+            self.method.stop()
         self.xvfb.stop()
         shutil.rmtree(self.runtime, ignore_errors=True)
         self._dir.__exit__(None, None, None)
@@ -155,3 +178,18 @@ def capture_three(out: Path) -> dict:
         report["after_ctrl_a"] = {"panel": w.ui()["panel"], "text_rows": w.text_rows()}
     (out / "captures.json").write_text(json.dumps(report, indent=1))
     return report
+
+
+def capture_backspace(out: Path) -> dict:
+    """The account label line with `ab` typed, and after one Backspace."""
+    out.mkdir(parents=True, exist_ok=True)
+    with ProductWindow() as w:
+        for keys in (("ctrl+n",), ("1",), ("n",)):
+            w.key(*keys)
+        w.type_text("ab")
+        w.png(out / "4_typed_ab.png")
+        before = w.ui()["panel"]["input"]
+        w.key("BackSpace")
+        w.png(out / "5_after_backspace.png")
+        after = w.ui()["panel"]["input"]
+    return {"typed": before, "after_backspace": after}

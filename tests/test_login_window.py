@@ -105,7 +105,9 @@ def test_sign_in_panel_shows_the_url_takes_a_pasted_code_and_clears_it():
             wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0)
             assert reader.selection_text("CLIPBOARD") == URL
             panel_of(client, lambda p: p["text_entry"])                        # the provider asked for a code
-            xdo(xvfb.display, "type", "CANARYCODE9")
+            xdo(xvfb.display, "type", "CANARYCODE98")                        # a typo, taken back with Backspace in the same line
+            ui(client, lambda u: u["panel"]["input"] == "CANARYCODE98")
+            xdo(xvfb.display, "key", "BackSpace")
             ui(client, lambda u: u["panel"]["input"] == "CANARYCODE9")
             xdo(xvfb.display, "key", "Return")
             state = ui(client, lambda u: u["panel"] is not None and "Signed in." in u["panel"]["body"])

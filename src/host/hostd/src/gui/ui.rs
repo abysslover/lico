@@ -455,6 +455,17 @@ impl App {
         }
     }
 
+    /// Ctrl+U clears the whole input line (and only that); true when it did.
+    pub(crate) fn ui_ctrl_u(&mut self, key: &Key) -> bool {
+        match key {
+            Key::Character(c) if self.ui.mods.control_key() && c.eq_ignore_ascii_case("u") && self.preedit.is_empty() => {
+                self.input.clear();
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn inside(&self, rect: Option<[f32; 4]>, x: f32, y: f32) -> bool {
         rect.map_or(false, |r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
     }
