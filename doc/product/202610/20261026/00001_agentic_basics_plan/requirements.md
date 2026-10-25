@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: v1.4 (v1.3 plus the S01 result: the tool connection works, an approval is never a held call), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: 1.4.0 (1.3.0 plus the S01 result: the tool connection works, an approval is never a held call), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -69,7 +69,7 @@ Found by re-reading the code (2026-10-26). The host accepts only **512 bytes on 
 | IN-05 | Multi-line paste: text with newlines enters the box as it is. Over the limit it is not pasted and the reason is shown. | W, P | P02 | planned |
 | IN-06 | A draft over the limit is **neither dropped silently nor sent**: one line under the box says why and the draft stays. Long text is better saved to a file and sent as a path (the SC-04 rule). | W | P02 | planned |
 | IN-07 | With the box empty or on its first line, the up key recalls what this session was sent before. Drafts are kept per session when you switch sessions. | W | P02 | planned |
-| IN-08 | What is sent appears in the conversation at once (the input echo, the P02 part of SC-10): the first 12 lines or 2 KiB as lines that start with `>> ` (tool output lines start with `> `), and when more was sent one line with the exact amount left out. The input box has no echo code of its own; it draws the records the host gives. **Added by the lead on 2026-10-26 03:40 (changes v1.2).** | U, W | P02 | planned |
+| IN-08 | What is sent appears in the conversation at once (the input echo, the P02 part of SC-10): the first 12 lines or 2 KiB as lines that start with `>> ` (tool output lines start with `> `), and when more was sent one line with the exact amount left out. The input box has no echo code of its own; it draws the records the host gives. **Added by the lead on 2026-10-26 03:40 (changes 1.2.0).** | U, W | P02 | planned |
 
 Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates).
 
