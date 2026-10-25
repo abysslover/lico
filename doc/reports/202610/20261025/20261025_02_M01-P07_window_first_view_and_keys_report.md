@@ -21,6 +21,15 @@
   Green after: 3 passed; the whole suite 84 passed in 310.9 s.
 - **Rig.** The test rig finds a host through the window's own socket and ends it by its own pid, never by name; its virtual display is stopped on every path and at interpreter exit.
 
+## S02: Backspace and Ctrl+U in the input line (found by the owner)
+
+The input line only grew: no Backspace handling existed. Now Backspace removes the last character with what is attached to it (combining marks, joiners, variation selectors, a decomposed Hangul
+syllable) when no input-method composition is open (an open one belongs to the method, whose Backspace edits it); Ctrl+U clears the line; Backspace repeats in text entry (the panel's
+repeat filter, meant for confirmations, no longer applies there); nothing typed is echoed. Tests: 3 window tests on pixels (`ab` then Backspace gives exactly the pixels of `a`; Ctrl+U and a held
+Backspace; real ibus Hangul: a committed syllable goes in one press and a Backspace during a composition leaves committed text alone), 1 Rust unit test for the edit, and the P06 sign-in
+code test now types a typo and corrects it with Backspace. Red before: `assert 'ab' == 'a'`, `assert ('abcu' == '')`. Suite: 87 passed. Not covered: the guard "no composition open" cannot be
+tested end to end (the method consumes the key itself). Follow-ups, not done: the Left, Right, Home and End keys, selection, Ctrl+Backspace word delete, marks of scripts other than the ones listed.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back
