@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use cosmic_text::{Buffer, BufferLine, Color, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache};
+use cosmic_text::{Buffer, BufferLine, Color, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache, SwashContent};
 use serde_json::{json, Value};
 use softbuffer::Surface;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -981,23 +981,63 @@ pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32,
 }
 
 pub(super) fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
-    buffer.draw(fs, swash, ink, |x, y, gw, gh, color| {
-        let alpha = color.a() as u32;
-        for row in 0..gh as i32 {
-            for col in 0..gw as i32 {
-                let (px, py) = (x + col + ox, y + row + oy);
-                if px >= 0 && py >= 0 && px < clip_x && (px as usize) < width && (py as usize) < height {
-                    let idx = py as usize * width + px as usize;
-                    let dst = buf[idx];
-                    let mix = |s: u8, shift: u32| {
-                        let d = (dst >> shift) & 0xFF;
-                        (d + ((s as u32).wrapping_sub(d) as i32 * alpha as i32 / 255) as u32) & 0xFF
-                    };
-                    buf[idx] = 0xFF00_0000 | mix(color.r(), 16) << 16 | mix(color.g(), 8) << 8 | mix(color.b(), 0);
+    // what `Buffer::draw` does, but a glyph's bitmap is blended row by row from its pixels (most are empty) instead of through a callback per pixel
+    buffer.shape_until_scroll(fs, false);
+    let clip = clip_x.min(width as i32);
+    for run in buffer.layout_runs() {
+        for glyph in run.glyphs {
+            let physical = glyph.physical((0., run.line_y), 1.0);
+            let ink = glyph.color_opt.unwrap_or(ink);
+            let Some(image) = swash.get_image(fs, physical.cache_key).as_ref() else { continue };
+            let (gw, gh) = (image.placement.width as i32, image.placement.height as i32);
+            let (x0, y0) = (physical.x + image.placement.left + ox, physical.y - image.placement.top + oy);
+            let (bytes, colored) = match image.content {
+                SwashContent::Mask => (1, false),
+                SwashContent::Color => (4, true),
+                SwashContent::SubpixelMask => continue, // cosmic-text draws nothing for it either
+            };
+            let (first, last) = ((-x0).max(0).min(gw), (clip - x0).clamp(0, gw)); // the columns that fall inside the picture
+            if first >= last {
+                continue;
+            }
+            let (r, g, b) = (ink.r() as u32, ink.g() as u32, ink.b() as u32);
+            for row in 0..gh {
+                let py = y0 + row;
+                if py < 0 || py as usize >= height {
+                    continue;
+                }
+                let line = &mut buf[py as usize * width + (x0 + first) as usize..py as usize * width + (x0 + last) as usize];
+                let from = (row * gw + first) as usize * bytes;
+                let source = &image.data[from..from + (last - first) as usize * bytes];
+                if colored {
+                    for (dst, texel) in line.iter_mut().zip(source.chunks_exact(4)) {
+                        blend(dst, texel[0] as u32, texel[1] as u32, texel[2] as u32, texel[3] as u32);
+                    }
+                } else {
+                    for (dst, &alpha) in line.iter_mut().zip(source) {
+                        blend(dst, r, g, b, alpha as u32);
+                    }
                 }
             }
         }
-    });
+    }
+}
+
+/// One pixel of a glyph over what is there: a covered pixel is replaced, a partly covered one is mixed per channel.
+#[inline(always)]
+fn blend(dst: &mut u32, r: u32, g: u32, b: u32, alpha: u32) {
+    if alpha == 0 {
+        return;
+    }
+    *dst = if alpha == 255 {
+        0xFF00_0000 | r << 16 | g << 8 | b
+    } else {
+        let mix = |s: u32, shift: u32| {
+            let d = (*dst >> shift) & 0xFF;
+            (d + (s.wrapping_sub(d) as i32 * alpha as i32 / 255) as u32) & 0xFF
+        };
+        0xFF00_0000 | mix(r, 16) << 16 | mix(g, 8) << 8 | mix(b, 0)
+    };
 }
 
 /// Owns the CLIPBOARD selection with the text it was last given, until another client takes it.
@@ -1095,6 +1135,55 @@ fn clipboard_server(rx: mpsc::Receiver<String>) {
             Ok(Some(_)) => {}
             Ok(None) => thread::sleep(Duration::from_millis(20)),
             Err(_) => return,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{fonts, BACKGROUND};
+    use super::*;
+
+    /// The blit as it was before the rows were blended directly: `Buffer::draw` and a closure per pixel.
+    fn reference(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
+        buffer.draw(fs, swash, ink, |x, y, gw, gh, color| {
+            let alpha = color.a() as u32;
+            for row in 0..gh as i32 {
+                for col in 0..gw as i32 {
+                    let (px, py) = (x + col + ox, y + row + oy);
+                    if px >= 0 && py >= 0 && px < clip_x && (px as usize) < width && (py as usize) < height {
+                        let idx = py as usize * width + px as usize;
+                        let dst = buf[idx];
+                        let mix = |s: u8, shift: u32| {
+                            let d = (dst >> shift) & 0xFF;
+                            (d + ((s as u32).wrapping_sub(d) as i32 * alpha as i32 / 255) as u32) & 0xFF
+                        };
+                        buf[idx] = 0xFF00_0000 | mix(color.r(), 16) << 16 | mix(color.g(), 8) << 8 | mix(color.b(), 0);
+                    }
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn the_row_blit_draws_the_same_pixels_as_the_callback_blit() {
+        let mut fs = fonts::system(false);
+        let mut faces = fonts::Faces::new(false);
+        let mut buffer = Buffer::new(&mut fs, Metrics::new(15.0, 18.0));
+        buffer.set_size(Some(380.0), Some(150.0));
+        buffer.lines = ["Hello, world fn main() { let x = 42; }", "파일을 읽습니다 안녕하세요 漢字 日本語 שלום", "🙂 e\u{301} → ✓ mixed 파일.rs", "a line that is long enough to wrap around the edge of the window, twice over, so that it does"]
+            .iter()
+            .map(|t| BufferLine::new(*t, LineEnding::None, faces.line(&mut fs, t), Shaping::Advanced))
+            .collect();
+        buffer.shape_until_scroll(&mut fs, true);
+        let (width, height) = (400usize, 160usize);
+        let mut swash = SwashCache::new();
+        for (ox, oy, clip) in [(10, 5, i32::MAX), (-7, 3, 150), (20, -9, 400)] {
+            let (mut a, mut b) = (vec![BACKGROUND; width * height], vec![BACKGROUND; width * height]);
+            reference(&mut buffer, &mut fs, &mut swash, &mut a, width, height, ox, oy, clip, Color::rgb(0xE0, 0xE0, 0xE0));
+            blit(&mut buffer, &mut fs, &mut swash, &mut b, width, height, ox, oy, clip, Color::rgb(0xE0, 0xE0, 0xE0));
+            assert!(a.iter().filter(|p| **p != BACKGROUND).count() > 2000, "the picture must hold text");
+            assert!(a == b, "the pixels differ for offset ({ox}, {oy}) clip {clip}");
         }
     }
 }
