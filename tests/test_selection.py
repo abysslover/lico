@@ -177,6 +177,14 @@ def test_in_the_real_tree_a_window_change_leaves_the_host_and_credential_tests_a
     print(f"real map: gui/ui.rs -> {len(real(HOSTD + 'gui/ui.rs')[1])} of {len(REAL_TESTS)} test files; core.rs -> {len(real(HOSTD + 'core.rs')[1])}; a test file -> 2 (itself and the size guard)")
 
 
+def test_the_cargo_job_hands_several_module_filters_to_the_test_binary_not_to_cargo(tmp_path):
+    # `cargo test --bin lico a:: b::` is refused ("unexpected argument"); libtest takes any number of filters after `--` (a core.rs change found this)
+    argv = suite.cargo_job(["core::", "gui::", "session::"], tmp_path).argv
+    assert argv[:4] == ["cargo", "test", "--bin", "lico"] and argv[4:] == ["--", "core::", "gui::", "session::"]
+    assert suite.cargo_job([], tmp_path).argv == ["cargo", "test", "--bin", "lico"]               # no filter: every unit test
+    print("cargo argv for a core.rs change:", " ".join(argv))
+
+
 # --- receipts --------------------------------------------------------------------------------------------------
 
 def receipt_key(tree, name, binaries):

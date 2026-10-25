@@ -105,7 +105,7 @@ def cargo_job(filters, out):
     job.log = out / "cargo.log"
     job.extra_env = {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": str(REPO / "private" / "cargo-home"),
                      "CARGO_TARGET_DIR": str(receipts.build_root() / "host_hostd_test"), "CARGO_BUILD_JOBS": COMPILE_JOBS}
-    job.argv = ["cargo", "test", "--bin", "lico", *filters]
+    job.argv = ["cargo", "test", "--bin", "lico", *(["--", *filters] if filters else [])]      # cargo takes one filter; libtest takes any number after --
     return job
 
 
