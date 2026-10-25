@@ -34,7 +34,7 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 - Two total lines at the bottom of the list: the total and its parts (sessions sum, host, window).
 - Header line at the top right: name, provider, account, model, effort; below it the folder and the activity (`working 2m 10s`).
 - Input box (`> _`): with several lines it grows up to 8 lines; Enter sends and Shift+Enter inserts a newline (IN-02). Over the limit nothing is sent and a reason appears under the box (IN-06).
-- What you send appears in the conversation at once as lines that start with `> `: the first 12 lines or 2 KiB, and when more was sent one line says how much is not shown ("the agent received all of it") (IN-08, SC-10).
+- What you send appears in the conversation at once as lines that start with `>> ` (tool output keeps `> `): the first 12 lines or 2 KiB, and when more was sent one line says how much is not shown ("the agent received all of it") (IN-08, SC-10).
 
 ## 2. New-session screen (P02; the worktree row arrives in P06)
 

@@ -103,7 +103,7 @@ The full judgements and the places of the raw data are in the lead's judgement d
 | 2026-10-26 | **POC-0 goes ahead as option A** (no product code, D1 to D4, 4 h target and 8 h cap, 1 to 2 helper agents, in parallel with test cleanup S05) |
 | 2026-10-26 | **G1 approved**: this whole planning set (scope, order, P01 to P07, approval rhythm, phase plans G2 included). The owner answered "proceed with the recommended option" |
 | 2026-10-26 | **Input-box basics (IN-01 to IN-07) go into P02 as the recommended option A** (64 KiB per input, newline and multi-line, cursor movement, recall with the up key, per-session drafts) |
-| 2026-10-26 | **The input echo (IN-08) is decided by the lead:** the host records an accepted input as lines that start with `> `, the first 12 lines and 2 KiB, and one line with the exact amount left out. SC-10 moves from P03 to P02; only the sender header stays in P03 (changes v1.2). The owner can revert it. |
+| 2026-10-26 | **The input echo (IN-08) is decided by the lead:** the host records an accepted input as lines that start with `>> ` (tool output already uses `> `), the first 12 lines and 2 KiB, each line cleaned like every other record, and one line with the exact amount left out. SC-10 moves from P03 to P02; only the sender header stays in P03 (changes v1.2). The owner can revert it. |
 
 Rules that keep applying: development workers are Claude-family agents only. The idle window stays under 50 MiB and fast, in one executable. The screen tools use the hand-drawn client. New sessions skip the agent's own permission prompts and use approvals inside the window. The sign-in code is never visible or logged. The host replaces itself when it meets a new build and resumes the sessions that were alive.
 
