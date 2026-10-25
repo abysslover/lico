@@ -42,3 +42,9 @@ Out of scope: a menu bar (one paragraph estimate in the report only), Wayland (n
 - 2026-10-25: S02 added (defect found by the owner inside this scope): Backspace did nothing in the input line. Backspace removes the last character with what is attached to it
   (combining marks, joiners, variation selectors, a decomposed Hangul syllable) when no composition is open; Ctrl+U clears the line; Backspace repeats in text entry. Cost cap 2.5 US dollars.
   Out of scope, follow-ups: the Left, Right, Home and End keys cursor movement, selection, Ctrl+Backspace word delete.
+- 2026-10-25: S03 added (usability gap found by the owner inside this scope; cost cap 3 US dollars): the window can copy out but never paste in, so the final code of the Claude Code sign-in
+  could not be entered; and the browser should open by itself. **Reversal of the P06 rule "the address is shown and the browser opens only on the person's request":** the window now opens the
+  sign-in address in the default browser by itself, once per attempt, because the owner asked for it on 2026-10-25 (Ctrl+O still opens it again, Ctrl+Shift+C still copies it; the environment
+  variable `LICO_NO_AUTO_OPEN`, read only by the window, switches it off for tests). Paste stays a person's own act: Ctrl+V and Ctrl+Shift+V (CLIPBOARD), Shift+Insert (PRIMARY), only into a text-entry
+  line, nothing read at any other time, a newline ends the paste so a pasted code is never submitted by itself, more than 8 KiB or an incremental transfer is refused, 500 ms deadline off the event loop.
+  Out of scope: copy-out of selections, mouse selection, drag and drop, Wayland.

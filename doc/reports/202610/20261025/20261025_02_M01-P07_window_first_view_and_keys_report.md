@@ -30,6 +30,17 @@ Backspace; real ibus Hangul: a committed syllable goes in one press and a Backsp
 code test now types a typo and corrects it with Backspace. Red before: `assert 'ab' == 'a'`, `assert ('abcu' == '')`. Suite: 87 passed. Not covered: the guard "no composition open" cannot be
 tested end to end (the method consumes the key itself). Follow-ups, not done: the Left, Right, Home and End keys, selection, Ctrl+Backspace word delete, marks of scripts other than the ones listed.
 
+## S03: paste into the input line, and the sign-in address opens by itself (owner request)
+
+Paste (X11 only, no new crate, no helper program): Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection, only into a text-entry line (session input, account label, sign-in code),
+only on the person's own key, never during an input-method composition. The selection is requested through a helper window of our own on a connection of its own, off the event loop, with a 500 ms deadline;
+an incremental transfer or more than 8 KiB is refused with a notice (nothing is cut), a newline ends the paste (a trailing one is dropped), control characters are removed, no owner gives a notice. A pasted code is never
+echoed, never submitted (Enter stays the person's). Auto-open reverses the P06 rule (written in the plan, owner request 2026-10-25): once per attempt, Ctrl+O again on request, a missing opener shows the notice and keeps the address
+on screen; `LICO_NO_AUTO_OPEN` switches it off for tests. Tests (3, a real client with a fake `xdg-open` that records its argument and a real selection held by `xclip`): a pasted canary code is accepted like a typed one and appears nowhere;
+the other keys and the refusals (9 KiB, newline, trailing newline, no owner, primary) and a visible label line with Backspace after; the browser is asked once, again on Ctrl+O, again for a new attempt, never with the code, and a
+missing opener says so. Red before (previous build): the three failed; green after: 3 passed in 27.82 s; the whole suite once showed one failure of the restart-recovery test that did not repeat (it passed alone and with its
+neighbours: 11 passed); idle client RSS at scale 1: 22.82 MiB (limit 50), host 6.06 MiB. Limit: a failing opener (it starts but exits with an error) is not noticed. Cost of the step about 2.5 US dollars against the cap of 3.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back
