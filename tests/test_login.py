@@ -7,7 +7,7 @@ from pathlib import Path
 from lico_measure.p02 import ProtoConn as Conn, start
 from lico_measure.rig import REPO, private_dir
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_codex_adapter import wait_for
 
 FAKE = REPO / "tests" / "fixtures" / "login" / "fake_login.py"

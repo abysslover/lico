@@ -7,7 +7,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 from lico_protocol.claude_mapping import map_stream
 
-from tests.test_account_helpers import account, add_credential
+from tests.account_helpers import account, add_credential
 from tests.test_claude_adapter import argv_of, claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_credential_store import cred

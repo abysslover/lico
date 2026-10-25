@@ -6,7 +6,7 @@ from lico_measure.p02 import ProtoConn as Conn, start
 from lico_measure.rig import Xvfb, private_dir
 from lico_measure.xpixel import PixelReader
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_codex_adapter import FIXTURE, SIM, wait_for
 from tests.test_first_view import start_client, ui, xdo
 from tests.test_login import FAKE, URL, home_of

@@ -5,7 +5,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_claude_adapter import claude_host, new_claude, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import responses, ui, xdo

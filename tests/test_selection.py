@@ -1,6 +1,7 @@
 """The selection of tests by changed file (src/lico_measure/testmap.py), the receipts and the budget table - on small trees written
 for the purpose, and on the real map. No process of the product runs here."""
 import argparse
+import re
 import subprocess
 import sys
 import time
@@ -163,6 +164,13 @@ def test_every_test_file_is_listed_with_what_it_starts_and_every_rust_module_wit
     for entry in REAL["sources"]:
         assert all(t in REAL_TESTS for t in entry["tests"]) and entry["reason"]
     assert all(entry["reason"] for entry in REAL["inert"])
+
+
+def test_every_test_file_holds_a_test_or_is_named_acceptance_only():
+    # a helper module named test_*.py collects nothing (pytest rc 5), which the runner now counts as a failure: the cold run found
+    # tests/test_account_helpers.py this way; a helper takes a name that is not test_*.py
+    empty = [f for f in REAL_TESTS if f not in REAL["acceptance"]["only"] and not re.search(r"^\s*(?:async\s+)?def test_", (testmap.REPO / f).read_text(), re.M)]
+    assert empty == [], f"collects no test: {empty}"
 
 
 def test_in_the_real_tree_a_window_change_leaves_the_host_and_credential_tests_alone_and_a_core_change_does_not():

@@ -6,7 +6,7 @@ from pathlib import Path
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Xvfb, private_dir
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_first_view import ui, xdo
 from tests.test_login_window import panel_host, panel_of
 from tests.test_paste_open import own, sign_in_panel, window

@@ -13,7 +13,6 @@
 # run every area (so a new test file is never skipped); tests/test_selection.py fails until it is listed.
 
 [areas]
-"tests/test_account_helpers.py" = []
 "tests/test_account_lifecycle.py" = ["cred", "host"]
 "tests/test_accounts.py" = ["cred", "host"]
 "tests/test_activity.py" = ["gui", "host"]

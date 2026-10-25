@@ -9,7 +9,7 @@ from lico_measure.ime import _focus
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import ui, xdo
 from tests.test_login import URL, home_of

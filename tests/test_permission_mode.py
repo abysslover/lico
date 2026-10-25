@@ -126,7 +126,7 @@ def test_no_glyph_is_cut_at_the_right_edge_of_the_output_or_the_left_edge_of_the
     import lico_measure.rig as rig
     from tests.test_first_view import window_id
     from tests.test_login_window import panel_host
-    from tests.test_account_helpers import account
+    from tests.account_helpers import account
 
     for scale, width in ((1, 1203), (1, 1171), (2, 1203)):
         with private_dir() as directory:

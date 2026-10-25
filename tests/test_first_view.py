@@ -9,7 +9,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 from lico_measure.xpixel import PixelReader
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_claude_adapter import claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import wait_for
 

@@ -4,7 +4,7 @@ import time
 from lico_measure.p02 import ProtoConn as Conn, start
 from lico_measure.rig import REPO, Xvfb, private_dir
 
-from tests.test_account_helpers import account
+from tests.account_helpers import account
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import ui, xdo
 from tests.test_login import home_of
