@@ -85,6 +85,13 @@ A host older than this step cannot be asked to stop (no such operation): its pro
 - **011 cause:** the text area was as wide as the window although it is drawn 4 px right of the list, so the last 4 px of a line of wide glyphs fell outside the window (the Hangul glyph at the edge); it now keeps 4 px from the list and from the edge for the output, the prompt row and the panel text. The list also had no left margin (its first letter touched the edge): it has 4 px now. Checked at scale 1 and 2 and at a window width of 1203 px.
 - Idle client RSS at scale 1 on 6cad8f0: 22.92 MiB (limit 50), host 6.11 MiB. Not done: `A` (allow for the rest of the session), shortening of secrets and paths in the prompt.
 
+## S07: navigation actions and a permanent hint line (009)
+
+Verified first with a session open: Ctrl+N and Ctrl+A already worked inside a session view (the panels open over it); nothing on screen said so, and there was no key to go to another session or back. Why the window "re-enters" the same session: it does not remember or reopen anything by itself;
+Esc from a panel returns to the view that was selected (the selection was never cleared), and the first screen only appeared when no session had been chosen. Now: a hint line at the bottom of every view; Ctrl+Tab and Ctrl+Shift+Tab (wrapping), Alt+1..9 (the numbers are shown in the list);
+Esc with an empty input line returns to the start screen, which names the keys (the session keeps running; a draft stays with its session). Tests (2, `tests/test_navigation.py`): red `KeyError: 'hint'` / `'list_text'`; mutation (Esc never leaves) fails the second test; green: 2 passed, whole suite `101 passed in 430.12 s`; the hint is also checked on the
+pixels (light pixels in the bottom rows). Idle client RSS at scale 1 on 3220977: 23.07 MiB (limit 50), host 6.07 MiB, activation p95 66.88 ms (n=100, limit 100). Captures 10 to 12 in the bundle. Limits: the hint is plain text (no clickable items), the narrow-width drop of items is not covered by a test, closing and renaming a session are not done.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back
