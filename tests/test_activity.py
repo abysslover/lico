@@ -42,7 +42,9 @@ def test_a_working_turn_says_since_when_it_works_and_when_the_provider_last_spok
 
 def test_a_provider_that_says_nothing_for_the_stall_time_is_reported_as_stalled_and_one_that_speaks_is_not():
     with private_dir() as directory:
-        host, log, _ = claude_host(directory, env_overrides={"LICO_STALL_S": "1"})
+        # the host stamps whole seconds, so a limit of 1 reads "stalled" up to a second early (a line at 10.95 and a status at 11.05 differ
+        # by 1); with 2 it takes more than a second of real silence, and a provider that writes every 100 ms never has that
+        host, log, _ = claude_host(directory, env_overrides={"LICO_STALL_S": "2"})
         try:
             conn = Conn(host.socket)
             sid, generation = new_claude(conn)
@@ -83,6 +85,19 @@ def changed_below_header(a, b, width=1200, list_w=300, header_rows=40):
     return [y for y in range(header_rows, len(a) // stride) if a[y * stride + list_w * 3:(y + 1) * stride] != b[y * stride + list_w * 3:(y + 1) * stride]]
 
 
+def settle(client, quiet=0.4, limit=5.0):
+    """Return when the window has drawn no frame for `quiet` seconds (its own frame counter, not a guess)."""
+    end, last, since = time.monotonic() + limit, None, time.monotonic()
+    while time.monotonic() < end:
+        client.send("ui")
+        frames = client.expect("ui")["frame"]["frames"]
+        if frames != last:
+            last, since = frames, time.monotonic()
+        elif time.monotonic() - since >= quiet:
+            return
+        time.sleep(0.05)
+
+
 def clock(text):
     found = re.search(r"working (?:(\d+) m )?(\d+) s", text)
     return int(found.group(1) or 0) * 60 + int(found.group(2)) if found else None
@@ -102,12 +117,12 @@ def test_the_window_shows_a_clock_that_runs_while_nothing_arrives_and_it_goes_wi
             show(client, sid, 3)
             state = ui(client)
             assert clock(state["header"]) is None and state["activity_line"] == ""     # nothing runs: no clock
-            begin(conn, sid, generation, "quiet:100", "q")                          # ten seconds without a word
+            begin(conn, sid, generation, "quiet:70", "q")                           # seven seconds without a word: long enough to see the clock run for three
             first = ui(client, lambda u: clock(u["header"]) is not None)
             time.sleep(0.8)
             shot_a = pixels(xvfb.display)
             frames_a = first["frame"]["frames"]
-            time.sleep(2.4)
+            time.sleep(1.8)
             shot_b = pixels(xvfb.display)
             second = ui(client)
             assert clock(second["header"]) >= clock(first["header"]) + 2, (first["header"], second["header"])
@@ -123,9 +138,9 @@ def test_the_window_shows_a_clock_that_runs_while_nothing_arrives_and_it_goes_wi
             wait_for(lambda: completed(log, sid) == 2, timeout=15)
             gone = ui(client, lambda u: u["activity_line"] == "" and clock(u["header"]) is None)
             assert "idle" in gone["header"] and "working" not in gone["list_text"]
-            time.sleep(1.5)                                                       # the frame that removes the line
+            settle(client)                                                        # the frame that removes the line has been drawn
             still_a = pixels(xvfb.display)
-            time.sleep(2.2)
+            time.sleep(1.3)                                                       # longer than the second a clock would need to tick
             assert not differing_rows(still_a, pixels(xvfb.display)), "nothing works and nothing arrives, yet the screen moves"
         finally:
             if client and client.proc.poll() is None:

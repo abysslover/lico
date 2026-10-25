@@ -48,6 +48,8 @@ def test_host_restart_recovers_sessions_as_disconnected_with_bindings_and_histor
             wait_for(lambda: "echo: hello 한글 2" in texts(log, sid))
             assert conn.call(op="session.purge", session=gone["session"], generation=gone["generation"])["ok"] == 1
             wait_for(lambda: sid in registered(directory) and registered(directory)[sid].get("provider_session") and gone["session"] not in registered(directory))
+            # the turn is closed and the last line the host holds is on disk: the log is read, and the host killed, only after that
+            wait_for(lambda: "busy_since" not in sessions(conn)[sid] and sessions(conn)[sid]["seq"] == read_log(log, sid)[-1][0])
             before = read_log(log, sid)
             last_seq = before[-1][0]
             assert not any(gone["session"] in p.name for p in (Path(directory) / "log").glob("*.seg"))

@@ -201,10 +201,10 @@ def test_a_flood_of_lines_does_not_keep_the_client_at_full_cpu_and_the_text_stay
             client = start_client(host, xvfb.display)
             client.send(f"show {sid}")
             client.expect("state", "subscribed")
-            time.sleep(3.0)
+            time.sleep(2.0)
             pids = tree_pids(client.proc.pid)
             before, began = cpu_seconds(pids, strict=True), time.monotonic()
-            time.sleep(10.0)
+            time.sleep(6.0)                                                         # a mean over six seconds of a steady flood
             percent = (cpu_seconds(pids, strict=True) - before) / (time.monotonic() - began) * 100
             assert percent < 55, f"{percent:.0f}% of a core while 100 lines a second arrive"
             # capped is not stale: the lines shown are within a second of the host's newest
