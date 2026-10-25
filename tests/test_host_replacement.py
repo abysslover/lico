@@ -305,6 +305,15 @@ def test_stopping_a_host_ends_its_providers_and_what_they_started_instead_of_lea
                 os.kill(pid, 9)
 
 
+def test_a_host_that_ends_without_an_answer_is_not_called_replaced_by_another_window():
+    with private_dir() as directory:
+        env = {"FAKE_HOST_BUILD": "00000000000000aa", "FAKE_HOST_STOP": "die"}                                  # it ends when asked to stop, without a word
+        with ProductWindow(host_binary=fake_host(directory), env_extra=env) as w:
+            wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
+            wait_for(lambda: header_has(w, "The host ended and a new one answers (new build)."), timeout=15)
+            assert "another window" not in w.ui()["header"]                                                      # nobody else was seen to do it
+
+
 def test_a_bad_request_to_session_create_says_the_host_is_an_older_build():
     with private_dir() as directory:
         env = {"FAKE_HOST_BUILD": fnv(LICO), "FAKE_HOST_ERROR": "bad_request"}                                  # the same build, so the window leaves it alone
@@ -332,31 +341,97 @@ def host_processes(w):
     return found
 
 
+class Second:
+    """A second `lico gui` on the first window's display, host and state, with the same `ui` dump as the first one."""
+
+    def __init__(self, w):
+        import queue
+        import subprocess
+        import threading
+        self.trace = Path(w.directory) / "second.trace"
+        self.proc = subprocess.Popen([str(LICO), "gui"], env={**w.env, "LICO_UPDATE_TRACE": str(self.trace)}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.events = queue.Queue()
+
+        def read():
+            for line in self.proc.stdout:
+                try:
+                    self.events.put(json.loads(line))
+                except ValueError:
+                    pass
+        threading.Thread(target=read, daemon=True).start()
+
+    def header(self):
+        import queue
+        try:
+            self.proc.stdin.write("ui\n")
+            self.proc.stdin.flush()
+            end = time.monotonic() + 5
+            while time.monotonic() < end:
+                try:
+                    event = self.events.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if event.get("ev") == "ui":
+                    return event["header"]
+        except (OSError, ValueError):
+            return "(the window cannot be asked: it has ended)"
+        return "(no ui dump within 5 s)"
+
+
+def explain(w, second):
+    """What the next failure needs to be understood without a rerun: the host, the sessions, both headers, the processes of this socket."""
+    try:
+        host = status(w)
+        sessions = {k: (v.get("state"), v.get("generation"), v.get("activity")) for k, v in sessions_of(w).items()} if host else {}
+        host = {key: host.get(key) for key in ("pid", "build", "logins_running")}
+    except Exception as why:                                                                  # a diagnosis never hides the failure it describes
+        host, sessions = f"(status failed: {why!r})", {}
+    try:
+        first = w.ui()["header"]
+    except Exception as why:
+        first = f"(no ui dump: {why!r})"
+    def trace(path):
+        try:
+            return Path(path).read_text()
+        except OSError:
+            return "(no trace)\n"
+    return (f"host={host}\nsessions={sessions}\nfirst window header={first!r}\nsecond window header={second.header()!r}\n"
+            f"host processes of this socket={host_processes(w)} old host alive={alive(w.old_pid)} window build={fnv(LICO)}\n"
+            f"--- first window trace\n{trace(second.first)}--- second window trace\n{trace(second.trace)}")
+
+
+def reached(what, condition, timeout, w, second):
+    try:
+        wait_for(condition, timeout=timeout)
+    except AssertionError:
+        raise AssertionError(f"not reached within {timeout} s: {what}\n{explain(w, second)}") from None
+
+
 def test_two_windows_at_once_make_one_host_and_one_set_of_resumes():
-    import subprocess
     other = []
 
     def hook(w):
         start_turn(2, 4)(w)
-        other.append(subprocess.Popen([str(LICO), "gui"], env=w.env, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True))
+        other.append(Second(w))                                                                 # started in the same instant as the first window
+        other[0].first = Path(w.env["LICO_UPDATE_TRACE"])
     with private_dir() as directory:
-        env = {"LICO_UPDATE_TURN_WAIT_MS": "30000"}
+        env = {"LICO_UPDATE_TURN_WAIT_MS": "30000", "LICO_UPDATE_TRACE": str(Path(directory) / "first.trace")}
         try:
             with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=hook, env_extra=env) as w:
-                old = w.old_pid
-                wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=40)
+                old, second = w.old_pid, other[0]
+                reached("the host is the new build", lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), 40, w, second)
                 alive_ids = [m["session"] for m in w.made]
-                wait_for(lambda: all(sessions_of(w).get(i, {}).get("state") == "running" for i in alive_ids), timeout=40)
+                reached("every session is running again", lambda: all(sessions_of(w).get(i, {}).get("state") == "running" for i in alive_ids), 40, w, second)
                 time.sleep(2)                                                                   # a second set of resumes would show by now
                 found = sessions_of(w)
                 for m in w.made:
-                    assert found[m["session"]]["generation"] == m["generation"] + 1             # resumed once, by the window that stopped the old host
-                assert not alive(old) and len(host_processes(w)) == 1
-                wait_for(lambda: header_has(w, NEW_LINE.format(n=2)) or header_has(w, "replaced by another window"), timeout=20)
+                    assert found[m["session"]]["generation"] == m["generation"] + 1, f"resumed more than once\n{explain(w, second)}"   # once, by the window that stopped the old host
+                assert not alive(old) and len(host_processes(w)) == 1, f"the old host is alive or there is not one host\n{explain(w, second)}"
+                reached("a header says what happened", lambda: header_has(w, NEW_LINE.format(n=2)) or header_has(w, "replaced by another window"), 20, w, second)
         finally:
             for p in other:
-                p.terminate()
-                p.wait(timeout=10)
+                p.proc.terminate()
+                p.proc.wait(timeout=10)
 
 
 def test_a_window_that_is_already_open_follows_a_host_that_another_window_replaced_and_starts_nothing():

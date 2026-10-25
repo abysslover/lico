@@ -28,6 +28,20 @@ extern "C" {
 
 const STATUS: &str = "{\"op\":\"status\"}";
 
+/// With LICO_UPDATE_TRACE set (the tests do) every decision of this window about the host is appended, with the time, to that file: a failure of a
+/// race between windows then explains itself. Nothing is written otherwise.
+pub(super) fn trace(line: &str) {
+    let Some(path) = std::env::var_os("LICO_UPDATE_TRACE") else { return };
+    let millis = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{} pid {} {line}", millis % 1_000_000, std::process::id());
+    }
+}
+
+fn describe(status: &Option<Value>) -> String {
+    status.as_ref().map_or("no answer".to_string(), |s| format!("pid {} build {}", s["pid"], s["build"]))
+}
+
 /// One request on a connection of its own; the reply, or None when the host does not answer in time.
 pub(super) fn call(socket: &str, request: &str, timeout: Duration) -> Option<Value> {
     let mut conn = UnixStream::connect(socket).ok()?;
@@ -49,7 +63,9 @@ fn status_of(socket: &str) -> Option<Value> {
 
 /// The host's status when it runs another build than this window (an old host without a build id counts as another one), else None.
 pub(super) fn stale(socket: &str) -> Option<Value> {
-    status_of(socket).filter(|s| s["build"].as_str() != Some(crate::core::build_id()))
+    let seen = status_of(socket);
+    trace(&format!("window start: host status {}; this window is build {}", describe(&seen), crate::core::build_id()));
+    seen.filter(|s| s["build"].as_str() != Some(crate::core::build_id()))
 }
 
 /// How long a running turn and a sign-in are waited for. The environment shortens them for the tests only.
@@ -84,8 +100,10 @@ fn gone(socket: &str, within: Duration) -> bool {
 enum Stopped {
     /// This window ended it, so this window resumes the sessions.
     Here,
-    /// Another window (or the host itself) got there first: nothing to resume from here.
+    /// Another window got there first (its stop was seen: `build_changed`, `stopping`, or the pid and build changed): nothing to resume from here.
     Elsewhere,
+    /// The host ended without an answer and nothing listens any more: it may have crashed, or another window stopped it; nothing to resume from here.
+    Ended,
     Failed(String),
 }
 
@@ -102,6 +120,7 @@ fn stop(socket: &str, status: &Value) -> Stopped {
         _ => json!({"op": "host.stop", "force": true}).to_string(),
     };
     let mut reply = call(socket, &request(true), Duration::from_secs(5));
+    trace(&format!("host.stop with build {:?} answered {}", build, reply.as_ref().map_or("nothing".to_string(), |r| r.to_string())));
     if reply.as_ref().map_or(false, |r| r["error"] == json!("bad_request")) && build.is_some() {
         // a host that knows host.stop but not the build field: asked again without it, once the status confirms it is still the host that was seen
         let again = status_of(socket);
@@ -121,8 +140,9 @@ fn stop(socket: &str, status: &Value) -> Stopped {
         Some(r) if matches!(r["error"].as_str(), Some("build_changed" | "stopping")) => Stopped::Elsewhere,
         other => {
             // host.stop is not understood (a host older than that call), or the host does not answer: it is ended once by the pid it reported
+            trace(&format!("host.stop was not accepted ({}); nothing listens: {}", other.as_ref().map_or("no answer".to_string(), |r| r.to_string()), UnixStream::connect(socket).is_err()));
             if other.is_none() && UnixStream::connect(socket).is_err() {
-                return Stopped::Elsewhere; // it is gone already
+                return Stopped::Ended; // it is gone already
             }
             match pid {
                 Some(pid) if end_by_pid(socket, pid) => {
@@ -260,8 +280,17 @@ fn resume(socket: &str, alive: &[String]) -> (usize, Vec<String>) {
 }
 
 /// Replace the host that `seen` describes. `tell` reports to the window (it is called from this thread).
-pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<String, String>, tell: &dyn Fn(Update)) {
+pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<String, String>, report: &dyn Fn(Update)) {
+    let tell = &|update: Update| {
+        trace(&match &update {
+            Update::Line(line) => format!("line: {line}"),
+            Update::Stopped(line) => format!("stopped: {line}"),
+            Update::Replaced(line) => format!("replaced: {line}"),
+        });
+        report(update)
+    };
     let ours = crate::core::build_id();
+    trace(&format!("worker: replacing {}", describe(&Some(seen.clone()))));
     let (turn_limit, login_limit) = limits();
     let began = Instant::now();
     let mut status = seen;
@@ -310,6 +339,7 @@ pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<Str
     say("Restarting the host with this build...");
     let children = status["pid"].as_u64().map(children_of).unwrap_or_default();
     let stopped = stop(socket, &status);
+    trace(&format!("stop outcome: {}", match &stopped { Stopped::Here => "this window ended it".to_string(), Stopped::Elsewhere => "another window did".to_string(), Stopped::Ended => "it ended without an answer".to_string(), Stopped::Failed(why) => format!("failed: {why}") }));
     let stuck = if matches!(stopped, Stopped::Here) { end_leftovers(&children) } else { Vec::new() };
     if let Stopped::Failed(why) = &stopped {
         end(&format!("The host runs an older build and could not be ended: {why}. Close every Lico window, end that process and run `lico gui` again."));
@@ -322,7 +352,9 @@ pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<Str
     }
     match stopped {
         Stopped::Here => {
+            trace(&format!("resuming {} session(s) that were alive", alive.len()));
             let (resumed, failures) = resume(socket, &alive);
+            trace(&format!("resumed {resumed}, failures {failures:?}"));
             let mut line = format!("Restarted the host (new build); resumed {}", plural(resumed, "session"));
             if !failures.is_empty() {
                 let mut reasons: Vec<&str> = failures.iter().map(String::as_str).collect();
@@ -342,6 +374,7 @@ pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<Str
             tell(Update::Replaced(line));
         }
         Stopped::Elsewhere => tell(Update::Replaced("The host was replaced by another window (new build).".into())),
+        Stopped::Ended => tell(Update::Replaced("The host ended and a new one answers (new build).".into())), // what was seen, not a guess at who did it
         Stopped::Failed(_) => {}
     }
 }

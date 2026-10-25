@@ -208,6 +208,7 @@ impl App {
     /// The connection to the host ended. A window never starts, stops or replaces a host after its own start (an old window and a new one
     /// could otherwise replace each other's host for ever): it says so and looks for the host that took the place, on the same socket.
     fn on_sock_end(&mut self) {
+        update::trace(&format!("socket ended: updating {}, follow {}", self.updating, self.follow));
         if self.updating {
             self.ended_meanwhile = true; // the worker of this window ended the host; it reports when it is done
             return;

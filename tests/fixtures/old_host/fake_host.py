@@ -5,7 +5,7 @@ id at all, like the hosts before build ids). Every operation except status and a
 (default unknown_op). When FAKE_HOST_CHILD names a file, the host starts a long sleep of its own (a provider that outlives its host) and writes the pid
 there. FAKE_HOST_PROVIDER names a file: the host then starts a provider the way the real old build did (its own session, the parent-death signal set, so the
 kernel ends it with the host) that starts a helper which stays in its group; both pids are written there ("child helper"). FAKE_HOST_STOP=exit makes
-host.stop answer ok and end the process at once (`os._exit`), as the real host does after its stop. It prints one line with its pid when it listens,
+host.stop answer ok and end the process at once (`os._exit`), as the real host does after its stop; FAKE_HOST_STOP=die ends it without any answer. It prints one line with its pid when it listens,
 like the real host."""
 
 import json
@@ -50,6 +50,8 @@ def serve(conn):
         for line in stream:
             try:
                 request = json.loads(line)
+                if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "die":
+                    os._exit(1)                                                      # ends without an answer: from outside a crash looks the same
                 if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "exit":
                     stream.write(json.dumps({"v": 1, "ok": 1, "id": request.get("id"), "stopping": True}) + "\n")
                     stream.flush()
