@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: v1.0, approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finishing: the test cleanup (S05) is under way and P02 starts when it is reported. Numbers in this document are **design targets** unless they are marked *measured*.
+Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finishing: the test cleanup (S05) is under way and P02 starts when it is reported. Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
@@ -47,7 +47,7 @@ Milestone **M02 "Agentic-coding basics"**. It replaces P02 to P06 of the earlier
 
 Details and checks are in the [requirements](requirements.md); the look of each screen is in [screens](screens.md).
 
-## POC-0: turn assumptions into facts first (option A approved, in progress)
+## POC-0: turn assumptions into facts first (option A approved, D1 to D3 done, D4 left)
 
 **What.** Before building the product, put throwaway tools on the existing host, run the four features roughly, and measure. The host already takes extra arguments for the Claude process (`--claude-arg`), so **no product code changes.** Target 4 hours, cap 8 hours. The result is one page with captures, numbers and a verdict (works / conditional / does not work). It replaces the values in "Working assumptions" with measurements.
 
@@ -58,9 +58,23 @@ Details and checks are in the [requirements](requirements.md); the look of each 
 | D3 X tools | In a private virtual display, does Claude work from a capture image with click, type, keys and clipboard? Time and memory of one step |
 | D4 combined | Session A copies, hands over to session B, B answers; a memory table at the end |
 
-**How.** Two helper agents run in parallel: (1) D1 and D2 (memory, transfer), (2) D3 (X tools and the Lico window). D4 follows when both are done. The helper tools passed their own test: a real Claude session (Haiku) on a private host answered in 5 s and ended cleanly with no leftover process (*measured*, one run).
+**How.** Two helper agents ran in parallel: (1) D1 and D2 (memory, transfer), (2) D3 (X tools and the Lico window). **D1 to D3 are done.** The lead recomputed every number from the raw logs and corrected two counts in the helpers' reports (runs that first hit the read limit: 6 became 5 of 16; oversized lines dropped: "9" became 6 of 6). D4 (combined) is the lead's own run and is still to do. Every run used `claude-haiku-5-5`, so "works" is a floor on an easy task, not a statement about the model the owner will pick. The table gives the number of runs behind each figure and says "one run" where it is one.
 
-**Already known (one probe, *measured*).** An external tool server (70 lines of Python) attached to `claude -p` let Claude (Haiku) read a random code from a **capture image of a private virtual display**, close a window by clicking, and capture again to confirm it was gone (5 turns, 9.7 s). One session used 281 MiB for the Claude process, 12 MiB for the tool helper and 61 MiB for the virtual display (800x500); a session using X tools costs about +73 MiB. This is one run in `-p` mode; the host's stream-json mode and the hand-drawn Lico window are checked in D3.
+| Question | Verdict | Key numbers |
+|---|---|---|
+| What memory value does the host give today? | One process only: the agent (`claude`) | 211 MiB; with tools and helpers 1.07 to 1.12 times (tiny children only; a heavy child was not measured) (2 runs) |
+| What should a session row show? | **Private memory (RssAnon)**, RSS on hover. Not PSS | Three idle sessions: RSS 707 to 712, PSS 409 to 412, private 350 to 363 MiB (3 runs). The PSS of one idle session moved 147 to 188 MiB between two runs, private memory by about 5 %. Cost of reading: 1.0 ms against 13 to 18 ms (Python walks, so upper bounds) |
+| Programs a tool detached from the session | Not in the process tree, and they survive deleting the session | One run. Not counted, and the tooltip says so; ending them properly is for the owner to decide at the P02 gate (MI-07) |
+| Short text transfer | Today one line of at most 512 B | 170 Korean characters (510 B) pass, 171 are refused. IN-01 (64 KiB) is needed first |
+| Long text by file path | **Works** | 16 of 16 right, nothing cut (200 KiB and 1 MiB, three permission setups). 5 of 16 first hit the read limit (25,000 tokens) and recovered alone. Approval prompts: permissions skipped 0 of 8, default mode 4 of 4 runs, default mode with the handoff folder opened 0 of 4 |
+| What the receiving session sees | The answer without the question | The host record holds no input. Records are deleted in pieces of a quarter of the retention (at 2,048, after 2,613 records the oldest kept is number 512) |
+| Does Claude work from a screen through X tools (host in stream-json mode)? | **Works** | Read the code, click, confirm: 5 of 5 (median 9.5 s). Six small tasks in the hand-drawn Lico window, 8 of 8 each (one scorer was changed after seeing data, and said so) |
+| What about a big screenshot? | **The host drops a provider line over 256 KiB whole and leaves no trace** | 6 of 6 dropped. Real window captures are mostly over the limit, so P04 must fix it (XF-08) |
+| Memory of one session using X tools | The provider process dominates | Session tree 382 to 487 MiB RSS (Claude 260 to 300, virtual display 60 to 98, helper 29 to 44) (48 runs) |
+
+The full judgements and the places of the raw data are in the lead's judgement documents (D3, D12), kept in a working folder outside git.
+
+**Already known (one probe, *measured*).** An external tool server (70 lines of Python) attached to `claude -p` let Claude (Haiku) read a random code from a **capture image of a private virtual display**, close a window by clicking, and capture again to confirm it was gone (5 turns, 9.7 s). One session used 281 MiB for the Claude process, 12 MiB for the tool helper and 61 MiB for the virtual display (800x500); a session using X tools costs about +73 MiB. This is one run in `-p` mode; the host's stream-json mode and the hand-drawn Lico window were checked in D3 and both work (table above).
 
 **Not done in POC-0.** Controlling the real screen, changing product code, publishing. Only a private socket and a private virtual display are used; the running host is never touched. A POC is not counted as "done".
 
@@ -92,13 +106,14 @@ The owner proceeded with the recommended option on 2026-10-26, so these values s
 |---|---|---|
 | "X" | Linux X11. Wayland is out of scope (the X server tested is always recorded) | P04, P05 |
 | How the agent calls Lico | A tool connection served directly by the host (MCP, per-session token) plus a CLI doing the same things. If the tool connection does not work, CLI only | P03 |
-| Inline size for sending | Up to 4 KiB inline, longer goes by file. The host's input limit (today 512 B of text, 4 KiB per request line) is raised first by IN-01 | P02, P03 |
+| Inline size for sending | Up to 4 KiB inline, longer goes by file (2026-10-26 POC-0: the file way worked 16 of 16). The host's input limit (today 512 B of text, 4 KiB per request line) is raised first by IN-01 | P02, P03 |
 | Input-box basics (approved) | Up to 64 KiB per input (newline and tab allowed), several lines (Enter sends, Shift+Enter inserts a newline), cursor movement, recall with the up key, per-session drafts. Today: 512 B, one line, no cursor movement | P02 |
 | Handoff file retention | 30 days, 256 MiB in total (oldest first when over) | P03 |
-| Host record retention | Today 2,048 records. Too small for "the whole conversation": raise in P03 or use the provider's own record alongside | P03 |
+| Host record retention (changed by POC-0, 2026-10-26) | Today 2,048 records. "The whole conversation" is built from the **provider's own record**, not the host record (the host record holds no input and is deleted in pieces). Whether to raise the host retention is decided in P03 by measurement | P03 |
 | Virtual display | 1280x800, ended after 10 minutes idle | P05 |
 | Real-screen permission | Per session, expires after 15 minutes, released when the host restarts | P05 |
 | Memory refresh and colour | Every 3 s while a window is attached; colour change at 1 GiB (again at 2 GiB) | P02 |
+| Definition of the memory value (changed by POC-0, 2026-10-26) | **Private memory (RssAnon)** summed over the agent and its descendants. RSS also shown on hover. PSS is not used (it moves up to 28 % between runs). Detached programs are not counted | P02 |
 | Test budget | 180 s for the whole suite, 2 GiB peak memory over the whole run, 15 s per test | all phases |
 | Tool channel scope | Claude Code sessions only in this milestone. Codex sessions get folder, memory indicator, close and rename only | P03 to P05 |
 
@@ -136,12 +151,14 @@ G3/G4:                      ^ end of P02                     ^ end of P04       
 
 | Risk | Response |
 |---|---|
-| It is not known whether the external tool connection also works in the host's stream-json mode (`-p` mode worked in one probe, *measured*) | POC-0 D3 or the first step of P03 tests it; if it fails, CLI only with the same approval rules |
-| It is not known whether a model operates the hand-drawn Lico window well (pressing OK in a simple window worked with Haiku, *measured*) | POC-0 D3 or the first step of P05 measures a success rate on simple tasks and records it |
+| Does the external tool connection work in the host's stream-json mode? | **It does** (POC-0 D3, 5 of 5, *measured*). The first step of P03 only re-checks it on the installed version |
+| Does a model operate the hand-drawn Lico window well? | Haiku did six small tasks 8 of 8 each (POC-0 D3, *measured*). The success rate on a real X program such as a browser is measured in the first step of P05 and recorded |
 | Memory grows as features are added | A budget per feature, one measured line per phase, a P07 pass, only two stops |
 | Tests get slow again | Test budgets, selection, receipts and size ratchet ([test plan](test_plan.md)). A phase over 180 s is not merged |
 | Controlling the real screen can do great harm if wrong | Off by default, per-session permission, a conspicuous bar, 15-minute expiry, a key that stops it at once, an action log |
-| The host record is short, so "the whole conversation" is cut | An export states its range and never looks like the whole; P03 raises retention or uses the provider's record alongside |
+| The host record is short and holds no user input, so "the whole conversation" is cut or loses its questions | The whole conversation is built from the provider's record and an export states its range, so it never looks like the whole; P03 also records inputs (SC-10) |
+| The host silently drops a provider line over 256 KiB (a big screenshot) (*measured*) | First step of P04: a streaming reader that keeps the first 8 KiB or so and an "image N KiB omitted" record (XF-08) |
+| A program a tool detached from the session survives deleting the session (one run, *measured*) | Not counted in this milestone and the tooltip says so. Ending them properly with one systemd scope per session is for the owner to decide at the P02 gate (MI-07) |
 | The host takes 512 B on one line per input, which blocks long prompts and the transfer of P03 | IN-01 (64 KiB, newline allowed) is the first host work of P02 |
 | Claude Code updates change its options | Record the tested version, ordinary tests use a fake provider, the real provider runs once at the end of a phase |
 | Usage limit | There is no limit constraint, but phases run in order and the weekly guide sets the size of parallel units |

@@ -1,6 +1,6 @@
 # Screens: what the window shows
 
-Status: v1.0, approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
+Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -30,7 +30,7 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 ```
 
 - Session row: number, state mark, name, and **at the right end the memory of that session** (`312 MiB`). The second line is the work folder; a session made without a folder shows `(scratch)`.
-- Memory colour: amber above 1 GiB, red above 2 GiB. A tooltip explains ("resident memory of the agent and its descendant processes; shared parts are counted more than once").
+- Memory colour: amber above 1 GiB, red above 2 GiB. A tooltip explains ("private memory of the agent and its descendant processes; the resident memory (RSS) is shown next to it; programs detached from the session are not counted").
 - Two total lines at the bottom of the list: the total and its parts (sessions sum, host, window).
 - Header line at the top right: name, provider, account, model, effort; below it the folder and the activity (`working 2m 10s`).
 - Input box (`> _`): with several lines it grows up to 8 lines; Enter sends and Shift+Enter inserts a newline (IN-02). Over the limit nothing is sent and a reason appears under the box (IN-06).

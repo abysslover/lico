@@ -22,9 +22,10 @@ the original limit that stays in force: an idle window under 50 MiB.
    there, and can be closed, renamed and deleted from the window. Deleting never
    touches a folder the user chose. Input of up to 64 KiB with several lines and
    cursor movement reaches both providers intact. (M02-P02)
-2. The memory of each session (the agent and all its descendant processes) is
-   shown at the right of its row and is measured only while a window is
-   attached. (M02-P02)
+2. The private memory of each session (the agent and all its descendant
+   processes, RSS on hover; programs a tool detached from the session are not
+   counted) is shown at the right of its row and is measured only while a
+   window is attached. (M02-P02)
 3. Text, selected lines or a whole conversation can be sent from one session to
    another from the window. Content over 4 KiB is saved as a file and delivered
    as a path; nothing is cut. A Claude Code session can list, send to, read and

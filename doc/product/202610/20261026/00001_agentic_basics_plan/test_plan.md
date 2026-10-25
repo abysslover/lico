@@ -1,6 +1,6 @@
 # Test plan: keeping the whole suite under 3 minutes and light
 
-Status: v1.0, approved by the owner at G1 on 2026-10-26. The last step of P01, S05 (test cleanup), carries out this plan. The first figures come from its ledger (135 tests, 596 s cold, *measured*); earlier counts were 135 tests in 554 s, 607 s at report 015 and 130 tests in 545 s at report 023. The "cause candidates" below are hypotheses until the ledger confirms them.
+Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26. The last step of P01, S05 (test cleanup), carried out this plan; the results are in the table at the end (whole run 596 s to 112 s). The first figures come from its ledger (135 tests, 596 s cold, *measured*); earlier counts were 135 tests in 554 s, 607 s at report 015 and 130 tests in 545 s at report 023. The "cause candidates" below are hypotheses until the ledger confirms them.
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [screens](screens.md) · [changes](changes.md).
 
@@ -15,16 +15,16 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 
 | Item | Budget | Now |
 |---|---|---|
-| Whole suite (from scratch, build already done) | **at most 180 s** | 596 s, 135 tests (*measured*) |
-| Peak of the memory sum of all processes over the whole run | at most 2 GiB (proposal) | 3,571 MiB at the peak, in the clean-clone test (*measured*) |
-| One test | at most 15 s (a reason in the table if more) | not yet measured per test |
-| Usual run (tests affected by the change, plus receipts) | target within 30 s | not applicable |
-| Rebuild and test after changing one line | set after measuring with the ledger (over 60 s means writing a crate-split plan); one changed Rust line cost about 6 s to build | about 6 s build (*measured*) |
+| Whole suite (from scratch, build already done) | **at most 180 s** | 112 s, 140 tests (*measured*; before cleanup 596 s, 135 tests) |
+| Peak of the memory sum of all processes over the whole run | at most 2 GiB (proposal) | 854 to 1,136 MiB (*measured*, 3 runs; before cleanup 3,571 MiB) |
+| One test | at most 15 s (a reason in the table if more) | longest test 13.6 s, none over its limit (*measured*) |
+| Usual run (tests affected by the change, plus receipts) | target within 30 s | test-only change 17.4 s, one line in `gui/ui.rs` 96 s, one line in `core.rs` 111 s (*measured*, below) |
+| Rebuild and test after changing one line | set after measuring with the ledger (over 60 s means writing a crate-split plan); one changed Rust line cost about 6 s to build | 12 s build plus the selected tests: `core.rs` 111 s, `gui/ui.rs` 96 s (*measured*); over 60 s, so a crate-split plan is needed |
 | Source file length | at most 800 lines | three files over (see below) |
 
 A phase over 180 s is not merged. If it is over, that phase must clean up the tests and bring it back.
 
-## Where it stands (checked in the code and the ledger)
+## Where it stood when S05 began (checked in the code and the ledger)
 
 - 37 Python test files (about 4,600 lines), 135 pytest tests (596 s cold). 27 Rust unit tests (`cargo test --bin lico`, 4.5 s).
 - Layers by time in the ledger: the end-to-end layer (L3) takes about 75 % of the time. Fixed sleeps in test helpers dominate.
@@ -122,14 +122,22 @@ A phase over 180 s is not merged. If it is over, that phase must clean up the te
 | Parallel runs raise memory | A 2 GiB sum guard; heavy tests run in series |
 | 180 s is not reached | The ledger and the five costliest items left, the value of each fix reported; a crate split is decided with the owner |
 
-## Results (filled by S05)
+## Results (S05, measured on the P01 branch at b75267f)
 
 | Item | Before cleanup | After cleanup |
 |---|---|---|
-| Number of tests | 135 (*measured*) | planned |
-| Whole suite (from scratch) | 596 s (*measured*) | planned |
-| Peak memory of the whole run | 3,571 MiB (*measured*) | planned |
-| Usual run: one line in `gui/ui.rs` | not applicable | planned |
-| Usual run: one line in `core.rs` | not applicable | planned |
-| Usual run: only a test changed | not applicable | planned |
-| Tests skipped by receipt in a second run | not applicable | planned |
+| Number of tests | 135 (*measured*) | 140 (*measured*), usual run; the 21 tests of retired prototypes run apart with `suite legacy` |
+| Whole suite (from scratch) | 596 s (*measured*) | 112 s (*measured*; 3 runs: 112.1, 112.2, 112.5 s) |
+| Peak memory of the whole run | 3,571 MiB (*measured*) | 854 MiB (*measured*; 3 runs: 854, 1,000, 1,136 MiB) |
+| Usual run: one line in `gui/ui.rs` | not applicable | 95.8 s (*measured*; 71 tests in 19 files plus `cargo test gui::`; one run) |
+| Usual run: one line in `core.rs` | not applicable | 111.4 s (*measured*; 106 tests in 31 files; one run) |
+| Usual run: only a test changed | not applicable | 17.4 s (*measured*; 8 tests in 2 files; one run) |
+| Tests skipped by receipt in a second run | not applicable | all 38 test files and the cargo run, 0 s (*measured*) |
+
+The figures were measured on the P01 branch at b75267f. On the branch end with the rig-leak fix on top (below), a whole run again gives 112.6 s, 145 tests in 39 files, peak 857 MiB (*measured*). How to read them:
+
+- **Whole suite within 180 s:** met (112 s); memory is inside 2 GiB.
+- **Usual run within 30 s:** close only when a test file changes or a leaf module that nothing uses (`cli`) changes (test-only 17.4 s; one `cli` line is an 11 s build plus 4.7 s of tests, *measured*). A change in host code selects 31 of the 38 test files (32 of 39 now), because every window test starts a real host, and costs 111 s (the build is only 12 s). `gui/ui.rs` costs 96 s. The selection follows `crate::` uses transitively, so a module that `core` calls (`ipc`, `session`, `registry`, the new `folders`) costs the same as `core.rs`.
+- **The crate-split plan** (the 60 s line of item 7 under "Ways to make it fast") is a one-page note written after the cleanup (`doc/plans/202610/20261026/20261026_02_daily_run_cost_note.md`): A no split now, B one slice cutting the stable part out of `core.rs`, C a real crate split. Its finding is that B and C make files smaller but do not shorten the usual run (simulated on the map, B deselects 0 test files; C saves at most the 12 s build). The one lever that shortens it: for a host-only change the usual run takes the 12 host test files (about 14 s) and the 19 window files (87 % of the test time) run before a commit, at the end of a phase and before a merge. That moves the guarantee from "every edit" to "every commit", so **the owner decides at the P02 gate.** The lead's proposal is A (leave it, and keep `core.rs` from growing with rule R5) and to have the P02 report state how many usual runs P02 actually made and what they cost, so the lever is decided on that number.
+- **Rig leak:** a rig (window, keyring, input method) that failed while starting, or a test that received SIGTERM, used to leave a host, a virtual display and folders behind. Fixed (`tests/test_rig_teardown.py`, 5 tests, all five failed before the fix, *measured*). Nothing is left behind after a job that ended by timeout either.
+- The 21 tests of the retired prototype clients (a, b, c, c2, d) and host prototypes (rust_std, rust_serde, c) were not deleted: they sit behind the `legacy_candidates` marker, are left out of the usual and the whole run, and run apart with `suite legacy` (86.5 s).

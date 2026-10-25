@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: v1.0, approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -49,11 +49,12 @@ Related documents: [planning](planning.md) · [screens](screens.md) · [test pla
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
 | MI-01 | The **right end** of each session row shows the memory of that session, like `312 MiB`. | W, L | P02 | planned |
-| MI-02 | Value = RSS summed over the agent process and **all its descendants** (tools, builds, a virtual display). Shared memory is counted once per process, so the value is approximate and the tooltip says so. | U, P | P02 | planned |
+| MI-02 | Value = **private memory (RssAnon)** summed over the agent process and **all its descendants** (tools, builds, a virtual display). The tooltip also shows the RSS. PSS is not used (the PSS of one idle session moved by up to 28 % between two runs, RssAnon by about 5 %, *measured*). Programs a tool has detached from the session (setsid and double fork) are not counted and the tooltip says so. S06 tests whether shared memory (RssShmem) belongs in the sum. | U, P | P02 | planned |
 | MI-03 | The host samples every few seconds (3 s by default) only while a window is attached. With no window it does not measure. | P | P02 | planned |
 | MI-04 | The colour changes above 1 GiB and again above 2 GiB. | U, W | P02 | planned |
-| MI-05 | One line at the bottom of the list shows the total: sessions sum, host, window. | W | P02 | planned |
-| MI-06 | Measure the cost of looking itself (host CPU and window RSS growth with 10 sessions). It is recorded; the limit is judged under MB. | M | P02 | planned |
+| MI-05 | One line at the bottom of the list shows the total: sessions sum, host, window, in the same definition as the rows. The phase report gives RSS and private memory for host and window, both. | W, M | P02 | planned |
+| MI-06 | Measure the cost of looking itself (host CPU and window RSS growth with 10 sessions, with and without a window attached). The Python figures of POC-0 (reading 6 processes: private memory 1.0 ms, PSS 13 to 18 ms) are upper bounds only; the Rust cost is stated. It is recorded; the limit is judged under MB. | M | P02 | planned |
+| MI-07 | **Proposal; the owner decides at the P02 gate:** closing or purging a session ends everything it started, detached programs included (POC-0: `session purge` left detached programs running, one run, *measured*). Proposed way: one systemd scope per session in its own slice (`systemd-run --user --scope`, `memory.stat` for the figure, `cgroup.kill` to end it). | P, E | own step | proposed |
 
 ## IN: input-box basics (P02)
 
@@ -78,12 +79,13 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | SC-01 | Send the text of the input box to another session (Session > Send to session...). A picker for the receiving session opens. | W, P | P03 | planned |
 | SC-02 | Send the selected lines to another session. | W, P | P03 | planned |
 | SC-03 | Hand a whole conversation over to another session (Hand over conversation...). | W, P | P03 | planned |
-| SC-04 | **Size rule:** up to 4 KiB is delivered as it is, with a header (after IN-01 has raised the host input limit; today the host takes 512 B at most). Anything longer is saved as a file in the handoff folder and the receiving session gets a short notice (source, time, size, path, first lines). **Nothing is cut.** | U, P | P03 | planned |
-| SC-05 | The handoff folder lies under Lico's state folder outside the repository (folder 0700, files 0600). It is opened with `--add-dir` so sessions with permission prompts on can read it. | P | P03 | planned |
+| SC-04 | **Size rule:** up to 4 KiB is delivered as it is, with a header (after IN-01 has raised the host input limit; today the host takes 512 B at most). Anything longer is saved as a file in the handoff folder and the receiving session gets a short notice (source, time, size, path, first lines) and one line on how to read it (the Read tool refuses over about 25,000 tokens, so the notice says to read in parts; in POC-0, 5 of 16 runs first hit that limit and all recovered, *measured*). **Nothing is cut.** The sending tool checks the exit code: a refused send exits 2 and the receiving session does nothing. | U, P | P03 | planned |
+| SC-05 | The handoff folder lies under Lico's state folder outside the repository (folder 0700, files 0600). It is opened with `--add-dir` so sessions with permission prompts on can read it (POC-0: with the folder opened, 0 of 4 runs asked for approval; without it, 4 of 4 did, *measured*). | P | P03 | planned |
 | SC-06 | Retention: files older than 30 days are removed, and when the total exceeds 256 MiB the oldest go first. The notice says the file may be removed later. | U | P03 | planned |
-| SC-07 | A conversation file is built from the host's durable record. It states the first and last record numbers and, if older records have already been pruned, says so (**a pruned record never looks like the whole**). Tool calls and results are included unfolded; images are listed by size only. The host record retention (2,048 records today) is decided in P03. | U, P | P03 | planned |
+| SC-07 | The whole conversation is built from the **provider's own record** (read by the adapter), not from the host record: the host record holds no user input and is deleted in pieces of a quarter of its retention (*measured*). The file states the first and last record numbers and, if older records have already been pruned, says so (**a pruned record never looks like the whole**). Tool calls and results are included unfolded; images are listed by size only. Whether to raise the host record retention (2,048 records today) is decided in P03 by measurement. | U, P | P03 | planned |
 | SC-08 | The receiving session sees clearly, by the header, that this is "sent by another session" and not text a person wrote. The window also shows `from <name>`. | W | P03 | planned |
 | SC-09 | Transfer log: who sent what (kind, size) to whom and when is kept in the host log. The content is not kept. | P | P03 | planned |
+| SC-10 | The host records the **inputs** it receives (typed by a person, sent by another session). A record is cut at the record limit (4,096 B today) and says it was cut; text sent by another session carries a header (`from <name>`). Today inputs are not in the host record, so the receiving session's conversation shows an answer with no question (*measured*). | U, P, W | P03 | planned |
 
 ## AC: Lico tools the agent can call (P03)
 
@@ -102,12 +104,13 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
 | XF-01 | X11 only (Wayland is out of scope). The X server and version tested are written in the report. | L | P04 | planned |
-| XF-02 | Capture: the whole screen, a window or a region, saved as PNG with its path and size returned. The tool for agents also returns a copy shrunk to at most 1568 px on the long side. | E, U | P04 | planned |
+| XF-02 | Capture: the whole screen, a window or a region, saved as PNG with its path and size returned. The tool for agents also returns a copy shrunk to at most 1568 px on the long side (image tokens grow with width x height / 750 plus about 200, not with file size; 1568 is better for text-heavy windows, *measured*). A region capture also returns its **offset and scale** (in POC-0 a click missed because a region's coordinates were read as full-screen ones). | E, U | P04 | planned |
 | XF-03 | Capture is read in bands (a few rows at a time) and shrunk on the way, so no large buffer is built at once. The target is at most 6 MiB extra, temporarily, at 1080p. | M | P04 | planned |
 | XF-04 | Clipboard read and write (text, image). The window owns the clipboard. With no window it fails with a reason. | E, P | P04 | planned |
 | XF-05 | Image paste: Ctrl+V of an image in the input box attaches it to the next message and it reaches the agent. There is a size limit and a notice. | W, E | P04 | planned |
 | XF-06 | Middle-button paste (the selection) is supported. | E | P04 | planned |
 | XF-07 | X work is done by a short-lived helper process of the same executable that disappears when the job ends (standing cost 0). | M | P04 | planned |
+| XF-08 | **A screenshot never vanishes from the record without a trace.** When one provider line is over 256 KiB (real window captures mostly are), the host today drops the whole line and leaves nothing (*measured*, 6 of 6). After the fix the record says "image N KiB omitted". The line is read as a stream that keeps its first 8 KiB or so and discards the rest, so no large buffer is built. The record holds `[image]` and not the provider's folder path. | U, P | P04 | planned |
 
 ## CU: computer use (P05)
 
@@ -119,7 +122,8 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | CU-04 | The agent can start programs on the virtual display (`DISPLAY=$(lico display) command` or `lico display run`). | E | P05 | planned |
 | CU-05 | The **real screen** is used only when the user allows it per session. While on there is a conspicuous bar in the window, it expires automatically after 15 minutes, there is a key that stops it at once, and each action is logged (the screen contents are not logged). | W, E | P05 | planned |
 | CU-06 | Real-screen permission is per session and is released when the host restarts. The default is off. | P | P05 | planned |
-| CU-07 | **The first step (P05-S01) is a test:** have the agent do a simple task on the virtual display (open a browser, read the title) and record the success rate. It is not yet known how well a model clicks with general tools. | M | P05 | planned |
+| CU-07 | **The first step (P05-S01) is a test:** have the agent do a simple task on the virtual display (open a browser, read the title) and record the success rate. Small tasks in Lico's own window passed in POC-0 (Haiku, six tasks, 8 of 8 each, *measured*). The success rate on a real X program such as a browser is not yet known. | M | P05 | planned |
+| CU-08 | The virtual display has no window manager, so keys are ignored until focus is given by hand (*measured*). Whether a real X program (a browser, a dialog) needs a tiny window manager, and its memory (RSS), is **decided by P05 after measuring** (no guess is built in). | M | P05 | planned |
 
 ## WT, NT, SR: everyday comfort (P06)
 
@@ -161,7 +165,7 @@ Details and reasons are in the [test plan](test_plan.md).
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| TST-01 | The whole suite runs from scratch in **at most 180 s** (build already done). Last ledger: 135 tests, 596 s cold (*measured*). A phase over 180 s is not merged. | M | S05 on | planned |
+| TST-01 | The whole suite runs from scratch in **at most 180 s** (build already done). Ledger before cleanup (work report 025a): 135 tests, 596 s cold. After S05: 140 tests, 112 s (*measured*). A phase over 180 s is not merged. | M | S05 on | measured |
 | TST-02 | The peak of the memory sum of all processes during the whole suite is at most 2 GiB (proposal). Each test's time and peak memory go in a ledger. | M | S05 on | planned |
 | TST-03 | A **module-to-test map** and `--changed` selection: normally only the tests affected by the changed files run. A changed file missing from the map runs everything (default deny). | U | S05 | planned |
 | TST-04 | **Receipts:** a test whose inputs (test file, mapped sources, binary, fixtures) hash the same and that already passed is skipped. A full (`--cold`) run does not use receipts. | U | S05 | planned |

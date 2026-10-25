@@ -1,6 +1,6 @@
 # Changes: what changed in this planning set
 
-Status: v1.0, approved by the owner at G1 on 2026-10-26. One line is added when the owner decides something and at the end of every phase. The newest is at the top.
+Status: v1.1 (v1.0 plus the measurements of POC-0 and S05), v1.0 approved by the owner at G1 on 2026-10-26. One line is added when the owner decides something and at the end of every phase. The newest is at the top.
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md).
 
@@ -8,6 +8,8 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 
 | Date | Version | What changed | Why |
 |---|---|---|---|
+| 2026-10-26 | v1.1 (POC-0 measured) | POC-0 D1 to D3 replaced assumptions with measurements. (1) MI-02: the row value changes from "RSS sum" to the **private memory (RssAnon) sum** with RSS on hover (PSS is not used: it moved up to 28 % between runs); MI-05 and MI-06 record RSS and private memory for host and window; MI-07 added as a proposal (closing a session also ends detached programs). (2) SC-04, SC-05, SC-07: the notice gets a reading hint, the whole conversation is built from the provider's record, SC-10 added (inputs are recorded). (3) XF-02 extended, XF-08 added (a large screenshot never vanishes), CU-07 extended, CU-08 added (a window manager is decided after measuring). (4) Two risk rows are resolved and two are added. TST-01 and the test results are filled from S05. The evidence is in the POC-0 table of the [planning document](planning.md) | D1 to D3 are done and S05 is measured |
+| 2026-10-26 | v1.0 + ledger | Test figures were updated to the S05 ledger (work report 025a): 135 tests, 596 s from scratch, peak memory of all processes 3,571 MiB. They stand in the budget and current state of the [test plan](test_plan.md) and in TST-01 | The first measurement of S05 |
 | 2026-10-26 | v1.0 (G1 approved) | The owner answered "proceed with the recommended option". It was read as (1) approval of G1 (the whole planning set, phase plans G2 included) and (2) approval of input-box basics IN-01 to IN-07 as option A, included in P02. IN-01 to IN-07 moved from *proposed* to *planned*; the cover moved from draft v0.1 to v1.0 | The owner's approval |
 | 2026-10-26 | v0.1 + input-box proposal | Re-reading the code found the input limit (512 B on one line per input) and the lack of cursor movement; IN-01 to IN-07 were added to the [requirements](requirements.md) as proposals, and SC-04 and the working assumptions were adjusted | A check of the basics of agentic coding |
 | 2026-10-26 | v0.1 + POC-0 | POC-0 was approved as **option A**. The decision is recorded in the POC-0 section and the decisions table of the [planning document](planning.md) | The owner chose option A |
@@ -51,7 +53,7 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 |---|---|
 | G1 milestone approval | **Approved** (2026-10-26, "proceed with the recommended option") |
 | Input-box basics (IN-01 to IN-07) | **Approved** (2026-10-26, option A). Included in P02 |
-| POC-0 result | Running as option A (started 2026-10-26). When the result page exists, it is decided whether to look at B and C again. See the POC-0 section of the [planning document](planning.md) |
+| POC-0 result | D1 to D3 done (2026-10-26 02:50), D4 left. When D4 is done a one-page result report is published and it is decided whether to look at B and C again. See the POC-0 section of the [planning document](planning.md) |
 | Values in "Working assumptions" | They stand, following the 2026-10-26 answer. A value changed by POC-0 measurement is written in the planning document with the date it changed |
 
 ## What will be written
