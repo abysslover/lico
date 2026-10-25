@@ -31,7 +31,13 @@ pub struct Panel {
     pub accounts: Vec<(String, String, String, bool)>, // id, provider, label, default
     pub login: Value,
     pub confirm: Option<char>,
+    pub opened: bool, // the browser was opened for this sign-in attempt
     pub stash: String, // what was typed in the input line before the panel took it over
+}
+
+/// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
+fn auto_open_off() -> bool {
+    std::env::var_os("LICO_NO_AUTO_OPEN").is_some()
 }
 
 impl App {
@@ -85,7 +91,7 @@ impl App {
     pub(crate) fn panel_open(&mut self, step: Step) {
         let stash = std::mem::take(&mut self.input);
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, stash });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, opened: false, stash });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -105,7 +111,7 @@ impl App {
         self.dirty = true;
     }
 
-    fn text_mode(&self) -> bool {
+    pub(crate) fn text_mode(&self) -> bool {
         self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Label || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
     }
 
@@ -148,7 +154,7 @@ impl App {
                 if let Some(url) = p.login["url"].as_str() {
                     body.push("Open this address and sign in:".into());
                     body.push(url.to_string());
-                    body.push("Ctrl+Shift+C  copy the address    Ctrl+O  open it in the browser".into());
+                    body.push(if auto_open_off() { "Ctrl+Shift+C  copy the address    Ctrl+O  open it in the browser" } else { "Opening the browser. Ctrl+O opens it again, Ctrl+Shift+C copies the address." }.into());
                 }
                 if p.login["needs_code"] == json!(true) {
                     body.push("The provider asks for a code: paste it below and press Enter.".into());
@@ -200,12 +206,19 @@ impl App {
         }
         let reply = self.host_call_within(json!({"op": "account.login.status", "account": p.account}), 2);
         let finished = reply["state"] == json!("succeeded");
+        let mut open_now = false;
         if let Some(p) = self.ui.panel.as_mut() {
             p.login = reply;
             if finished {
                 p.step = Step::Ready;
                 p.notice = "Signed in.".into();
+            } else if p.login["url"].is_string() && !p.opened {
+                p.opened = true; // once per attempt, however often the state is polled
+                open_now = true;
             }
+        }
+        if open_now && !auto_open_off() {
+            self.login_address(false);
         }
         self.dirty = true;
     }
@@ -224,6 +237,7 @@ impl App {
             p.step = Step::Login;
             p.notice = if reply["ok"] == json!(1) { String::new() } else { format!("Could not start the sign-in: {}", reply["error"].as_str().unwrap_or("unknown")) };
             p.login = json!({"state": "starting"});
+            p.opened = false; // a new attempt
         }
     }
 

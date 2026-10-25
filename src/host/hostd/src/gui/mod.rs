@@ -34,6 +34,7 @@ enum Ev {
     Sock(String),
     Cmd(String),
     Tick, // once a second in the first view: ask the host for the sessions again
+    Paste(Result<String, &'static str>), // the answer to a paste key: the selection's text, or why there is none
 }
 
 struct View {
@@ -665,6 +666,7 @@ impl ApplicationHandler<Ev> for App {
             Ev::Sock(line) => self.on_sock_line(&line),
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
             Ev::Tick => self.ui_tick(),
+            Ev::Paste(result) => self.on_paste(result),
         }
     }
 }
@@ -746,6 +748,7 @@ pub fn run(args: Vec<String>) {
     let proxy = event_loop.create_proxy();
     let sock_proxy = proxy.clone();
     let proxy_for_ticks = proxy.clone();
+    let proxy_for_paste = proxy.clone();
     thread::spawn(move || {
         for line in BufReader::new(reader).lines().map_while(Result::ok) {
             if sock_proxy.send_event(Ev::Sock(line)).is_err() {
@@ -778,7 +781,7 @@ pub fn run(args: Vec<String>) {
         input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, proxy: Some(proxy_for_paste), ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }

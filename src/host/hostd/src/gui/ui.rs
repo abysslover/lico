@@ -70,6 +70,9 @@ pub struct UiState {
     pub header: String,
     pub bar: Option<String>,
     pub window_span: (usize, usize),
+    pub proxy: Option<winit::event_loop::EventLoopProxy<super::Ev>>, // for the answer of a paste, which is fetched off the event loop
+    pub paste_pending: bool,
+    pub flash: Option<String>, // a one-line notice outside the panels, until the next key
     pub panel: Option<super::panel::Panel>, // new session, accounts and sign-in, in place of the transcript
     pub scale: f32, // the display scale factor; every size here is a logical size times this
 }
@@ -421,7 +424,8 @@ impl App {
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                if self.panel_key(event) {
+                self.ui.flash = None;
+                if self.panel_key(event) || self.paste_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -453,6 +457,59 @@ impl App {
             }
             _ => false,
         }
+    }
+
+    /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
+    fn paste_allowed(&self) -> bool {
+        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { !self.session.is_empty() }
+    }
+
+    fn paste_notice(&mut self, text: &str) {
+        match self.ui.panel.as_mut() {
+            Some(p) => p.notice = text.to_string(),
+            None => self.ui.flash = Some(text.to_string()),
+        }
+    }
+
+    /// Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection; only on the person's own key.
+    pub(crate) fn paste_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
+        let selection: &'static [u8] = match &event.logical_key {
+            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("v") => b"CLIPBOARD",
+            Key::Named(NamedKey::Insert) if shift && !ctrl => b"PRIMARY",
+            _ => return false,
+        };
+        if event.repeat || !self.paste_allowed() || self.ui.paste_pending {
+            return true; // the key is ignored where nothing can take text
+        }
+        let Some(proxy) = self.ui.proxy.clone() else { return true };
+        self.ui.paste_pending = true;
+        thread::spawn(move || {
+            let _ = proxy.send_event(super::Ev::Paste(fetch_selection(selection)));
+        });
+        true
+    }
+
+    /// What the selection's owner sent: it goes onto the input line (never echoed, never submitted).
+    pub(crate) fn on_paste(&mut self, result: Result<String, &'static str>) {
+        self.ui.paste_pending = false;
+        if !self.paste_allowed() {
+            return; // the person moved on while the owner was answering
+        }
+        match result {
+            Ok(text) => {
+                let line: String = text.split(|c| c == '\n' || c == '\r').next().unwrap_or("").chars().filter(|c| !c.is_control()).collect();
+                if line.is_empty() {
+                    self.paste_notice("Nothing to paste.");
+                } else {
+                    self.input.push_str(&line); // a newline ends the paste: Enter stays the person's own key
+                }
+            }
+            Err("too_large") => self.paste_notice("Paste refused: more than 8 KiB."),
+            Err("timeout") => self.paste_notice("Paste: the owner of the selection did not answer."),
+            Err(_) => self.paste_notice("Nothing to paste."),
+        }
+        self.dirty = true;
     }
 
     /// Ctrl+U clears the whole input line (and only that); true when it did.
@@ -519,7 +576,10 @@ impl App {
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
         let panel_view = self.panel_view();
-        let header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
+        let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
+        if let (None, Some(flash)) = (&panel_view, &self.ui.flash) {
+            header = format!("{header} | {flash}");
+        }
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
@@ -695,6 +755,52 @@ fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &
 }
 
 /// Owns the CLIPBOARD selection with the text it was last given, until another client takes it.
+/// The text of a selection (`CLIPBOARD` or `PRIMARY`) as UTF-8, asked for through our own helper window on a connection of its own, within 500 ms.
+/// An incremental transfer or more than 8 KiB is refused rather than cut.
+fn fetch_selection(name: &[u8]) -> Result<String, &'static str> {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, CreateWindowAux, WindowClass};
+    use x11rb::protocol::Event;
+    let (conn, screen) = x11rb::connect(None).map_err(|_| "empty")?;
+    let root = conn.setup().roots[screen].root;
+    let win = conn.generate_id().map_err(|_| "empty")?;
+    conn.create_window(0, win, root, 0, 0, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &CreateWindowAux::new()).map_err(|_| "empty")?;
+    let atom = |n: &[u8]| conn.intern_atom(false, n).ok().and_then(|c| c.reply().ok()).map(|r| r.atom).ok_or("empty");
+    let (selection, utf8, property, incr) = (atom(name)?, atom(b"UTF8_STRING")?, atom(b"LICO_PASTE")?, atom(b"INCR")?);
+    let owner = conn.get_selection_owner(selection).map_err(|_| "empty")?.reply().map_err(|_| "empty")?.owner;
+    if owner == x11rb::NONE {
+        return Err("empty");
+    }
+    let deadline = std::time::Instant::now() + Duration::from_millis(500);
+    for target in [utf8, u32::from(AtomEnum::STRING)] {
+        conn.convert_selection(win, selection, target, property, x11rb::CURRENT_TIME).map_err(|_| "empty")?;
+        conn.flush().map_err(|_| "empty")?;
+        loop {
+            match conn.poll_for_event() {
+                Ok(Some(Event::SelectionNotify(e))) if e.requestor == win => {
+                    if e.property == x11rb::NONE {
+                        break; // this form was refused: the next one
+                    }
+                    let reply = conn.get_property(true, win, property, AtomEnum::ANY, 0, 2049).map_err(|_| "empty")?.reply().map_err(|_| "empty")?;
+                    if reply.type_ == incr || reply.bytes_after > 0 || reply.value.len() > 8192 {
+                        return Err("too_large");
+                    }
+                    return Ok(String::from_utf8_lossy(&reply.value).into_owned());
+                }
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    if std::time::Instant::now() > deadline {
+                        return Err("timeout");
+                    }
+                    thread::sleep(Duration::from_millis(5));
+                }
+                Err(_) => return Err("empty"),
+            }
+        }
+    }
+    Err("empty")
+}
+
 fn clipboard_server(rx: mpsc::Receiver<String>) {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, CreateWindowAux, EventMask, PropMode, SelectionNotifyEvent, WindowClass, SELECTION_NOTIFY_EVENT};

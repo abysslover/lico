@@ -193,3 +193,17 @@ def capture_backspace(out: Path) -> dict:
         w.png(out / "5_after_backspace.png")
         after = w.ui()["panel"]["input"]
     return {"typed": before, "after_backspace": after}
+
+
+def capture_paste(out: Path) -> dict:
+    """The account label line after a paste from the clipboard."""
+    out.mkdir(parents=True, exist_ok=True)
+    with ProductWindow() as w:
+        for keys in (("ctrl+n",), ("1",), ("n",)):
+            w.key(*keys)
+        subprocess.run(["xclip", "-selection", "clipboard", "-i"], input=b"Work account", env={"DISPLAY": w.xvfb.display, "PATH": "/usr/bin:/bin"},
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        time.sleep(0.3)
+        w.key("ctrl+v")
+        w.png(out / "7_label_after_paste.png")
+        return {"input": w.ui()["panel"]["input"]}

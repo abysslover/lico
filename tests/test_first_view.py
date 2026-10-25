@@ -48,7 +48,7 @@ def responses(received):
 
 
 def start_client(host, display):
-    client = Client("a2", host.socket, display, extra_args=["--ui"])
+    client = Client("a2", host.socket, display, extra_args=["--ui"], extra_env={"LICO_NO_AUTO_OPEN": "1"})   # no browser in these tests
     time.sleep(0.8)
     _focus(display)                                  # no window manager here: the keyboard goes where the focus is put
     time.sleep(0.3)
