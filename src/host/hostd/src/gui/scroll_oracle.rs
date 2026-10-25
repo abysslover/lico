@@ -66,11 +66,12 @@ struct Pair {
     off: Side,
     seq: i64,
     shifts: usize,
+    steps: usize,
 }
 
 impl Pair {
     fn new(size: (usize, usize), scale: f32) -> Pair {
-        Pair { on: Side::new(size, scale, false), off: Side::new(size, scale, true), seq: 0, shifts: 0 }
+        Pair { on: Side::new(size, scale, false), off: Side::new(size, scale, true), seq: 0, shifts: 0, steps: 0 }
     }
 
     fn both(&mut self, f: impl Fn(&mut App)) {
@@ -106,6 +107,7 @@ impl Pair {
     fn step(&mut self, what: &str) -> Cause {
         let cause = self.on.frame();
         let full = self.off.frame();
+        self.steps += 1;
         assert_eq!(full, Cause::Disabled);
         if cause == Cause::Shift {
             self.shifts += 1;
@@ -252,6 +254,7 @@ fn script(scale: f32) {
     p.push(&lines(next, 2));
     next += 2;
     let cause = p.step("a header with marks below it");
+    println!("scale {scale}: a header with marks below it: {cause:?}");
     assert!(matches!(cause, Cause::Shift | Cause::Overhang | Cause::RowHeight), "{cause:?}");
     p.push(&lines(next, 1));
     next += 1;
@@ -353,6 +356,8 @@ fn script(scale: f32) {
 
     // at 1.25 a row is 22.5 pixels: only a shift by an even number of rows is whole pixels, the others are repainted and say so
     let least = if scale == 1.0 || scale == 2.0 { 50 } else { 15 };
+    println!("scale {scale}: {} steps, {} shifts", p.steps, p.shifts);
+    assert!(p.steps >= 85, "the script has {} steps", p.steps);
     assert!(p.shifts >= least, "the shift must have been taken often: {}", p.shifts);
     assert!(p.on.app.ui.stats.kept_rows > 0);
     assert_eq!(p.off.app.ui.stats.kept_rows, 0);
