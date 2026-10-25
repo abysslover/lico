@@ -105,6 +105,11 @@ class ProductWindow:
         data, width, height = self.gray()
         return sum(1 for y in range(height) for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD)
 
+    def click(self, x: float, y: float, button: int = 1) -> None:
+        wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
+        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", str(button)], env=self.env, check=True)
+        time.sleep(0.7)
+
     def ui(self) -> dict:
         self.proc.stdin.write("ui\n")
         self.proc.stdin.flush()
@@ -125,9 +130,9 @@ class ProductWindow:
     def png(self, path: Path) -> None:
         subprocess.run(["import", "-window", "root", str(path)], env=self.env, check=True)
 
-    def bright(self, x0: int, y0: int, x1: int, y1: int) -> int:
+    def bright(self, x0: int, y0: int, x1: int, y1: int, threshold: int = GRAY_THRESHOLD) -> int:
         data, width, _ = self.gray()
-        return sum(1 for y in range(y0, y1) for x in range(x0, x1) if data[y * width + x] > GRAY_THRESHOLD)
+        return sum(1 for y in range(y0, y1) for x in range(x0, x1) if data[y * width + x] > threshold)
 
     def text_rows(self) -> int:
         """How many 18-pixel text rows of the main area carry text."""
@@ -140,8 +145,8 @@ class ProductWindow:
 
     def corner_is_background(self) -> bool:
         data, width, _ = self.gray()
-        background = data[100 * width + 100]
-        return all(data[y * width + x] == background for y in range(16) for x in range(32))
+        bar = data[5 * width + 1100]                  # the menu bar's own colour, far from its titles
+        return all(data[y * width + x] == bar for y, x in ((2, 2), (2, 30), (13, 2), (13, 30), (8, 2), (8, 30)))     # no solid squares of the measurement markers
 
     def __exit__(self, *exc) -> None:
         host_pid = None

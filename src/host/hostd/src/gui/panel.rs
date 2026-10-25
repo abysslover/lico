@@ -21,6 +21,8 @@ pub enum Step {
     Login,
     Accounts,
     Actions,
+    Keys,
+    About,
 }
 
 pub struct Panel {
@@ -189,6 +191,18 @@ impl App {
                 }
                 "Accounts".to_string()
             }
+            Step::Keys => {
+                body.extend([
+                    "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
+                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty)", "Ctrl+V or Shift+Insert paste   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
+                    "Page Up, Page Down, End  scroll the output",
+                ].map(String::from));
+                "Keys".to_string()
+            }
+            Step::About => {
+                body.extend([format!("Lico {} (build {})", env!("CARGO_PKG_VERSION"), crate::core::build_id()), "One program: this window, the host and the command line (`lico licenses` prints the licenses).".to_string()]);
+                "About Lico".to_string()
+            }
             Step::Actions => {
                 body.extend(["S  sign in".to_string(), "F  make it the default for its provider".to_string(), "D  remove it (its sessions stay, unbound)".to_string(), "E  remove it and end its sessions".to_string()]);
                 if let Some(s) = p.login["signed_in"].as_bool() {
@@ -315,7 +329,7 @@ impl App {
             _ if text_mode => false, // typing (and the input method) go to the input line
             Key::Character(c) => {
                 let key = c.to_lowercase();
-                self.menu_key(step, key.chars().next().unwrap_or(' '));
+                self.panel_choice(step, key.chars().next().unwrap_or(' '));
                 self.dirty = true;
                 true
             }
@@ -373,7 +387,7 @@ impl App {
         }
     }
 
-    fn menu_key(&mut self, step: Step, key: char) {
+    fn panel_choice(&mut self, step: Step, key: char) {
         match step {
             Step::Provider => {
                 let provider = match key {

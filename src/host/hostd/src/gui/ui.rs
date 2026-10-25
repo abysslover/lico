@@ -10,13 +10,15 @@ use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
-use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color, Family, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache, Wrap};
+use cosmic_text::{Attrs, AttrsList, Buffer, BufferLine, Color, Family, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache};
 use serde_json::{json, Value};
 use softbuffer::Surface;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::Window;
 
+use super::controls::{self, Action, Controls};
+use super::menu::{MenuGeom, TITLES};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
 
 pub const LIST_W: usize = 280;
@@ -40,6 +42,12 @@ pub struct Row {
     pub mode: String,
 }
 
+#[derive(Clone)]
+pub enum ListItem {
+    Heading(String),
+    Row(String, String), // session id, text
+}
+
 #[derive(Default)]
 pub struct UiState {
     pub enabled: bool,
@@ -47,10 +55,8 @@ pub struct UiState {
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>,
     pub list_sig: String,
-    pub list_buffer: Option<Buffer>,
     pub list_swash: Option<SwashCache>,
     pub surface: Option<Surface<Arc<Window>, Arc<Window>>>,
-    pub buttons: Option<(Buffer, Buffer)>,
     pub scroll: usize,
     pub behind: bool, // the live tail is not buffered while far into older history
     pub oldest_known: i64,
@@ -62,9 +68,12 @@ pub struct UiState {
     pub mouse: (f64, f64),
     pub mods: ModifiersState,
     pub hit_lines: Vec<(f32, f32, usize)>,
-    pub hit_rows: Vec<(f32, f32, String)>,
-    pub allow_rect: Option<[f32; 4]>,
-    pub deny_rect: Option<[f32; 4]>,
+    pub controls: Controls, // every drawn box and what a click on it means
+    pub list_items: Vec<ListItem>,
+    pub menu: bool, // the bar is shown (the product window; the measurement client only with --menu)
+    pub menu_open: Option<usize>,
+    pub menu_sel: usize,
+    pub menu_geom: MenuGeom,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<String>>,
@@ -73,7 +82,6 @@ pub struct UiState {
     pub window_span: (usize, usize),
     pub proxy: Option<winit::event_loop::EventLoopProxy<super::Ev>>, // for the answer of a paste, which is fetched off the event loop
     pub paste_pending: bool,
-    pub hint_buffer: Option<(String, Buffer)>, // the permanent hint line at the bottom, shaped again only when its text changes
     pub numbered: Vec<String>, // the sessions in the order of the list: Alt+1..9 pick by this number
     pub host_notice: Option<String>, // the host runs another build than this window (or was replaced): one line, always shown
     pub flash: Option<String>, // a one-line notice outside the panels, until the next key
@@ -192,17 +200,20 @@ impl App {
         }
     }
 
-    fn selected_row(&self) -> Option<&Row> {
+    pub(crate) fn selected_row(&self) -> Option<&Row> {
         self.ui.rows.iter().find(|r| r.session == self.session)
     }
 
     /// The target beside the input: provider, account, model and state of the selected session, as the host reports them.
     fn header_text(&self) -> String {
-        let base = self.header_base();
-        match &self.ui.host_notice {
-            Some(n) => format!("{base} | {n}"),
-            None => base,
+        let mut text = self.header_base();
+        if let Some(n) = &self.ui.host_notice {
+            text = format!("{text} | {n}");
         }
+        if let Some(flash) = &self.ui.flash {
+            text = format!("{text} | {flash}");
+        }
+        text
     }
 
     fn header_base(&self) -> String {
@@ -222,7 +233,7 @@ impl App {
         }
     }
 
-    fn label_of(&self, account: &str) -> String {
+    pub(crate) fn label_of(&self, account: &str) -> String {
         if account.is_empty() {
             "no account".into()
         } else {
@@ -230,10 +241,9 @@ impl App {
         }
     }
 
+    /// The list as the host last said it: group headings and rows with their numbers; the boxes are made when it is drawn (see `draw_ui`).
     fn refresh_list(&mut self) {
-        let s = self.ui.scale.max(1.0);
         let now = now_secs();
-        let mut text = String::new();
         let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
         for row in &self.ui.rows {
             let key = (row.provider.clone(), row.account.clone());
@@ -241,11 +251,11 @@ impl App {
                 groups.push(key);
             }
         }
-        let mut rows_text = Vec::new();
+        let mut items = Vec::new();
         let mut number = 0usize;
         self.ui.numbered.clear();
         for (provider, account) in &groups {
-            rows_text.push(format!("{provider} / {}", self.label_of(account)));
+            items.push(ListItem::Heading(format!("{provider} / {}", self.label_of(account))));
             for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
                 let marker = if row.session == self.session { ">" } else if !row.approvals.is_empty() { "!" } else { " " };
                 let approvals = if row.approvals.is_empty() { String::new() } else { format!(" x{}", row.approvals.len()) };
@@ -253,34 +263,15 @@ impl App {
                 number += 1;
                 self.ui.numbered.push(row.session.clone());
                 let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
-                rows_text.push(format!("{marker}{digit} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at)));
+                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {}{approvals} {}", row.list_state_text(), ago(now, row.state_at))));
             }
         }
-        text.push_str(&rows_text.join("\n"));
-        let sig = text.clone();
-        if sig == self.ui.list_sig && self.ui.list_buffer.is_some() {
-            return;
+        let sig: String = items.iter().map(|i| match i { ListItem::Heading(t) => t.clone(), ListItem::Row(_, t) => t.clone() }).collect::<Vec<_>>().join("\n");
+        if sig != self.ui.list_sig {
+            self.ui.list_sig = sig;
+            self.dirty = true;
         }
-        self.ui.list_sig = sig;
-        if let Some(fs) = self.font_system.as_mut() {
-            let buffer = self.ui.list_buffer.get_or_insert_with(|| Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s)));
-            buffer.set_wrap(Wrap::None);
-            buffer.set_size(Some(LIST_W as f32 * s), Some(4000.0));
-            buffer.set_text(&text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
-            buffer.shape_until_scroll(fs, true);
-        }
-        // the rows' click boxes: one logical line each, in the order they were written
-        self.ui.hit_rows.clear();
-        let mut y = LIST_TOP as f32 * s;
-        for (provider, account) in &groups {
-            let _ = (provider, account);
-            y += LINE_HEIGHT as f32 * s; // the group heading is not a target
-            for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
-                self.ui.hit_rows.push((y, y + LINE_HEIGHT as f32 * s, row.session.clone()));
-                y += LINE_HEIGHT as f32 * s;
-            }
-        }
-        self.dirty = true;
+        self.ui.list_items = items;
     }
 
     // ------------------------------------------------------------------ lines of the selected session
@@ -302,7 +293,7 @@ impl App {
         self.dirty = true;
     }
 
-    fn scroll_by(&mut self, lines: isize) {
+    pub(crate) fn scroll_by(&mut self, lines: isize) {
         let Some(view) = self.view.as_ref() else { return };
         let len = view.lines.len();
         let next = (self.ui.scroll as isize + lines).clamp(0, len.saturating_sub(1) as isize) as usize;
@@ -328,7 +319,7 @@ impl App {
     }
 
     // ------------------------------------------------------------------ approvals, copy
-    fn answer_approval(&mut self, allow: bool) {
+    pub(crate) fn answer_approval(&mut self, allow: bool) {
         let Some(row) = self.selected_row() else { return };
         let Some((id, _)) = row.approvals.first().cloned() else { return };
         let msg = format!(
@@ -355,7 +346,7 @@ impl App {
     }
 
     /// Copy is a user action: only a non-empty selection, only from the key chord.
-    fn copy_selection(&mut self) {
+    pub(crate) fn copy_selection(&mut self) {
         let Some(text) = self.selection_text() else { return };
         self.copy_text(text);
     }
@@ -380,9 +371,7 @@ impl App {
         match event {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.ui.scale = *scale_factor as f32;
-                self.ui.list_buffer = None; // laid out again at the new size
-                self.ui.list_sig.clear();
-                self.ui.buttons = None;
+                self.ui.list_sig.clear(); // every label is shaped again at the new size (the controls notice the scale)
                 let s = self.ui.scale.max(1.0);
                 if let Some(view) = self.view.as_mut() {
                     view.buffer.set_metrics(Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
@@ -409,24 +398,36 @@ impl App {
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
                 if *state == ElementState::Pressed {
-                    if x < LIST_W as f32 * self.ui.scale.max(1.0) {
-                        if self.ui.panel.is_some() {
-                            return true; // a panel owns the input line: leaving for another session would carry its text along
+                    self.ui.flash = None;
+                    let hit = self.ui.controls.hit_at(x, y);
+                    if let Some(open) = self.ui.menu_open {
+                        match hit {
+                            Some(Action::Item(m, i)) => self.menu_run(m, i),
+                            Some(Action::Menu(m)) if m == open => self.menu_close(),
+                            Some(Action::Menu(m)) => self.menu_open_at(m),
+                            _ => self.menu_close(), // a click elsewhere only closes the menu
                         }
-                        if let Some((_, _, id)) = self.ui.hit_rows.iter().find(|r| y >= r.0 && y < r.1).cloned() {
-                            if id != self.session {
-                                self.switch_to(&id);
+                    } else {
+                        match hit {
+                            Some(Action::Menu(m)) => self.menu_open_at(m),
+                            Some(Action::Session(id)) => {
+                                if self.ui.panel.is_none() && id != self.session {
+                                    self.switch_to(&id); // (a panel owns the input line: leaving for another session would carry its text along)
+                                }
+                            }
+                            Some(Action::Allow) => self.answer_approval(true),
+                            Some(Action::Deny) => self.answer_approval(false),
+                            Some(Action::Item(..)) => {}
+                            None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
+                            None => {
+                                if let Some(idx) = self.line_at(y) {
+                                    self.ui.sel = Some((idx, idx));
+                                    self.ui.dragging = true;
+                                } else {
+                                    self.ui.sel = None;
+                                }
                             }
                         }
-                    } else if self.inside(self.ui.allow_rect, x, y) {
-                        self.answer_approval(true);
-                    } else if self.inside(self.ui.deny_rect, x, y) {
-                        self.answer_approval(false);
-                    } else if let Some(idx) = self.line_at(y) {
-                        self.ui.sel = Some((idx, idx));
-                        self.ui.dragging = true;
-                    } else {
-                        self.ui.sel = None;
                     }
                     self.dirty = true;
                 } else {
@@ -444,7 +445,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.nav_key(event) {
+                if self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -483,7 +484,7 @@ impl App {
     }
 
     /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
-    fn paste_allowed(&self) -> bool {
+    pub(crate) fn paste_allowed(&self) -> bool {
         self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { !self.session.is_empty() }
     }
 
@@ -502,15 +503,22 @@ impl App {
             Key::Named(NamedKey::Insert) if shift && !ctrl => b"PRIMARY",
             _ => return false,
         };
-        if event.repeat || !self.paste_allowed() || self.ui.paste_pending {
-            return true; // the key is ignored where nothing can take text
+        if !event.repeat {
+            self.start_paste(selection);
         }
-        let Some(proxy) = self.ui.proxy.clone() else { return true };
+        true
+    }
+
+    /// Ask the owner of a selection for its text (from the paste keys and the menu); nothing happens where no line can take text.
+    pub(crate) fn start_paste(&mut self, selection: &'static [u8]) {
+        if !self.paste_allowed() || self.ui.paste_pending {
+            return;
+        }
+        let Some(proxy) = self.ui.proxy.clone() else { return };
         self.ui.paste_pending = true;
         thread::spawn(move || {
             let _ = proxy.send_event(super::Ev::Paste(fetch_selection(selection)));
         });
-        true
     }
 
     /// What the selection's owner sent: it goes onto the input line (never echoed, never submitted).
@@ -561,16 +569,12 @@ impl App {
             return false;
         }
         let ids = self.ui.numbered.clone();
-        let here = ids.iter().position(|id| *id == self.session);
         let target = match &event.logical_key {
             Key::Named(NamedKey::Tab) if self.ui.mods.control_key() => {
-                let n = ids.len();
-                Some(match (here, self.ui.mods.shift_key()) {
-                    (None, false) => 0,
-                    (None, true) => n - 1,
-                    (Some(i), false) => (i + 1) % n,
-                    (Some(i), true) => (i + n - 1) % n,
-                })
+                if !event.repeat {
+                    self.step_session(if self.ui.mods.shift_key() { -1 } else { 1 });
+                }
+                return true;
             }
             Key::Character(c) if self.ui.mods.alt_key() && !self.ui.mods.control_key() => c.chars().next().and_then(|d| d.to_digit(10)).filter(|d| *d >= 1).map(|d| d as usize - 1).filter(|i| *i < ids.len()),
             _ => None,
@@ -584,6 +588,24 @@ impl App {
             }
             Some(_) => true,
             None => false,
+        }
+    }
+
+    /// The next (or previous) session of the list, wrapping; the first (or last) when none is shown.
+    pub(crate) fn step_session(&mut self, delta: isize) {
+        let ids = self.ui.numbered.clone();
+        let n = ids.len() as isize;
+        if n == 0 {
+            return;
+        }
+        let here = ids.iter().position(|id| *id == self.session).map(|i| i as isize);
+        let i = match (here, delta > 0) {
+            (None, true) => 0,
+            (None, false) => n - 1,
+            (Some(i), _) => (i + delta).rem_euclid(n),
+        };
+        if ids[i as usize] != self.session {
+            self.switch_to(&ids[i as usize]);
         }
     }
 
@@ -647,15 +669,20 @@ impl App {
         }
     }
 
-    fn inside(&self, rect: Option<[f32; 4]>, x: f32, y: f32) -> bool {
-        rect.map_or(false, |r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
-    }
-
     fn line_at(&self, y: f32) -> Option<usize> {
         self.ui.hit_lines.iter().find(|l| y >= l.0 && y < l.1).map(|l| l.2)
     }
 
     // ------------------------------------------------------------------ the model, for tests and inspection
+    fn menu_json(&self) -> Value {
+        let titles: Vec<Value> = TITLES.iter().enumerate().map(|(i, t)| json!({"label": t, "rect": self.ui.menu_geom.titles.get(i)})).collect();
+        let items: Vec<Value> = match self.ui.menu_open {
+            Some(m) => self.menu_entries(m).iter().enumerate().map(|(i, e)| json!({"label": e.label, "key": e.key, "enabled": e.reason.is_none(), "reason": e.reason, "rect": self.ui.menu_geom.items.get(i)})).collect(),
+            None => Vec::new(),
+        };
+        json!({"shown": self.ui.menu, "titles": titles, "open": self.ui.menu_open, "selected": self.ui.menu_sel, "items": items})
+    }
+
     pub(crate) fn ui_dump(&self) {
         let rows: Vec<Value> = self
             .ui
@@ -675,11 +702,12 @@ impl App {
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(),
+            "menu": self.menu_json(),
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
-                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.hit_rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
-                "allow": self.ui.allow_rect, "deny": self.ui.deny_rect,
+                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
+                "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect), "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
                 "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
             },
         });
@@ -697,6 +725,9 @@ impl App {
         let s = self.ui.scale.max(1.0);
         let list_w = (LIST_W as f32 * s) as usize;
         let lh = LINE_HEIGHT as f32 * s;
+        let bar_h = if self.ui.menu { lh + 4.0 * s } else { 0.0 };
+        let top = bar_h; // the text area and the list start below the bar
+        let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
@@ -704,19 +735,26 @@ impl App {
         let hint = self.hint_text(width, s);
         let panel_view = self.panel_view();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
-        if let (Some(_), Some(n)) = (&panel_view, &self.ui.host_notice) {
-            header = format!("{header} | {n}");
+        if panel_view.is_some() {
+            if let Some(n) = &self.ui.host_notice {
+                header = format!("{header} | {n}");
+            }
+            if let Some(flash) = &self.ui.flash {
+                header = format!("{header} | {flash}");
+            }
         }
-        if let (None, Some(flash)) = (&panel_view, &self.ui.flash) {
-            header = format!("{header} | {flash}");
-        }
+        let menu_open = self.ui.menu_open;
+        let menu_sel = self.ui.menu_sel;
+        let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
+        let list_items = self.ui.list_items.clone();
+        let session_sel = self.session.clone();
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let prompt = if self.code_entry() { format!("> {}", self.shown_input()) } else { format!("> {}[{}]", self.input, self.preedit) }; // a code is never drawn
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
-        let rows_avail = ((height as f32 / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
+        let rows_avail = (((height as f32 - top) / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
         let (Some(fs), Some(surface)) = (self.font_system.as_mut(), self.ui.surface.as_mut()) else { return };
         if surface.resize(w, h).is_err() {
             return;
@@ -758,7 +796,7 @@ impl App {
                 buffer.lines.push(line);
             }
             buffer.set_scroll(Scroll::default());
-            buffer.set_size(Some(text_w as f32), Some(height as f32));
+            buffer.set_size(Some(text_w as f32), Some(height as f32 - top));
             buffer.shape_until_scroll(fs, true);
             // lines put in by hand are not all laid out by the call above (new lines in front of a reused one stayed unshaped and
             // the whole text vanished): every line of the screenful is laid out here
@@ -787,18 +825,16 @@ impl App {
         let mut approval_y = None;
         for run in view.buffer.layout_runs() {
             if bar.is_some() && run.line_i == 1 {
-                approval_y = Some(run.line_top);
+                approval_y = Some(run.line_top + top);
             }
             if run.line_i >= base && first + (run.line_i - base) < end {
                 let idx = first + (run.line_i - base);
                 match self.ui.hit_lines.last_mut() {
-                    Some(last) if last.2 == idx => last.1 = run.line_top + run.line_height,
-                    _ => self.ui.hit_lines.push((run.line_top, run.line_top + run.line_height, idx)),
+                    Some(last) if last.2 == idx => last.1 = run.line_top + run.line_height + top,
+                    _ => self.ui.hit_lines.push((run.line_top + top, run.line_top + run.line_height + top, idx)),
                 }
             }
         }
-        self.ui.allow_rect = approval_y.map(|y| [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh]);
-        self.ui.deny_rect = approval_y.map(|y| [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh]);
         let Ok(mut buf) = surface.buffer_mut() else { return };
         buf.fill(BACKGROUND);
         if self.ui.markers {
@@ -806,16 +842,11 @@ impl App {
             fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
             fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
         }
-        // the list panel: its own column, its own background, the selected row marked
-        for y in 0..height {
+        // the list column's right edge
+        for y in (top as usize)..height {
             let idx = y * width + list_w - 1;
             if let Some(px) = buf.get_mut(idx) {
                 *px = 0xFF30_3840;
-            }
-        }
-        for (y0, y1, id) in &self.ui.hit_rows {
-            if *id == self.session {
-                rect(&mut buf, width, height, 0, *y0 as i32, list_w as i32 - 1, (*y1 - *y0) as i32, 0xFF22_3A58);
             }
         }
         if let Some((a, b)) = self.ui.sel {
@@ -827,47 +858,93 @@ impl App {
             }
         }
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
-        let list_swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
-        if let Some(list) = self.ui.list_buffer.as_mut() {
-            blit(list, fs, list_swash, &mut buf, width, height, (4.0 * s) as i32, (LIST_TOP as f32 * s) as i32, list_w as i32 - 2, ink); // clipped to its column
+        let dim = Color::rgb(0x6A, 0x72, 0x7E);
+        let hint_ink = Color::rgb(0x9A, 0xA4, 0xB0);
+        let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
+        let controls = &mut self.ui.controls;
+        controls.begin(s);
+        // the session list: group headings and rows, each row a control
+        let mut y = list_top;
+        for item in &list_items {
+            match item {
+                ListItem::Heading(text) => {
+                    controls.text(fs, swash, &mut buf, width, height, 4.0 * s, y, list_w as i32 - 2, text, ink);
+                    y += lh;
+                }
+                ListItem::Row(id, text) => {
+                    controls.row(fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], text, *id == session_sel, ink, Action::Session(id.clone()));
+                    y += lh;
+                }
+            }
         }
+        // the Allow and Deny buttons of the first pending approval
         if let Some(y) = approval_y {
-            let (allow, deny) = self.ui.buttons.get_or_insert_with(|| {
-                let make = |fs: &mut FontSystem, label: &str| {
-                    let mut b = Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
-                    b.set_size(Some(90.0 * s), Some(lh));
-                    b.set_text(label, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
-                    b.shape_until_scroll(fs, true);
-                    b
-                };
-                (make(fs, " Allow"), make(fs, " Deny"))
-            });
-            let bw = (90.0 * s) as i32;
-            rect(&mut buf, width, height, (width as f32 - 190.0 * s) as i32, y as i32, bw, lh as i32, 0xFF2E_6B3A);
-            rect(&mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, bw, lh as i32, 0xFF7A_2E2E);
-            let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
-            blit(allow, fs, swash, &mut buf, width, height, (width as f32 - 190.0 * s) as i32, y as i32, i32::MAX, ink);
-            blit(deny, fs, swash, &mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, i32::MAX, ink);
+            controls.button(fs, swash, &mut buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", 0xFF2E_6B3A, ink, Action::Allow);
+            controls.button(fs, swash, &mut buf, width, height, [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh], "Deny", 0xFF7A_2E2E, ink, Action::Deny);
         }
-        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + (4.0 * s) as i32, 0, i32::MAX, ink);
+        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + (4.0 * s) as i32, top as i32, i32::MAX, ink);
         // the permanent hint line, over whatever reaches the bottom row
-        let hint_y = (height as f32 - lh) as i32;
-        rect(&mut buf, width, height, 0, hint_y, width as i32, lh as i32 + 1, 0xFF18_1E26);
-        let entry = self.ui.hint_buffer.get_or_insert_with(|| (String::new(), Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s))));
-        if entry.0 != hint {
-            entry.1.set_size(Some(width as f32), Some(lh));
-            entry.1.set_text(&hint, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
-            entry.1.shape_until_scroll(fs, true);
-            entry.0 = hint.clone();
+        let hint_y = height as f32 - lh;
+        controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
+        controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
+        // the menu bar, and the open menu on top of everything
+        self.ui.menu_geom.titles.clear();
+        self.ui.menu_geom.items.clear();
+        if self.ui.menu {
+            let x0 = if self.ui.markers { 36.0 } else { 0.0 }; // the measurement markers keep the corner
+            controls::fill(&mut buf, width, height, [x0, 0.0, width as f32, bar_h], 0xFF1C_2430);
+            let mut x = x0 + 4.0 * s;
+            for (i, title) in TITLES.iter().enumerate() {
+                let w = controls.width(fs, title) + 16.0 * s;
+                let r = [x, 0.0, x + w, bar_h];
+                if menu_open == Some(i) {
+                    controls::fill(&mut buf, width, height, r, 0xFF2C_4A78);
+                }
+                controls.text(fs, swash, &mut buf, width, height, x + 8.0 * s, 2.0 * s, r[2] as i32, title, ink);
+                controls.target(r, Action::Menu(i));
+                self.ui.menu_geom.titles.push(r);
+                x += w;
+            }
+            if let Some(m) = menu_open {
+                let (ih, pad) = (lh + 2.0 * s, 8.0 * s);
+                let mut inner = 0.0f32;
+                let mut lefts = Vec::new();
+                for e in &menu_entries {
+                    let left = match e.reason {
+                        Some(reason) => format!("{}   ({reason})", e.label),
+                        None => e.label.clone(),
+                    };
+                    let key_w = if e.key.is_empty() { 0.0 } else { controls.width(fs, e.key) };
+                    inner = inner.max(controls.width(fs, &left) + 24.0 * s + key_w);
+                    lefts.push(left);
+                }
+                let w = inner + 2.0 * pad;
+                let x = self.ui.menu_geom.titles[m][0].min(width as f32 - 4.0 * s - w).max(4.0 * s);
+                let panel = [x, bar_h, x + w, bar_h + ih * menu_entries.len() as f32 + 4.0 * s];
+                controls::fill(&mut buf, width, height, [panel[0] - 1.0, panel[1], panel[2] + 1.0, panel[3] + 1.0], 0xFF3A_4A60);
+                controls::fill(&mut buf, width, height, panel, 0xFF1C_2430);
+                for (i, e) in menu_entries.iter().enumerate() {
+                    let r = [x, bar_h + 2.0 * s + ih * i as f32, x + w, bar_h + 2.0 * s + ih * (i + 1) as f32];
+                    if i == menu_sel && e.reason.is_none() {
+                        controls::fill(&mut buf, width, height, r, 0xFF2C_4A78);
+                    }
+                    let colour = if e.reason.is_none() { ink } else { dim };
+                    controls.text(fs, swash, &mut buf, width, height, x + pad, r[1] + s, r[2] as i32, &lefts[i], colour);
+                    if !e.key.is_empty() {
+                        let key_w = controls.width(fs, e.key);
+                        controls.text(fs, swash, &mut buf, width, height, r[2] - pad - key_w, r[1] + s, r[2] as i32, e.key, colour);
+                    }
+                    controls.target(r, Action::Item(m, i));
+                    self.ui.menu_geom.items.push(r);
+                }
+            }
         }
-        let hint_swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
-        blit(&mut entry.1, fs, hint_swash, &mut buf, width, height, (4.0 * s) as i32, hint_y, i32::MAX, Color::rgb(0x9A, 0xA4, 0xB0));
         window.pre_present_notify();
         let _ = buf.present();
     }
 }
 
-fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h: i32, color: u32) {
+pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h: i32, color: u32) {
     for row in y.max(0)..(y + h).min(height as i32) {
         for col in x.max(0)..(x + w).min(width as i32) {
             if let Some(px) = buf.get_mut(row as usize * width + col as usize) {
@@ -877,7 +954,7 @@ fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h:
     }
 }
 
-fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
+pub(super) fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
     buffer.draw(fs, swash, ink, |x, y, gw, gh, color| {
         let alpha = color.a() as u32;
         for row in 0..gh as i32 {

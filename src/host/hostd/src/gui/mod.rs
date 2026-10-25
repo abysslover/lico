@@ -1,6 +1,8 @@
 //! The primary client (formerly candidate A2): winit, softbuffer and cosmic-text (shaping, font fallback).
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
+mod controls;
+mod menu;
 mod panel;
 mod ui;
 
@@ -62,6 +64,7 @@ struct App {
     input: String,
     preedit: String,
     dirty: bool,
+    quit: bool, // set by the menu or Ctrl+Q: the loop ends at the next turn
     meta: Vec<SessionMeta>,
     pending_show: Option<(String, Option<i64>)>,
     print_status: bool,
@@ -640,6 +643,9 @@ impl ApplicationHandler<Ev> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
+        if self.quit {
+            event_loop.exit();
+        }
         if self.dirty {
             let now = std::time::Instant::now();
             while self.recent_draws.front().map_or(false, |t| now.duration_since(*t) > std::time::Duration::from_secs(1)) {
@@ -819,10 +825,10 @@ pub fn run(args: Vec<String>) {
     }
     let mut app = App {
         stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, drafts: HashMap::new(), sent_count: 0,
-        input: String::new(), preedit: String::new(), dirty: false, meta: Vec::new(), pending_show: None, print_status: false,
+        input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(),
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     event_loop.run_app(&mut app).expect("run");
 }
