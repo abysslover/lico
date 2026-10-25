@@ -1,4 +1,5 @@
 import os
+import signal
 import subprocess
 from collections import Counter
 import time
@@ -10,7 +11,7 @@ from lico_measure.p02 import start
 from lico_measure.report import build_measurement
 from lico_measure.rig import Client, Xvfb, private_dir
 
-from tests.test_first_view import ui
+from tests.test_first_view import click, ui, xdo
 
 SCOPE = {"candidate": "a2", "workload": "noisy", "process_scope": "gui tree", "interval_s": 60}
 
@@ -96,6 +97,75 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
             width = 1200 * 3
             rows = sorted({i // width for i in range(len(a)) if a[i] != b[i]})
             assert not rows, f"{len(rows)} pixel rows differ between the two, from y={rows[0]} to y={rows[-1]}"
+        finally:
+            if client and client.proc.poll() is None:
+                client.kill()
+            if host:
+                host.stop()
+            xvfb.stop()
+
+
+def differing_rows(a, b, width=1200 * 3):
+    return sorted({i // width for i in range(len(a)) if a[i] != b[i]})
+
+
+def test_a_flowing_stream_drawn_by_scroll_steps_looks_like_a_full_repaint_on_the_x_server():
+    """A real X server and a real softbuffer buffer: the shift is taken (so the buffer's age is 1 there), a menu opens and closes in the middle of the flow,
+    and once the host is stopped the screen that the steps left equals the screen of a full repaint of the same lines."""
+    with private_dir() as directory:
+        xvfb = Xvfb()
+        host = client = None
+        try:
+            host, _ = start(directory, extra=["--realistic-text", "--payload", "110"], sessions=1, producing=1, history=60)
+            client = client_on(host, xvfb.display, "--menu")
+            show(client, host.sessions[0], 35)
+            time.sleep(4)                                    # about 40 frames of a tail that follows
+            flowing = ui(client)["frame"]
+            click(xvfb.display, 50, 10)                      # the first menu title (after the marker squares)
+            time.sleep(1.5)                                  # output flows behind the open menu
+            xdo(xvfb.display, "key", "Escape")
+            time.sleep(3)
+            host.proc.send_signal(signal.SIGSTOP)            # nothing new arrives from here on
+            time.sleep(1.5)
+            state = ui(client)["frame"]
+            stepped = pixels(xvfb.display)
+            client.send("repaint")
+            time.sleep(1.0)
+            repainted = pixels(xvfb.display)
+            after = ui(client)["frame"]
+            causes = state["causes"]
+            print("frames", state["frames"], "kept_rows", state["kept_rows"], "causes", {k: v for k, v in causes.items() if v})   # for the report: run with -s
+            assert flowing["causes"]["shift"] >= 10, flowing["causes"]
+            assert causes["shift"] > flowing["causes"]["shift"], causes
+            assert causes["menu"] >= 2, causes                       # the frames with the menu open, and the one after it closed
+            assert state["kept_rows"] > 0 and state["scroll_step"] is True
+            assert causes["buffer_age"] <= 2, f"softbuffer's buffer must be age 1 on this server: {causes}"
+            assert after["causes"]["first"] == causes["first"] + 1, "the repaint is a full repaint"
+            assert len(stepped) == len(repainted) > 1000000
+            rows = differing_rows(stepped, repainted)
+            assert not rows, f"{len(rows)} pixel rows differ between the stepped screen and a full repaint, from y={rows[0]} to y={rows[-1]}; causes {causes}"
+        finally:
+            if host:
+                host.proc.send_signal(signal.SIGCONT)
+            if client and client.proc.poll() is None:
+                client.kill()
+            if host:
+                host.stop()
+            xvfb.stop()
+
+
+def test_with_the_scroll_step_off_every_frame_is_a_full_repaint():
+    with private_dir() as directory:
+        xvfb = Xvfb()
+        host = client = None
+        try:
+            host, _ = start(directory, extra=["--realistic-text", "--payload", "110"], sessions=1, producing=1, history=60)
+            client = client_on(host, xvfb.display, "--menu", "--no-scroll-step")
+            show(client, host.sessions[0], 35)
+            time.sleep(3)
+            frame = ui(client)["frame"]
+            assert frame["scroll_step"] is False and frame["kept_rows"] == 0
+            assert frame["causes"]["shift"] == 0 and frame["causes"]["disabled"] == frame["frames"], frame["causes"]
         finally:
             if client and client.proc.poll() is None:
                 client.kill()

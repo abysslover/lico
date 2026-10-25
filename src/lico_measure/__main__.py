@@ -76,8 +76,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     rig.ACCOUNTS = args.accounts
     rig.DISPLAY_SCALE = args.scale
+    client_args = ["--ui"] + (["--menu"] if args.menu else []) + (["--no-scroll-step"] if args.no_scroll_step else [])
     if args.ui:
-        rig.CLIENT_ARGS = {"a2": ["--ui"] + (["--menu"] if args.menu else [])}
+        rig.CLIENT_ARGS = {"a2": client_args}
     names = args.only.split(",") if args.only else list(EXPERIMENTS)
     results: dict = {"candidates": {}}
     receipt = {
@@ -87,7 +88,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         "binary_sha256": _binary_hashes(args.candidates.split(",")),
         "workload": {"record_bytes": (text or {}).get("payload", 1024), "rate_per_second": 100, "stream_duration_s": 30,
                      "viewport": "1200x800", "switches": 100, "restarts": 100, "idle_interval_s": 60,
-                     "text_workload": text, "accounts_on_host": args.accounts, "display_scale": args.scale, "client_args": {"a2": ["--ui"] + (["--menu"] if args.menu else [])} if args.ui else {}},
+                     "text_workload": text, "accounts_on_host": args.accounts, "display_scale": args.scale, "client_args": {"a2": client_args} if args.ui else {}},
     }
     (out / "receipt.json").write_text(json.dumps(receipt, indent=1))  # kept even if a run aborts
     for candidate in receipt["candidates"]:
@@ -341,6 +342,7 @@ def main() -> int:
     run.add_argument("--realistic-text", action="store_true", help="the same with ordinary words only (no right-to-left, no combining characters); the noisy limit is judged on this text")
     run.add_argument("--ui", action="store_true", help="run the primary client with its first view (the shipped behavior)")
     run.add_argument("--menu", action="store_true", help="with --ui: the menu bar too (the product window always has it)")
+    run.add_argument("--no-scroll-step", action="store_true", help="with --ui: every frame is a full repaint (the comparison for the scroll step)")
     run.add_argument("--scale", type=int, default=1, choices=[1, 2], help="display scale of the measured clients")
     run.add_argument("--accounts", type=int, default=0, help="accounts the host holds while the clients are measured")
     run.set_defaults(func=cmd_run)

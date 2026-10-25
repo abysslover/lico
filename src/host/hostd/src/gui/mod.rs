@@ -5,6 +5,9 @@ mod controls;
 mod fonts;
 mod menu;
 mod panel;
+mod scroll;
+#[cfg(test)]
+mod scroll_oracle;
 mod ui;
 mod update;
 
@@ -244,6 +247,7 @@ impl App {
     fn load_fonts(&mut self) {
         if self.font_system.is_none() {
             self.font_system = Some(fonts::system(self.ui.faces.plain));
+            self.ui.fonts_gen += 1;
         }
     }
 
@@ -541,6 +545,12 @@ impl App {
             Some("redraw") => {
                 if let Some(window) = &self.window {
                     window.request_redraw(); // a frame with nothing changed: what it costs is what the dump's frame counters show
+                }
+            }
+            Some("repaint") => {
+                self.ui.composed = None; // the next frame is a full repaint, whatever the last one left
+                if let Some(window) = &self.window {
+                    window.request_redraw();
                 }
             }
             Some("lines") => {
@@ -872,7 +882,7 @@ pub fn run(args: Vec<String>) {
         input: String::new(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(), serial: 0, follow: explicit.is_none(), updating: outdated.is_some(), ended_meanwhile: false,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), no_scroll_step: !product && args.iter().any(|a| a == "--no-scroll-step"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     if let Some(seen) = outdated {
         let socket = socket.clone();

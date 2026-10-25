@@ -19,6 +19,7 @@ use winit::window::Window;
 
 use super::controls::{self, Action, Controls};
 use super::menu::{MenuGeom, TITLES};
+use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, jstr, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
 
 pub const LIST_W: usize = 280;
@@ -57,6 +58,8 @@ pub struct FrameStats {
     pub paint_us: u64, // controls, bar, text blits
     pub present_us: u64,
     pub last_us: u64,
+    pub causes: [u64; Cause::ALL.len()], // how each frame was drawn: a shift, or the cause of a full repaint (see scroll.rs)
+    pub kept_rows: u64, // pixel rows that a shift kept instead of drawing
 }
 
 #[derive(Default)]
@@ -100,6 +103,9 @@ pub struct UiState {
     pub flash: Option<String>, // a one-line notice outside the panels, until the next key
     pub panel: Option<super::panel::Panel>, // new session, accounts and sign-in, in place of the transcript
     pub scale: f32, // the display scale factor; every size here is a logical size times this
+    pub composed: Option<Composed>, // the last frame in the surface's buffer, for the scroll step
+    pub no_scroll_step: bool, // measurement client only: every frame is a full repaint
+    pub fonts_gen: u64, // changes when the font system is replaced
 }
 
 fn display_cols(text: &str) -> usize {
@@ -761,7 +767,7 @@ impl App {
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(),
             "menu": self.menu_json(),
-            "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes},
+            "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
@@ -781,7 +787,37 @@ impl App {
         let Some(window) = self.window.clone() else { return };
         let size = window.inner_size();
         let (Some(w), Some(h)) = (NonZeroU32::new(size.width), NonZeroU32::new(size.height)) else { return };
-        let (width, height) = (w.get() as usize, h.get() as usize);
+        let Some(mut surface) = self.ui.surface.take() else { return };
+        let mut drawn = None;
+        if surface.resize(w, h).is_ok() {
+            if let Ok(mut buf) = surface.buffer_mut() {
+                let age = buf.age();
+                if let Some((laid_out, painted)) = self.compose(&mut buf, w.get() as usize, h.get() as usize, age) {
+                    window.pre_present_notify();
+                    drawn = Some((laid_out, painted, buf.present().is_ok()));
+                }
+            }
+        }
+        self.ui.surface = Some(surface);
+        let Some((laid_out, painted, presented)) = drawn else { return };
+        if !presented {
+            self.ui.composed = None; // what the buffer holds is not known
+        }
+        let done = Instant::now();
+        let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
+        let stats = &mut self.ui.stats;
+        stats.frames += 1;
+        stats.layout_us += us(started, laid_out);
+        stats.paint_us += us(laid_out, painted);
+        stats.present_us += us(painted, done);
+        stats.last_us = us(started, done);
+        stats.total_us += stats.last_us;
+    }
+
+    /// Composes the window into `buf` (`age` as softbuffer says it: 1 when the buffer still holds the last presented frame) and says when the layout
+    /// was done and the painting; none when nothing could be drawn. The scroll step (see scroll.rs) lives here.
+    pub(crate) fn compose(&mut self, buf: &mut [u32], width: usize, height: usize, age: u8) -> Option<(Instant, Instant)> {
+        let mut buf = buf;
         let s = self.ui.scale.max(1.0);
         let list_w = (LIST_W as f32 * s) as usize;
         let lh = LINE_HEIGHT as f32 * s;
@@ -815,10 +851,7 @@ impl App {
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
         let rows_avail = (((height as f32 - top) / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
-        let (Some(fs), Some(surface)) = (self.font_system.as_mut(), self.ui.surface.as_mut()) else { return };
-        if surface.resize(w, h).is_err() {
-            return;
-        }
+        let fs = self.font_system.as_mut()?;
         let lines: Vec<(i64, String)> = match &panel_view {
             Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
             None => self.view.as_ref().map(|v| v.lines.iter().cloned().collect()).unwrap_or_default(),
@@ -896,8 +929,72 @@ impl App {
                 }
             }
         }
-        let Ok(mut buf) = surface.buffer_mut() else { return };
-        buf.fill(BACKGROUND);
+        // the scroll step: what the frame is made of, and whether the last one can be kept in part
+        let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, top as i32);
+        let line_count = view.buffer.lines.len();
+        let mut recs: Vec<LineRec> = (0..line_count)
+            .map(|i| {
+                let key = if i + 1 == line_count {
+                    scroll::Key::Prompt
+                } else if i >= base && first + (i - base) < end {
+                    scroll::Key::Transcript(lines[first + (i - base)].0)
+                } else {
+                    scroll::Key::Header
+                };
+                LineRec { key, text: view.buffer.lines[i].text().to_string(), top: 0.0, bottom: 0.0, rows: 0, ext: Extent::EMPTY }
+            })
+            .collect();
+        for run in view.buffer.layout_runs() {
+            let rec = &mut recs[run.line_i];
+            if rec.rows == 0 {
+                rec.top = run.line_top + oy as f32;
+            }
+            rec.bottom = run.line_top + run.line_height + oy as f32;
+            rec.rows += 1;
+        }
+        if let Some(last) = self.ui.composed.as_ref() {
+            // the header's rows are needed to say which rows may be kept; it is the one line that is measured before the others are drawn
+            recs[0].ext = match last.lines.first() {
+                Some(l) if l.key == scroll::Key::Header && l.text == recs[0].text => l.ext,
+                _ => line_extent(&mut view.buffer, fs, &mut view.swash, 0, ox, oy),
+            };
+        }
+        let hint_row = (height as f32 - lh) as i32;
+        let mut frame = Composed {
+            width,
+            height,
+            scale: s,
+            fonts: self.ui.fonts_gen,
+            list_w,
+            top: oy,
+            hint_y: hint_row,
+            corner: if self.ui.markers { 16 } else { 0 },
+            overlay: Overlay {
+                menu: menu_open.is_some(),
+                selection: self.ui.sel.is_some(),
+                panel: panel_view.is_some(),
+                approval: bar.is_some(),
+                preedit: !self.preedit.is_empty(),
+                scrollback: self.ui.scroll != 0,
+            },
+            lines: recs,
+        };
+        let plan = scroll::decide(self.ui.composed.as_ref(), &scroll::Now { allowed: !self.ui.no_scroll_step, age, row_height: lh, composed: &frame });
+        let cause = plan.as_ref().map_or_else(|cause| *cause, |_| Cause::Shift);
+        self.ui.stats.causes[Cause::ALL.iter().position(|c| *c == cause).unwrap_or(0)] += 1;
+        let cleared = plan.as_ref().map_or_else(|_| Vec::new(), |shift| shift.cleared(height as i32));
+        match &plan {
+            Ok(shift) => {
+                // the kept rows move, everything else is background again: from here on the frame is drawn as a full repaint is, over the kept rows
+                let old = &self.ui.composed.as_ref().expect("a shift has a last frame").lines;
+                for n in 0..shift.kept.len() {
+                    frame.lines[shift.kept.start + n].ext = old[shift.old_first + n].ext.shifted(shift.dy);
+                }
+                keep_rows(buf, width, list_w, shift, &cleared);
+                self.ui.stats.kept_rows += (shift.hi - shift.lo) as u64;
+            }
+            Err(_) => buf.fill(BACKGROUND),
+        }
         if self.ui.markers {
             // two 16-pixel squares (session and sequence colour) that the pixel-latency harness reads; the product window has none
             fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
@@ -943,7 +1040,23 @@ impl App {
             controls.button(fs, swash, &mut buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", 0xFF2E_6B3A, ink, Action::Allow);
             controls.button(fs, swash, &mut buf, width, height, [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh], "Deny", 0xFF7A_2E2E, ink, Action::Deny);
         }
-        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + (4.0 * s) as i32, top as i32, i32::MAX, ink);
+        let modes: Vec<Mode> = (0..frame.lines.len())
+            .map(|i| match &plan {
+                Ok(shift) if shift.kept.contains(&i) => {
+                    if frame.lines[i].ext.touches(&cleared) {
+                        Mode::Rows(&cleared)
+                    } else {
+                        Mode::Skip
+                    }
+                }
+                _ => Mode::All,
+            })
+            .collect();
+        let mut extents: Vec<Extent> = frame.lines.iter().zip(&modes).map(|(l, m)| if matches!(m, Mode::All) { Extent::EMPTY } else { l.ext }).collect();
+        blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents }));
+        for (line, extent) in frame.lines.iter_mut().zip(extents) {
+            line.ext = extent;
+        }
         // the permanent hint line, over whatever reaches the bottom row
         let hint_y = height as f32 - lh;
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
@@ -1001,18 +1114,53 @@ impl App {
             }
         }
         let painted = Instant::now();
-        window.pre_present_notify();
-        let _ = buf.present();
-        let done = Instant::now();
-        let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
-        let stats = &mut self.ui.stats;
-        stats.frames += 1;
-        stats.layout_us += us(started, laid_out);
-        stats.paint_us += us(laid_out, painted);
-        stats.present_us += us(painted, done);
-        stats.last_us = us(started, done);
-        stats.total_us += stats.last_us;
+        self.ui.composed = Some(frame);
+        Some((laid_out, painted))
     }
+}
+
+/// The scroll step's move: the kept rows go to their new place, every other row is background, and the list column is background again
+/// (it is drawn anew with its rows). What follows is the code of a full repaint.
+fn keep_rows(buf: &mut [u32], width: usize, list_w: usize, shift: &scroll::Shift, cleared: &[(i32, i32)]) {
+    if shift.dy != 0 {
+        buf.copy_within(shift.lo as usize * width..shift.hi as usize * width, (shift.lo + shift.dy) as usize * width);
+    }
+    for &(a, b) in cleared {
+        buf[a as usize * width..b as usize * width].fill(BACKGROUND);
+    }
+    for y in (shift.lo + shift.dy) as usize..(shift.hi + shift.dy) as usize {
+        buf[y * width..y * width + list_w.min(width)].fill(BACKGROUND);
+    }
+}
+
+/// The pixel rows that the glyph bitmaps of one buffer line reach, without drawing anything.
+fn line_extent(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, line: usize, ox: i32, oy: i32) -> Extent {
+    let mut extent = Extent::EMPTY;
+    for run in buffer.layout_runs().filter(|run| run.line_i == line) {
+        for glyph in run.glyphs {
+            let physical = glyph.physical((0., run.line_y), 1.0);
+            let Some(image) = swash.get_image(fs, physical.cache_key).as_ref() else { continue };
+            if image.content == SwashContent::SubpixelMask {
+                continue;
+            }
+            let y0 = physical.y - image.placement.top + oy;
+            extent.add(physical.x + image.placement.left + ox, y0, y0 + image.placement.height as i32);
+        }
+    }
+    extent
+}
+
+/// What `blit_with` does with the glyphs of one buffer line.
+pub(super) enum Mode<'a> {
+    All,
+    Skip,
+    Rows(&'a [(i32, i32)]), // only the pixel rows in these ranges
+}
+
+/// Per buffer line: what to draw of it, and where the extents of the lines that were drawn in full are written.
+pub(super) struct Lines<'a> {
+    pub modes: &'a [Mode<'a>],
+    pub extents: &'a mut [Extent],
 }
 
 pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h: i32, color: u32) {
@@ -1026,10 +1174,20 @@ pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32,
 }
 
 pub(super) fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
+    blit_with(buffer, fs, swash, buf, width, height, ox, oy, clip_x, ink, None);
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn blit_with(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color, mut lines: Option<Lines>) {
     // what `Buffer::draw` does, but a glyph's bitmap is blended row by row from its pixels (most are empty) instead of through a callback per pixel
     buffer.shape_until_scroll(fs, false);
     let clip = clip_x.min(width as i32);
+    let modes: Option<&[Mode]> = lines.as_ref().map(|l| l.modes);
     for run in buffer.layout_runs() {
+        let mode = modes.map_or(&Mode::All, |m| &m[run.line_i]);
+        if matches!(mode, Mode::Skip) {
+            continue;
+        }
         for glyph in run.glyphs {
             let physical = glyph.physical((0., run.line_y), 1.0);
             let ink = glyph.color_opt.unwrap_or(ink);
@@ -1041,6 +1199,9 @@ pub(super) fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCa
                 SwashContent::Color => (4, true),
                 SwashContent::SubpixelMask => continue, // cosmic-text draws nothing for it either
             };
+            if let (Some(l), Mode::All) = (lines.as_mut(), mode) {
+                l.extents[run.line_i].add(x0, y0, y0 + gh);
+            }
             let (first, last) = ((-x0).max(0).min(gw), (clip - x0).clamp(0, gw)); // the columns that fall inside the picture
             if first >= last {
                 continue;
@@ -1050,6 +1211,11 @@ pub(super) fn blit(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCa
                 let py = y0 + row;
                 if py < 0 || py as usize >= height {
                     continue;
+                }
+                if let Mode::Rows(rows) = mode {
+                    if !rows.iter().any(|&(a, b)| py >= a && py < b) {
+                        continue;
+                    }
                 }
                 let line = &mut buf[py as usize * width + (x0 + first) as usize..py as usize * width + (x0 + last) as usize];
                 let from = (row * gw + first) as usize * bytes;
