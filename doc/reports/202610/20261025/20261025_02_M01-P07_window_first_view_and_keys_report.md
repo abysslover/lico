@@ -41,6 +41,20 @@ the other keys and the refusals (9 KiB, newline, trailing newline, no owner, pri
 missing opener says so. Red before (previous build): the three failed; green after: 3 passed in 27.82 s; the whole suite once showed one failure of the restart-recovery test that did not repeat (it passed alone and with its
 neighbours: 11 passed); idle client RSS at scale 1: 22.82 MiB (limit 50), host 6.06 MiB. Limit: a failing opener (it starts but exits with an error) is not noticed. Cost of the step about 2.5 US dollars against the cap of 3.
 
+## S04: the real Claude Code login output (urgent)
+
+The lead measured the real `claude auth login` (private home, stdin closed, killed after seconds, nobody signed in): a line `Opening browser to sign in`, a line with an OSC 8 hyperlink
+(target and repeated visible text) and a prompt `Paste code here if prompted > ` with no newline. The supervisor read only whole lines, so the prompt never arrived (`needs_code` false, the window never
+offered the code field) and the escape stripping knew only CSI, so an OSC link glued its text to the address. Fixed in login.rs: the output is read as it arrives (8 KiB bound, always drained, a non-UTF-8 byte
+never stops it), the prompt is recognised in the pending bytes and on complete lines, OSC sequences (ended by BEL or ESC backslash) are stripped, and the address is the link target or the first complete address of the
+text (it stops at a space, an escape or a bell). Tests (2, new fixture `real_shape_login.py` with the exact structure and made-up values; 92 pass in all): red on the previous build (`condition not reached`: the code
+field never opened; the window test failed likewise); green after: the host reports the clean address and `code`, the fixture receives exactly the code and a newline and ends `succeeded`, the window shows the address
+and "paste it below", Ctrl+V of a canary code and Enter succeed, the fake opener is called once with the clean address, the code is nowhere. Which program opens the browser (measured here, shape only, no sign-in, the address never printed):
+with a fake `xdg-open` first on the path and no `BROWSER`, the real command printed `Opening browser to sign in` and did NOT call `xdg-open` (0 calls: it uses its own way); with `BROWSER` set to a command of mine it called that command once.
+So `BROWSER` is honoured and the login child now gets `BROWSER=/usr/bin/true`: its own attempt does nothing and the window opens one tab. Codex's own opener was not measured; the same variable is set for it. Also measured: under `NO_COLOR=1`,
+which the supervisor sets, the real command printed the address as plain text, without the OSC 8 sequences the lead saw without it; both shapes are handled and tested. Idle client RSS at scale 1 on 37b667e: 23.07 MiB (limit 50), host 6.01 MiB.
+Cost of the step reached its cap of 2.5 US dollars. Honest note: the P06 fixture did not match the real program, and my plan never captured the real prompt; the same holds for Codex's output, which only the owner's success shows.
+
 ## Mistakes of mine, plainly
 
 - While reproducing I stopped a host by name (`pgrep -f` of a host command line), which stopped the owner's own running host (pid 878470). Sessions registered with it come back

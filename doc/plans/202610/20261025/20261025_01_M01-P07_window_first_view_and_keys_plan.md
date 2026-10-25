@@ -48,3 +48,8 @@ Out of scope: a menu bar (one paragraph estimate in the report only), Wayland (n
   variable `LICO_NO_AUTO_OPEN`, read only by the window, switches it off for tests). Paste stays a person's own act: Ctrl+V and Ctrl+Shift+V (CLIPBOARD), Shift+Insert (PRIMARY), only into a text-entry
   line, nothing read at any other time, a newline ends the paste so a pasted code is never submitted by itself, more than 8 KiB or an incremental transfer is refused, 500 ms deadline off the event loop.
   Out of scope: copy-out of selections, mouse selection, drag and drop, Wayland.
+- 2026-10-25: S04 added (urgent, cost cap 2.5 US dollars): the real `claude auth login` could not be finished in the window. Its prompt for a code ends without a newline and the
+  supervisor read only whole lines, so the window never offered the code field; its address may come as an OSC 8 hyperlink whose visible text repeats it, and the escape stripping knew
+  only CSI, so the address was corrupted. The login fixture of P06 printed a plain address and a prompt with a newline: a fixture that did not match the real program (the real prompt had never been captured).
+  Fixed: output is read as it arrives (bounded, always drained), the code prompt is looked for in the bytes so far, OSC sequences are stripped and the address is taken from the link target or the
+  first complete address; the login child gets a harmless BROWSER so the window is the only opener. New fixture with the real byte structure and made-up values.
