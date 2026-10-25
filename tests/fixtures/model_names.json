@@ -1,0 +1,40 @@
+{
+  "about": "Model names the host accepts and refuses. Read by tests/test_model_names.py against the protocol rule (lico_protocol/v1.py) and by a unit test in folders.rs against valid_model, so the two rules cannot drift apart. An entry is `text`, or `unit` repeated `times`. The limit is 60 bytes; every refused text above it is also refused for its characters.",
+  "valid": [
+    {"text": "sonnet", "why": "an alias"},
+    {"text": "claude-opus-5-5", "why": "dashes inside"},
+    {"text": "claude-fable-5-1", "why": "digits and dashes inside"},
+    {"text": "gpt-5.5", "why": "a dot inside"},
+    {"text": "my_model_v2", "why": "underscores inside"},
+    {"text": "5o", "why": "a digit first"},
+    {"text": "A", "why": "one capital letter"},
+    {"text": "a.b_c-d", "why": "all three marks inside"},
+    {"unit": "m", "times": 60, "why": "exactly the limit"}
+  ],
+  "invalid": [
+    {"text": "", "why": "empty"},
+    {"unit": "m", "times": 61, "why": "one over the limit"},
+    {"unit": "m", "times": 64, "why": "64 bytes"},
+    {"unit": "m", "times": 65, "why": "65 bytes"},
+    {"text": "-x", "why": "a leading dash would read as an option of the program"},
+    {"text": "--model", "why": "two leading dashes"},
+    {"text": ".hidden", "why": "a leading dot"},
+    {"text": "_model", "why": "a leading underscore"},
+    {"text": "my model", "why": "a space"},
+    {"text": " sonnet", "why": "a leading space"},
+    {"text": "sonnet ", "why": "a trailing space"},
+    {"text": "a/b", "why": "a slash"},
+    {"text": "a\\b", "why": "a backslash"},
+    {"text": "a\u0000b", "why": "a NUL"},
+    {"text": "sonnet\n", "why": "a trailing line break"},
+    {"text": "so\nnnet", "why": "a line break inside"},
+    {"text": "a\tb", "why": "a tab"},
+    {"text": "café", "why": "a letter outside ASCII"},
+    {"text": "한글", "why": "Hangul"},
+    {"text": "é", "why": "a first character that is a letter outside ASCII"},
+    {"text": "²", "why": "a digit outside ASCII"},
+    {"text": "a;b", "why": "a semicolon"},
+    {"text": "a$(x)", "why": "shell syntax"},
+    {"unit": "é", "times": 31, "why": "62 bytes of letters outside ASCII"}
+  ]
+}

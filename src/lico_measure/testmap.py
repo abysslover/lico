@@ -269,6 +269,7 @@ def select(paths, tmap=None, files=None, root=REPO):
         elif (source := next((entry for entry in tmap.get("sources", []) if glob_match(path, entry["glob"])), None)):
             hit = importers(graph, set(source["tests"])) & set(test_files)
             result.files |= hit
+            result.cargo |= set(source.get("cargo", []))                                # unit tests that read it with include_str!
             result.reasons.append((path, f"read by path: {source['reason']}"))
         elif module is not None and module in module_areas:
             dependents = rust_dependents(uses, module)

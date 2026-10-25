@@ -399,6 +399,21 @@ mod tests {
     /// The part of `claude --help` of Claude Code 2.1.310 that names the two options (wrapped as the program wraps it).
     const HELP: &str = "Usage: claude [options] [command] [prompt]\n\nOptions:\n  --effort <level>                      Effort level for the current session\n                                        (low, medium, high, xhigh, max)\n  --environment <environment_id>        Create a new cloud session that runs on\n                                        the given self-hosted environment\n  --fallback-model <model>              Enable automatic fallback to specified\n                                        model(s) when the default model is\n  --model <model>                       Model for the current session. Provide\n                                        an alias for the latest model (e.g.\n                                        'fable', 'opus', or 'sonnet') or a\n                                        model's full name.\n  -v, --version                         Output the version number\n";
 
+    /// The table of model names that the protocol rule (`lico_protocol/v1.py`) is tested against as well: one rule, two readers.
+    #[test]
+    fn valid_model_agrees_with_the_shared_table_of_model_names() {
+        let table: Value = serde_json::from_str(include_str!("../../../../tests/fixtures/model_names.json")).unwrap();
+        let names = |kind: &str| -> Vec<(String, String)> {
+            table[kind].as_array().unwrap().iter().map(|e| {
+                let text = e["text"].as_str().map(str::to_string).unwrap_or_else(|| e["unit"].as_str().unwrap().repeat(e["times"].as_u64().unwrap() as usize));
+                (text, e["why"].as_str().unwrap().to_string())
+            }).collect()
+        };
+        let wrong = |kind: &str, want: bool| names(kind).into_iter().filter(|(text, _)| valid_model(text) != want).map(|(_, why)| why).collect::<Vec<_>>();
+        assert_eq!(wrong("valid", true), Vec::<String>::new(), "refused, but valid in the table");
+        assert_eq!(wrong("invalid", false), Vec::<String>::new(), "accepted, but invalid in the table");
+    }
+
     #[test]
     fn the_help_text_gives_the_levels_and_the_aliases_and_nothing_else() {
         let help = parse_help(HELP);

@@ -18,7 +18,8 @@ TMAP = {
               "tests/test_user.py": []},
     "rust": {"modules": {"core": ["host"], "gui": ["gui"], "keyring": ["cred"], "unified": ["*"]}, "everything": ["src/host/hostd/Cargo.lock"]},
     "acceptance": {"triggers": ["src/host/hostd/Cargo.lock", "tests/test_window.py"]},
-    "sources": [{"glob": "src/adapters/**", "tests": ["tests/test_host.py"], "reason": "started by path"}],
+    "sources": [{"glob": "src/adapters/**", "tests": ["tests/test_host.py"], "reason": "started by path"},
+                {"glob": "tests/tables/names.json", "tests": ["tests/test_host.py"], "cargo": ["core::"], "reason": "read by a test and by include_str!"}],
     "inert": [{"glob": "**/*.md", "reason": "documents"}],
 }
 TREE = {
@@ -35,6 +36,7 @@ TREE = {
     "src/lico_measure/pure.py": "",
     "src/lico_measure/unused.py": "",
     "src/adapters/sim.py": "",
+    "tests/tables/names.json": "[]\n",
     HOSTD + "unified.rs": "mod core;\nmod gui;\nmod keyring;\n",
     HOSTD + "core.rs": "use crate::keyring_free;\n",
     HOSTD + "gui/mod.rs": "mod ui;\nuse crate::core::Thing;\n",
@@ -107,6 +109,12 @@ def test_a_file_read_by_path_selects_the_tests_the_map_names_and_a_fixture_the_t
     assert chosen(tree, "tests/fixtures/turn.json")[1] == ["tests/test_host.py", "tests/test_user.py"]
 
 
+def test_a_table_read_by_a_rust_unit_test_selects_that_modules_tests_too(tree):
+    result, tests = chosen(tree, "tests/tables/names.json")
+    assert tests == ["tests/test_host.py", "tests/test_user.py"] and result.cargo == {"core::"}      # a change to the table reaches both readers
+    assert not chosen(tree, "src/adapters/sim.py")[0].cargo
+
+
 def test_an_inert_file_selects_nothing(tree):
     result, tests = chosen(tree, "README.md")
     assert tests == [] and not result.cargo and not result.everything
@@ -163,6 +171,7 @@ def test_every_test_file_is_listed_with_what_it_starts_and_every_rust_module_wit
     assert all(set(a) <= kinds for a in REAL["areas"].values()) and all(set(a) <= kinds for a in REAL["rust"]["modules"].values())
     for entry in REAL["sources"]:
         assert all(t in REAL_TESTS for t in entry["tests"]) and entry["reason"]
+        assert all(re.fullmatch(r"[a-z_]+::", c) and c[:-2] in REAL["rust"]["modules"] for c in entry.get("cargo", []))
     assert all(entry["reason"] for entry in REAL["inert"])
 
 

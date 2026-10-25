@@ -7,7 +7,7 @@
 #                process kinds of a ledger run: python -m lico_measure.ledger_report LEDGER.json --areas
 #   [rust]       which area runs the code of each top-level module of src/host/hostd/src; a module that USES a changed one is
 #                added by reading `crate::` in the sources, so the area of a dependent counts too
-#   [[sources]]  files that tests read or start by path, not by import
+#   [[sources]]  files that tests read or start by path, not by import (`cargo = ["module::"]`: also read by that module's unit tests)
 #   [[inert]]    files no test reads (each says why)
 # A changed file that none of these explains selects EVERYTHING. A test file that is not listed under [areas] is assumed to
 # run every area (so a new test file is never skipped); tests/test_selection.py fails until it is listed.
@@ -39,6 +39,7 @@
 "tests/test_login_window.py" = ["gui", "host"]
 "tests/test_mask_code_line.py" = ["gui", "host"]
 "tests/test_menu_bar.py" = ["gui", "host"]
+"tests/test_model_names.py" = []
 "tests/test_navigation.py" = ["gui", "host"]
 "tests/test_paste_open.py" = ["gui", "host"]
 "tests/test_permission_mode.py" = ["gui", "host"]
@@ -127,6 +128,12 @@ reason = "the budget table is checked by the selection test and read by the runn
 glob = "tests/size_allowlist.toml"
 tests = ["tests/test_size_ratchet.py"]
 reason = "the allowlist of the size ratchet"
+
+[[sources]]
+glob = "tests/fixtures/model_names.json"
+tests = ["tests/test_model_names.py"]
+cargo = ["folders::"]
+reason = "the table of model names: the protocol rule reads it in the Python test, the host rule in a unit test of folders.rs (include_str!)"
 
 [[sources]]
 glob = "src/host/adapters/codex/**"
