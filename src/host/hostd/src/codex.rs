@@ -346,11 +346,12 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
     match pending {
         Pending::Init => {
             let _ = send(link, json!({"method": "initialized"}), None);
-            let params = json!({"cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "read-only", "approvalsReviewer": "user"});
+            let (policy, sandbox) = if s.mode == "default" { ("untrusted", "read-only") } else { ("never", "danger-full-access") }; // auto: nothing asks and nothing is sandboxed (owner rule of 2026-10-25)
+            let params = json!({"cwd": cwd, "approvalPolicy": policy, "sandbox": sandbox, "approvalsReviewer": "user"});
             let resumed = s.codex_thread.clone();
             let link = s.codex.as_mut().unwrap();
             let _ = match resumed {
-                Some(thread) => rpc(link, "thread/resume", json!({"threadId": thread, "excludeTurns": true, "cwd": cwd, "approvalPolicy": "untrusted", "sandbox": "read-only", "approvalsReviewer": "user"}), Pending::ThreadResume, None),
+                Some(thread) => rpc(link, "thread/resume", json!({"threadId": thread, "excludeTurns": true, "cwd": cwd, "approvalPolicy": policy, "sandbox": sandbox, "approvalsReviewer": "user"}), Pending::ThreadResume, None),
                 None => rpc(link, "thread/start", params, Pending::ThreadStart, None),
             };
         }

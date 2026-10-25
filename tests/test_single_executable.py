@@ -95,7 +95,8 @@ def test_a_clean_clone_builds_the_same_executable_twice_without_private_or_host_
             clone = Path(directory) / f"clone-{number}-in-a-differently-named-place"
             subprocess.run(["git", "clone", "-q", "--no-hardlinks", str(REPO), str(clone)], check=True, capture_output=True)
             out = Path(directory) / f"out-{number}"
-            env = dict(os.environ, CARGO_NET_OFFLINE="true", CARGO_HOME=str(REPO / "private" / "cargo-home"))
+            env = {k: v for k, v in os.environ.items() if k != "CARGO_TARGET_DIR"}                  # its own target directory: never the shared one, whose binary other tests use
+            env.update(CARGO_NET_OFFLINE="true", CARGO_HOME=str(REPO / "private" / "cargo-home"))
             subprocess.run(["sh", str(clone / "src" / "host" / "hostd" / "build-release.sh"), str(out)], check=True, capture_output=True, env=env, timeout=1500)
             digests.append(hashlib.sha256((out / "lico").read_bytes()).hexdigest())
             assert (out / "lico.sha256").read_text().split()[0] == digests[-1]

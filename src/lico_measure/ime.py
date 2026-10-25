@@ -77,7 +77,7 @@ class InputMethod:
 
 def _focus(display: str) -> None:
     env = dict(os.environ, DISPLAY=display)
-    ids = subprocess.run(["xdotool", "search", "--name", "Lico candidate"], env=env,
+    ids = subprocess.run(["xdotool", "search", "--name", "Lico"], env=env,
                          capture_output=True, text=True).stdout.split()
     if not ids:
         raise RuntimeError("no candidate window to focus")

@@ -136,8 +136,12 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
     let mut command = Command::new(&shared.cfg.claude);
     command.args(&shared.cfg.claude_args).args([
-        "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--permission-mode", "default",
+        "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
     ]);
+    // A new session skips permission checks (the owner's rule of 2026-10-25) and the prompt tool is ALWAYS on: what the program still asks about
+    // (a question to the person, a plan, an explicit ask rule) reaches the window instead of failing with "requires approval". `default` asks for everything.
+    let mode = session.lock().unwrap().mode;
+    command.args(["--permission-mode", if mode == "default" { "default" } else { "bypassPermissions" }, "--permission-prompt-tool", "stdio"]);
     if let Some(provider_session) = &resume {
         command.args(["--resume", provider_session]);
     }

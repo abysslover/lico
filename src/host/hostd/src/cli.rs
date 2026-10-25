@@ -13,7 +13,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   status                         host and session status\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
-  session create [--kind synthetic|codex|claude] [--account ID] [--rate N] [--history N]\n\
+  session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   account create --provider codex|claude --label TEXT\n\
@@ -139,6 +139,9 @@ pub fn run(args: Vec<String>) {
             let mut request = json!({"op": "session.create", "kind": flag(&args, "--kind").unwrap_or_else(|| "synthetic".to_string())});
             if let Some(account) = flag(&args, "--account") {
                 request["account"] = json!(account);
+            }
+            if let Some(mode) = flag(&args, "--mode") {
+                request["mode"] = json!(mode);
             }
             for key in ["rate", "history"] {
                 if let Some(v) = flag(&args, &format!("--{key}")) {

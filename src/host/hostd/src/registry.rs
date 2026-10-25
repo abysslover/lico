@@ -31,6 +31,7 @@ pub struct Entry {
     pub credential_generation: u64,
     pub provider_session: Option<String>,
     pub state_at: u64,
+    pub mode: &'static str,
     pub account_removed: bool, // the account it was bound to was removed with its sessions detached
 }
 
@@ -87,6 +88,7 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
             provider_session, state_at: value["state_at"].as_u64().unwrap_or(0), account_removed,
+            mode: if value["mode"] == "default" { "default" } else { "auto" },
         });
     }
     Ok(out)
@@ -107,7 +109,7 @@ pub fn save(shared: &Shared) {
             }
             Some(json!({
                 "session": s.id, "provider": s.provider, "generation": s.generation, "account": s.account,
-                "credential_generation": s.credential_generation, "provider_session": s.codex_thread, "state_at": s.state_at,
+                "credential_generation": s.credential_generation, "provider_session": s.codex_thread, "state_at": s.state_at, "mode": s.mode,
             }))
         })
         .collect();

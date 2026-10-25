@@ -32,6 +32,7 @@ pub struct Panel {
     pub login: Value,
     pub confirm: Option<char>,
     pub last_error: String, // the host's raw error word of the last failed step: in the ui dump only
+    pub mode: &'static str, // the mode a new session starts in: "auto" (permissions skipped) or "default" (asks for approval)
     pub opened: bool, // the browser was opened for this sign-in attempt
     pub stash: String, // what was typed in the input line before the panel took it over
 }
@@ -92,7 +93,7 @@ impl App {
     pub(crate) fn panel_open(&mut self, step: Step) {
         let stash = std::mem::take(&mut self.input);
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), opened: false, stash });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -161,6 +162,7 @@ impl App {
             }
             Step::Ready => {
                 body.extend(["Enter  start the session".to_string(), "L      sign in to this account first".to_string()]);
+                body.push(if p.mode == "default" { "M      mode: asks for approval (press M for auto: permissions skipped)".to_string() } else { "M      mode: auto, permissions skipped (press M to be asked for approval)".to_string() });
                 format!("New session: {}", Self::account_name(p))
             }
             Step::Login => {
@@ -359,7 +361,7 @@ impl App {
 
     fn create_session(&mut self) {
         let Some(p) = self.ui.panel.as_ref() else { return };
-        let reply = self.host_call(json!({"op": "session.create", "kind": p.provider, "account": p.account}));
+        let reply = self.host_call(json!({"op": "session.create", "kind": p.provider, "account": p.account, "mode": p.mode}));
         if reply["ok"] == json!(1) {
             let id = reply["session"].as_str().unwrap_or("").to_string();
             self.panel_close();
@@ -397,6 +399,11 @@ impl App {
                 }
             }
             Step::Ready if key == 'l' => self.start_login("browser"),
+            Step::Ready if key == 'm' => {
+                if let Some(p) = self.ui.panel.as_mut() {
+                    p.mode = if p.mode == "default" { "auto" } else { "default" };
+                }
+            }
             Step::Login => match key {
                 'c' => self.login_address(true),
                 'o' => self.login_address(false),

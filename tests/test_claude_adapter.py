@@ -76,7 +76,7 @@ def test_claude_adapter_pins_the_version_and_marks_unverified_and_maps_fixtures_
         host, log, received = claude_host(directory)
         try:
             conn = Conn(host.socket)
-            sid, generation = new_claude(conn)
+            sid, generation = new_claude(conn, mode="default")
             conn.call(op="input", session=sid, generation=generation, request_id="fx", text="fixture")
             for want in expected.approvals:
                 pending = wait_for(lambda: status_of(conn, sid).get("approvals"))
@@ -99,7 +99,7 @@ def test_claude_input_and_approval_reach_the_provider_exactly_once_and_a_stale_t
         host, log, received = claude_host(directory, env_overrides=keyring.env)
         try:
             conn = Conn(host.socket)
-            sid, generation = new_claude(conn)
+            sid, generation = new_claude(conn, mode="default")
             # one input is one user message, whatever happens to the reply
             rng = random.Random(5)
             for k in range(30):
@@ -243,9 +243,9 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
                     if s1 != s2:
                         assert (a1 == a2) == (envs[s1]["CLAUDE_CONFIG_DIR"] == envs[s2]["CLAUDE_CONFIG_DIR"])      # a home is shared only by the same account
                         assert envs[s1]["HOME"] != envs[s2]["HOME"] or a1 == a2
-            # the permission context is the same for all and never widened: default mode, no skipped checks
+            # the permission context is the same for all sessions of a default start (owner rule of 2026-10-25: permissions skipped, the prompt tool always on)
             for argv in argv_of(received):
-                assert "default" == argv[argv.index("--permission-mode") + 1] and "--dangerously-skip-permissions" not in argv
+                assert "bypassPermissions" == argv[argv.index("--permission-mode") + 1] and argv[argv.index("--permission-prompt-tool") + 1] == "stdio"
         finally:
             host.stop()
     # the same for the Codex provider: each session's thread is started with its own workspace and the strict policy
@@ -257,7 +257,7 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
             made = [conn.call(op="session.create", kind="codex", account=acc) for acc in (ca, cb, ca)]
             starts = [m for m in sent(received) if m.get("method") == "thread/start"]
             assert len(starts) == 3 and len({m["params"]["cwd"] for m in starts}) == 3
-            assert all(m["params"]["approvalPolicy"] == "untrusted" and m["params"]["sandbox"] == "read-only" for m in starts)
+            assert all(m["params"]["approvalPolicy"] == "never" and m["params"]["sandbox"] == "danger-full-access" for m in starts)
             pids = {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}
             assert len({pids[m["session"]] for m in made}) == 3
         finally:

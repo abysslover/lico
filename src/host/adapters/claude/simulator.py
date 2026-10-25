@@ -42,6 +42,13 @@ if log:
 started = False
 queued = []
 
+# what the real program does with approvals (measured shapes, 2026-10-25): with `--permission-mode bypassPermissions` an ordinary tool runs without
+# asking and only the tools that always need a person (a question to the user, a plan) still ask; with any other mode a tool that needs approval asks the
+# host only when `--permission-prompt-tool stdio` is given, and otherwise is refused on its own with "requires approval"
+MODE = sys.argv[sys.argv.index("--permission-mode") + 1] if "--permission-mode" in sys.argv else "default"
+PROMPT_TOOL = "--permission-prompt-tool" in sys.argv
+ALWAYS_ASK = ("AskUserQuestion", "ExitPlanMode")
+
 
 def out(message):
     sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
@@ -102,6 +109,14 @@ def turn(message):
                 msg = dict(step["msg"])
                 if msg.get("type") == "system":
                     continue                                    # init was sent already
+                if msg.get("type") == "control_request":
+                    tool = msg.get("request", {}).get("tool_name", "")
+                    if MODE == "bypassPermissions" and tool not in ALWAYS_ASK:
+                        say(f"[tool ran without approval] {tool}")
+                        continue
+                    if not PROMPT_TOOL:
+                        say("[tool error] This command requires approval")
+                        continue
                 out(msg)
                 if msg.get("type") == "control_request":
                     while True:                                 # wait for the host's answer to exactly this request
@@ -111,6 +126,20 @@ def turn(message):
                         if reply.get("type") == "user":
                             queued.append(reply)
             # host steps are the answers awaited above
+    elif text == "askuser":
+        if not PROMPT_TOOL:
+            say("[tool error] This command requires approval")
+        else:
+            out({"type": "control_request", "request_id": "ask-1", "request": {"subtype": "can_use_tool", "tool_name": "AskUserQuestion",
+                                                                              "input": {"questions": [{"question": "Which one?", "options": ["a", "b"]}]}}})
+            while True:
+                reply = read_line()
+                if reply.get("type") == "control_response" and reply.get("response", {}).get("request_id") == "ask-1":
+                    break
+                if reply.get("type") == "user":
+                    queued.append(reply)
+            say("[question answered]")
+        out(result())
     elif text.startswith("slow:"):
         for k in range(int(text.split(":")[1])):
             say(f"tick {k}")
@@ -127,6 +156,9 @@ def turn(message):
             say(f"key length {len(key)}\nkey sha256 {hashlib.sha256(key.encode()).hexdigest()[:12]}")
         else:
             say("no helper")
+        out(result())
+    elif text.startswith("hangul:"):                  # one long line of wide glyphs
+        say(("작업공간과 계획을 세워 한글 줄바꿈을 확인합니다 " * 40)[: int(text.split(":")[1])])
         out(result())
     elif text.startswith("lines:"):
         for k in range(int(text.split(":")[1])):

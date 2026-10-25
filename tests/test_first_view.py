@@ -63,9 +63,9 @@ def test_session_list_shows_state_account_and_a_pending_approval_while_the_sessi
             host, log, received = claude_host(directory)
             conn = Conn(host.socket)
             a, b = account(conn, "Work", "claude"), account(conn, "Personal", "claude")
-            s1, g1 = new_claude(conn, account=a)
-            s2, g2 = new_claude(conn, account=b)
-            s3, g3 = new_claude(conn, account=a)
+            s1, g1 = new_claude(conn, account=a, mode="default")
+            s2, g2 = new_claude(conn, account=b, mode="default")
+            s3, g3 = new_claude(conn, account=a, mode="default")
             conn.call(op="input", session=s1, generation=g1, request_id="a", text="hello")
             wait_for(lambda: "[turn completed]" in records(log, s1))
             conn.call(op="input", session=s2, generation=g2, request_id="b", text="slow:60")
@@ -80,7 +80,7 @@ def test_session_list_shows_state_account_and_a_pending_approval_while_the_sessi
             assert rows[s1]["state_text"] == "idle" and rows[s2]["state_text"] == "working"
             assert rows[s3]["state_text"] == "waiting for approval" and rows[s3]["approvals"][0][1] == "run: ls -la"
             assert rows[s1]["label"] == rows[s3]["label"] == "Work" and rows[s2]["label"] == "Personal" and rows[s1]["model"] == "simulator"
-            assert state["header"] == "claude | Work | simulator | idle" and state["selected"] == s1
+            assert state["header"] == "claude | Work | simulator | idle | mode: asks for approval" and state["selected"] == s1
             # the hidden sessions have no view and no subscriber: the list comes from the host's status alone
             assert status_of(conn, s3)["subscribers"] == 0 and status_of(conn, s2)["subscribers"] == 0
             # a click on the row of the hidden session selects it, and its approval is offered

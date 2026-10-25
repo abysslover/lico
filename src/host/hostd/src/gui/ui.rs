@@ -37,6 +37,7 @@ pub struct Row {
     pub generation: i64,
     pub approvals: Vec<(i64, String)>,
     pub issue: String,
+    pub mode: String,
 }
 
 #[derive(Default)]
@@ -139,6 +140,7 @@ impl App {
                 generation: entry["generation"].as_i64().unwrap_or(1),
                 approvals,
                 issue: entry["account_issue"].as_str().unwrap_or("").into(),
+                mode: entry["mode"].as_str().unwrap_or("").into(),
             });
         }
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
@@ -206,7 +208,12 @@ impl App {
             Some(r) => {
                 let model = if r.model.is_empty() { "model not reported".to_string() } else { r.model.clone() };
                 let issue = if r.issue.is_empty() { String::new() } else { format!(" | account issue: {}", r.issue) };
-                format!("{} | {} | {} | {}{issue}", r.provider, self.label_of(&r.account), model, r.state_text())
+                let mode = match r.mode.as_str() {
+                    "auto" => " | mode: auto (permissions skipped)",
+                    "default" => " | mode: asks for approval",
+                    _ => "",
+                };
+                format!("{} | {} | {} | {}{mode}{issue}", r.provider, self.label_of(&r.account), model, r.state_text())
             }
             None if self.session.is_empty() => "select a session".into(),
             None => format!("{} | not listed", self.session),
@@ -434,7 +441,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.panel_key(event) || self.paste_key(event) {
+                if self.panel_key(event) || self.paste_key(event) || self.approval_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -521,6 +528,24 @@ impl App {
         self.dirty = true;
     }
 
+    /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
+    /// one of them is never taken for an answer) and no panel is open.
+    pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if self.ui.panel.is_some() || !self.input.is_empty() || !self.preedit.is_empty() || event.repeat {
+            return false;
+        }
+        if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
+            return false;
+        }
+        match &event.logical_key {
+            Key::Character(c) if c.eq_ignore_ascii_case("y") => self.answer_approval(true),
+            Key::Character(c) if c.eq_ignore_ascii_case("n") => self.answer_approval(false),
+            _ => return false,
+        }
+        self.dirty = true;
+        true
+    }
+
     /// Ctrl+U clears the whole input line (and only that); true when it did.
     pub(crate) fn ui_ctrl_u(&mut self, key: &Key) -> bool {
         match key {
@@ -596,7 +621,8 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let prompt = if self.code_entry() { format!("> {}", self.shown_input()) } else { format!("> {}[{}]", self.input, self.preedit) }; // a code is never drawn
-        let cols = (main_w as f32 / (8.5 * s)).max(10.0) as usize;
+        let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
+        let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
         let rows_avail = ((height as f32 / lh) as usize).saturating_sub(if bar.is_some() { 5 } else { 4 });
         let (Some(fs), Some(surface)) = (self.font_system.as_mut(), self.ui.surface.as_mut()) else { return };
         if surface.resize(w, h).is_err() {
@@ -639,7 +665,7 @@ impl App {
                 buffer.lines.push(line);
             }
             buffer.set_scroll(Scroll::default());
-            buffer.set_size(Some(main_w as f32), Some(height as f32));
+            buffer.set_size(Some(text_w as f32), Some(height as f32));
             buffer.shape_until_scroll(fs, true);
             // lines put in by hand are not all laid out by the call above (new lines in front of a reused one stayed unshaped and
             // the whole text vanished): every line of the screenful is laid out here
@@ -710,7 +736,7 @@ impl App {
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
         let list_swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         if let Some(list) = self.ui.list_buffer.as_mut() {
-            blit(list, fs, list_swash, &mut buf, width, height, 0, (LIST_TOP as f32 * s) as i32, list_w as i32 - 2, ink); // clipped to its column
+            blit(list, fs, list_swash, &mut buf, width, height, (4.0 * s) as i32, (LIST_TOP as f32 * s) as i32, list_w as i32 - 2, ink); // clipped to its column
         }
         if let Some(y) = approval_y {
             let (allow, deny) = self.ui.buttons.get_or_insert_with(|| {
@@ -730,7 +756,7 @@ impl App {
             blit(allow, fs, swash, &mut buf, width, height, (width as f32 - 190.0 * s) as i32, y as i32, i32::MAX, ink);
             blit(deny, fs, swash, &mut buf, width, height, (width as f32 - 95.0 * s) as i32, y as i32, i32::MAX, ink);
         }
-        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + 4, 0, i32::MAX, ink);
+        blit(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, list_w as i32 + (4.0 * s) as i32, 0, i32::MAX, ink);
         window.pre_present_notify();
         let _ = buf.present();
     }

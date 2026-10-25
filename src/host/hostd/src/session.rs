@@ -387,6 +387,7 @@ pub struct Session {
     pub state_at: u64, // when the state last changed (unix seconds); kept after a disconnect
     pub codex: Option<crate::codex::Link>,
     pub claude: Option<crate::claude::Link>,
+    pub mode: &'static str, // "auto" (permissions skipped, the default of a new session) or "default" (the provider asks for what needs approval)
     pub provider: &'static str, // "codex" or "claude" for a provider session, empty otherwise
     pub codex_thread: Option<String>,
     window: VecDeque<(i64, Vec<u8>)>,
@@ -436,6 +437,7 @@ impl Session {
             codex: None,
             claude: None,
             provider: "",
+            mode: "auto",
             codex_thread: None,
             producing,
             state: State::Running,
@@ -485,6 +487,7 @@ impl Session {
         s.provider = if entry.provider == "claude" { "claude" } else { "codex" };
         s.codex_thread = entry.provider_session.clone();
         s.account = entry.account.clone();
+        s.mode = entry.mode;
         s.credential_generation = entry.credential_generation;
         s.state = State::Disconnected;
         s.state_at = if entry.state_at > 0 { entry.state_at } else { now_secs() };

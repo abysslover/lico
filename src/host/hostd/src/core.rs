@@ -275,6 +275,7 @@ fn status_entry(s: &Session) -> Value {
     });
     if !s.provider.is_empty() {
         entry["provider"] = json!(s.provider);
+        entry["mode"] = json!(s.mode);
     }
     if let Some(model) = &s.model {
         entry["model"] = json!(model);
@@ -347,7 +348,8 @@ pub fn session_list(shared: &Shared) -> Reply {
     Ok(obj(json!({"sessions": entries})))
 }
 
-pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>) -> Reply {
+pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str) -> Reply {
+    let mode: &'static str = if mode == "default" { "default" } else { "auto" };
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
     let bound = match resolve_account(shared, kind, account) {
         Ok(bound) => bound,
@@ -358,9 +360,9 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     let created = if total >= shared.cfg.max_sessions {
         Err("busy")
     } else if kind == "codex" {
-        start_codex_session(shared, bound)
+        start_codex_session(shared, bound, mode)
     } else if kind == "claude" {
-        start_claude_session(shared, bound)
+        start_claude_session(shared, bound, mode)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -566,12 +568,13 @@ fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result
 }
 
 /// A session backed by the Claude Code program (or its simulator): one provider process, one provider session.
-fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> Result<Arc<Mutex<Session>>, &'static str> {
+fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>, mode: &'static str) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     {
         let mut s = session.lock().unwrap();
         s.text_mode = true;
+        s.mode = mode;
         s.provider = "claude";
         if let Some((account, credential_generation)) = bound {
             s.account = Some(account);
@@ -592,10 +595,11 @@ fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> R
 }
 
 /// A session backed by the Codex app-server (or its simulator): one provider process, one thread.
-fn start_codex_session(shared: &Arc<Shared>, bound: Option<(String, u64)>) -> Result<Arc<Mutex<Session>>, &'static str> {
+fn start_codex_session(shared: &Arc<Shared>, bound: Option<(String, u64)>, mode: &'static str) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     session.lock().unwrap().text_mode = true;
+    session.lock().unwrap().mode = mode;
     if let Some((account, credential_generation)) = bound {
         let mut s = session.lock().unwrap();
         s.account = Some(account);

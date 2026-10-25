@@ -548,7 +548,7 @@ impl ApplicationHandler<Ev> for App {
             return;
         }
         let attrs = Window::default_attributes()
-            .with_title("Lico candidate A")
+            .with_title(if self.ui.markers || !self.ui.enabled { "Lico candidate A" } else { "Lico" }) // the product window is "Lico"; the measurement client keeps its marker title
             .with_inner_size(LogicalSize::new(1200.0, 800.0));
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         window.set_ime_allowed(true);
