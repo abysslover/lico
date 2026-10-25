@@ -224,6 +224,37 @@ def fake_host(directory):
     return script
 
 
+import pytest
+
+
+@pytest.mark.parametrize("how", ["host.stop", "sigterm"])
+def test_the_helpers_of_a_provider_that_died_with_its_old_host_are_ended_too(how):
+    """The real old build's providers die with their host (parent-death signal) before the window looks, so only the helpers in the dead leader's group are left."""
+    with private_dir() as directory:
+        note = Path(directory) / "provider.pids"
+        env = {"FAKE_HOST_BUILD": "00000000000000aa", "FAKE_HOST_PROVIDER": str(note)}
+        if how == "host.stop":
+            env["FAKE_HOST_STOP"] = "exit"                                                                   # answers ok and exits at once; without it host.stop is an unknown op: SIGTERM by pid
+        found = {}
+
+        def note_pids(w):
+            wait_for(lambda: note.exists() and len(note.read_text().split()) == 2, timeout=10)
+            found["child"], found["helper"] = (int(n) for n in note.read_text().split())
+            assert alive(found["child"]) and alive(found["helper"])
+        try:
+            with ProductWindow(host_binary=fake_host(directory), env_extra=env, before_window=note_pids) as w:
+                old = w.old_pid
+                wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
+                wait_for(lambda: not alive(found["child"]) and not alive(found["helper"]), timeout=10)
+                assert not alive(old) and alive(os.getpid()) and w.alive()                                       # only the old host's own processes are gone
+                wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)
+                assert "could not be ended" not in w.ui()["header"]
+        finally:
+            for pid in found.values():
+                if alive(pid):
+                    os.kill(pid, 9)
+
+
 def test_a_host_too_old_for_host_stop_is_ended_by_the_pid_its_status_named_and_replaced():
     with private_dir() as directory:
         child = Path(directory) / "child.pid"

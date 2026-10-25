@@ -22,6 +22,8 @@ pub(super) enum Update {
 
 extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
+    fn getpid() -> i32;
+    fn getpgrp() -> i32;
 }
 
 const STATUS: &str = "{\"op\":\"status\"}";
@@ -137,52 +139,85 @@ fn stop(socket: &str, status: &Value) -> Stopped {
     }
 }
 
-/// The direct children of a process with the start time of each (so a pid that is reused later is not taken for the same process), read from /proc.
-fn children_of(parent: u64) -> Vec<(u64, String)> {
+/// A child of the old host as it was before the stop: the start time tells a pid that is reused later from the same process, and `leader` says
+/// whether it led its own process group (a provider does: its helpers are in that group).
+struct Child {
+    pid: u64,
+    start: String,
+    leader: bool,
+}
+
+/// The direct children of a process, read from /proc.
+fn children_of(parent: u64) -> Vec<Child> {
     let mut found = Vec::new();
     for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
         let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u64>().ok()) else { continue };
-        if let Some((ppid, start)) = stat_of(pid) {
-            if ppid == parent {
-                found.push((pid, start));
+        if let Some(stat) = stat_of(pid) {
+            if stat.ppid == parent {
+                found.push(Child { pid, leader: stat.pgrp == pid, start: stat.start });
             }
         }
     }
     found
 }
 
-/// (parent pid, start time) of a process; the fields are counted after the last `)` because the name may hold spaces and brackets.
-fn stat_of(pid: u64) -> Option<(u64, String)> {
+struct Stat {
+    ppid: u64,
+    pgrp: u64,
+    start: String,
+}
+
+/// The parent, the process group and the start time of a process; the fields are counted after the last `)` because the name may hold spaces and brackets.
+fn stat_of(pid: u64) -> Option<Stat> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let rest = stat.rsplit_once(") ")?.1;
     let fields: Vec<&str> = rest.split(' ').collect();
     if fields.first() == Some(&"Z") {
         return None; // gone but not yet reaped
     }
-    Some((fields.get(1)?.parse().ok()?, fields.get(19)?.to_string()))
+    Some(Stat { ppid: fields.get(1)?.parse().ok()?, pgrp: fields.get(2)?.parse().ok()?, start: fields.get(19)?.to_string() })
 }
 
-/// What the old host's providers left behind (a claude goes on with its turn after its input ends): asked to end by pid, then forced after two
-/// seconds, so no process of the old host meets the one that resumes its session. Only the pids that were its children, and still the same process.
-fn end_leftovers(children: &[(u64, String)]) -> Vec<u64> {
-    let left = || children.iter().filter(|(pid, start)| stat_of(*pid).map_or(false, |(_, s)| s == *start)).map(|(pid, _)| *pid).collect::<Vec<_>>();
+/// What the old host left running: the children that are still the same process, and every process in a group that one of them led. The old
+/// build's providers die with their host (parent-death signal) and leave their helpers, in the dead leader's group, behind; a group id cannot be
+/// reused while a member lives, so the scan names exactly those helpers. Never a group that no child led, never the window's own.
+fn left_of(children: &[Child]) -> Vec<u64> {
+    let own = unsafe { getpid() } as u64;
+    let own_group = unsafe { getpgrp() } as u64;
+    let leaders: Vec<u64> = children.iter().filter(|c| c.leader && c.pid > 1 && c.pid != own_group).map(|c| c.pid).collect();
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u64>().ok()) else { continue };
+        let Some(stat) = stat_of(pid) else { continue };
+        if pid <= 1 || pid == own {
+            continue;
+        }
+        let child = children.iter().find(|c| c.pid == pid);
+        // a child is the same process only with the same start time; a member of a led group is a helper
+        if child.map_or(leaders.contains(&stat.pgrp), |c| c.start == stat.start) {
+            found.push(pid);
+        }
+    }
+    found
+}
+
+/// Ask what the old host left running to end, then force it after two seconds, so nothing of the old host meets the session that resumes.
+/// Each process is signalled by its own pid; whatever could not be ended is returned, to be named in the line.
+fn end_leftovers(children: &[Child]) -> Vec<u64> {
     for signal in [15, 9] {
-        let running = left();
+        let running = left_of(children);
         if running.is_empty() {
             return running;
         }
         for pid in running {
-            // a provider leads its own process group, helpers included; one that does not is signalled alone
-            if unsafe { kill(-(pid as i32), signal) } != 0 {
-                unsafe { kill(pid as i32, signal) };
-            }
+            unsafe { kill(pid as i32, signal) };
         }
         let from = Instant::now();
-        while !left().is_empty() && from.elapsed() < Duration::from_secs(2) {
+        while !left_of(children).is_empty() && from.elapsed() < Duration::from_secs(2) {
             std::thread::sleep(Duration::from_millis(50));
         }
     }
-    left() // what could not be ended: named in the line
+    left_of(children) // what could not be ended: named in the line
 }
 
 fn plural(n: usize, word: &str) -> String {
