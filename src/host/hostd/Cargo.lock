@@ -625,6 +625,7 @@ dependencies = [
  "cosmic-text",
  "serde_json",
  "softbuffer",
+ "unicode-linebreak",
  "winit",
  "x11rb",
 ]

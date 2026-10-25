@@ -2,7 +2,10 @@
 //! every monospace face for each word and scans all installed faces again for each word the first font lacks. The face a character
 //! lands on never changes, so the first monospace face is named once and each character that it lacks is looked up once. That is only
 //! sound where the shape of a character does not depend on its neighbours, so a line takes this path only if every character of it is
-//! on a whitelist of such characters (default-deny); any other line is shaped whole with `monospace`, the old search.
+//! on a whitelist of such characters (default-deny); any other line is shaped whole with `monospace`, the old search. Inside such a line
+//! the decision is made per word, the unit that cosmic-text shapes as one run: a word of which every character is on the first monospace face
+//! needs no span, a word of one character is given its face by name, and any other word (one character off the first face among several, or one
+//! that does not check out) is left to the old search for that word alone.
 
 use std::collections::HashMap;
 
@@ -24,6 +27,43 @@ pub struct Faces {
     pub lines: u64,
     pub probes: u64,
     pub exact: u64, // lines given whole to the old search because a character in them is not known to be independent of its neighbours
+    pub w_base: u64,   // words that are all on the first monospace face: nothing to add
+    pub w_single: u64, // words of one character, named by the face that `face_of` found for it
+    pub w_old: u64,    // words of several characters of which one is on another face (or has none): the old search, for this word only
+}
+
+/// The words that cosmic-text 0.19 shapes (`ShapeSpan::build`): the stretches between the UAX #14 break opportunities of the line, each with its
+/// trailing white space split off as words of one character. A break between two ASCII punctuation characters is not taken here (cosmic-text
+/// takes it unless the pair makes a ligature), so a unit here is never smaller than a word there. Every word is shaped as ONE run when it has
+/// one set of attributes, which is what the old search does, so a decision per word keeps the unit of shaping.
+fn words(text: &str) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let mut start_word = 0;
+    for (end_lb, _) in unicode_linebreak::linebreaks(text) {
+        if end_lb > 0 && end_lb < text.len() {
+            if let (Some(a), Some(b)) = (text[..end_lb].chars().last(), text[end_lb..].chars().next()) {
+                if a.is_ascii_punctuation() && b.is_ascii_punctuation() {
+                    continue;
+                }
+            }
+        }
+        let mut start_lb = end_lb;
+        for (i, c) in text[start_word..end_lb].char_indices().rev() {
+            if c.is_whitespace() {
+                start_lb = start_word + i;
+            } else {
+                break;
+            }
+        }
+        if start_word < start_lb {
+            out.push((start_word, start_lb));
+        }
+        for (i, c) in text[start_lb..end_lb].char_indices() {
+            out.push((start_lb + i, start_lb + i + c.len_utf8()));
+        }
+        start_word = end_lb;
+    }
+    out
 }
 
 /// The font list of the installed fonts, with faces that share family, weight, style and stretch given distinct family names
@@ -89,25 +129,26 @@ impl Faces {
         if !text.chars().all(independent) {
             return self.whole();
         }
-        let mut chars: Vec<(usize, usize, u16)> = Vec::new(); // byte range and face of each character
-        for (i, c) in text.char_indices() {
-            let k = if c.is_ascii() { 0 } else { self.face_of(fs, c) };
-            chars.push((i, i + c.len_utf8(), k));
-        }
-        if chars.iter().any(|c| c.2 == UNKNOWN) {
-            return self.whole(); // a character that does not check out: the old search for the whole line
-        }
-        let mut run: Option<(usize, usize, u16)> = None;
-        for (start, end, k) in chars {
-            match &mut run {
-                Some(r) if r.2 == k => r.1 = end,
-                _ => {
-                    self.span(&mut list, run.take());
-                    run = Some((start, end, k));
-                }
+        // one decision per word: all on the first monospace face -> nothing; one character -> its face by name (the old search ranks the faces by
+        // this one character, which is what `face_of` asked); anything else -> the old search for this word
+        for (start, end) in words(text) {
+            let (mut n, mut all_primary, mut last) = (0usize, true, 0u16);
+            for c in text[start..end].chars() {
+                let k = if c.is_ascii() { 0 } else { self.face_of(fs, c) };
+                n += 1;
+                last = k;
+                all_primary &= k == 0;
+            }
+            if all_primary {
+                self.w_base += 1;
+            } else if n == 1 && last != UNKNOWN {
+                self.w_single += 1;
+                self.span(&mut list, Some((start, end, last)));
+            } else {
+                self.w_old += 1;
+                list.add_span(start..end, &Attrs::new().family(Family::Monospace));
             }
         }
-        self.span(&mut list, run);
         list
     }
 
@@ -399,7 +440,7 @@ mod tests {
     }
 
     #[test]
-    fn a_character_that_does_not_check_out_sends_its_whole_line_to_the_exact_path() {
+    fn a_character_that_does_not_check_out_sends_its_word_to_the_old_search_and_nothing_else() {
         // a character whose face the name does not pick (or that no face draws) is UNKNOWN in the memo; here three are made so, whatever the fonts of this machine
         let mut pair = Pair::new();
         pair.faces.prepare(&mut pair.fast);
@@ -416,11 +457,13 @@ mod tests {
                 lines += 1;
             }
         }
-        assert_eq!(pair.faces.exact, lines, "each of these lines holds a character that does not check out and must go whole to the exact path");
+        assert_eq!(pair.faces.exact, 0, "the line is whitelisted: only the word with the character goes to the old search");
+        assert!(pair.faces.w_old >= lines, "each of these lines holds a word with a character that does not check out ({} words for {lines} lines)", pair.faces.w_old);
+        let words = pair.faces.w_old;
         for text in ["no such character here", "글자 → 😀 plain"] {
             assert!(pair.differs(text).is_none());
         }
-        assert_eq!(pair.faces.exact, lines, "a line without such a character stays on the fast path");
+        assert_eq!(pair.faces.w_old, words, "a line without such a character stays on the fast path");
     }
 
     #[test]
