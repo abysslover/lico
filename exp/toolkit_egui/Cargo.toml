@@ -1,0 +1,22 @@
+[package]
+name = "lico-toolkit-egui"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# M01-P07a candidate: egui on its CPU path (no GPU): egui 0.34.3 tessellates, egui_software_backend 0.0.3 rasterizes
+# into a softbuffer surface, egui-winit 0.34.3 carries input, IME and the clipboard.
+[dependencies]
+egui = { version = "=0.34.3", default-features = false }
+egui-winit = { version = "=0.34.3", default-features = false, features = ["clipboard", "x11"] }
+egui_software_backend = { version = "=0.0.3", default-features = false, features = ["std", "winit"] }
+lico-toolkit-common = { path = "../toolkit_common" }
+
+[profile.release]
+opt-level = 2
+debug = false
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = true
