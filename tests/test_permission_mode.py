@@ -49,7 +49,7 @@ def test_ask_mode_turns_a_tool_into_an_approval_answered_exactly_and_auto_mode_a
             wait_for(lambda: status_of(conn, ask).get("approvals"))
             first = status_of(conn, ask)["approvals"][0]
             assert conn.call(op="approval.answer", session=ask, generation=generation, approval_id=first["approval_id"], answer="allow")["ok"] == 1
-            replies = [json.loads(l)["response"] for l in lines_of(received) if l.startswith("{") and json.loads(l).get("type") == "control_response"]
+            replies = wait_for(lambda: [json.loads(l)["response"] for l in lines_of(received) if l.startswith("{") and json.loads(l).get("type") == "control_response"])      # the program logs it a moment after the reply
             assert replies[0]["response"]["behavior"] == "allow" and "updatedInput" in replies[0]["response"]      # the exact shape: allow with the original input
             wait_for(lambda: len(status_of(conn, ask).get("approvals", [])) == 1 and status_of(conn, ask)["approvals"][0]["approval_id"] != first["approval_id"])
             second = status_of(conn, ask)["approvals"][0]

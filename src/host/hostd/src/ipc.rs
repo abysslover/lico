@@ -77,16 +77,20 @@ pub fn valid_request_id(value: &Value) -> bool {
     matches!(value, Value::String(s) if !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
 }
 
-/// Text sent to an agent: non-empty, bounded, no control characters.
+/// The longest text one `input` may carry, in bytes: the one limit for the window, the CLI and HTTP.
+pub const MAX_INPUT_TEXT: usize = 64 * 1024;
+
+/// Text sent to an agent: non-empty, bounded, newline and tab allowed, no other control character.
 pub fn valid_text(value: &Value) -> bool {
-    matches!(value, Value::String(s) if !s.is_empty() && s.len() <= 512 && !s.chars().any(char::is_control))
+    matches!(value, Value::String(s) if !s.is_empty() && s.len() <= MAX_INPUT_TEXT && !s.chars().any(|c| c.is_control() && c != '\n' && c != '\t'))
 }
 
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" => &[],
+        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" => &[],
         "session.resume" | "session.purge" => &["session", "generation"],
+        "session.rename" => &["session", "name"],
         "session.rebind" => &["session", "generation", "account"],
         "account.create" => &["provider", "label"],
         "account.default" => &["account"],
@@ -110,7 +114,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.rebind" | "history", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
             ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
@@ -128,6 +132,10 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("account.create", "label") => matches!(value, Value::String(s) if !s.is_empty() && s.chars().count() <= 40 && !s.chars().any(char::is_control)),
             ("history", "before") => in_range(value, 0, i64::MAX),
             ("history", "limit") => in_range(value, 1, 200),
+            ("session.create", "cwd") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
+            ("session.create" | "session.rename", "name") => matches!(value, Value::String(s) if crate::folders::valid_name(s)),
+            ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
+            ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
             ("session.create", "rate") => in_range(value, 0, 10_000),
             ("session.create", "history") => in_range(value, 0, 100_000),
             ("session.create", "payload") => in_range(value, 1, 4096),
@@ -179,7 +187,10 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
             int(&request, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
             request.get("account").and_then(Value::as_str),
             text(&request, "mode"),
+            crate::folders::Settings::of_request(&request),
         ),
+        "session.rename" => crate::folders::rename(shared, &session, text(&request, "name")),
+        "session.options" => crate::folders::options(shared),
         "session.rebind" => core::session_rebind(shared, &session, generation.unwrap_or(0), text(&request, "account")),
         "account.create" => core::account_create(shared, text(&request, "provider"), text(&request, "label")),
         "account.list" => core::account_list(shared),

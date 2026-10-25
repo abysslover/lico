@@ -7,7 +7,6 @@
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::DirBuilderExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -184,15 +183,10 @@ pub fn answer(s: &mut Session, number: i64, allow: bool) -> Result<(), &'static 
 
 // ----------------------------------------------------------------- the process
 fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
-    let id = {
-        let s = session.lock().unwrap();
-        if s.purged {
-            return Err("busy"); // a deleted session gets no workspace and no process
-        }
-        s.id.clone()
-    };
-    let workspace = shared.cfg.workspace_root.join(&id);
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
+    if session.lock().unwrap().purged {
+        return Err("busy"); // a deleted session gets no workspace and no process
+    }
+    let workspace = crate::folders::working_dir(shared, session)?;
     let mut command = Command::new(&shared.cfg.codex);
     command.args(&shared.cfg.codex_args).current_dir(&workspace).env_clear();
     for key in ["PATH", "LANG"] {

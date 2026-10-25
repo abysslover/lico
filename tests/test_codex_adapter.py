@@ -33,7 +33,7 @@ def sent(received):
     """Every message the provider received from the host, parsed."""
     if not received.exists():
         return []
-    return [json.loads(line) for line in received.read_text().splitlines() if line.strip().startswith("{")]
+    return [json.loads(line) for line in received.read_text().split("\n")[:-1] if line.strip().startswith("{")]       # only finished lines: a long one is half there for a moment
 
 
 def texts(log, sid):

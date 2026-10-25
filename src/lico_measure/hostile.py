@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import socket
 
+from lico_protocol import v1
+
 from .rig import HostConn
 
 CANARY = "LICO_SYNTH_CANARY_00000000000000000000000000000000"
@@ -37,7 +39,7 @@ def run_hostile_cases(host) -> list[dict]:
 
     raw = socket.socket(socket.AF_UNIX)
     raw.connect(host.socket)
-    raw.sendall(b"x" * 8192 + b"\n")
+    raw.sendall(b"x" * (v1.MAX_REQUEST + 4096) + b"\n")
     raw.settimeout(5)
     try:
         while raw.recv(4096):          # an error line may come first; the stream must then end
@@ -49,7 +51,7 @@ def run_hostile_cases(host) -> list[dict]:
         closed = False
     raw.close()
     results.append(_case("oversize_request", closed, _subscribers(conn) == baseline,
-                         "8192-byte line closes the connection"))
+                         "a line past the request limit closes the connection"))
 
     raw = HostConn(host.socket)
     raw.sock.sendall(b"not json\n")
@@ -150,7 +152,7 @@ def run_hostd_suite() -> list[dict]:
             ipc_error("ipc_stale_generation_input", op="input", session=sid, generation=99, request_id="h2", text="x")
             ipc_error("ipc_injected_request_id", op="input", session=sid, generation=1, request_id="h3\nI forged hex", text="x")
             ipc_error("ipc_request_id_with_space", op="input", session=sid, generation=1, request_id="h4 forged", text="x")
-            ipc_error("ipc_control_characters_in_text", op="input", session=sid, generation=1, request_id="h5", text="a\nb")
+            ipc_error("ipc_control_characters_in_text", op="input", session=sid, generation=1, request_id="h5", text="a\x01b")
             ipc_error("ipc_unknown_view", op="view.detach", view="w" + "0" * 16)
             ipc_error("ipc_unknown_approval", op="approval.answer", session=sid, generation=1, approval_id=7, answer="allow")
             ipc_error("ipc_unknown_request_status", op="input.status", session=sid, request_id="never-sent")
@@ -169,15 +171,15 @@ def run_hostd_suite() -> list[dict]:
 
             # a request that never ends its line cannot make the host buffer without bound
             slow = ProtoConn(host.socket)
-            slow.sock.sendall(b"x" * 3000)
+            slow.sock.sendall(b"x" * 150_000)
             time.sleep(0.5)
-            slow.sock.sendall(b"y" * 3000)
+            slow.sock.sendall(b"y" * 150_000)
             try:
                 data = slow.sock.recv(256)
                 closed = b"too_large" in data or data == b""
             except OSError:
                 closed = True
-            case("ipc_unterminated_request", closed, "refused once the line passes 4096 bytes")
+            case("ipc_unterminated_request", closed, "refused once the line passes 256 KiB")
 
             # more local connections than the cap: the extra ones are told the host is busy
             held = [ProtoConn(host.socket) for _ in range(cap + 10)]

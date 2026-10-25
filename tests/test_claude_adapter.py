@@ -28,7 +28,8 @@ def claude_host(directory, env_overrides=None):
 
 
 def lines_of(received):
-    return received.read_text().splitlines() if received.exists() else []
+    """The lines the provider has finished writing: a long one is half there for a moment, and is not yet a line."""
+    return received.read_text().split("\n")[:-1] if received.exists() else []
 
 
 def argv_of(received):

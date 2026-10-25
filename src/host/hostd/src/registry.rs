@@ -33,9 +33,10 @@ pub struct Entry {
     pub state_at: u64,
     pub mode: &'static str,
     pub account_removed: bool, // the account it was bound to was removed with its sessions detached
+    pub settings: crate::folders::Settings,
 }
 
-fn valid_session_id(id: &str) -> bool {
+pub fn valid_session_id(id: &str) -> bool {
     id.len() == 17 && id.starts_with('s') && id[1..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
@@ -85,9 +86,10 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
         if provider_session.as_ref().map_or(false, |p| p.is_empty() || p.len() > 64) {
             return Err(format!("sessions.json has an invalid provider session id for {session}"));
         }
+        let settings = crate::folders::Settings::from_record(&value, &session)?;
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
-            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0), account_removed,
+            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0), account_removed, settings,
             mode: if value["mode"] == "default" { "default" } else { "auto" },
         });
     }
@@ -107,10 +109,12 @@ pub fn save(shared: &Shared) {
             if s.provider.is_empty() || s.purged {
                 return None;
             }
-            Some(json!({
+            let mut record = crate::session::obj(json!({
                 "session": s.id, "provider": s.provider, "generation": s.generation, "account": s.account,
                 "credential_generation": s.credential_generation, "provider_session": s.codex_thread, "state_at": s.state_at, "mode": s.mode,
-            }))
+            }));
+            record.extend(s.settings.record_fields());
+            Some(Value::Object(record))
         })
         .collect();
     let dir = &shared.cfg.registry_dir;

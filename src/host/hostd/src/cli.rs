@@ -14,6 +14,9 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
   session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
+                 [--cwd DIR] [--name TEXT] [--model NAME] [--effort LEVEL]   (DIR: the folder it runs in; none = a scratch workspace)\n\
+  session options                models and efforts the installed Claude Code offers, and the recent folders\n\
+  session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   account create --provider codex|claude --label TEXT\n\
@@ -24,8 +27,9 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   session show ID                one session
   session purge ID               delete a session: its process, log and workspace\n\
-  session send ID TEXT [--request-id RID]
-                                 send input; the request id is printed first, so after a timeout the
+  session send ID TEXT|- [--request-id RID]
+                                 send input (- reads it from standard input; at most 64 KiB, newlines and tabs allowed);
+                                 the request id is printed first, so after a timeout the
                                  same command with --request-id RID cannot send the text twice
   input status ID RID            state of an earlier request id\n\
   session watch ID [--after N] [--seconds S]\n\
@@ -92,6 +96,16 @@ fn quiet_ok(reply: Value) -> Value {
     reply
 }
 
+/// The text of an `input` read from standard input: one byte more than the host accepts, so the host says it is too long.
+fn text_from_stdin() -> String {
+    let mut bytes = Vec::new();
+    std::io::stdin().take(crate::ipc::MAX_INPUT_TEXT as u64 + 1).read_to_end(&mut bytes).unwrap_or_else(|e| die(1, &format!("cannot read standard input: {e}")));
+    if bytes.len() > crate::ipc::MAX_INPUT_TEXT {
+        die(1, "standard input is longer than 64 KiB; nothing was sent");
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| die(1, "standard input is not UTF-8 text"))
+}
+
 fn flag(args: &[String], name: &str) -> Option<String> {
     args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
@@ -148,7 +162,23 @@ pub fn run(args: Vec<String>) {
                     request[key] = json!(v.parse::<i64>().unwrap_or_else(|_| die(1, USAGE)));
                 }
             }
+            for key in ["name", "model", "effort"] {
+                if let Some(v) = flag(&args, &format!("--{key}")) {
+                    request[key] = json!(v);
+                }
+            }
+            if let Some(folder) = flag(&args, "--cwd") {
+                // the host takes absolute paths only: a relative one is relative to where this command runs
+                let absolute = std::env::current_dir().map(|here| here.join(&folder)).unwrap_or_else(|_| folder.clone().into());
+                request["cwd"] = json!(absolute.to_string_lossy());
+            }
             expect_ok(call(&mut connect(&socket), request));
+        }
+        ["session", "options"] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "session.options"})));
+        }
+        ["session", "rename", id, rest @ ..] if rest.len() <= 1 => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "session.rename", "session": id, "name": rest.first().copied().unwrap_or("")})));
         }
         ["session", "resume", id] => {
             let mut conn = connect(&socket);
@@ -236,6 +266,7 @@ pub fn run(args: Vec<String>) {
             let generation = session_generation(&mut conn, id);
             let request_id = flag(&args, "--request-id").unwrap_or_else(|| format!("cli-{}", random_token()));
             eprintln!("request id {request_id}");
+            let text = if *text == "-" { text_from_stdin() } else { text.to_string() };
             expect_ok(call(&mut conn, json!({"op": "input", "session": id, "generation": generation, "request_id": request_id, "text": text})));
         }
         ["session", "watch", id, ..] => {

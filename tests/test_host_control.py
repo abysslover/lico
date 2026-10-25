@@ -10,6 +10,8 @@ from lico_protocol import v1
 
 from lico_measure.p02 import AGENT, LICO, ProtoConn as Conn, cli, echoes, read_log, start  # noqa: F401
 
+from tests.test_folders import long_text
+
 
 def test_stale_target_input_is_refused_without_dispatch():
     with private_dir() as directory:
@@ -97,7 +99,7 @@ def _http(port, method, path, headers=None, body=b"", raw_host=True):
         given["Host"] = f"127.0.0.1:{port}"
     given["Connection"] = "close"
     if body:
-        given["Content-Length"] = str(len(body))
+        given.setdefault("Content-Length", str(len(body)))
     head += [f"{k}: {v}" for k, v in given.items()]
     sock.sendall(("\r\n".join(head) + "\r\n\r\n").encode() + body)
     data = b""
@@ -141,7 +143,7 @@ def test_http_requires_credential_host_and_origin():
             # routes: unknown, wrong method, oversize
             assert _http(port, "GET", "/v1/nothing", auth)[0] == 404
             assert _http(port, "DELETE", "/v1/status", auth)[0] == 405
-            assert _http(port, "POST", f"/v1/sessions/{sid}/input", auth, b"x" * 9000)[0] == 413
+            assert _http(port, "POST", f"/v1/sessions/{sid}/input", {**auth, "Content-Length": str(v1.MAX_REQUEST + 1)}, b"x" * 100)[0] == 413      # refused on the declared length, before the body is read
             # a rejected mutation dispatches nothing
             status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", {**auth, "Origin": "http://evil.example"},
                                  json.dumps({"generation": 1, "request_id": "h-bad", "text": "evil"}).encode())
@@ -161,5 +163,12 @@ def test_http_requires_credential_host_and_origin():
             assert status == 200 and body["gap"] is True and "snapshot" in body
             time.sleep(1.0)
             assert echoes(log, sid) == ["fine"]
+            # IN-01: the limit is the same here as on the socket: the largest text is accepted, one byte more is refused
+            status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", auth,
+                                 json.dumps({"generation": 1, "request_id": "h-big", "text": long_text(v1.MAX_INPUT_TEXT)}).encode())
+            assert status == 200 and body["request_id"] == "h-big"
+            status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", auth,
+                                 json.dumps({"generation": 1, "request_id": "h-over", "text": long_text(v1.MAX_INPUT_TEXT + 1)}).encode())
+            assert status == 400 and body["error"] == "bad_request"
         finally:
             host.stop()

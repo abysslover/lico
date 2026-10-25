@@ -389,6 +389,7 @@ pub struct Session {
     pub claude: Option<crate::claude::Link>,
     pub mode: &'static str, // "auto" (permissions skipped, the default of a new session) or "default" (the provider asks for what needs approval)
     pub provider: &'static str, // "codex" or "claude" for a provider session, empty otherwise
+    pub settings: crate::folders::Settings, // what the person chose: folder, name, model, effort
     pub codex_thread: Option<String>,
     window: VecDeque<(i64, Vec<u8>)>,
     window_cap: usize,
@@ -439,6 +440,7 @@ impl Session {
             codex: None,
             claude: None,
             provider: "",
+            settings: crate::folders::Settings::default(),
             mode: "auto",
             codex_thread: None,
             producing,
@@ -506,6 +508,7 @@ impl Session {
         s.codex_thread = entry.provider_session.clone();
         s.account = entry.account.clone();
         s.mode = entry.mode;
+        s.settings = entry.settings.clone();
         s.credential_generation = entry.credential_generation;
         s.state = State::Disconnected;
         s.state_at = if entry.state_at > 0 { entry.state_at } else { now_secs() };

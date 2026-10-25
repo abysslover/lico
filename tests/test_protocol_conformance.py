@@ -57,7 +57,7 @@ def test_protocol_rejects_unknown_fields_and_oversize(impl):
             conn = Conn(host.socket)
             hello = conn.call(op="hello")
             assert v1.validate_response("hello", hello) == []
-            assert hello["protocol"] == 1 and hello["max_request"] == 4096 and hello["retain"] == 50
+            assert hello["protocol"] == 1 and hello["max_request"] == (4096 if impl in legacy.HOSTS else v1.MAX_REQUEST) and hello["retain"] == 50
             status = conn.call(op="status")
             assert v1.validate_response("status", status) == []
             ids = [s["session"] for s in status["sessions"]]
@@ -86,7 +86,7 @@ def test_protocol_rejects_unknown_fields_and_oversize(impl):
             bad.send_raw(b"not json\n")
             assert bad.read()["error"] == "bad_request"
             big = Conn(host.socket)
-            big.send_raw(b"x" * 8192 + b"\n")
+            big.send_raw(b"x" * (v1.MAX_REQUEST + 4096) + b"\n")
             data, closed = big.read_until_eof()
             assert closed, "an oversize request must close the connection"
             if data:

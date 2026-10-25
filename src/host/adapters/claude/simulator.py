@@ -16,6 +16,7 @@ user message:
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
+`--help` prints the part of the real program's help that names `--effort` and `--model` (or the file `--help-file` names, for a test).
 """
 
 import argparse
@@ -27,19 +28,39 @@ import sys
 import time
 import uuid
 
-parser = argparse.ArgumentParser()
+# the options the host reads from `claude --help`, as Claude Code 2.1.310 prints them (wrapped the same way)
+HELP = """Usage: claude [options] [command] [prompt]
+
+Options:
+  --effort <level>                      Effort level for the current session
+                                        (low, medium, high, xhigh, max)
+  --fallback-model <model>              Enable automatic fallback to specified
+                                        model(s) when the default model is
+  --model <model>                       Model for the current session. Provide
+                                        an alias for the latest model (e.g.
+                                        'fable', 'opus', or 'sonnet') or a
+                                        model's full name.
+  -v, --version                         Output the version number
+"""
+
+parser = argparse.ArgumentParser(add_help=False)
+parser.add_argument("--help", action="store_true")
+parser.add_argument("--help-file", default="")
 parser.add_argument("--received", default="")
 parser.add_argument("--fixture", default="")
 parser.add_argument("--resume", default="")
 parser.add_argument("--settings", default="")
 args, _ = parser.parse_known_args()
+if args.help:
+    sys.stdout.write(open(args.help_file).read() if args.help_file else HELP)
+    sys.exit(0)
 
 log = open(args.received, "a", buffering=1) if args.received else None
 if log:
     log.write("ARGV " + json.dumps(sys.argv[1:]) + "\n")
 session = args.resume or str(uuid.uuid4())
 if log:
-    log.write("SESSION " + session + "\n")
+    log.write("SESSION " + session + "\nCWD " + os.getcwd() + "\n")
 started = False
 queued = []
 

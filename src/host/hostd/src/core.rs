@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
-pub const MAX_REQUEST: usize = 4096;
-pub const OPS: [&str; 28] = [
+pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-escaped (up to 3 times its size) and the rest of the line
+pub const OPS: [&str; 30] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -359,6 +359,9 @@ fn status_entry(s: &Session) -> Value {
     if let Some(issue) = &s.account_issue {
         entry["account_issue"] = json!(issue);
     }
+    if !s.provider.is_empty() {
+        crate::folders::annotate(&mut entry, s);
+    }
     if !s.approvals.is_empty() {
         entry["approvals"] = Value::Array(s.approvals.iter().map(|(n, p)| json!({"approval_id": n, "prompt": p})).collect());
     }
@@ -465,8 +468,9 @@ pub fn session_list(shared: &Shared) -> Reply {
     Ok(obj(json!({"sessions": entries})))
 }
 
-pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str) -> Reply {
+pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str, chosen: crate::folders::Settings) -> Reply {
     let mode: &'static str = if mode == "default" { "default" } else { "auto" };
+    let chosen = crate::folders::prepare(shared, kind, chosen)?; // the folder, the model and the effort are checked before anything starts
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
     let bound = match resolve_account(shared, kind, account) {
         Ok(bound) => bound,
@@ -476,10 +480,8 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     let total = shared.sessions.read().unwrap().len() + reserved;
     let created = if total >= shared.cfg.max_sessions {
         Err("busy")
-    } else if kind == "codex" {
-        start_codex_session(shared, bound, mode)
-    } else if kind == "claude" {
-        start_claude_session(shared, bound, mode)
+    } else if kind == "codex" || kind == "claude" {
+        crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -684,63 +686,11 @@ fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result
     }
 }
 
-/// A session backed by the Claude Code program (or its simulator): one provider process, one provider session.
-fn start_claude_session(shared: &Arc<Shared>, bound: Option<(String, u64)>, mode: &'static str) -> Result<Arc<Mutex<Session>>, &'static str> {
-    let id = format!("s{}", random_hex(8));
-    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
-    {
-        let mut s = session.lock().unwrap();
-        s.text_mode = true;
-        s.mode = mode;
-        s.provider = "claude";
-        if let Some((account, credential_generation)) = bound {
-            s.account = Some(account);
-            s.credential_generation = credential_generation;
-        }
-    }
-    if let Err(code) = crate::claude::start(shared, &session) {
-        let mut s = session.lock().unwrap();
-        s.purged = true;
-        s.stop_process();
-        s.purge_log();
-        let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&s.id));
-        return Err(code);
-    }
-    shared.sessions.write().unwrap().push(session.clone());
-    crate::registry::save(shared);
-    Ok(session)
-}
-
-/// A session backed by the Codex app-server (or its simulator): one provider process, one thread.
-fn start_codex_session(shared: &Arc<Shared>, bound: Option<(String, u64)>, mode: &'static str) -> Result<Arc<Mutex<Session>>, &'static str> {
-    let id = format!("s{}", random_hex(8));
-    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
-    session.lock().unwrap().text_mode = true;
-    session.lock().unwrap().mode = mode;
-    if let Some((account, credential_generation)) = bound {
-        let mut s = session.lock().unwrap();
-        s.account = Some(account);
-        s.credential_generation = credential_generation;
-    }
-    if let Err(code) = crate::codex::start(shared, &session) {
-        // nothing of a session that never became ready may remain: no process, no log, no workspace
-        let mut s = session.lock().unwrap();
-        s.purged = true;
-        s.stop_process();
-        s.purge_log();
-        let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&s.id));
-        return Err(code);
-    }
-    shared.sessions.write().unwrap().push(session.clone());
-    crate::registry::save(shared);
-    Ok(session)
-}
-
 /// Delete a session: end its process, remove its log and its workspace, and forget it. Nothing of
 /// another session is touched, and nothing of this one can be written again.
 pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let (id, pid, subs) = {
+    let (id, pid, subs, scratch) = {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
         s.purged = true;
@@ -753,7 +703,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         s.stop_process();
         s.purge_log();
         let subs: Vec<Arc<Sub>> = s.subs.drain(..).collect();
-        (s.id.clone(), pid, subs)
+        (s.id.clone(), pid, subs, s.settings.cwd.is_none())
     };
     let _ = pid;
     for sub in subs {
@@ -762,7 +712,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
     }
     shared.sessions.write().unwrap().retain(|s| s.lock().unwrap().id != id);
     shared.views.lock().unwrap().retain(|_, v| v.session != id);
-    let _ = std::fs::remove_dir_all(shared.cfg.workspace_root.join(&id));
+    crate::folders::remove_scratch(shared, &id, scratch); // a folder the person chose is never touched
     crate::registry::save(shared);
     Ok(obj(json!({"session": id})))
 }

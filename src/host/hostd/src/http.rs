@@ -15,7 +15,7 @@ use crate::ipc::{int, valid_request};
 use crate::session::{encode, obj};
 
 const MAX_HEAD: usize = 8192;
-const MAX_BODY: usize = 4096;
+const MAX_BODY: usize = crate::core::MAX_REQUEST;
 const MAX_CONNECTIONS: usize = 32;
 const RATE_PER_SECOND: f64 = 200.0;
 const BURST: f64 = 50.0;
@@ -45,7 +45,8 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 
 fn status_of(code: &str) -> u16 {
     match code {
-        "bad_request" | "version_unsupported" => 400,
+        "bad_request" | "version_unsupported" | "option_unavailable" => 400,
+        "folder_not_absolute" | "folder_missing" | "folder_not_directory" | "folder_unreadable" | "folder_protected" => 400,
         "unknown_op" | "unknown_session" | "unknown_view" | "unknown_request" | "unknown_approval" => 404,
         "stale_generation" | "session_exited" => 409,
         "too_large" => 413,
@@ -178,7 +179,8 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 let kind = crate::ipc::text(&map, "kind").to_string();
                 core::session_create(shared, &kind, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
                                      int(&map, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
-                                     map.get("account").and_then(|a| a.as_str()), crate::ipc::text(&map, "mode"))
+                                     map.get("account").and_then(|a| a.as_str()), crate::ipc::text(&map, "mode"),
+                                     crate::folders::Settings::of_request(&map))
             }
             _ => return Err((405, "bad_request")),
         },

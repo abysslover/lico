@@ -219,7 +219,7 @@ async def serve(path: str, sessions: int, producing: int, rate: float, history: 
         os.unlink(path)
     previous = os.umask(0o077)  # the socket is never group- or world-accessible, even briefly
     try:
-        server = await asyncio.start_unix_server(connection, path=path)
+        server = await asyncio.start_unix_server(connection, path=path, limit=2 * v1.MAX_REQUEST)     # the default limit (64 KiB) is below a request
     finally:
         os.umask(previous)
     os.chmod(path, 0o600)

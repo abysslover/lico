@@ -11,10 +11,14 @@ prototype clients keep working.
 from __future__ import annotations
 
 PROTOCOL = 1
-MAX_REQUEST = 4096
+MAX_INPUT_TEXT = 64 * 1024     # bytes of one `input`: newline and tab allowed, no other control character
+MAX_PATH = 1024                # characters of a folder path a session may be created in
+MAX_NAME = 60                  # characters of a session name
+MAX_REQUEST = 4 * MAX_INPUT_TEXT     # the text JSON-escaped (up to 3 times its size) and the rest of the line
 ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "version_unsupported", "too_large",
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
-          "unknown_account", "credential_store_unavailable", "build_changed", "stopping")
+          "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
+          "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -45,6 +49,8 @@ INVENTORY = {
     "account.remove": {"state": "host", "mutates": True},
     "history": {"state": "host", "mutates": False},
     "host.stop": {"state": "host", "mutates": True},
+    "session.options": {"state": "host", "mutates": False},
+    "session.rename": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -77,12 +83,17 @@ REPLIES = {
                      "bytes_total": {"type": INT, "minimum": 0}},
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
                      "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
+                     "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
+                     "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
+    "session.rename": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "name": {"type": [STR, "null"], "max_length": MAX_NAME}}, COMMON_REPLY_OPTIONAL),
+    "session.options": _obj({"v": _V, "ok": _OK, "models": {"type": "array", "items": {"type": STR}}, "efforts": {"type": "array", "items": {"type": STR}},
+                             "issue": {"type": [STR, "null"]}, "recent": {"type": "array", "items": {"type": STR, "max_length": MAX_PATH}}}, COMMON_REPLY_OPTIONAL),
     "input": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},
                    "state": {"type": STR, "enum": ["accepted", "submitted", "observed", "failed"]}, "duplicate": {"type": BOOL}},
                   COMMON_REPLY_OPTIONAL),
@@ -168,7 +179,13 @@ REQUESTS = {
                            {**_COMMON_REQ, "mode": {"type": STR, "enum": ["auto", "default"]}, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096},
-                            "account": {"type": STR, "max_length": 64}}),
+                            "account": {"type": STR, "max_length": 64},
+                            "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True},
+                            "name": {"type": STR, "max_length": MAX_NAME, "no_control": True},
+                            "model": {"type": STR, "min_length": 1, "max_length": 60, "charset": "model"},
+                            "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"}}),
+    "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True}}, _COMMON_REQ),
+    "session.options": _obj({}, _COMMON_REQ),
     "session.rebind": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                             "account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
@@ -182,7 +199,7 @@ REQUESTS = {
     "session.list": _obj({}, _COMMON_REQ),
     "input": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                    "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
-                   "text": {"type": STR, "min_length": 1, "max_bytes": 512, "no_control": True}}, _COMMON_REQ),
+                   "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}}, _COMMON_REQ),
     "input.status": _obj({"session": {"type": STR, "max_length": 64},
                           "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}},
                          _COMMON_REQ),
@@ -231,7 +248,11 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: shorter than {spec['min_length']}")
     if isinstance(value, str) and spec.get("charset") == "id" and not all(c.isascii() and (c.isalnum() or c in "-_") for c in value):
         errors.append(f"{path}: only letters, digits, dash and underscore")
-    if isinstance(value, str) and spec.get("no_control") and any(ord(c) < 32 or ord(c) == 127 for c in value):
+    if isinstance(value, str) and spec.get("charset") == "model" and not (value[:1].isalnum() and all(c.isascii() and (c.isalnum() or c in "._-") for c in value)):
+        errors.append(f"{path}: only letters, digits, dot, dash and underscore, starting with a letter or digit")
+    if isinstance(value, str) and spec.get("charset") == "lower" and not all("a" <= c <= "z" for c in value):
+        errors.append(f"{path}: only lowercase letters")
+    if isinstance(value, str) and spec.get("no_control") and any((ord(c) < 32 or ord(c) == 127) and c not in spec.get("allow", "") for c in value):
         errors.append(f"{path}: control characters")
     if isinstance(value, list):
         if "length" in spec and len(value) != spec["length"]:

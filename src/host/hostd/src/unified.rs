@@ -12,6 +12,7 @@ mod core;
 mod credcmd;
 mod creds;
 mod dbus;
+mod folders;
 mod gui;
 mod host;
 mod http;
