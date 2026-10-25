@@ -1,6 +1,6 @@
 # Screens: what the window shows
 
-Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
+Status: v1.4 (v1.3 plus the S01 result: the tool connection works, an approval is never a held call), v1.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -165,14 +165,14 @@ The start of a handoff file:
 +- Approval needed ----------------------------------------------------------------------+
 | Session 'api-server' asks to send a message to session 'docs'.                         |
 |                                                                                        |
-|    Size: 1.2 KiB (inline)      Tool: lico_send                                         |
+|    Size: 1.2 KiB (inline)      Tool: send                                              |
 |    First line:  Please update the README for the new login flow ...                    |
 |                                                                                        |
-|    [ Allow once ]   Allow for this session   [ Deny ]          Y / N                   |
+|    [ Allow once ]   Allow for this session   [ Deny ]    Y / N    V = whole text       |
 +----------------------------------------------------------------------------------------+
 ```
 
-- It appears in the window when an agent sends to another session, reads another session's conversation, or creates a session. It is asked once per call, even when the agent's own permission prompts are on. Answer with the Y/N keys or the buttons. "Allow for this session" lasts only while that session is alive.
+- It appears in the window when an agent sends to another session, reads another session's conversation, or creates a session. It is asked once per call, even when the agent's own permission prompts are on. The agent is not kept waiting on the call: it is told at once that the person has been asked, and Lico tells it in the conversation when the person decides (AC-03). An approval that nobody answers expires after 12 hours. The card shows the tool, the target, the size and the first line; the whole text can be opened (V) and read before the person answers, so that nobody approves what they have not been able to read. Answer with the Y/N keys or the buttons. "Allow for this session" lasts only while that session is alive.
 
 ## 7. The real screen (P05)
 

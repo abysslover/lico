@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finished on its branch (test cleanup S05 included) and P02 is under way: its plan note is written and its host step (S02) is built and tested; the commit waits for the repository's list of approved branches to include P02 (an owner action). Numbers in this document are **design targets** unless they are marked *measured*.
+Status: v1.4 (v1.3 plus the S01 result: the tool connection works, an approval is never a held call), v1.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finished on its branch (test cleanup S05 included) and P02 is under way: its plan note is written and its host step (S02) is built and tested; the commit waits for the repository's list of approved branches to include P02 (an owner action). Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
@@ -105,6 +105,7 @@ The full judgements and the places of the raw data are in the lead's judgement d
 | 2026-10-26 | **Input-box basics (IN-01 to IN-07) go into P02 as the recommended option A** (64 KiB per input, newline and multi-line, cursor movement, recall with the up key, per-session drafts) |
 | 2026-10-26 | **The input echo (IN-08) is decided by the lead:** the host records an accepted input as lines that start with `>> ` (tool output already uses `> `), the first 12 lines and 2 KiB, each line cleaned like every other record, and one line with the exact amount left out. SC-10 moves from P03 to P02; only the sender header stays in P03 (changes v1.2). The owner can revert it. |
 | 2026-10-26 | **P03 plan review (lead):** a reply between agents is allowed and a runaway is stopped by a hop limit (4) instead of a cycle ban; the handoff folder is one per receiving session; the person is asked once per call, not twice; reading another session's conversation needs an approval too; and the limit of all this is written down (SF-08: consent and least privilege, not a sandbox) (changes v1.3). The owner can revert it. |
+| 2026-10-26 | **S01 result and the approval wait (lead):** the tool connection works with the installed Claude Code (6 of 6; 72 runs in all). A tool call that needs an approval is never held open: it answers at once and Lico tells the session when the person decides (AC-03). A hold is possible (a streamed reply with a per-server setting survived 10 minutes, *measured*) but it would depend on a setting of one program version and on the limits of every other agent program, it ends in "ask again" when the person is away, and it needs a streamed reply; the message when the person decides reuses the way a message reaches a session. The measured limits stay in the P03 plan note for a later bounded hold (changes v1.4). The owner can revert it. |
 
 Rules that keep applying: development workers are Claude-family agents only. The idle window stays under 50 MiB and fast, in one executable. The screen tools use the hand-drawn client. New sessions skip the agent's own permission prompts and use approvals inside the window. The sign-in code is never visible or logged. The host replaces itself when it meets a new build and resumes the sessions that were alive.
 
@@ -115,12 +116,13 @@ The owner proceeded with the recommended option on 2026-10-26, so these values s
 | Item | Value | Used in |
 |---|---|---|
 | "X" | Linux X11. Wayland is out of scope (the X server tested is always recorded) | P04, P05 |
-| How the agent calls Lico | A tool connection served directly by the host (MCP, per-session token) plus a CLI doing the same things. If the tool connection does not work, CLI only | P03 |
+| How the agent calls Lico | A tool connection served directly by the host (MCP, per-session token) plus a CLI doing the same things. The tool connection works with the installed Claude Code (S01, 2026-10-26), so the CLI-only fallback is not needed | P03 |
 | Inline size for sending | Up to 4 KiB inline, longer goes by file (2026-10-26 POC-0: the file way worked 16 of 16). The host's input limit (today 512 B of text, 4 KiB per request line) is raised first by IN-01 | P02, P03 |
 | Input-box basics (approved) | Up to 64 KiB per input (newline and tab allowed), several lines (Enter sends, Shift+Enter inserts a newline), cursor movement, recall with the up key, per-session drafts, and what is sent is shown in the conversation folded (IN-08, added by the lead 2026-10-26). Today: 512 B, one line, no cursor movement | P02 |
 | Handoff file retention | 30 days, 256 MiB in total over all handoff folders (oldest first when over) | P03 |
 | Handoff folder (v1.3, 2026-10-26) | One per receiving session (an inbox), removed with the session; a session with permission prompts on reads only its own | P03 |
 | Limits between agents (v1.3, 2026-10-26) | 4 hops since a person last wrote into the chain (replies allowed), 20 sends per minute, sessions created by agents alive at once: 4 per creating session and 8 in all | P03 |
+| Approval wait (v1.4, 2026-10-26) | The tool answers at once ("the person has been asked"); the outcome reaches the session as a message; pending approvals expire after 12 hours, at most 8 per session (the P03 plan note may refine the numbers) | P03 |
 | Host record retention (changed by POC-0, 2026-10-26) | Today 2,048 records. "The whole conversation" is built from the **provider's own record**, not the host record (the host record holds no input and is deleted in pieces). Whether to raise the host retention is decided in P03 by measurement | P03 |
 | Virtual display | 1280x800, ended after 10 minutes idle | P05 |
 | Real-screen permission | Per session, expires after 15 minutes, released when the host restarts | P05 |
@@ -163,7 +165,7 @@ G3/G4:                      ^ end of P02                     ^ end of P04       
 
 | Risk | Response |
 |---|---|
-| Does the external tool connection work in the host's stream-json mode? | **It does** (POC-0 D3, 5 of 5, *measured*). The first step of P03 only re-checks it on the installed version |
+| Does the external tool connection work in the host's stream-json mode? | **It does** (POC-0 D3, 5 of 5, *measured*). S01 re-checked it on the installed version (2026-10-26, 6 of 6; the limits of a held call were measured, see the decision of that day) |
 | Does a model operate the hand-drawn Lico window well? | Haiku did six small tasks 8 of 8 each (POC-0 D3, *measured*). The success rate on a real X program such as a browser is measured in the first step of P05 and recorded |
 | Memory grows as features are added | A budget per feature, one measured line per phase, a P07 pass, only two stops |
 | Tests get slow again | Test budgets, selection, receipts and size ratchet ([test plan](test_plan.md)). A phase over 180 s is not merged |

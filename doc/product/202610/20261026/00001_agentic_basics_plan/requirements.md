@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: v1.4 (v1.3 plus the S01 result: the tool connection works, an approval is never a held call), v1.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -94,11 +94,11 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 |---|---|---|---|---|
 | AC-01 | The host serves a **tool connection** (MCP, loopback HTTP) guarded by a per-session token and attaches it with `--mcp-config` when the session starts. | P, E | P03 | planned |
 | AC-02 | Tools: list sessions, send to another session, read another session, create a session. Each has a CLI doing the same thing (people and tests use the same path without a model). | P | P03 | planned |
-| AC-03 | Sensitive tools (create a session, send to another session, read another session's conversation, write to the screen) go through an approval in the window, **once per call**: a session whose program also asks before running a tool must not show the person two prompts for one call (P03 step S01 measures how to achieve this). A session can be given "keep allowing for this session". | W, P | P03 | planned |
+| AC-03 | Sensitive tools (create a session, send to another session, read another session's conversation, write to the screen) go through an approval in the window, **once per call**: a session whose program also asks before running a tool must not show the person two prompts for one call (P03 step S01 measures how to achieve this). A session can be given "keep allowing for this session". **A tool call that needs an approval is never held open:** the tool answers at once that the person has been asked (with an approval number; nothing is done yet), and when the person decides Lico tells the session in its conversation (done, declined, or expired after 12 hours), the way every message to a session arrives. The session does not have to poll, and a person who is away for hours costs nothing. (S01, *measured*: the installed program cuts a held tool call after 60 seconds, or after 300 seconds without a reply or progress on a streamed reply, and only a program setting lifts that; the limits of other agent programs are not known.) | W, P | P03 | planned |
 | AC-04 | Runaway protection: (1) a per-session sends-per-minute limit; (2) a **hop limit on exchanges between agents**: every message an agent sends carries the number of agent hops since a person last wrote into the chain, a person's input restarts the count, and a send beyond 4 hops is refused. A reply is allowed (A sends to B, B answers A: hops 1 and 2); an exchange that keeps going stops at the limit; (3) the sessions created by agents that are alive at once are capped (4 per creating session, 8 in all), and "keep allowing" never lifts the cap. When a limit is hit, the tool returns the reason with the numbers. | U, P | P03 | planned |
 | AC-05 | No new process per session (the connection is served inside the host). | M | P03 | planned |
 | AC-06 | The token is new for every session and every start, the config file is 0600 and removed when the session ends. It appears in no log and no screen. | U, P | P03 | planned |
-| AC-07 | **The first step (P03-S01) is a test:** check that the installed Claude Code really uses this tool connection in `-p stream-json` mode. If not, go with the CLI only (the agent calls `lico ...` from a shell) under the same approval rules. | E | P03 | planned |
+| AC-07 | **The first step (P03-S01) is a test:** check that the installed Claude Code really uses this tool connection in `-p stream-json` mode. If not, go with the CLI only (the agent calls `lico ...` from a shell) under the same approval rules. **Result (S01, 2026-10-26, Claude Code 2.1.310, 72 runs with the smallest model and a throwaway server): the connection works** (6 of 6). The program also asks before each tool call in `default` mode, and a pre-allow stops that (12 of 12), so Lico's approval can be the only prompt. The CLI-only fallback is not needed. | E | P03 | measured |
 
 ## XF: screen capture and copy/paste (P04)
 
@@ -141,7 +141,7 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| SF-01 | Sensitive actions (real screen, create a session, send to another session) do not run without an approval in the window (a per-session pre-allow excepted; what this does not cover is stated in SF-08). | P, W | P03 to P05 | planned |
+| SF-01 | Sensitive actions (real screen, create a session, send to another session) do not run without an approval in the window (a per-session pre-allow excepted; what this does not cover is stated in SF-08). The approval shows the tool, the target, the size and the first line, and can be opened to the whole text before the person answers. | P, W | P03 to P05 | planned |
 | SF-02 | The sign-in code appears neither on screen nor in any record (existing rule kept). | P | all | planned |
 | SF-03 | Lico actions started by an agent are kept in an audit record (what, which session, when). Message bodies and screen contents are not kept. | P | P03 to P05 | planned |
 | SF-04 | Public hygiene: handoff folders, capture folders and tokens are not placed inside the repository. Tests and documents contain no workstation paths, names or raw conversations. | U, L | all | planned |

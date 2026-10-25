@@ -1,6 +1,6 @@
 # Test plan: keeping the whole suite under 3 minutes and light
 
-Status: v1.3 (v1.2 plus the P03 plan review: reply rule, handoff folder per session, one approval per call, SF-08), v1.0 approved by the owner at G1 on 2026-10-26. The last step of P01, S05 (test cleanup), carried out this plan; the results are in the table at the end (whole run 596 s to 112 s). The first figures come from its ledger (135 tests, 596 s cold, *measured*); earlier counts were 135 tests in 554 s, 607 s at report 015 and 130 tests in 545 s at report 023. The "cause candidates" below are hypotheses until the ledger confirms them.
+Status: v1.4 (v1.3 plus the S01 result: the tool connection works, an approval is never a held call), v1.0 approved by the owner at G1 on 2026-10-26. The last step of P01, S05 (test cleanup), carried out this plan; the results are in the table at the end (whole run 596 s to 112 s). The first figures come from its ledger (135 tests, 596 s cold, *measured*); earlier counts were 135 tests in 554 s, 607 s at report 015 and 130 tests in 545 s at report 023. The "cause candidates" below are hypotheses until the ledger confirms them.
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [screens](screens.md) · [changes](changes.md).
 
