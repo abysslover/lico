@@ -47,8 +47,8 @@ CANDIDATE_ENV = {
 
 
 def _client_home() -> Path:
-    """A private, persistent home for client processes (font caches survive between runs)."""
-    home = REPO / "private" / "scratch" / "clienthome"
+    """A private, persistent home for client processes (font caches survive between runs). The parallel runner gives each worker its own."""
+    home = REPO / "private" / "scratch" / ("clienthome" + (f"-{os.environ['LICO_WORKER']}" if os.environ.get("LICO_WORKER") else ""))
     for sub in ("", "config", "cache", "data", "run"):
         (home / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(home / "run", 0o700)

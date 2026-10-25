@@ -1,0 +1,6 @@
+# The time and memory a test run may take. Read by `python -m lico_measure.suite run`; a broken budget makes the run exit 3.
+# A test over `default_s` needs an entry below with a reason; the summary names every test over its budget.
+
+default_s = 15          # wall seconds of one test (setup + call + teardown)
+cold_run_s = 180        # the whole suite, nothing skipped by receipt, build not counted
+peak_rss_mib = 2048     # all workers together (resident sets of the whole process tree, shared pages counted once per process)

@@ -22,6 +22,20 @@ def classify(kinds):
     return "L1" if names else "L0"
 
 
+# what a test starts, as the map of tests to code names it (tests/testmap.toml): the product's roles run from one executable
+AREA_OF_KIND = {"lico gui": "gui", "lico-candidate-": "gui", "lico host": "host", "lico-host": "host", "lico-synth-agen": "synth",
+                "lico-cred": "cred", "lico": "cli"}
+
+
+def areas(document):
+    """test file -> the areas whose code its tests ran (an empty list: pure Python); read from the process kinds of the run."""
+    found = {}
+    for t in document["tests"]:
+        mine = found.setdefault(t["nodeid"].split("::")[0], set())
+        mine |= {AREA_OF_KIND[k] for k in t["kinds"] if k in AREA_OF_KIND}
+    return {name: sorted(value) for name, value in sorted(found.items())}
+
+
 def table(document, top=15):
     tests, total = document["tests"], document["total_s"]
     lines = [f"{len(tests)} tests, {total} s in all (collection {document['collect_s']} s), peak {document['peak_rss_mib']} MiB at {document['peak_at']}", ""]
@@ -50,4 +64,8 @@ def table(document, top=15):
 
 
 if __name__ == "__main__":
+    if "--areas" in sys.argv:
+        sys.argv.remove("--areas")
+        print("\n".join(f'"{name}" = {json.dumps(value)}' for name, value in areas(json.load(open(sys.argv[1]))).items()))
+        raise SystemExit
     print(table(json.load(open(sys.argv[1])), int(sys.argv[2]) if len(sys.argv) > 2 else 15))

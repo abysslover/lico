@@ -1,0 +1,161 @@
+# Which tests a change needs. Read by `python -m lico_measure.suite select --changed [BASE]` (src/lico_measure/testmap.py).
+#
+# Python imports are NOT listed here: they are read from the source, so a test that imports a module is selected when the module
+# changes, and a test file that imports another test file is selected when that one changes. What the source cannot say is listed:
+#   [areas]      what each test file starts - the product is one executable that runs as a window (gui), a host (host), a
+#                credential command (cred), a plain command (cli), or as the test double of an agent (synth). Found from the
+#                process kinds of a ledger run: python -m lico_measure.ledger_report LEDGER.json --areas
+#   [rust]       which area runs the code of each top-level module of src/host/hostd/src; a module that USES a changed one is
+#                added by reading `crate::` in the sources, so the area of a dependent counts too
+#   [[sources]]  files that tests read or start by path, not by import
+#   [[inert]]    files no test reads (each says why)
+# A changed file that none of these explains selects EVERYTHING. A test file that is not listed under [areas] is assumed to
+# run every area (so a new test file is never skipped); tests/test_selection.py fails until it is listed.
+
+[areas]
+"tests/test_account_helpers.py" = []
+"tests/test_account_lifecycle.py" = ["cred", "host"]
+"tests/test_accounts.py" = ["cred", "host"]
+"tests/test_activity.py" = ["gui", "host"]
+"tests/test_adapter_contract.py" = []
+"tests/test_claude_adapter.py" = ["host"]
+"tests/test_client_integration.py" = ["gui", "host", "synth"]
+"tests/test_codex_adapter.py" = ["host"]
+"tests/test_credential_store.py" = ["cred"]
+"tests/test_decision.py" = []
+"tests/test_first_view.py" = ["gui", "host", "synth"]
+"tests/test_frame_cost.py" = ["gui", "host", "synth"]
+"tests/test_host_control.py" = ["host", "synth"]
+"tests/test_host_core.py" = ["host", "synth"]
+"tests/test_host_replacement.py" = ["gui", "host"]
+"tests/test_host_resources.py" = ["host", "synth"]
+"tests/test_hostile.py" = ["host", "synth"]
+"tests/test_korean_ime.py" = ["gui", "host", "synth"]
+"tests/test_latency.py" = []
+"tests/test_login.py" = ["cli", "host"]
+"tests/test_login_real_shape.py" = ["gui", "host"]
+"tests/test_login_window.py" = ["gui", "host"]
+"tests/test_mask_code_line.py" = ["gui", "host"]
+"tests/test_menu_bar.py" = ["gui", "host"]
+"tests/test_navigation.py" = ["gui", "host"]
+"tests/test_paste_open.py" = ["gui", "host"]
+"tests/test_permission_mode.py" = ["gui", "host"]
+"tests/test_protocol_conformance.py" = ["host", "synth"]
+"tests/test_provider_isolation.py" = ["host", "synth"]
+"tests/test_recovery.py" = ["host"]
+"tests/test_report.py" = []
+"tests/test_resource_scope.py" = []
+"tests/test_selection.py" = []
+"tests/test_single_executable.py" = ["cli", "gui", "host"]
+"tests/test_size_ratchet.py" = []
+"tests/test_stale_host.py" = ["cli", "gui", "host", "synth"]
+"tests/test_unicode_clients.py" = ["gui", "host"]
+"tests/test_view_lifecycle.py" = ["gui", "host", "synth"]
+"tests/test_window_keys.py" = ["gui", "host"]
+
+[rust.modules]
+# The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
+accounts = ["host"]
+bin = ["synth"]           # src/bin/synth_agent.rs: the agent test double
+broker = ["host"]
+claude = ["host"]
+cli = ["cli"]
+codex = ["host"]
+core = ["host"]
+credcmd = ["cred"]
+creds = ["cred"]
+dbus = ["cred"]
+gui = ["gui"]
+host = ["host"]
+http = ["host"]
+ipc = ["host"]
+keyring = ["cred"]
+login = ["host"]
+payload = ["host"]
+registry = ["host"]
+session = ["host"]
+unified = ["*"]           # the dispatch: every role goes through it
+
+[rust]
+# Files that change the binary itself, whatever the module: every test that starts it, and the whole `cargo test --bin lico`.
+everything = [
+    "src/host/hostd/Cargo.toml",
+    "src/host/hostd/Cargo.lock",
+    "src/host/hostd/build-release.sh",
+    "src/host/hostd/NOTICES.txt",       # printed by `lico licenses`, compiled in
+    "LICENSE",                          # printed by `lico licenses`, compiled in
+]
+
+[acceptance]
+# The clean-clone build (tests/test_single_executable.py, mark `acceptance`, 80 s, 3.5 GiB) is due when one of these changes, and
+# before a merge or a release. Run it with: python -m lico_measure.suite acceptance
+triggers = [
+    "src/host/hostd/Cargo.toml",
+    "src/host/hostd/Cargo.lock",
+    "src/host/hostd/build-release.sh",
+    "src/host/hostd/NOTICES.txt",
+    "LICENSE",
+    ".gitignore",
+    "tests/test_single_executable.py",
+]
+
+[always]
+# Guards that read the whole tree: cheap (a file read each), so they run for every change that is not inert, and their receipt
+# names every source and test file.
+tests = ["tests/test_size_ratchet.py"]
+
+[[sources]]
+glob = "tests/testmap.toml"
+tests = ["tests/test_selection.py"]
+reason = "the map is checked against the tree by the selection test"
+
+[[sources]]
+glob = "tests/budget.toml"
+tests = ["tests/test_selection.py"]
+reason = "the budget table is checked by the selection test and read by the runner"
+
+[[sources]]
+glob = "tests/size_allowlist.toml"
+tests = ["tests/test_size_ratchet.py"]
+reason = "the allowlist of the size ratchet"
+
+[[sources]]
+glob = "src/host/adapters/codex/**"
+tests = ["tests/test_codex_adapter.py"]
+reason = "the simulator of the Codex app server and its capabilities, started by path"
+
+[[sources]]
+glob = "src/host/adapters/claude/**"
+tests = ["tests/test_claude_adapter.py"]
+reason = "the simulator of the Claude stream and its capabilities, started by path"
+
+[[sources]]
+glob = "src/lico_host/**"
+tests = ["tests/test_protocol_conformance.py"]
+reason = "the reference host in Python, run as `python -m lico_host` by the conformance test"
+
+[[sources]]
+glob = "src/host/rust/**"
+tests = ["tests/test_protocol_conformance.py"]
+reason = "a second Rust host, built and run by the conformance test when present"
+
+[[sources]]
+glob = "src/host/c/**"
+tests = ["tests/test_protocol_conformance.py"]
+reason = "the host in C, built and run by the conformance test when present"
+
+[[inert]]
+glob = "**/*.md"
+reason = "documents"
+
+[[inert]]
+glob = "doc/**"
+reason = "documents"
+
+[[inert]]
+glob = "exp/**"
+reason = "experiment notes"
+
+[[inert]]
+glob = ".gitignore"
+reason = "read only by the clean-clone test (acceptance), which lists it as a trigger"

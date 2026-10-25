@@ -1,0 +1,10 @@
+# The size ratchet (tests/test_size_ratchet.py): a .rs or .py file under src/ or tests/ may have at most `limit` lines.
+# The files below are over it today; each may not grow (it may shrink: lower the number then), and an entry for a file that is gone
+# or back under the limit must be removed. A new entry needs the owner's word, not an edit here.
+
+limit = 800
+
+[files]
+"src/host/hostd/src/gui/ui.rs" = 1535
+"src/host/hostd/src/core.rs" = 1169
+"src/host/hostd/src/gui/mod.rs" = 933
