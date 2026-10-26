@@ -110,3 +110,22 @@ def test_the_echo_survives_a_host_restart_and_a_second_reader_sees_it_in_the_his
             assert [r[1] for r in json.loads(asked.stdout)["lines"] if r[1].startswith(">> ")] == [">> remember me", ">> second line"]
         finally:
             host.stop()
+
+
+def test_the_text_of_an_input_is_in_the_host_log_only_as_the_echo_and_a_purge_removes_every_copy():
+    """F9: the first twelve lines of every accepted input are kept in the host's log (the owner's own file) until the history window rolls over or the
+    session is purged; a purge leaves no copy of the text in the log directory."""
+    canary = "F9CANARY7q3x"
+    for name, make in (("claude", claude), ("codex", codex)):
+        with private_dir() as directory:
+            conn, sid, generation, log, stop = make(directory)
+            try:
+                text = "\n".join(f"line {n} {canary}" for n in range(FOLD_LINES + 8))
+                assert conn.call(op="input", session=sid, generation=generation, request_id="r-1", text=text)["ok"] == 1
+                wait_for(lambda: "more lines" in (echoes_of(log, sid) or [(0, "")])[-1][1])
+                copies = lambda: sum(path.read_bytes().count(canary.encode()) for path in log.rglob("*") if path.is_file())
+                assert copies() >= FOLD_LINES, name                      # the check is not vacuous: the echo is in the log while the session lives
+                assert conn.call(op="session.purge", session=sid, generation=generation)["ok"] == 1
+                assert copies() == 0, name
+            finally:
+                stop()
