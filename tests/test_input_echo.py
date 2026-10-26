@@ -71,7 +71,7 @@ def test_a_64_kib_input_gives_twelve_lines_and_one_marker_with_exact_counts_and_
             got = [t for _, t in echoes_of(log, sid)]
             assert got == [f">> {line.replace(chr(9), chr(32))}" for line in lines[:FOLD_LINES]] + [
                 f">> [{total - FOLD_LINES} more lines, {len(text.encode()) - shown} bytes not shown; the agent received all of it]"], got[-1]
-            assert [user_text(m) for m in sent_users(received)] == [text]          # the agent still gets the whole text, not the fold
+            wait_for(lambda: [user_text(m) for m in sent_users(received)] == [text])   # the agent still gets the whole text, not the fold (it may come after the echo)
             # one very long line: cut at the byte cap on a character, and the marker says so
             line = "é" * (v1.MAX_INPUT_TEXT // 2)
             assert conn.call(op="input", session=sid, generation=generation, request_id="big-2", text=line)["ok"] == 1
@@ -84,7 +84,7 @@ def test_a_64_kib_input_gives_twelve_lines_and_one_marker_with_exact_counts_and_
             assert conn.call(op="input", session=sid, generation=generation, request_id="big-3", text=odd)["ok"] == 1
             wait_for(lambda: len(echoes_of(log, sid)) >= FOLD_LINES + 4)
             assert echoes_of(log, sid)[-1][1] == ">> a bcd"
-            assert [user_text(m) for m in sent_users(received)][-1] == odd
+            wait_for(lambda: [user_text(m) for m in sent_users(received)][-1:] == [odd])
         finally:
             host.stop()
 
