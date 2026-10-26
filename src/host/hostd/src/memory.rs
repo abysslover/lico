@@ -8,7 +8,17 @@
 //! kernel without those files). A status call starts a look when the last one is older than `EVERY`, so nothing looks while nobody asks (a host without
 //! a window costs nothing) and a window that asks every second costs one look in three. The look runs on its own short thread: a status call never
 //! waits for it and shows what the last one found. A process that vanished or cannot be read counts for nothing.
+//!
+//! The kernel says of a `children` file (Documentation/filesystems/proc.rst, 3.7): "Since this interface is intended to be fast and cheap it doesn't
+//! guarantee to provide precise results and some children might be skipped, especially if they've exited right after we printed their pids, so one
+//! needs to either stop or freeze processes being inspected if precise results are needed." Measured against a scan on one tree whose children
+//! start and end all the time (200 looks each; kept locally): 30 alive at 450 starts a second, none of 5747 children that were certainly alive
+//! missing; 450 alive, none of 87673; 700 alive, 12 looks lost a live child. The file is handed out a page at a time and the lock is let go
+//! between pages, so only a listing longer than a page can lose one; such a listing is looked at by a scan instead (`ONE_PAGE`). What a look still
+//! gets wrong is a child between fork and exec: it holds a copy of its parent's pages and counts with them for that moment (3 of 200 looks,
+//! +5 MiB for a 5 MiB parent, both ways of looking).
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::sync::Mutex;
@@ -19,6 +29,23 @@ use serde_json::{json, Value};
 use crate::session::{Session, State};
 
 const EVERY: Duration = Duration::from_secs(3);
+/// A page of a `children` file is 4096 bytes, at most 8 for each pid: a listing this long may be more than one page.
+const ONE_PAGE: usize = 3500;
+
+#[cfg(test)]
+thread_local!(static SCANS: Cell<u32> = const { Cell::new(0) }); // the scans this thread made
+#[cfg(test)]
+thread_local!(static PAGE: Cell<usize> = const { Cell::new(ONE_PAGE) }); // a smaller "page" lets a test make a long listing with a few children
+
+#[cfg(test)]
+fn one_page() -> usize {
+    PAGE.with(Cell::get)
+}
+
+#[cfg(not(test))]
+fn one_page() -> usize {
+    ONE_PAGE
+}
 
 /// What one agent and its descendants hold, in kB.
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -64,6 +91,8 @@ fn parent_of(pid: u32) -> Option<u32> {
 
 /// Every process and the ones it started, from one scan of `/proc`.
 fn scan() -> HashMap<u32, Vec<u32>> {
+    #[cfg(test)]
+    SCANS.with(|n| n.set(n.get() + 1));
     let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
     for entry in fs::read_dir("/proc").into_iter().flatten().flatten() {
         if let Some(pid) = entry.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) {
@@ -76,10 +105,16 @@ fn scan() -> HashMap<u32, Vec<u32>> {
 }
 
 /// The processes `pid` started, from the `children` file of each of its threads (a child is listed with the thread that started it and stays on a live
-/// thread when that one ends).
-fn children_of(pid: u32) -> Vec<u32> {
-    let tasks = fs::read_dir(format!("/proc/{pid}/task")).into_iter().flatten().flatten();
-    tasks.filter_map(|t| fs::read_to_string(t.path().join("children")).ok()).flat_map(|text| text.split_whitespace().filter_map(|p| p.parse().ok()).collect::<Vec<u32>>()).collect()
+/// thread when that one ends). `long` is set when a listing may be more than one page.
+fn children_of(pid: u32, long: &Cell<bool>) -> Vec<u32> {
+    let mut found = Vec::new();
+    for task in fs::read_dir(format!("/proc/{pid}/task")).into_iter().flatten().flatten() {
+        if let Ok(text) = fs::read_to_string(task.path().join("children")) {
+            long.set(long.get() || text.len() > one_page());
+            found.extend(text.split_whitespace().filter_map(|p| p.parse::<u32>().ok()));
+        }
+    }
+    found
 }
 
 fn has_children_files() -> bool {
@@ -93,8 +128,9 @@ pub fn walk(roots: &[u32]) -> BTreeMap<u32, Figure> {
 }
 
 fn walk_with(roots: &[u32], files: bool) -> BTreeMap<u32, Figure> {
+    let long = Cell::new(false);
     let everyone = (!files).then(scan);
-    let kids = |pid: u32| -> Vec<u32> { everyone.as_ref().map_or_else(|| children_of(pid), |all| all.get(&pid).cloned().unwrap_or_default()) };
+    let kids = |pid: u32| -> Vec<u32> { everyone.as_ref().map_or_else(|| children_of(pid, &long), |all| all.get(&pid).cloned().unwrap_or_default()) };
     let mut found = BTreeMap::new();
     for &root in roots {
         let (mut figure, mut stack, mut seen) = (Figure::default(), vec![root], HashSet::new());
@@ -111,6 +147,9 @@ fn walk_with(roots: &[u32], files: bool) -> BTreeMap<u32, Figure> {
         if figure.processes > 0 {
             found.insert(root, figure);
         }
+    }
+    if long.get() {
+        return walk_with(roots, false); // a listing past one page can have lost a live child: look again by a scan
     }
     found
 }
@@ -187,5 +226,25 @@ mod tests {
             assert!(walk_with(&[0x7fff_fff0], files).is_empty(), "a process that is not there is left out, not an error (children files: {files})");
         }
         let _ = (child.kill(), child.wait());
+    }
+
+    #[test]
+    fn a_listing_longer_than_a_page_is_looked_at_by_a_scan_and_a_short_one_is_not() {
+        if !has_children_files() {
+            return;
+        }
+        assert!(ONE_PAGE < 4096, "the kernel hands a children file out in pages of 4096 bytes");
+        PAGE.with(|p| p.set(100)); // a dozen children list longer than that (8 bytes a pid at most)
+        let me = std::process::id();
+        let scans = || SCANS.with(Cell::get);
+        let before = scans();
+        walk_with(&[me], true);
+        assert_eq!(scans(), before, "a few children are read from their files");
+        let mut kids: Vec<_> = (0..16).map(|_| std::process::Command::new("sleep").arg("5").spawn().unwrap()).collect();
+        let found = walk_with(&[me], true).get(&me).copied().unwrap_or_default();
+        assert!(found.processes >= 17 && scans() == before + 1, "the test and its 16 sleeps (scans: {}): {found:?}", scans() - before);
+        for k in &mut kids {
+            let _ = (k.kill(), k.wait());
+        }
     }
 }

@@ -94,7 +94,7 @@ impl App {
             return;
         }
         let Some(row) = self.selected_row() else { return };
-        let ask = Ask { act, session: row.session.clone(), generation: row.generation, title: row.title(40).trim_end().to_string(), working: row.is_working(), cwd: row.cwd.clone() };
+        let ask = Ask { act, session: row.session.clone(), generation: row.generation, title: row.title(40).trim_end().to_string(), working: row.holds_a_turn(), cwd: row.cwd.clone() };
         if act == Act::Close && !ask.working {
             return match self.ask_do(&ask, "") {
                 Ok(done) => self.ui.flash = Some(done),

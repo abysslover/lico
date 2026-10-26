@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn a_figure_is_four_characters_at_most_and_a_wobble_of_a_few_mib_does_not_change_it() {
+    fn a_figure_is_five_characters_at_most_and_a_wobble_of_a_few_mib_does_not_change_it() {
         let shown: Vec<String> = [0, 600, 1024, 63 * 1024, 351 * 1024, 354 * 1024, 999 * 1024, 1228 * 1024, 10 * 1024 * 1024, 123 * 1024 * 1024].iter().map(|k| short(*k)).collect();
         assert_eq!(shown, ["<1M", "<1M", "1M", "63M", "350M", "350M", "1000M", "1.2G", "10G", "123G"]);
         assert!(shown.iter().all(|s| s.chars().count() <= 5));

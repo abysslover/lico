@@ -1,7 +1,7 @@
 # M02-P02 — Sessions with a folder, a real input box, a memory figure per session (2026-10-26)
 
 > Status: in_progress
-> Version: 0.1.0
+> Version: 0.1.1
 > Branch: `phase/M02-P02-sessions-in-a-real-folder` (on the M02-P01 tip b75267f; renamed from `phase/M02-P02-folder-sessions` on 2026-10-26)
 > Approval: the owner's G1 of 2026-10-26 (includes this phase plan = G2; the input-box group IN is in, option A). G3 and G4 are pending.
 
@@ -40,7 +40,7 @@ A NEW module `gui/newsession.rs` draws and handles one screen: folder (text fiel
 
 ## S05 — close, rename, delete (SX-04..07)
 
-A new host op `session.close` stops the agent and leaves the record resumable (state `disconnected`, as after a host restart; resume works as today and with the same folder). The window asks "stop and close?" only when the session is working; delete (existing `session.purge`) asks for a confirmation, then the log and, for scratch sessions only, the scratch folder go. Rename is F2 and a double click on the row, an edit line on the row with Enter/Esc. Each action is on a menu entry (Session menu, with its shortcut, greyed with its reason when it cannot act), a shortcut (F2 rename, Ctrl+Shift+W close - not a bare Ctrl+W, which readline users press to delete a word and would stop an agent by habit - and Ctrl+Delete delete) and a CLI verb (`session close|rename|delete`), so every action has all three (SX-07 asks for two). The confirmations are drawn by the shared controls in a NEW module `gui/confirm.rs`. Tests: ONE window test of the three actions (close a working session, rename it and see it in a second window, delete it and see that its scratch folder is gone and a chosen folder is not), plus one protocol test for `session.close`/`session.rename`.
+A new host op `session.close` stops the agent and leaves the record resumable (state `disconnected`, as after a host restart; resume works as today and with the same folder). The window asks "stop and close?" only when the session holds a turn (it works, or a request of the turn waits for a person; an idle one is closed at once); delete (existing `session.purge`) asks for a confirmation, then the log and, for scratch sessions only, the scratch folder go. Rename is F2 and a double click on the row, an edit line on the row with Enter/Esc. Each action is on a menu entry (Session menu, with its shortcut, greyed with its reason when it cannot act), a shortcut (F2 rename, Ctrl+Shift+W close - not a bare Ctrl+W, which readline users press to delete a word and would stop an agent by habit - and Ctrl+Delete delete) and a CLI verb (`session close|rename|delete`), so every action has all three (SX-07 asks for two). The confirmations are drawn by the shared controls in a NEW module `gui/confirm.rs`. Tests: ONE window test of the three actions (close a working session, rename it and see it in a second window, delete it and see that its scratch folder is gone and a chosen folder is not), plus one protocol test for `session.close`/`session.rename`.
 
 ## S06 — memory per session (MI-01..06), after the POC-0 D1 verdict
 
@@ -63,3 +63,4 @@ Sending between sessions and the agent tool channel (P03), screen capture and cl
 - S01 plan note written (this file).
 - 2026-10-26: the lead's review 028 applied (R1 safety of the chosen folder, R2 history caps, R3 paste normalisation, R4 Ctrl+Shift+W, R5 `core.rs` may not grow, R6 no Tab completion now). S02 waits for the owner's word on the branch prefix `phase/M02-P02-`.
 - 2026-10-26: the lead's mail 032 applied: the input echo is a host echo, folded (S02b, rules above), no window-only echo; S02 and S02b are kept as separable patches in the working tree until the owner's yes on the branch prefix.
+- 2026-10-26: S06 accepted. Mail 050/051 small items: closing a session with an approval pending asks too; a `children` listing past one page is looked at by a scan (measured: a live child was lost in 12 of 200 looks at 700 children, none at 450 or 30).

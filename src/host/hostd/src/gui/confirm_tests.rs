@@ -77,6 +77,10 @@ fn a_delete_and_the_stopping_of_a_working_turn_ask_first_and_n_changes_nothing()
     app.run_cmd(Cmd::Close); // working: asked about, not done
     assert_eq!(app.panel_view().unwrap().0, "Close session");
     app.panel_close();
+    (app.ui.rows[0].activity, app.ui.rows[0].approvals) = ("idle".into(), vec![(7, "run: ls".into())]); // idle but a request waits for a person: closing asks too
+    app.run_cmd(Cmd::Close);
+    assert_eq!(app.panel_view().unwrap().0, "Close session");
+    app.panel_close();
     app.ui.rows[0].cwd.clear(); // a scratch session says that its workspace goes with it
     app.run_cmd(Cmd::Delete);
     assert!(app.panel_view().unwrap().1.iter().any(|l| l.contains("scratch workspace")));

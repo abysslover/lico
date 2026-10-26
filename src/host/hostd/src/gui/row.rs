@@ -106,9 +106,9 @@ impl Row {
         }
     }
 
-    /// A turn is open and the host is not waiting for a person: the work an interruption would cut short.
-    pub fn is_working(&self) -> bool {
-        self.state == "running" && self.activity == "working"
+    /// A turn is open: the host says the session works, or a request of its turn waits for a person. The work an interruption would cut short.
+    pub fn holds_a_turn(&self) -> bool {
+        self.state == "running" && (self.activity == "working" || !self.approvals.is_empty())
     }
 
     /// Seconds the open turn has been running: only while the host says the session works and nothing waits for a person.

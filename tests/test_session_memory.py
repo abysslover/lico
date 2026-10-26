@@ -27,7 +27,7 @@ def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
             conn, sid, generation = Conn(w.socket), made["sid"], made["generation"]
-            idle = wait_for(lambda: status_of(conn, sid).get("memory"))                 # the window asks every second; the host walks /proc for it
+            idle = wait_for(lambda: status_of(conn, sid).get("memory"))                 # the window asks every second; each ask names the agent for the next look
             assert idle["processes"] == 1 and 0 < idle["private_kb"] <= idle["rss_kb"] < HELD_KB, idle
             begin(conn, sid, generation, f"hold:{OWN}:{CHILD}:{GRANDCHILD}")
             held = wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m["processes"] == 3 and m["private_kb"] - idle["private_kb"] >= HELD_KB * 0.9 and m)
