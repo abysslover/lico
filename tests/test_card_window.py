@@ -1,5 +1,6 @@
 """M02-P03-S04b in the product window: a send that an agent asks for is a card on the row of the agent's session; V shows the whole text it would send, page by page,
-Y and N answer it, and S allows the later sends to that session too. The agent here is the simulator's program; its call is made with the config file it was given."""
+Y and N answer it, and S allows the later sends to that session too. A create (S04c) is a card too, with no S: a session is made once for each yes. The agent here is
+the simulator's program; its call is made with the config file it was given."""
 import json
 import re
 from pathlib import Path
@@ -21,6 +22,13 @@ PAGE = 16 * 1024
 def ask(directory, caller, to, text):
     """The agent's call of `send`, answered at once with the card it left."""
     status, body = rpc(config_of(Path(directory) / "state" / "lico", caller), "tools/call", {"name": "send", "arguments": {"to": to, "text": text}})
+    assert status == 200, (status, body)
+    return json.loads(body["result"]["content"][0]["text"])
+
+
+def ask_create(directory, caller, prompt, name):
+    """The agent's call of `create`, answered at once with the card it left."""
+    status, body = rpc(config_of(Path(directory) / "state" / "lico", caller), "tools/call", {"name": "create", "arguments": {"prompt": prompt, "name": name}})
     assert status == 200, (status, body)
     return json.loads(body["result"]["content"][0]["text"])
 
@@ -99,3 +107,14 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             w.key("y")
             wait_for(lambda: ">> second line" in records(log, notes))
             assert ">> redevil" in records(log, notes) and not any(c in r for r in records(log, notes) for c in "\x1b\u202e\u200b\r"), records(log, notes)
+
+            number = ask_create(w.directory, writer, "write the notes down", "scribe")["approval_id"]                  # a create: the same keys but S, and a yes makes one session
+            state = wait_for(lambda: w.ui()["approval_bar"] and w.ui())
+            assert state["approval_bar"].startswith(f"approval {number}: create session 'scribe' ") and "mode: asks for approval" in state["approval_bar"], state["approval_bar"]
+            state = wait_for(lambda: w.ui() if w.ui()["hint"].startswith("Y allow") else None)
+            assert state["hint"].startswith("Y allow  N deny  V read it all") and "S allow" not in state["hint"], state["hint"]
+            assert len(w.ui()["rows"]) == 3, "nothing is made until the answer"
+            w.key("y")
+            assert "Allowed: the session was made and is working on its first prompt." in w.ui()["header"], w.ui()["header"]
+            wait_for(lambda: len(w.ui()["rows"]) == 4)
+            assert "scribe - made by writer" in [r.get("name") for r in Conn(w.socket).call(op="status")["sessions"]]

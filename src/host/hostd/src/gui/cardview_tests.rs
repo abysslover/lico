@@ -279,3 +279,68 @@ fn a_text_the_host_has_cleaned_is_wrapped_by_the_window_without_losing_or_adding
         assert_eq!(letters(&wrapped(&clean).concat()), letters(&clean), "{text:?}");
     }
 }
+
+const MAKE: &str = "create session 'reviewer' in '/work/api' | mode: asks for approval | starts at once on the account's allowance | 22 B, 2 lines | 3 hidden characters removed | \"first line\"";
+
+/// `api` is open with a request of its agent for a new session (7).
+fn with_make_card() -> App {
+    let mut app = with_card();
+    app.ui.rows[0].approvals = vec![(7, MAKE.into())];
+    app.ui.rows[0].makes = vec![7];
+    app
+}
+
+#[test]
+fn a_request_for_a_session_has_no_yes_for_the_session_in_the_hint_the_view_or_the_keys_and_the_view_shows_what_the_card_says_whole() {
+    let mut app = with_make_card();
+    let hint = app.hint_text(2000, 1.0);
+    assert!(hint.starts_with("Y allow  N deny  V read it all   ") && !hint.contains("for the session"), "{hint}");
+    assert!(!app.answer_key("s") && app.ui.flash.is_none() && app.ui.panel.is_none(), "S is typing here, not an answer");
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![page("first line\nsecond line", 0, None, 22)]);
+    app.socket = path;
+    assert!(app.answer_key("v"));
+    let lines = body(&app);
+    assert_eq!(lines[0], MAKE, "the view starts with the card, with what the cleaning took out and that the session starts at once");
+    assert!(lines.contains(&"Y allow  N deny   Up Down PgUp PgDn Home End  move".to_string()), "{lines:?}");
+    app.card_key('s');
+    assert_eq!(host.join().unwrap(), [read(0)], "nothing was asked of the host for S");
+    assert!(app.ui.panel.is_some() && app.ui.rows[0].approvals.len() == 1, "the request still waits");
+}
+
+#[test]
+fn the_window_says_that_a_session_was_made_or_was_not_and_never_that_text_was_sent() {
+    let not_done = json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "send_limit"});
+    let cases = [
+        ("y", "allow", answered("done"), "Allowed: the session was made and is working on its first prompt."),
+        ("n", "deny", answered("declined"), "Declined: no session was made."),
+        ("y", "allow", not_done, "Allowed, but no session was made: too many sessions that agents made are running; one has to be closed first."),
+        ("y", "allow", json!({"ok": 0, "error": "expired"}), "Request 7 ran out of time: nothing was made."),
+    ];
+    for (key, what, reply, said) in cases {
+        let dir = Scratch::new("cardview");
+        let (path, host) = fake_host(&dir, vec![reply]);
+        let mut app = with_make_card();
+        app.socket = path;
+        assert!(app.answer_key(key));
+        assert_eq!(host.join().unwrap(), [answer(what, false)], "{key}");
+        assert!(app.ui.rows[0].approvals.is_empty() && app.ui.rows[0].makes.is_empty() && app.ui.flash.as_deref() == Some(said), "{key}: {:?}", app.ui.flash);
+    }
+}
+
+#[test]
+fn the_row_knows_which_of_its_requests_ask_for_a_session() {
+    let entry = json!({"session": "s1", "provider": "claude", "approvals": [{"approval_id": 3, "prompt": "run: ls"}, {"approval_id": 4, "prompt": "send", "tool": "send"}, {"approval_id": 5, "prompt": "create", "tool": "create"}]});
+    let row = Row::of_status(&entry).unwrap();
+    assert_eq!((row.asks, row.makes), (vec![4, 5], vec![5]));
+}
+
+#[test]
+fn a_yes_for_the_session_is_never_sent_with_a_request_for_a_session_whoever_asks_for_it() {
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![answered("done")]);
+    let mut app = with_make_card();
+    app.socket = path;
+    app.answer_id(7, true, true);
+    assert_eq!(host.join().unwrap(), [answer("allow", false)], "the host refuses `keep` for a session to be made; the person would be told it was not answered");
+}

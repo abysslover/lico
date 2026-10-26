@@ -36,7 +36,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                                  [from session 'NAME' (ID7) | HH:MM | message | SIZE] and saves a long text as a file
   input status ID RID            state of an earlier request id\n\
   session watch ID [--after N] [--seconds S]\n\
-  approval answer SESSION N allow|deny [--keep]   (--keep: with allow, an agent's request of this kind to this session needs no more questions while the session lives)\n\
+  approval answer SESSION N allow|deny [--keep]   (--keep: with allow, a send of this agent to the same session needs no more questions while the session lives; a request to make a session is asked each time)\n\
   approval show SESSION N [OFFSET]   one page (16 KiB at most) of the whole text an agent's request waits with; `next` is the offset of the following page\n\
   view attach SESSION [--kind gui|cli]\n\
   view detach VIEW\n\

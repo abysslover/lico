@@ -17,20 +17,31 @@ pub struct Tool {
     pub description: &'static str,
     /// The arguments, each a string the call must have: (name, what it is).
     pub args: &'static [(&'static str, &'static str)],
+    /// The arguments a call may leave out, strings too.
+    pub optional: &'static [(&'static str, &'static str)],
 }
 
-/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `create`, `history` and `read_handoff` join later.
-pub const TOOLS: [Tool; 2] = [
+/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `history` and `read_handoff` join later.
+pub const TOOLS: [Tool; 3] = [
     Tool {
         name: "sessions",
         description: "List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to.",
         args: &[],
+        optional: &[],
     },
     Tool {
         name: "send",
         description: "Send text to another Lico session. The person approves each send. Up to 4 KiB arrives with the message, longer text as a file the receiver is told to read. \
                       Any answer comes later as a new message in this session, not as this result.",
         args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send; the whole request may be 128 KiB, so about 100 KiB of plain text at most, and longer is refused with too_large")],
+        optional: &[],
+    },
+    Tool {
+        name: "create",
+        description: "Ask the person for a new Claude Code session with a first prompt. It opens in this session's folder, asks the person for what needs approval, and starts working at once on the same account. \
+                      The person approves each one; at most 4 at a time from one session and 8 in all. The result comes later as a new message in this session, not as this result.",
+        args: &[("prompt", "the first prompt of the new session; the whole request may be 128 KiB, so about 100 KiB of plain text at most")],
+        optional: &[("name", "a short plain name for the session; at most 36 characters")],
     },
 ];
 
@@ -68,9 +79,9 @@ pub fn failure(id: Value, code: i64, message: &str) -> String {
     answer(id, json!({"error": {"code": code, "message": message}}))
 }
 
-/// The schema of a tool's arguments: strings, all of them required.
+/// The schema of a tool's arguments: strings, the ones in `args` required.
 fn schema(tool: &Tool) -> Value {
-    let properties: Map<String, Value> = tool.args.iter().map(|(name, what)| (name.to_string(), json!({"type": "string", "description": what}))).collect();
+    let properties: Map<String, Value> = tool.args.iter().chain(tool.optional).map(|(name, what)| (name.to_string(), json!({"type": "string", "description": what}))).collect();
     let mut schema = json!({"type": "object", "properties": properties});
     if !tool.args.is_empty() {
         schema["required"] = tool.args.iter().map(|(name, _)| json!(name)).collect();
@@ -193,6 +204,7 @@ mod tests {
         assert_eq!(names, got["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>());
         assert!(names.iter().all(|n| n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')), "no second prefix, no capitals: {names:?}");
         assert!(names.iter().enumerate().all(|(i, n)| !names[..i].contains(n)));
+        assert_eq!(names, ["sessions", "send", "create"]);
     }
 
     #[test]
@@ -205,6 +217,11 @@ mod tests {
         assert_eq!((send["type"].clone(), send["required"].clone()), (json!("object"), json!(["to", "text"])));
         let properties = send["properties"].as_object().unwrap();
         assert_eq!(properties.keys().collect::<Vec<_>>(), ["text", "to"], "no third argument: the caller is the token's session, never a parameter");
+        assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
+        let create = find("create");
+        assert_eq!((create["type"].clone(), create["required"].clone()), (json!("object"), json!(["prompt"])), "the name may be left out");
+        let properties = create["properties"].as_object().unwrap();
+        assert_eq!(properties.keys().collect::<Vec<_>>(), ["name", "prompt"], "no folder, no mode, no kind: the agent is not offered a choice of them");
         assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
     }
 

@@ -65,12 +65,17 @@ impl Pending {
 }
 
 impl Record {
+    /// What the request was, as the asker is told: `send to session 'reader' (s111111)`; a creation is named by what it would make.
+    fn named(&self) -> String {
+        if self.tool == "send" { format!("send to {}", self.who) } else { self.who.clone() }
+    }
+
     fn declined_words(&self) -> String {
-        format!("declined: the person did not allow this {} to {}. Do not ask again unless the person tells you to.", self.tool, self.who)
+        format!("declined: the person did not allow this {}. Do not ask again unless the person tells you to.", self.named())
     }
 
     fn expired_words(&self) -> String {
-        format!("expired: the person did not decide within {} hours, so the {} to {} was dropped and nothing was done. Ask again only if it still matters.", EXPIRY / 3600, self.tool, self.who)
+        format!("expired: the person did not decide within {} hours, so the {} was dropped and nothing was done. Ask again only if it still matters.", EXPIRY / 3600, self.named())
     }
 }
 
@@ -78,7 +83,7 @@ impl Record {
 pub struct Request<'a> {
     pub tool: &'static str,
     pub target: &'a str,
-    pub who: &'a str,  // the target as the person is shown it, e.g. `session 'reader' (s111111)`
+    pub who: &'a str,  // the target as the person is shown it, e.g. `session 'reader' (s111111)`; for a creation, what it would make
     pub card: &'a str, // the line on the card
     pub text: &'a str,
 }
@@ -126,11 +131,11 @@ pub fn ask(shared: &Shared, caller: &str, request: &Request, now: u64, held: &Ar
 }
 
 /// The person's answer to a card. None: the card is not one of these requests (the program's own approvals go the other way).
-pub fn answer(shared: &Shared, session: &str, generation: i64, id: i64, answer: &str, keep: bool) -> Option<Reply> {
+pub fn answer(shared: &Arc<Shared>, session: &str, generation: i64, id: i64, answer: &str, keep: bool) -> Option<Reply> {
     answer_at(shared, session, generation, id, answer, keep, now())
 }
 
-fn answer_at(shared: &Shared, session: &str, generation: i64, id: i64, answer: &str, keep: bool, now: u64) -> Option<Reply> {
+fn answer_at(shared: &Arc<Shared>, session: &str, generation: i64, id: i64, answer: &str, keep: bool, now: u64) -> Option<Reply> {
     let found = core::find(shared, session)?;
     let (record, expired) = {
         let mut s = found.lock().unwrap();
@@ -145,8 +150,8 @@ fn answer_at(shared: &Shared, session: &str, generation: i64, id: i64, answer: &
             if s.state == State::Disconnected {
                 return Some(Err("session_disconnected")); // the word could not reach it; the request waits for it to come back
             }
-            if keep && answer != "allow" {
-                return Some(Err("bad_request")); // only a yes can be remembered
+            if keep && (answer != "allow" || s.pending.records[position].tool != "send") {
+                return Some(Err("bad_request")); // only a yes can be remembered, and only for a send: a session is made once for each yes
             }
         }
         let record = s.pending.records.remove(position);
@@ -354,6 +359,17 @@ mod tests {
         fn waiting(&self, id: &str) -> usize {
             self.w.with(id, |s| s.pending.records.len())
         }
+    }
+
+    #[test]
+    fn a_request_to_make_a_session_is_named_by_what_it_would_make_in_the_words_of_a_no_and_of_an_expiry() {
+        let record = |tool, who: &str| Record { id: 1, tool, target: String::new(), who: who.into(), text: String::new(), expires: 0, _held: Held { total: Arc::default(), bytes: 0 } };
+        let make = record("create", "creation of a new session 'reviewer' in '/work/api'");
+        assert_eq!(make.declined_words(), "declined: the person did not allow this creation of a new session 'reviewer' in '/work/api'. Do not ask again unless the person tells you to.");
+        assert_eq!(make.expired_words(), "expired: the person did not decide within 12 hours, so the creation of a new session 'reviewer' in '/work/api' was dropped and nothing was done. Ask again only if it still matters.");
+        let send = record("send", "session 'reader' (s111111)");
+        assert_eq!(send.declined_words(), "declined: the person did not allow this send to session 'reader' (s111111). Do not ask again unless the person tells you to.");
+        assert!(send.expired_words().contains("so the send to session 'reader' (s111111) was dropped"));
     }
 
     fn head_and_body(note: &str) -> (&str, &str) {

@@ -1,4 +1,4 @@
-//! The calls of an agent that act, on the tool connection: `send` (S03b, with the person's approval from S04); `create` and `history` join with S04 and S07. The caller is the
+//! The calls of an agent that act, on the tool connection: `send` (S03b, with the person's approval from S04); `create` (S04c) is in `create`, `history` joins with S07. The caller is the
 //! session of the token and nobody else (no argument names it). The limits of AC-04 are kept here, in memory and nowhere else: calls per minute of one session, and (in
 //! `transfer`) the depth. What the agent asks for does not happen at the call: the call leaves a card on the agent's row (`pending`) and happens when the person says yes.
 
@@ -16,11 +16,11 @@ use crate::leads;
 use crate::pending::{self, Asked, Request};
 use crate::transfer::{self, By, MAX_HOPS};
 
-/// Calls per minute of one session. Every `send` counts, a refused one too; `sessions` does not (`create` and `history` count from S04).
+/// Calls per minute of one session. Every `send` and every `create` counts, a refused one too; `sessions` does not (`history` counts from S07).
 pub const PER_MINUTE: usize = 20;
 const MINUTE: Duration = Duration::from_secs(60);
 const KEPT: usize = 2 * PER_MINUTE; // a session that goes on asking does not make its list grow
-const CARD_CHARS: usize = 200; // what the window shows of a card (`Session::add_card` cuts at the same number)
+pub(crate) const CARD_CHARS: usize = 200; // what the window shows of a card (`Session::add_card` cuts at the same number)
 const LABEL_CHARS: usize = 60;
 
 /// When each session called the host in the last minute: a sliding window.
@@ -51,7 +51,7 @@ impl Window {
     }
 }
 
-fn window() -> &'static Mutex<Window> {
+pub(crate) fn window() -> &'static Mutex<Window> {
     static WINDOW: OnceLock<Mutex<Window>> = OnceLock::new();
     WINDOW.get_or_init(Mutex::default)
 }
@@ -63,10 +63,13 @@ pub fn send(shared: &Shared, caller: &str, arguments: &Map<String, Value>) -> Re
     send_with(shared, caller, arguments, window(), Instant::now(), pending::held_text())
 }
 
+/// Count a call of `caller` in the minute's window. Err: the refusal the model reads. `send` and `create` are counted together, one window for a session.
+pub(crate) fn counted(window: &Mutex<Window>, caller: &str, now: Instant) -> Result<(), String> {
+    window.lock().unwrap_or_else(|e| e.into_inner()).take(caller, now).map_err(|wait| format!("send_limit: at most {PER_MINUTE} calls a minute from one session; wait {wait} seconds and try again"))
+}
+
 fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &Mutex<Window>, now: Instant, held: &Arc<AtomicUsize>) -> Result<String, String> {
-    if let Err(wait) = window.lock().unwrap_or_else(|e| e.into_inner()).take(caller, now) {
-        return Err(format!("send_limit: at most {PER_MINUTE} calls a minute from one session; wait {wait} seconds and try again"));
-    }
+    counted(window, caller, now)?;
     let to = arguments.get("to").and_then(Value::as_str).filter(|to| !to.is_empty() && to.len() <= 64);
     let text = arguments.get("text").and_then(Value::as_str).filter(|text| !text.is_empty());
     let (Some(to), Some(text)) = (to, text) else { return Err(refusal(shared, caller, "bad_request")) };
@@ -132,7 +135,7 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
 }
 
 /// A card's line: `head`, how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the start of it, in one line of at most `CARD_CHARS`.
-fn card_line(head: &str, text: &str, removed: usize) -> String {
+pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
     let lines = transfer::line_count(text);
     let size = if lines > 1 { format!("{}, {}", transfer::size_text(text.len()), transfer::lines_word(lines)) } else { transfer::size_text(text.len()) };
     let removed = match removed {
@@ -150,8 +153,9 @@ fn card_line(head: &str, text: &str, removed: usize) -> String {
 }
 
 /// What the person's yes does for a request of `caller`. Err: the refusal the host gives now, in the words the model reads.
-pub(crate) fn perform(shared: &Shared, caller: &str, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
+pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
     match tool {
+        "create" => crate::create::perform(shared, caller, target, text),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
             Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
             Err(code) => Err(refusal(shared, caller, code)),

@@ -223,7 +223,7 @@ def test_the_list_of_tools_is_small_and_names_sessions_and_an_unknown_tool_or_a_
     sid, _ = world.session()
     config = world.config(sid)
     status, body = rpc(config, "tools/list", {})
-    assert status == 200 and [t["name"] for t in body["result"]["tools"]] == ["sessions", "send"]
+    assert status == 200 and [t["name"] for t in body["result"]["tools"]] == ["sessions", "send", "create"]
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 2048                           # the definitions are paid in tokens in every session
     assert all(t["inputSchema"]["type"] == "object" and t["description"] for t in body["result"]["tools"])
     status, body = rpc(config, "tools/call", {"name": "no_such_tool", "arguments": {}})

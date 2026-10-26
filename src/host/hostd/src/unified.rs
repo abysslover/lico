@@ -10,6 +10,7 @@ mod claude;
 mod cli;
 mod codex;
 mod core;
+mod create;
 mod credcmd;
 mod creds;
 mod dbus;

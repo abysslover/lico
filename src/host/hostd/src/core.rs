@@ -808,7 +808,7 @@ pub fn input_status(shared: &Shared, session: &str, request_id: &str) -> Reply {
     Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name()})))
 }
 
-pub fn approval_answer(shared: &Shared, session: &str, generation: i64, approval_id: i64, answer: &str, keep: bool) -> Reply {
+pub fn approval_answer(shared: &Arc<Shared>, session: &str, generation: i64, approval_id: i64, answer: &str, keep: bool) -> Reply {
     if let Some(done) = crate::pending::answer(shared, session, generation, approval_id, answer, keep) { return done; }
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();

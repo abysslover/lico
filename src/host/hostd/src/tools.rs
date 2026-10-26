@@ -222,10 +222,11 @@ fn sessions(shared: &Shared, caller: &str) -> String {
     json!({"sessions": rows}).to_string()
 }
 
-fn run(shared: &Shared, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<String, String> {
+fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<String, String> {
     match name {
         "sessions" => Ok(sessions(shared, caller)),
         "send" => crate::calls::send(shared, caller, arguments),
+        "create" => crate::create::create(shared, caller, arguments),
         _ => Err("unknown tool".into()),
     }
 }
@@ -241,7 +242,7 @@ fn refuse(stream: &mut TcpStream, status: u16, extra: &str, message: &str) {
     http::drain(stream);
 }
 
-fn serve_one(mut stream: TcpStream, shared: &Shared, port: u16, limits: &Limits) {
+fn serve_one(mut stream: TcpStream, shared: &Arc<Shared>, port: u16, limits: &Limits) {
     let _ = stream.set_read_timeout(Some(DEADLINE));
     let _ = stream.set_write_timeout(Some(DEADLINE));
     let head = match http::read_head(&mut stream) {

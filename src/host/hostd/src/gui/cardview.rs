@@ -16,6 +16,7 @@ pub const SHOWN: usize = 14;
 pub const WIDE: usize = 96;
 
 const KEYS: &str = "Y allow  N deny  S allow for the session";
+const KEYS_MAKE: &str = "Y allow  N deny"; // a session is made once for each yes: there is no yes for the session
 
 /// The text read so far: the page that is shown, and where the pages before it start.
 pub struct View {
@@ -74,9 +75,12 @@ fn wrapped(text: &str) -> Vec<String> {
     out
 }
 
-/// What the person is told of an answer that the host took.
-fn answered_words(reply: &Value, keep: bool) -> String {
+/// What the person is told of an answer that the host took; `makes`: the request was for a new session, not for a send.
+fn answered_words(reply: &Value, keep: bool, makes: bool) -> String {
     match (reply["outcome"].as_str(), reply["reason"].as_str()) {
+        (Some("done"), _) if makes => "Allowed: the session was made and is working on its first prompt.".into(),
+        (Some("declined"), _) if makes => "Declined: no session was made.".into(),
+        (Some("not_done"), reason) if makes => format!("Allowed, but no session was made: {}.", failure(reason.unwrap_or("bad_request"))),
         (Some("done"), _) if keep => "Allowed for the session: the text was sent, and later sends to that session are not asked.".into(),
         (Some("done"), _) => "Allowed: the text was sent.".into(),
         (Some("declined"), _) => "Declined: nothing was sent.".into(),
@@ -96,13 +100,18 @@ impl App {
     /// The keys offered beside the input line for the first request.
     pub(crate) fn approval_hint(&self) -> &'static str {
         if self.lico_card().is_some() {
-            "Y allow  N deny  S allow for the session  V read it all"
+            if self.makes_card() { "Y allow  N deny  V read it all" } else { "Y allow  N deny  S allow for the session  V read it all" }
         } else {
             "Y allow  N deny"
         }
     }
 
-    /// A key of the open session's list while it has a request: true when it was one of the answers (S and V only for a request of the host's own).
+    /// Whether the first request of the open session asks for a session to be made.
+    fn makes_card(&self) -> bool {
+        self.lico_card().is_some_and(|id| self.selected_row().is_some_and(|r| r.makes.contains(&id)))
+    }
+
+    /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of them).
     pub(crate) fn answer_key(&mut self, key: &str) -> bool {
         if self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
             return false;
@@ -111,7 +120,7 @@ impl App {
         match key.to_ascii_lowercase().as_str() {
             "y" => self.answer_approval(true),
             "n" => self.answer_approval(false),
-            "s" if ours => self.answer_card(true, true),
+            "s" if ours && !self.makes_card() => self.answer_card(true, true),
             "v" if ours => self.card_open(),
             _ => return false,
         }
@@ -129,17 +138,18 @@ impl App {
     /// the row only when the host took the answer (or says it is gone), so that one that was not answered is asked again.
     fn answer_id(&mut self, id: i64, allow: bool, keep: bool) {
         let generation = self.selected_row().map_or(1, |r| r.generation);
+        let makes = self.selected_row().is_some_and(|r| r.makes.contains(&id));
         let mut request = json!({"op": "approval.answer", "session": self.session, "generation": generation, "approval_id": id, "answer": if allow { "allow" } else { "deny" }});
-        if keep {
+        if keep && !makes {
             request["keep"] = json!(true);
         }
         let reply = self.host_call(request);
         if reply["ok"] == json!(1) {
-            return self.card_gone(id, answered_words(&reply, keep));
+            return self.card_gone(id, answered_words(&reply, keep, makes));
         }
         match reply["error"].as_str().unwrap_or("bad_request") {
             "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-            "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was sent.")),
+            "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", if makes { "made" } else { "sent" })),
             "host_timeout" => self.card_say(format!("Not answered: {}.", failure("host_timeout"))),
             other => self.card_say(format!("Not answered: {}; the request waits.", failure(other))),
         }
@@ -159,6 +169,7 @@ impl App {
         if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == self.session) {
             row.approvals.retain(|a| a.0 != id);
             row.asks.retain(|a| *a != id);
+            row.makes.retain(|a| *a != id);
         }
         if self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Card) {
             self.panel_close();
@@ -181,11 +192,12 @@ impl App {
     /// One page of the text, asked from `offset`; what the host refuses is said and nothing changes.
     fn card_fetch(&mut self, id: i64, offset: usize) -> Option<Page> {
         let generation = self.selected_row()?.generation;
+        let makes = self.selected_row().is_some_and(|r| r.makes.contains(&id));
         let reply = self.host_call(json!({"op": "approval.text", "session": self.session, "generation": generation, "approval_id": id, "offset": offset}));
         let (Some(text), Some(total), true) = (reply["text"].as_str(), reply["total"].as_u64(), reply["ok"] == json!(1)) else {
             match reply["error"].as_str().unwrap_or("bad_request") {
                 "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-                "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was sent.")),
+                "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", if makes { "made" } else { "sent" })),
                 other => self.card_say(format!("Not shown: {}.", failure(other))),
             }
             return None;
@@ -216,7 +228,8 @@ impl App {
         let mut lines = vec![v.card.clone(), format!("bytes {} to {} of {} (page {} of {})", v.start, v.end, v.total, v.earlier.len() + 1, Self::pages(v)), String::new()];
         lines.extend(v.lines.iter().skip(v.top).take(SHOWN).cloned());
         lines.push(String::new());
-        lines.push(format!("{KEYS}   Up Down PgUp PgDn Home End  move"));
+        let keys = if self.selected_row().is_some_and(|r| r.makes.contains(&v.id)) { KEYS_MAKE } else { KEYS };
+        lines.push(format!("{keys}   Up Down PgUp PgDn Home End  move"));
         (format!("Request {}", v.id), lines)
     }
 
@@ -226,7 +239,7 @@ impl App {
         match key {
             'y' => self.answer_id(id, true, false),
             'n' => self.answer_id(id, false, false),
-            's' => self.answer_id(id, true, true),
+            's' if !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
             _ => {}
         }
     }

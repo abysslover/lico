@@ -417,6 +417,7 @@ pub struct Session {
     pub input_tx: Option<SyncSender<String>>,
     pub incoming_hops: u32, // how many sessions in a row forwarded the text this session last received (0: a person's)
     pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
+    pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
 }
 
 /// Where an accepted input came from: a person typing, another session's text (S03a) with the number of sessions in a row that forwarded it, or the host's own
@@ -482,6 +483,7 @@ impl Session {
             input_tx: None,
             incoming_hops: 0,
             pending: Default::default(),
+            made_by: None,
         }
     }
 
