@@ -16,7 +16,7 @@ from pathlib import Path
 from .keyring_rig import PrivateKeyring
 from .p02 import HOSTD_DIR
 from .report import build_measurement
-from .rig import private_dir
+from .rig import finished_lines, private_dir
 
 CRED = HOSTD_DIR / "lico-cred"
 CANARY = "canary-key-measure-4d2e81b7"
@@ -121,7 +121,7 @@ def _claude_host(directory: str, env_overrides: dict | None = None) -> tuple:
 
 
 def _received_lines(received: Path) -> list[str]:
-    return received.read_text().splitlines() if received.exists() else []
+    return finished_lines(received)                  # the simulator may be mid-line
 
 
 def _until(check, seconds: float = 30.0):

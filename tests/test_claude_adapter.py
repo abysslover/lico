@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from lico_measure.keyring_rig import PrivateKeyring
+from lico_measure.p04 import _received_lines
 from lico_measure.p02 import HOSTD_DIR, ProtoConn as Conn, read_log, start
 from lico_measure.rig import REPO, private_dir
 from lico_protocol.claude_mapping import map_stream
@@ -342,3 +343,11 @@ def test_lines_of_a_file_that_is_being_written_stops_at_the_last_finished_line_e
     path.write_bytes('{"type": "user", "text": "한"}\n'.encode("utf-8") + '{"type": "user", "text": "한'.encode("utf-8")[:-1])
     assert lines_of(path) == ['{"type": "user", "text": "한"}'] and sent_users(path) == [{"type": "user", "text": "한"}]
     assert lines_of(tmp_path / "none") == []
+
+
+def test_the_measurement_reads_the_claude_providers_file_up_to_the_last_finished_line_even_when_it_ends_inside_a_character(tmp_path):
+    """N11: src/lico_measure/p04.py reads the received file after a sleep while the simulator can still be writing it, and json.loads each line that starts with "{"."""
+    path = tmp_path / "claude_received.txt"
+    path.write_bytes('{"type": "user", "text": "한"}\n'.encode("utf-8") + '{"type": "user", "text": "한'.encode("utf-8")[:-1])
+    assert _received_lines(path) == ['{"type": "user", "text": "한"}']
+    assert _received_lines(tmp_path / "none") == []
