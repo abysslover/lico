@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: 1.4.0 (1.3.0 plus the S01 result: the tool connection works, an approval is never a held call), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: 1.5.0 (1.4.0 plus SF-09: a chosen folder's own Claude settings are not loaded), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -149,6 +149,7 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 | SF-06 | Real-screen control and clipboard writing are off by default. | P | P04, P05 | planned |
 | SF-07 | Lico never deletes or modifies a folder the user chose. It removes only the scratch, handoff and capture folders it made (WK-06). | P | all | planned |
 | SF-08 | **Approvals and handoff folders are consent and least privilege, not a sandbox.** A session whose program has permissions skipped runs shell commands as the owner: it can read the owner's files and call the `lico` command line as the owner does. Lico stops unasked use of its own tool channel (SF-01), keeps each session's handoff folder to that session where the program asks first, records what agents do (SF-03), and says this limit plainly in the user documentation. A sandbox per session is outside M02. | L | P03 | planned |
+| SF-09 | **A chosen folder cannot run code or redirect the account through its own settings.** A session in a folder the person chose does not load that folder's Claude settings (`.claude/settings.json` and `.claude/settings.local.json`: hooks, environment variables, key helpers, status line). The person's own settings and the folder's `CLAUDE.md` instructions still apply. Reason: the program skips its "trust this folder" question in the mode Lico runs it (`-p`), and a session starts with permissions skipped by default, so without this rule choosing a cloned repository would run that repository's hooks and could point the account's sign-in token at another server. The window says it in one sentence. A per-folder "trust" choice (the way a terminal asks) is the later, larger answer and is not in M02 unless the owner asks. | U, P | P02 | planned |
 
 ## MB: memory budget (design targets, before measurement)
 

@@ -1,6 +1,6 @@
 # Screens: what the window shows
 
-Status: 1.4.0 (1.3.0 plus the S01 result: the tool connection works, an approval is never a held call), 1.0.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
+Status: 1.5.0 (1.4.0 plus one sentence on the new-session screen about a folder's own settings, SF-09), 1.0.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -60,6 +60,7 @@ Related documents: [planning](planning.md) · [requirements](requirements.md) ·
 - Model and effort choices come from the installed Claude Code (not hard-coded). Choosing Codex shows only the fields that provider accepts.
 - "Agent asks" decides whether the agent's own permission prompts are skipped (default) or asked in this window. Approval of the sensitive actions Lico defines is always taken in the window, either way.
 - The worktree row appears from P06 (it is not shown in P02).
+- One plain sentence on this screen (or on the help screen) tells the person that a folder's own Claude settings (hooks, environment) are not used while its `CLAUDE.md` is (SF-09).
 
 ## 3. Session menu (P02, P03)
 
