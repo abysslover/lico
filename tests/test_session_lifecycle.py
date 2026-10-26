@@ -41,6 +41,9 @@ def test_closing_a_session_in_the_middle_of_a_turn_ends_the_process_keeps_the_se
             other, other_generation = new_claude(conn)
             assert conn.call(op="session.close", session=sid, generation=generation + 1)["error"] == "stale_generation"
             assert status_of(conn, sid)["state"] == "running"
+            # a session whose provider has not yet told its own session id cannot be resumed, so the host refuses to close it (lifecycle.rs); the id
+            # arrives with the program's first line, a moment after the turn began, and on a fast host the close would come first
+            wait_for(lambda: registered(directory).get(sid, {}).get("provider_session"))
             closed = run("session", "close", sid)                              # the command line asks for the same op
             assert closed.returncode == 0 and json.loads(closed.stdout)["generation"] == generation, closed.stderr
             gone(pid)
@@ -51,7 +54,6 @@ def test_closing_a_session_in_the_middle_of_a_turn_ends_the_process_keeps_the_se
             assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1          # closing it again changes nothing
             assert status_of(conn, other)["state"] == "running"                                           # nothing of another session is touched
             assert conn.call(op="session.close", session="s" + "0" * 16, generation=1)["error"] == "unknown_session"
-            wait_for(lambda: registered(directory).get(sid, {}).get("provider_session"))
             resumed = conn.call(op="session.resume", session=sid, generation=generation)
             assert resumed["ok"] == 1 and resumed["generation"] == generation + 1
             assert status_of(conn, sid)["state"] == "running"
