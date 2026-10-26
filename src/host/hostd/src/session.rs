@@ -416,13 +416,16 @@ pub struct Session {
     /// lines for the agent's standard input; a writer thread owns the pipe
     pub input_tx: Option<SyncSender<String>>,
     pub incoming_hops: u32, // how many sessions in a row forwarded the text this session last received (0: a person's)
+    pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
 }
 
-/// Where an accepted input came from: a person typing, or another session's text (S03a), with the number of sessions in a row that forwarded it.
+/// Where an accepted input came from: a person typing, another session's text (S03a) with the number of sessions in a row that forwarded it, or the host's own
+/// word to the session (S04: what became of a request). The last is not a step on a chain and does not change the count.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Origin {
     Person,
     Session(u32),
+    Host,
 }
 
 extern "C" {
@@ -478,6 +481,7 @@ impl Session {
             approval_counter: 0,
             input_tx: None,
             incoming_hops: 0,
+            pending: Default::default(),
         }
     }
 
@@ -500,6 +504,9 @@ impl Session {
         if self.state != state {
             self.state = state;
             self.state_at = now_secs();
+            if state == State::Exited {
+                self.drop_requests(); // nobody is left to tell what became of them
+            }
             crate::registry::mark_dirty();
         }
     }
@@ -619,6 +626,7 @@ impl Session {
         self.incoming_hops = match origin {
             Origin::Person => 0,
             Origin::Session(hops) => hops,
+            Origin::Host => self.incoming_hops,
         };
         crate::echo::append(self, text, origin != Origin::Person);
         let key = self.key(request_id);

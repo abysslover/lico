@@ -249,7 +249,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             if !valid_request("approval.answer", &map) {
                 return Err(bad("bad_request"));
             }
-            core::approval_answer(shared, crate::ipc::text(&map, "session"), int(&map, "generation").unwrap_or(0), approval, crate::ipc::text(&map, "answer"))
+            core::approval_answer(shared, crate::ipc::text(&map, "session"), int(&map, "generation").unwrap_or(0), approval, crate::ipc::text(&map, "answer"), map.get("keep").and_then(Value::as_bool).unwrap_or(false))
         }
         ["v1", "views"] => {
             allowed(method == "POST")?;

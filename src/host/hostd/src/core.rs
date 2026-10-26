@@ -350,7 +350,7 @@ fn status_entry(s: &Session) -> Value {
             let quiet = crate::session::now_secs().saturating_sub(s.last_event_at);
             entry["busy_since"] = json!(s.busy_since);
             entry["last_event_at"] = json!(s.last_event_at);
-            entry["stalled"] = json!(s.approvals.is_empty() && quiet >= stall_secs());
+            entry["stalled"] = json!(!crate::pending::waits(s) && quiet >= stall_secs());
         }
     }
     if let Some(account) = &s.account {
@@ -360,14 +360,13 @@ fn status_entry(s: &Session) -> Value {
     if let Some(issue) = &s.account_issue {
         entry["account_issue"] = json!(issue);
     }
-    if !s.approvals.is_empty() {
-        entry["approvals"] = Value::Array(s.approvals.iter().map(|(n, p)| json!({"approval_id": n, "prompt": p})).collect());
-    }
+    crate::pending::annotate(&mut entry, s);
     crate::memory::annotate(&mut entry, s);
     entry
 }
 
 pub fn status(shared: &Shared) -> Reply {
+    crate::pending::sweep_all(shared); // a request that has waited too long ends here, and its asker is told
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(&s.lock().unwrap())).collect();
     Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json()})))
@@ -809,7 +808,8 @@ pub fn input_status(shared: &Shared, session: &str, request_id: &str) -> Reply {
     Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name()})))
 }
 
-pub fn approval_answer(shared: &Shared, session: &str, generation: i64, approval_id: i64, answer: &str) -> Reply {
+pub fn approval_answer(shared: &Shared, session: &str, generation: i64, approval_id: i64, answer: &str, keep: bool) -> Reply {
+    if let Some(done) = crate::pending::answer(shared, session, generation, approval_id, answer, keep) { return done; }
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();
     check_generation(&s, Some(generation))?;

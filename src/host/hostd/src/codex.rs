@@ -316,7 +316,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
             s.set_state(State::Disconnected);
             s.set_busy(false);
             s.codex = None; // its approvals and unanswered requests are stale now
-            s.approvals.clear();
+            s.drop_program_approvals();
             record(&mut s, "[provider disconnected]");
         }
     });
@@ -334,7 +334,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     let mut s = session.lock().unwrap();
     s.stop_process();
     s.codex = None;
-    s.approvals.clear();
+    s.drop_program_approvals();
     s.set_state(if resume.is_some() { State::Disconnected } else { State::Exited });
     Err("busy")
 }

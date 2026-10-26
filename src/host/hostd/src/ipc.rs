@@ -151,6 +151,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("transfer.send", "kind") => matches!(value.as_str(), Some("text" | "lines")),
             ("approval.answer", "approval_id") => in_range(value, 1, i64::MAX),
             ("approval.answer", "answer") => matches!(value.as_str(), Some("allow" | "deny")),
+            ("approval.answer", "keep") => value.is_boolean(),
             ("view.attach", "kind") => matches!(value.as_str(), Some("gui" | "cli")),
             ("view.detach", "view") => valid_str(value, 64),
             _ => false,
@@ -217,7 +218,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "input" => core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person),
         "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(&request, "to"), text(&request, "kind"), text(&request, "text"), crate::transfer::By::Person),
         "input.status" => core::input_status(shared, &session, text(&request, "request_id")),
-        "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer")),
+        "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
         "view.attach" => match core::view_attach(shared, Some((sub, &rid)), &session, generation, int(&request, "after").unwrap_or(-1)) {
             Ok(_) => return, // the reply was queued under the session lock
             Err(code) => Err(code),

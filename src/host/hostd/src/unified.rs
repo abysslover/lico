@@ -28,6 +28,7 @@ mod marks;
 mod mcp;
 mod memory;
 mod payload;
+mod pending;
 mod registry;
 mod session;
 mod tools;

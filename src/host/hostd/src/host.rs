@@ -49,11 +49,8 @@ pub fn run(args: Vec<String>) {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P --http-token-file FILE] [--tool-send-without-approval]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P --http-token-file FILE]");
         std::process::exit(2);
-    }
-    if args.iter().any(|a| a == "--tool-send-without-approval") {
-        crate::calls::open_without_approval(); // for a test of the tool connection: the question to the person is not built yet
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
     // every directory of the host defaults to a place under --state-dir, or else beside the socket

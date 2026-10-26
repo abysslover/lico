@@ -30,7 +30,7 @@ pub fn session_close(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
             s.input_tx = None;
             s.claude = None; // its approvals and unanswered requests are stale now
             s.codex = None;
-            s.approvals.clear();
+            s.drop_program_approvals();
             if s.provider == "claude" {
                 crate::claude::note(&mut s, "[session closed]");
             } else {

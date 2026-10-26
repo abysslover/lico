@@ -21,7 +21,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
           "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
-          "no_conversation_yet", "chain_depth")
+          "no_conversation_yet", "chain_depth", "expired")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -97,7 +97,7 @@ REPLIES = {
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
-                         "optional": {}}}}}}},
+                         "optional": {"tool": {"type": STR, "enum": ["send"]}}}}}}}},    # a question the host asks for an agent's request; the program's own has none
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
@@ -114,7 +114,9 @@ REPLIES = {
     "input.status": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},
                           "state": {"type": STR, "enum": ["accepted", "submitted", "observed", "failed"]}}, COMMON_REPLY_OPTIONAL),
     "approval.answer": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "approval_id": {"type": INT, "minimum": 1},
-                             "state": {"type": STR, "enum": ["answered"]}}, COMMON_REPLY_OPTIONAL),
+                             "state": {"type": STR, "enum": ["answered"]}},
+                            {**COMMON_REPLY_OPTIONAL, "outcome": {"type": STR, "enum": ["done", "declined", "not_done"]},   # only of an agent's request: what the answer led to
+                             "reason": {"type": STR, "max_length": 64}}),                                                    # why it was not done: the name of the refusal
     "view.attach": _obj({"v": _V, "ok": _OK, "view": {"type": STR}, "session": {"type": STR},
                          "generation": {"type": INT, "minimum": 1}, "gap": {"type": BOOL}, "from": {"type": INT, "minimum": 0},
                          "snapshot": SNAPSHOT_BODY}, {**COMMON_REPLY_OPTIONAL, "missed": {"type": [INT, "null"]}}),
@@ -180,7 +182,7 @@ EVENTS = {
     "input": _obj({"v": _V, "ev": {"type": STR, "enum": ["input"]}, "session": {"type": STR},
                    "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed", "failed"]}}),
     "approval": _obj({"v": _V, "ev": {"type": STR, "enum": ["approval"]}, "session": {"type": STR},
-                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}),
+                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}, {"tool": {"type": STR, "enum": ["send"]}}),
 }
 
 _COMMON_REQ = {"v": _V, "id": {"type": STR, "max_length": 64}}
@@ -228,7 +230,7 @@ REQUESTS = {
                          _COMMON_REQ),
     "approval.answer": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                              "approval_id": {"type": INT, "minimum": 1}, "answer": {"type": STR, "enum": ["allow", "deny"]}},
-                            _COMMON_REQ),
+                            {**_COMMON_REQ, "keep": {"type": BOOL}}),    # with an allow of an agent's request: no more questions for this kind of request while the session lives
     "view.attach": _obj({"session": {"type": STR, "max_length": 64}, "kind": {"type": STR, "enum": ["gui", "cli"]}},
                         {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "after": {"type": INT, "minimum": -1}}),
     "view.detach": _obj({"view": {"type": STR, "max_length": 64}}, _COMMON_REQ),

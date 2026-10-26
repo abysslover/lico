@@ -295,7 +295,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             s.set_busy(false);
             s.stop_broker();
             s.claude = None; // its approvals and unanswered requests are stale now
-            s.approvals.clear();
+            s.drop_program_approvals();
             record(&mut s, "[provider disconnected]");
         }
     });

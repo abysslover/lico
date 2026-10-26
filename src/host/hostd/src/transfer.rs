@@ -173,8 +173,15 @@ pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str)
     out + &format!("{size}, {}; {how}.\nThe file can be removed after {} days, or sooner when the folder is full.", lines_word(line_count(text)), crate::handoff::KEEP_DAYS)
 }
 
+/// The local time of day as `HH:MM`, the form the headers carry.
+pub(crate) fn hhmm_now() -> String {
+    let now = crate::session::now_secs() as i64;
+    let at = civil(now, utc_offset(now));
+    format!("{:02}:{:02}", at.hour, at.minute)
+}
+
 fn receiver_state(s: &Session) -> &'static str {
-    if !s.approvals.is_empty() {
+    if crate::pending::waits(s) {
         "waiting_for_approval"
     } else if s.busy {
         "busy"
@@ -288,6 +295,7 @@ pub(crate) mod tests {
 
     pub(crate) const ONE: &str = "s0123456789abcdef";
     pub(crate) const TWO: &str = "s1111111111111111";
+    pub(crate) const THREE: &str = "s2222222222222222";
 
     #[test]
     fn a_size_is_a_tenth_of_a_unit_rounded_half_up_and_never_1024_of_the_unit_before() {

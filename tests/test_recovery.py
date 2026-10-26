@@ -89,7 +89,7 @@ def test_a_torn_log_tail_or_a_damaged_registry_is_reported_and_never_replayed_as
             sid, generation = made["session"], made["generation"]
             for k in range(4):
                 conn.call(op="input", session=sid, generation=generation, request_id=f"t-{k}", text=f"line number {k}")
-            wait_for(lambda: "echo: line number 3" in texts(log, sid))
+            wait_for(lambda: texts(log, sid).count("[turn completed]") == 4)    # the last record is the one cut below; the echo alone leaves it still to be written
             wait_for(lambda: registered(directory).get(sid, {}).get("provider_session"))
         finally:
             hard_stop(host)

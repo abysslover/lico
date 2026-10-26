@@ -1,25 +1,30 @@
-//! The calls of an agent that act, on the tool connection (S03b): `send` now; `create` and `history` join with S04. The caller is the session of the token and
-//! nobody else (no argument names it). The limits of AC-04 are kept here, in memory and nowhere else: calls per minute of one session, and (in `transfer`) the depth.
+//! The calls of an agent that act, on the tool connection: `send` (S03b, with the person's approval from S04); `create` and `history` join with S04 and S07. The caller is the
+//! session of the token and nobody else (no argument names it). The limits of AC-04 are kept here, in memory and nowhere else: calls per minute of one session, and (in
+//! `transfer`) the depth. What the agent asks for does not happen at the call: the call leaves a card on the agent's row (`pending`) and happens when the person says yes.
 
 use serde_json::{Map, Value};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::json;
 
+use crate::codex::sanitize;
 use crate::core::{self, Shared};
+use crate::pending::{self, Asked, Request};
 use crate::transfer::{self, By, MAX_HOPS};
 
 /// Calls per minute of one session. Every `send` counts, a refused one too; `sessions` does not (`create` and `history` count from S04).
 pub const PER_MINUTE: usize = 20;
 const MINUTE: Duration = Duration::from_secs(60);
 const KEPT: usize = 2 * PER_MINUTE; // a session that goes on asking does not make its list grow
+const CARD_CHARS: usize = 200; // what the window shows of a card (`Session::add_card` cuts at the same number)
+const LABEL_CHARS: usize = 60;
 
 /// When each session called the host in the last minute: a sliding window.
 #[derive(Default)]
-struct Window {
+pub(crate) struct Window {
     calls: HashMap<String, VecDeque<Instant>>,
 }
 
@@ -50,19 +55,14 @@ fn window() -> &'static Mutex<Window> {
     WINDOW.get_or_init(Mutex::default)
 }
 
-static OPEN: AtomicBool = AtomicBool::new(false);
-
-/// Until the person can be asked (S04), `send` refuses every call. This lets a host that is started for a test send without that question.
-pub fn open_without_approval() {
-    OPEN.store(true, Ordering::Relaxed);
-}
-
-/// The tool `send`: the text of `arguments` to the session `to`, from the session that holds the token.
+/// The tool `send`: the text of `arguments` to the session `to`, from the session that holds the token. The text is not sent at the call, unless the person has
+/// allowed this session to send to that one for as long as it lives (`keep`): the call asks the person and says so.
 pub fn send(shared: &Shared, caller: &str, arguments: &Map<String, Value>) -> Result<String, String> {
-    send_with(shared, caller, arguments, OPEN.load(Ordering::Relaxed), window(), Instant::now())
+    pending::sweep(shared, caller);
+    send_with(shared, caller, arguments, window(), Instant::now(), pending::held_text())
 }
 
-fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, open: bool, window: &Mutex<Window>, now: Instant) -> Result<String, String> {
+fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &Mutex<Window>, now: Instant, held: &Arc<AtomicUsize>) -> Result<String, String> {
     if let Err(wait) = window.lock().unwrap_or_else(|e| e.into_inner()).take(caller, now) {
         return Err(format!("send_limit: at most {PER_MINUTE} calls a minute from one session; wait {wait} seconds and try again"));
     }
@@ -79,17 +79,72 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, open
     }) {
         return Err("not_allowed: agents send to Claude Code sessions only; that session is not one".into());
     }
-    if !open {
-        return Err("not_allowed: this host cannot ask the person to approve a send yet, so it sends nothing for an agent".into());
+    // what is already known to be refused is refused now, so that the person is not asked for a send that could not happen
+    let label = receiver_label(shared, caller, to).map_err(|code| refusal(shared, caller, code))?;
+    if pending::kept(shared, caller, "send", to) {
+        return match transfer::send(shared, Some(caller), to, "text", text, By::Session) {
+            Ok(done) => Ok(json!({"sent": true, "to": to, "delivery": done["delivery"], "size": done["size"], "receiver": done["receiver"]}).to_string()),
+            Err(code) => Err(refusal(shared, caller, code)),
+        };
     }
-    match transfer::send(shared, Some(caller), to, "text", text, By::Session) {
-        Ok(done) => Ok(json!({"sent": true, "to": to, "delivery": done["delivery"], "size": done["size"], "receiver": done["receiver"]}).to_string()),
-        Err(code) => Err(refusal(shared, caller, code)),
+    let (card, who) = (send_card(&label, to, text), format!("session '{label}' ({})", transfer::id7(to)));
+    let asked = pending::ask(shared, caller, &Request { tool: "send", target: to, who: &who, card: &card, text }, pending::now(), held)?;
+    let (id, again) = match asked {
+        Asked::New(id) => (id, false),
+        Asked::Again(id) => (id, true),
+    };
+    let mut reply = json!({
+        "status": "pending", "approval_id": id,
+        "message": format!("Nothing was sent yet. The person has been asked to approve this send to {who}. Lico will tell you here when they decide; you can end your turn. A restart of Lico drops the request."),
+    });
+    if again {
+        reply["already_pending"] = json!(true);
+    }
+    Ok(reply.to_string())
+}
+
+/// Whether `to` can take a send from `caller` at all, and what it is called: the answers `transfer::send` would give at the question, so that they come at the call.
+fn receiver_label(shared: &Shared, caller: &str, to: &str) -> Result<String, &'static str> {
+    if core::find(shared, caller).map_or(0, |found| found.lock().unwrap().incoming_hops) + 1 > MAX_HOPS {
+        return Err("chain_depth");
+    }
+    let found = core::find(shared, to).ok_or("unknown_session")?;
+    let s = found.lock().unwrap();
+    match s.state {
+        _ if s.purged => return Err("unknown_session"),
+        crate::session::State::Disconnected => return Err("session_disconnected"),
+        crate::session::State::Exited => return Err("session_exited"),
+        crate::session::State::Running => {}
+    }
+    Ok(transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect())
+}
+
+/// The line on the card of a send: to whom, how much, and the start of the text, in one line of at most `CARD_CHARS`.
+fn send_card(label: &str, to: &str, text: &str) -> String {
+    let lines = transfer::line_count(text);
+    let size = if lines > 1 { format!("{}, {}", transfer::size_text(text.len()), transfer::lines_word(lines)) } else { transfer::size_text(text.len()) };
+    let head = format!("send to '{label}' ({}) | {size} | \"", transfer::id7(to));
+    let first = text.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
+    let first = sanitize(first).replace('"', "'");
+    let room = CARD_CHARS.saturating_sub(head.chars().count() + 2);
+    let cut = first.chars().count() > room;
+    let shown: String = first.chars().take(room).collect();
+    format!("{head}{shown}{}\"", if cut { "\u{2026}" } else { "" })
+}
+
+/// What the person's yes does for a request of `caller`. Err: the refusal the host gives now, in the words the model reads.
+pub(crate) fn perform(shared: &Shared, caller: &str, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
+    match tool {
+        "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
+            Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
+            Err(code) => Err(refusal(shared, caller, code)),
+        },
+        _ => Err(refusal(shared, caller, "refused")),
     }
 }
 
 /// What the model reads for a refusal: the name of the error, then what to do about it.
-fn refusal(shared: &Shared, caller: &str, code: &str) -> String {
+pub(crate) fn refusal(shared: &Shared, caller: &str, code: &str) -> String {
     let what = match code {
         "unknown_session" => "there is no session with that id; ask the sessions tool for the ids".to_string(),
         "session_disconnected" => "that session has no running program; the person can resume it".into(),
@@ -107,7 +162,7 @@ fn refusal(shared: &Shared, caller: &str, code: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::session::State;
     use crate::transfer::tests::{world, World, ONE, TWO};
@@ -172,7 +227,7 @@ mod tests {
         assert_eq!(held(&w, "b"), 1);
     }
 
-    fn ask(to: &str, text: &str) -> Map<String, Value> {
+    pub(crate) fn ask(to: &str, text: &str) -> Map<String, Value> {
         json!({"to": to, "text": text}).as_object().unwrap().clone()
     }
 
@@ -186,21 +241,45 @@ mod tests {
         w
     }
 
+    /// A call at a time and with a window of the caller's choosing, and a count of the held bytes of its own.
+    pub(crate) fn call_in(w: &World, from: &str, args: &Map<String, Value>, window: &Mutex<Window>, now: Instant, held: &Arc<AtomicUsize>) -> Result<String, String> {
+        send_with(&w.shared, from, args, window, now, held)
+    }
+
+    pub(crate) fn call_counted(w: &World, from: &str, args: &Map<String, Value>, held: &Arc<AtomicUsize>) -> Result<String, String> {
+        call_in(w, from, args, &Mutex::default(), Instant::now(), held)
+    }
+
+    /// A call, and the person's yes to the card it leaves when it has to wait for one: the reply is that of the call when nothing waited, else that of the answer.
     fn call(w: &World, from: &str, args: &Map<String, Value>) -> Result<String, String> {
-        send_with(&w.shared, from, args, true, &Mutex::default(), Instant::now())
+        let got = call_counted(w, from, args, &Arc::default())?;
+        let reply: Value = serde_json::from_str(&got).unwrap();
+        if reply["status"] != "pending" {
+            return Ok(got);
+        }
+        let generation = w.with(from, |s| s.generation as i64);
+        let done = core::approval_answer(&w.shared, from, generation, reply["approval_id"].as_i64().unwrap(), "allow", false).unwrap();
+        Ok(Value::Object(done).to_string())
     }
 
     #[test]
-    fn a_send_goes_to_the_other_session_as_the_caller_and_the_reply_is_small() {
+    fn a_send_goes_to_the_other_session_as_the_caller_when_the_person_says_yes_and_the_replies_are_small() {
         let w = pair();
-        let got = call(&w, ONE, &ask(TWO, "hello")).unwrap();
+        let got = call_counted(&w, ONE, &ask(TWO, "hello"), &Arc::default()).unwrap();
         let reply: Value = serde_json::from_str(&got).unwrap();
-        assert_eq!(reply, json!({"sent": true, "to": TWO, "delivery": "inline", "size": 5, "receiver": "idle"}));
+        let keys: Vec<&str> = reply.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!((reply["status"].as_str(), keys), (Some("pending"), vec!["approval_id", "message", "status"]));
+        assert!(reply["message"].as_str().unwrap().len() < 300 && w.delivered(TWO).is_none());
+        let generation = w.with(ONE, |s| s.generation as i64);
+        core::approval_answer(&w.shared, ONE, generation, 1, "allow", true).unwrap();
         let delivered = w.delivered(TWO).unwrap();
         let (head, body) = delivered.split_once('\n').unwrap();
         assert!(head.starts_with("[from session 'writer' (s012345) | ") && head.ends_with(" | message | 5 B]"), "{head}");
         assert_eq!(body, "hello");
         assert_eq!(w.with(TWO, |s| s.incoming_hops), 1, "an agent's text is one step on a chain");
+        let again = call_counted(&w, ONE, &ask(TWO, "hello"), &Arc::default()).unwrap();
+        let reply: Value = serde_json::from_str(&again).unwrap();
+        assert_eq!(reply, json!({"sent": true, "to": TWO, "delivery": "inline", "size": 5, "receiver": "idle"}), "once allowed for the session the reply is the plain one");
     }
 
     #[test]
@@ -218,12 +297,11 @@ mod tests {
     }
 
     #[test]
-    fn until_the_person_can_be_asked_nothing_is_sent_and_the_call_still_counts() {
+    fn a_send_that_waits_for_the_person_sends_nothing_and_counts_as_a_call() {
         let w = pair();
         let window = Mutex::default();
-        let got = send_with(&w.shared, ONE, &ask(TWO, "hello"), false, &window, Instant::now());
-        let text = got.unwrap_err();
-        assert!(text.starts_with("not_allowed: ") && text.contains("approve"), "{text}");
+        let got = call_in(&w, ONE, &ask(TWO, "hello"), &window, Instant::now(), &Arc::default()).unwrap();
+        assert!(got.contains("\"pending\""), "{got}");
         assert!(w.delivered(TWO).is_none() && w.files(TWO).is_empty());
         assert_eq!(held(&window.lock().unwrap(), ONE), 1);
     }
@@ -236,7 +314,7 @@ mod tests {
         let cases: Vec<Value> = vec![json!({}), json!({"to": TWO}), json!({"text": "x"}), json!({"to": TWO, "text": ""}), json!({"to": "", "text": "x"}), json!({"to": 5, "text": "x"}), json!({"to": TWO, "text": 5}),
                                      json!({"to": TWO, "text": ["x"]}), json!({"to": long, "text": "x"}), json!({"to": ONE, "text": "to myself"})];
         for (k, case) in cases.iter().enumerate() {
-            let text = send_with(&w.shared, ONE, case.as_object().unwrap(), true, &window, Instant::now()).unwrap_err();
+            let text = call_in(&w, ONE, case.as_object().unwrap(), &window, Instant::now(), &Arc::default()).unwrap_err();
             assert!(text.starts_with("bad_request: "), "{case}: {text}");
             assert_eq!(held(&window.lock().unwrap(), ONE), k + 1, "{case}");
         }
@@ -280,9 +358,10 @@ mod tests {
         w.with(ONE, |s| s.incoming_hops = 3);
         assert!(call(&w, ONE, &ask(TWO, "fourth")).is_ok());
         assert_eq!(w.with(TWO, |s| s.incoming_hops), 4);
+        assert!(w.delivered(ONE).unwrap().contains("approved and done"), "the notice of the fourth, to the one who asked");
         let text = call(&w, TWO, &ask(ONE, "fifth")).unwrap_err();
         assert!(text.starts_with("chain_depth: ") && text.contains("5") && text.contains("4") && text.contains("person"), "{text}");
-        assert!(w.delivered(ONE).is_none(), "nothing reached it");
+        assert!(w.delivered(ONE).is_none() && w.with(ONE, |s| s.approvals.is_empty()), "nothing reached it and no question was asked");
         w.with(TWO, |s| s.incoming_hops = 0); // a person wrote to it
         assert!(call(&w, TWO, &ask(ONE, "answer")).is_ok());
     }
@@ -292,19 +371,16 @@ mod tests {
         let w = pair();
         let (window, now) = (Mutex::default(), Instant::now());
         for k in 0..PER_MINUTE {
-            let args = if k % 4 == 0 { ask(TWO, "ok") } else { Map::new() }; // refused calls count the same
-            let _ = send_with(&w.shared, ONE, &args, true, &window, now);
+            let args = if k % 4 == 0 { ask(TWO, &format!("ok {k}")) } else { Map::new() }; // refused calls count the same
+            let _ = call_in(&w, ONE, &args, &window, now, &Arc::default());
         }
-        let text = send_with(&w.shared, ONE, &ask(TWO, "one too many"), true, &window, now).unwrap_err();
+        let text = call_in(&w, ONE, &ask(TWO, "one too many"), &window, now, &Arc::default()).unwrap_err();
         assert!(text.starts_with("send_limit: ") && text.contains("20") && text.contains("wait 60 seconds"), "{text}");
-        let text = send_with(&w.shared, ONE, &Map::new(), true, &window, now).unwrap_err();
+        let text = call_in(&w, ONE, &Map::new(), &window, now, &Arc::default()).unwrap_err();
         assert!(text.starts_with("send_limit: "), "a call that would have been refused for another reason is refused for this one: {text}");
-        let mut seen = 0;
-        while w.delivered(TWO).is_some() {
-            seen += 1;
-        }
-        assert_eq!(seen, 5, "only the five that were good arrived");
-        assert!(send_with(&w.shared, TWO, &ask(ONE, "mine"), true, &window, now).is_ok(), "the other session's window is its own");
+        assert_eq!(w.with(ONE, |s| s.approvals.len()), 5, "only the five that were good were put to the person");
+        assert!(w.delivered(TWO).is_none());
+        assert!(call_in(&w, TWO, &ask(ONE, "mine"), &window, now, &Arc::default()).is_ok(), "the other session's window is its own");
     }
 
     #[test]
