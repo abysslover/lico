@@ -95,7 +95,8 @@
   {"why": "kept: Persian with the non-joiner", "line": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645", "record": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"},
   {"why": "kept: variation selector 16", "line": "\u2764\ufe0f", "record": "\u2764\ufe0f"},
   {"why": "kept: Mongolian free variation selectors and the Hangul filler", "line": "a\u180bb\u180dc\u1160d", "record": "a\u180bb\u180dc\u1160d"},
-  {"why": "kept: unassigned U+2065", "line": "a\u2065b", "record": "a\u2065b"}
+  {"why": "kept: unassigned U+2065", "line": "a\u2065b", "record": "a\u2065b"},
+  {"why": "the last row is a lead: the in-pieces test ends its item without a line end, and the end of the item writes this line (the Codex flush)", "line": ">> last", "record": "[agent] >> last"}
 ],
 "long": [
   {"why": "the bound counts the tag: 5000 bytes after a command lead", "line": {"prefix": "$ ", "unit": "a", "times": 5000}, "record": {"prefix": "[agent] $ ", "unit": "a", "times": 4086}},

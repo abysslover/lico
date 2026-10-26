@@ -64,6 +64,7 @@ def test_codex_agent_text_that_begins_like_a_host_record_is_tagged_whole():
 
 
 def test_codex_agent_text_that_arrives_in_pieces_is_tagged_when_the_line_is_whole():
+    assert expected()[-1].startswith(TAG), "the last row must be a lead, or the write at the end of an item is not covered (V3, mutation W2)"
     text = "\n".join(line for line, _ in LINES)                     # the last line has no line end: it is written when the item ends
     assert codex_records([text[k:k + 3] for k in range(0, len(text), 3)]) == expected()
 
