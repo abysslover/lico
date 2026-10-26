@@ -94,8 +94,7 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
             assert len(a) == len(b) and len(a) > 1000000
             background = Counter(a[i:i + 3] for i in range(0, len(a), 3)).most_common(1)[0][1]
             assert background < len(a) // 3 * 0.97, "the pictures must hold text, or comparing them proves nothing"
-            width = 1200 * 3
-            rows = sorted({i // width for i in range(len(a)) if a[i] != b[i]})
+            rows = differing_rows(a, b)
             assert not rows, f"{len(rows)} pixel rows differ between the two, from y={rows[0]} to y={rows[-1]}"
         finally:
             if client and client.proc.poll() is None:
@@ -105,8 +104,33 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
             xvfb.stop()
 
 
+def without_total_line(shot, width=1200 * 3, list_w=330, lines=2, line_height=18):
+    """The picture with the corner under the session list blanked: the last two lines there are the window's memory total and the hint. The total
+    carries the window's own memory in whole MiB, which two windows (or one window a few seconds later) can show a MiB apart: not a drawing difference."""
+    pic = bytearray(shot)
+    rows = len(pic) // width
+    for y in range(rows - lines * line_height, rows):
+        pic[y * width:y * width + list_w * 3] = bytes(list_w * 3)
+    return bytes(pic)
+
+
 def differing_rows(a, b, width=1200 * 3):
+    a, b = without_total_line(a, width), without_total_line(b, width)
     return sorted({i // width for i in range(len(a)) if a[i] != b[i]})
+
+
+def test_the_picture_comparison_leaves_out_the_corner_with_the_memory_total_and_nothing_else():
+    width, rows = 1200 * 3, 800
+    plain = bytes(width * rows)
+    in_corner = bytearray(plain)
+    in_corner[(rows - 12) * width + 100 * 3] = 7                    # the total line, under the list
+    above = bytearray(plain)
+    above[(rows - 37) * width + 100 * 3] = 7                        # one row above the two lines
+    beside = bytearray(plain)
+    beside[(rows - 12) * width + 340 * 3] = 7                       # the same rows, right of the list: the transcript's side
+    assert differing_rows(plain, bytes(in_corner)) == []
+    assert differing_rows(plain, bytes(above)) == [rows - 37]
+    assert differing_rows(plain, bytes(beside)) == [rows - 12]
 
 
 def test_a_flowing_stream_drawn_by_scroll_steps_looks_like_a_full_repaint_on_the_x_server():
