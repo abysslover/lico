@@ -9,18 +9,20 @@
 //! a window costs nothing) and a window that asks every second costs one look in three. The look runs on its own short thread: a status call never
 //! waits for it and shows what the last one found. A process that vanished or cannot be read counts for nothing.
 //!
-//! The kernel says of a `children` file (Documentation/filesystems/proc.rst, 3.7): "Since this interface is intended to be fast and cheap it doesn't
-//! guarantee to provide precise results and some children might be skipped, especially if they've exited right after we printed their pids, so one
-//! needs to either stop or freeze processes being inspected if precise results are needed." Measured against a scan on one tree whose children
-//! start and end all the time (200 looks each; kept locally): 30 alive at 450 starts a second, none of 5747 children that were certainly alive
-//! missing; 450 alive, none of 87673; 700 alive, 12 looks lost a live child. The file is handed out a page at a time and the lock is let go
-//! between pages, so only a listing longer than a page can lose one; such a listing is looked at by a scan instead (`ONE_PAGE`). What a look still
-//! gets wrong is a child between fork and exec: it holds a copy of its parent's pages and counts with them for that moment (3 of 200 looks,
-//! +5 MiB for a 5 MiB parent, both ways of looking).
+//! The kernel's own words on a `children` file (`Documentation/filesystems/proc.rst`, section 3.7): it is fast and cheap, not exact; a child that
+//! exited right after its pid was printed can be skipped; an exact list needs the processes stopped. So a look was measured against a scan on one tree
+//! whose children start and end all the time (200 looks each; kept locally): 30 alive at 450 starts a second, none of 5747 children that were certainly
+//! alive missing; 450 alive, none of 87673; 700 alive, 12 looks lost a live child. The file is handed out a page at a time and the lock is let go
+//! between pages, so only a listing that continues past one page can lose one. The measuring script read each file with one `read()` of 8 KiB, and the
+//! host reads the same way (`children_of`: one `read()` into 8 KiB, strace in `s06c2_strace_children.log`; `fs::read_to_string` would make six to nine
+//! small reads, each one a new start). A listing above `ONE_PAGE` bytes may continue, so such a look is made by a scan instead. What a look still gets
+//! wrong is a child between fork and exec: it holds a copy of its parent's pages and counts with them for that moment (3 of 200 looks, +5 MiB for a
+//! 5 MiB parent, both ways of looking).
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
+use std::io::Read;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -105,14 +107,16 @@ fn scan() -> HashMap<u32, Vec<u32>> {
 }
 
 /// The processes `pid` started, from the `children` file of each of its threads (a child is listed with the thread that started it and stays on a live
-/// thread when that one ends). `long` is set when a listing may be more than one page.
+/// thread when that one ends). Each file is read with ONE `read()`: a second read starts the listing again by index, and a child that ended in between
+/// moves the index. `long` is set when a listing may continue past that read (more than `ONE_PAGE` bytes).
 fn children_of(pid: u32, long: &Cell<bool>) -> Vec<u32> {
     let mut found = Vec::new();
+    let mut buf = [0u8; 8192];
     for task in fs::read_dir(format!("/proc/{pid}/task")).into_iter().flatten().flatten() {
-        if let Ok(text) = fs::read_to_string(task.path().join("children")) {
-            long.set(long.get() || text.len() > one_page());
-            found.extend(text.split_whitespace().filter_map(|p| p.parse::<u32>().ok()));
-        }
+        let Ok(mut file) = fs::File::open(task.path().join("children")) else { continue };
+        let Ok(n) = file.read(&mut buf) else { continue };
+        long.set(long.get() || n > one_page());
+        found.extend(std::str::from_utf8(&buf[..n]).unwrap_or("").split_whitespace().filter_map(|p| p.parse::<u32>().ok()));
     }
     found
 }
@@ -234,12 +238,12 @@ mod tests {
             return;
         }
         assert!(ONE_PAGE < 4096, "the kernel hands a children file out in pages of 4096 bytes");
-        PAGE.with(|p| p.set(100)); // a dozen children list longer than that (8 bytes a pid at most)
+        PAGE.with(|p| p.set(40)); // 16 children list at least 48 bytes (a pid has two digits or more, and a space); one child lists 8 at most
         let me = std::process::id();
         let scans = || SCANS.with(Cell::get);
         let before = scans();
         walk_with(&[me], true);
-        assert_eq!(scans(), before, "a few children are read from their files");
+        assert_eq!(scans(), before, "no child of this thread, or one: read from the files");
         let mut kids: Vec<_> = (0..16).map(|_| std::process::Command::new("sleep").arg("5").spawn().unwrap()).collect();
         let found = walk_with(&[me], true).get(&me).copied().unwrap_or_default();
         assert!(found.processes >= 17 && scans() == before + 1, "the test and its 16 sleeps (scans: {}): {found:?}", scans() - before);
