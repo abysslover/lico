@@ -331,8 +331,13 @@ fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<S
     }
 }
 
-pub fn serve(shared: Arc<Shared>, port: u16, token: String) {
-    let listener = TcpListener::bind(("127.0.0.1", port)).expect("bind the loopback listener");
+/// Take the loopback port; port 0 lets the system choose, and the listener says which it chose.
+pub fn bind(port: u16) -> std::io::Result<TcpListener> {
+    TcpListener::bind(("127.0.0.1", port))
+}
+
+pub fn serve(listener: TcpListener, shared: Arc<Shared>, token: String) {
+    let port = listener.local_addr().map_or(0, |address| address.port());
     let token = Arc::new(token);
     let active = Arc::new(AtomicUsize::new(0));
     let buckets = Arc::new((Mutex::new(Bucket { tokens: BURST, at: Instant::now() }), Mutex::new(Bucket { tokens: FAILED_AUTH_PER_SECOND, at: Instant::now() })));

@@ -115,18 +115,55 @@ def _http(port, method, path, headers=None, body=b"", raw_host=True):
     return status, (json.loads(payload) if payload.startswith(b"{") else None)
 
 
+def test_a_host_that_cannot_take_its_loopback_port_says_so_and_does_not_report_ready():
+    """R5: the ready line is the host's promise that every door it has is open. It used to be printed while the loopback listener was still being bound in
+    another thread, so a port already taken left a host that said `ready` and had no listener (the panic was in the thread and nobody saw it)."""
+    with private_dir() as directory:
+        held = socket.socket()
+        held.bind(("127.0.0.1", 0))
+        held.listen()
+        port = held.getsockname()[1]
+        try:
+            try:
+                host, _ = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", str(port), "--http-token-file", os.path.join(directory, "http.token")])
+            except ValueError:                                                         # no ready line came: the host ended instead
+                host = None
+            if host is not None:
+                host.stop()
+                raise AssertionError("the host said ready although its loopback port was taken")
+            said = open(os.path.join(directory, "host.err"), errors="replace").read()
+            assert "lico-host: " in said and "loopback" in said and str(port) in said, said
+        finally:
+            held.close()
+
+
+def test_the_loopback_listener_answers_in_the_moment_the_ready_line_is_read():
+    """R5: `--http-port auto` takes a free port in the host (no port picked by the test and given back, which anyone could take in between) and the ready line
+    reports it. A request sent as soon as the line is read is answered, every time: no sleep, no retry."""
+    for _ in range(6):
+        with private_dir() as directory:
+            token_file = os.path.join(directory, "http.token")
+            host, _ = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", "auto", "--http-token-file", token_file])
+            try:
+                port = host.http_port
+                assert isinstance(port, int) and port > 1023, host.ready_line
+                assert _http(port, "GET", "/v1/status")[0] == 401                  # the listener is there and wants the credential
+                token = Path(token_file).read_text().strip()
+                assert token not in host.ready_line
+                status, body = _http(port, "GET", "/v1/status", {"Authorization": f"Bearer {token}"})
+                assert status == 200 and body["sessions"], (status, body)
+            finally:
+                host.stop()
+
+
 def test_http_requires_credential_host_and_origin():
     with private_dir() as directory:
         token_file = os.path.join(directory, "http.token")
-        sock = socket.socket()
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
         host, log = start(directory, sessions=1, producing=0, history=3,
-                          extra=["--http-port", str(port), "--http-token-file", token_file])
+                          extra=["--http-port", "auto", "--http-token-file", token_file])
         try:
             sid = host.sessions[0]
-            time.sleep(0.5)
+            port = host.http_port
             token = Path(token_file).read_text().strip()
             assert oct(os.stat(token_file).st_mode & 0o777) == "0o600"
             auth = {"Authorization": f"Bearer {token}"}
@@ -190,14 +227,10 @@ def test_http_answers_401_and_403_from_the_head_alone_without_waiting_for_a_body
     the head has passed (it used to be read first, until the read timed out, so a caller without the token held a connection for five seconds and answered 400)."""
     with private_dir() as directory:
         token_file = os.path.join(directory, "http.token")
-        sock = socket.socket()
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-        sock.close()
-        host, log = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", str(port), "--http-token-file", token_file])
+        host, log = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", "auto", "--http-token-file", token_file])
         try:
             sid = host.sessions[0]
-            wait_for(lambda: _http(port, "GET", "/v1/status")[0] == 401)
+            port = host.http_port
             token = Path(token_file).read_text().strip()
             auth = {"Authorization": f"Bearer {token}"}
             declared = {"Content-Length": str(v1.MAX_REQUEST)}                     # the head of a request whose body never comes

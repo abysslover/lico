@@ -49,7 +49,7 @@ pub fn run(args: Vec<String>) {
     let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P|auto --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -131,6 +131,15 @@ pub fn run(args: Vec<String>) {
         crate::tools::reset(base.join("tools")).expect("tools dir");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
+    // the loopback port is taken here, before any session starts and before the ready line: `auto` asks the system for a free one, and a port that is taken
+    // ends the host with a word instead of leaving one that said `ready` and has no listener
+    let http_port = arg("--http-port", "0");
+    let http_listener = if http_port == "0" {
+        None
+    } else {
+        let wanted: u16 = if http_port == "auto" { 0 } else { http_port.parse().unwrap_or_else(|_| refuse("--http-port is a port number or `auto`")) };
+        Some(http::bind(wanted).unwrap_or_else(|why| refuse(&format!("cannot take the loopback port 127.0.0.1:{wanted}: {why}"))))
+    };
     raise_descriptor_limit();
     core::init_spawner();
     let sessions: usize = arg("--sessions", "1").parse().expect("sessions");
@@ -172,8 +181,8 @@ pub fn run(args: Vec<String>) {
         std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).expect("socket mode");
     }
     // the control credential for the loopback listener goes to a private file, never to a log, argv or the ready line
-    let port: u16 = arg("--http-port", "0").parse().expect("http-port");
-    if port != 0 {
+    let mut ready = json!({"ready": 1, "pid": std::process::id(), "sessions": ids});
+    if let Some(listener) = http_listener {
         use std::os::unix::fs::OpenOptionsExt;
         let token_file = arg("--http-token-file", "");
         assert!(!token_file.is_empty(), "--http-token-file is required with --http-port");
@@ -181,10 +190,11 @@ pub fn run(args: Vec<String>) {
         let _ = std::fs::remove_file(&token_file); // never reuse an existing file or follow a link planted there
         let mut file = std::fs::OpenOptions::new().create_new(true).write(true).mode(0o600).open(&token_file).expect("token file");
         file.write_all(token.as_bytes()).expect("token file");
+        ready["http_port"] = json!(listener.local_addr().expect("loopback address").port());
         let shared = shared.clone();
-        thread::spawn(move || http::serve(shared, port, token));
+        thread::spawn(move || http::serve(listener, shared, token));
     }
-    println!("{}", json!({"ready": 1, "pid": std::process::id(), "sessions": ids}));
+    println!("{ready}");
     let _ = std::io::stdout().flush();
     let cap: usize = arg("--max-connections", "256").parse().expect("max-connections");
     let active = Arc::new(AtomicUsize::new(0));

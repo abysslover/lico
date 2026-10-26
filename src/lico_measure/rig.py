@@ -151,6 +151,7 @@ class Host:
         ready = json.loads(self.ready_line)
         self.pid = ready["pid"]
         self.sessions: list[str] = ready["sessions"]
+        self.http_port: int | None = ready.get("http_port")                 # the loopback port the host took, when it was asked for one with `--http-port auto`
 
     def stop(self) -> None:
         self.proc.kill()

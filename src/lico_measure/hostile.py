@@ -117,17 +117,13 @@ def run_hostd_suite() -> list[dict]:
     cap = 40
     results: list[dict] = []
     with private_dir() as directory:
-        probe = socket.socket()
-        probe.bind(("127.0.0.1", 0))
-        port = probe.getsockname()[1]
-        probe.close()
         token_file = os.path.join(directory, "http.token")
         host, log = start(directory, sessions=2, producing=0, history=3,
-                          extra=["--http-port", str(port), "--http-token-file", token_file, "--max-connections", str(cap),
+                          extra=["--http-port", "auto", "--http-token-file", token_file, "--max-connections", str(cap),
                                  "--max-sessions", "6"])
         sinks: list[str] = []
         try:
-            time.sleep(0.5)
+            port = host.http_port
             token = open(token_file).read().strip()
             auth = {"Authorization": f"Bearer {token}"}
             sid = host.sessions[0]
