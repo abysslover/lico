@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import time
@@ -28,10 +29,18 @@ def older_build(directory):
     return folder / "lico"
 
 
-def status(w):
-    import json
-    done = subprocess.run([str(LICO), "--socket", w.socket, "status"], env=w.env, capture_output=True, text=True, timeout=10)
-    return json.loads(done.stdout)
+def status(w, deadline=10.0):
+    """The host's status. While a host is being replaced the socket answers nothing for a moment (the command prints nothing),
+    so read again until it answers or the deadline passes."""
+    end = time.monotonic() + deadline
+    while True:
+        done = subprocess.run([str(LICO), "--socket", w.socket, "status"], env=w.env, capture_output=True, text=True, timeout=10)
+        try:
+            return json.loads(done.stdout)
+        except ValueError:
+            if time.monotonic() > end:
+                raise
+            time.sleep(0.1)
 
 
 def alive(pid):
