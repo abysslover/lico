@@ -51,6 +51,8 @@ if args.grandchild:
 lines: "queue.Queue[str | None]" = queue.Queue()
 threading.Thread(target=lambda: [lines.put(l) for l in sys.stdin] + [lines.put(None)], daemon=True).start()
 log = open(args.received, "a", buffering=1) if args.received else None
+if log:
+    log.write("ARGV " + json.dumps(sys.argv[1:]) + "\n")     # what the host started this program with, as the other simulator records it
 turn_counter = 0
 active = {"turn": None, "thread": "th-1"}
 scheduled = []          # (time, message)

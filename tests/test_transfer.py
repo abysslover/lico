@@ -11,11 +11,11 @@ from pathlib import Path
 import pytest
 
 from lico_measure.p02 import LICO, ProtoConn as Conn
-from lico_measure.rig import private_dir
+from lico_measure.rig import finished_lines, private_dir
 from lico_protocol import v1
 
 from tests.test_claude_adapter import argv_of, claude_host, new_claude, records, sent_users, status_of, user_text
-from tests.test_codex_adapter import wait_for
+from tests.test_codex_adapter import codex_host, new_session, sent, wait_for
 
 HEADER = re.compile(r"\[from session '([^']*)' \((s[0-9a-f]{6})\) \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines?)?\]")
 PERSON = re.compile(r"\[from the person \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines?)?\]")
@@ -168,6 +168,31 @@ def test_more_than_4096_bytes_go_to_a_file_in_the_receivers_own_folder_and_the_r
     assert status_of(world.conn, receiver)["state"] == "running"
 
 
+def test_a_codex_receiver_gets_the_notice_without_the_name_of_a_tool_it_does_not_have_and_its_program_is_started_with_no_inbox():
+    """Whatever the provider, the file lies in the receiver's own folder; only a Claude start is given that folder to read (`--add-dir`)."""
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            codex = World(directory, host, log, received)
+            _, receiver, _ = new_session(host)
+            text = long_text(mark())
+            reply = codex.send(to=receiver, kind="lines", text=text)
+            assert reply["ok"] == 1 and reply["delivery"] == "file", reply
+            first = text.split("\n")[0]
+            turn = wait_for(lambda: [m for m in sent(received) if m.get("method") == "turn/start" and first in m["params"]["input"][0]["text"]])[0]
+            notice = turn["params"]["input"][0]["text"].split("\n")
+            kib = f"{(len(text.encode()) * 10 + 512) // 1024 / 10:.1f} KiB"
+            assert PERSON.fullmatch(notice[0]) and notice[1] == SAVED and notice[3] == "First lines:", notice
+            assert notice[7] == f"{kib}, 120 lines; read it in parts, 400 lines at a time." and "Read tool" not in "\n".join(notice), notice
+            path = Path(notice[2])
+            assert path.parent.parent == codex.inbox(receiver) and path.read_text().endswith(text), path
+            assert (MODES(codex.inbox(receiver)), MODES(path.parent), MODES(path)) == ("0o700", "0o700", "0o600")
+            argv = [a for a in wait_for(lambda: [l for l in finished_lines(received) if l.startswith("ARGV ")])]
+            assert len(argv) == 1 and "--add-dir" not in argv[0] and str(codex.inbox(receiver)) not in argv[0] and "handoff" not in argv[0], argv
+        finally:
+            host.stop()
+
+
 def test_a_claude_session_is_allowed_to_read_its_own_inbox_and_no_other(world):
     first, first_generation = world.session()
     second, _ = world.session()
@@ -266,3 +291,18 @@ def test_the_host_logs_each_transfer_without_its_text_and_the_log_ends_up_in_no_
     assert mine() == [f"lico-host: transfer from={sender} to={receiver} kind=text size={len(secret.encode())} delivery=inline hops=0",
                      f"lico-host: transfer from=person to={receiver} kind=lines size={len(big.encode())} delivery=file hops=0"]
     assert tag not in (Path(world.directory) / "host.err").read_text() and "hunter2" not in (Path(world.directory) / "host.err").read_text()
+
+
+def test_a_file_that_cannot_be_stored_is_logged_with_the_kind_of_the_error_and_neither_the_text_nor_a_path(world):
+    receiver, _ = world.session()
+    tag = mark()
+    inbox = world.inbox(receiver)
+    inbox.chmod(0o500)                                   # nothing can be made in it, as when the disk is full or the folder was taken away
+    try:
+        reply = world.send(to=receiver, kind="lines", text=long_text(tag))
+    finally:
+        inbox.chmod(0o700)
+    assert reply["ok"] == 0 and reply["error"] == "busy", reply
+    failed = wait_for(lambda: [l for l in world.host_lines() if f"to={receiver}" in l])
+    assert failed == [f"lico-host: transfer failed to={receiver} cause=PermissionDenied"], failed
+    assert tag not in (Path(world.directory) / "host.err").read_text() and not world.files(receiver) and world.never_arrived(tag)
