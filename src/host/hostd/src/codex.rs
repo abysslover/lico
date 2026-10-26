@@ -302,7 +302,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     thread::spawn(move || {
         for line in core::bounded_lines(stdout, MAX_PROVIDER_LINE) {
             if let Ok(message) = serde_json::from_str::<Value>(&line) {
-                handle_message(&reader_session, &message, &cwd);
+                handle_message(&reader_session, pid, &message, &cwd);
             }
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
@@ -360,8 +360,11 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
 }
 
 // ------------------------------------------------------------------- messages
-fn handle_message(session: &Arc<Mutex<Session>>, message: &Value, cwd: &str) {
+fn handle_message(session: &Arc<Mutex<Session>>, pid: u32, message: &Value, cwd: &str) {
     let mut s = session.lock().unwrap();
+    if s.agent_pid != pid {
+        return; // a close or a purge zeroed it and a resume may have put another process there: what a helper of the old one prints is read and ignored
+    }
     s.heard();
     let method = message.get("method").and_then(Value::as_str);
     // an id is a number or a short string: it is echoed back to the provider, so it must stay small

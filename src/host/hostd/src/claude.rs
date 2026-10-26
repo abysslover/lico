@@ -245,7 +245,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     thread::spawn(move || {
         for line in core::bounded_lines(stdout, MAX_LINE) {
             if let Ok(message) = serde_json::from_str::<Value>(&line) {
-                handle(&reader_session, &message);
+                handle(&reader_session, pid, &message);
             }
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
@@ -288,8 +288,11 @@ fn approval_prompt(tool: &str, input: &Value) -> String {
     }
 }
 
-fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
+fn handle(session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
     let mut s = session.lock().unwrap();
+    if s.agent_pid != pid {
+        return; // a close or a purge zeroed it and a resume may have put another process there: what a helper of the old one prints is read and ignored
+    }
     s.heard();
     match message["type"].as_str() {
         Some("system") if message["subtype"] == "init" => {

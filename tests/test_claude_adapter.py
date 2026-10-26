@@ -11,7 +11,7 @@ from lico_measure.p02 import HOSTD_DIR, ProtoConn as Conn, read_log, start
 from lico_measure.rig import REPO, private_dir
 from lico_protocol.claude_mapping import map_stream
 
-from tests.test_codex_adapter import finished_lines, wait_for
+from tests.test_codex_adapter import agent_pid, finished_lines, let_the_old_helper_write, wait_for
 from tests.test_credential_store import cred
 
 SIM = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
@@ -285,6 +285,53 @@ def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_r
             assert "[provider disconnected]" not in records(log, sid)
             assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="l-2", text="after")["ok"] == 1
             wait_for(lambda: "echo: after" in records(log, sid))
+        finally:
+            host.stop()
+
+
+def test_a_helper_that_outlives_a_closed_provider_writes_nothing_into_the_closed_session():
+    """V1: after `session.close` a forged answer and a forged permission request from the helper are read and ignored."""
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+            wait_for(lambda: "echo: linger:300:inject" in records(log, sid) and "[turn completed]" in records(log, sid))
+            old = agent_pid(conn, sid)
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            let_the_old_helper_write(received, old)
+            assert not any("STALE-FORGED" in record for record in records(log, sid)), records(log, sid)
+            assert status_of(conn, sid)["state"] == "disconnected" and not status_of(conn, sid).get("approvals"), status_of(conn, sid)
+        finally:
+            host.stop()
+
+
+def test_a_helper_that_outlives_a_provider_replaced_by_a_resume_cannot_write_into_the_new_session_and_the_new_agent_goes_on():
+    """V1: the forged lines of the old provider's helper add no record, no approval and no sign of life to the session that was resumed at once after the
+    close; the new agent's own turn, which is silent while the helper writes, still ends normally (the guard does not swallow what is live)."""
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+            wait_for(lambda: "echo: linger:300:inject" in records(log, sid) and "[turn completed]" in records(log, sid))
+            old = agent_pid(conn, sid)
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)         # at once, no wait
+            assert resumed["ok"] == 1, resumed
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="s-1", text="stall")["ok"] == 1
+            wait_for(lambda: "stalling" in records(log, sid))
+            heard = status_of(conn, sid)["last_event_at"]
+            wait_for(lambda: int(time.time()) > heard)                           # the host counts seconds: a write that counted as a sign of life would move the number
+            let_the_old_helper_write(received, old)
+            assert not any("STALE-FORGED" in record for record in records(log, sid)), records(log, sid)
+            entry = status_of(conn, sid)
+            assert not entry.get("approvals") and entry["last_event_at"] == heard and entry["activity"] == "working", entry
+            Path(f"{received}.end").touch()
+            wait_for(lambda: "done thinking" in records(log, sid))
+            wait_for(lambda: status_of(conn, sid)["activity"] == "idle")
         finally:
             host.stop()
 

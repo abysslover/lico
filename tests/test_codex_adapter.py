@@ -331,3 +331,62 @@ def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_r
             wait_for(lambda: "echo: after" in texts(log, sid))
         finally:
             host.stop()
+
+
+def agent_pid(conn, sid):
+    return {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}[sid]
+
+
+def let_the_old_helper_write(received, old_pid):
+    """V1: lets the helper that `linger:300:inject` left behind write its forged lines and returns when the host has read them. The waits are on events,
+    not on a clock: the helper creates `<received>.injected` after it has written, and the old provider's process (a zombie once it was killed) is reaped by
+    its reader only after the reader has read the pipe to its end, so a check made after both cannot run before the reader has seen the lines."""
+    Path(f"{received}.go").touch()
+    wait_for(lambda: Path(f"{received}.injected").exists())
+    wait_for(lambda: not Path(f"/proc/{old_pid}").exists())
+
+
+def test_a_helper_that_outlives_a_closed_provider_writes_nothing_into_the_closed_session():
+    """V1: after `session.close` a forged command line and a forged approval request from the helper are read and ignored."""
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+            wait_for(lambda: "echo: linger:300:inject" in texts(log, sid))
+            old = agent_pid(conn, sid)
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            let_the_old_helper_write(received, old)
+            assert not any("STALE-FORGED" in record for record in texts(log, sid)), texts(log, sid)
+            entry = [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]
+            assert entry["state"] == "disconnected" and not entry.get("approvals"), entry
+        finally:
+            host.stop()
+
+
+def test_a_helper_that_outlives_a_provider_replaced_by_a_resume_cannot_write_into_the_new_session_and_the_new_agent_goes_on():
+    """V1: the forged lines of the old provider's helper add no record, no approval and no sign of life to the session that was resumed at once after the
+    close; the new agent's own turn, which is silent while the helper writes, still ends normally (the guard does not swallow what is live)."""
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            entry = lambda: [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+            wait_for(lambda: "echo: linger:300:inject" in texts(log, sid))
+            old = agent_pid(conn, sid)
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)         # at once, no wait
+            assert resumed["ok"] == 1, resumed
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="s-1", text="stall")["ok"] == 1
+            wait_for(lambda: "stalling" in texts(log, sid))
+            heard = entry()["last_event_at"]
+            wait_for(lambda: int(time.time()) > heard)                           # the host counts seconds: a write that counted as a sign of life would move the number
+            let_the_old_helper_write(received, old)
+            assert not any("STALE-FORGED" in record for record in texts(log, sid)), texts(log, sid)
+            assert not entry().get("approvals") and entry()["last_event_at"] == heard and entry()["activity"] == "working", entry()
+            Path(f"{received}.end").touch()
+            wait_for(lambda: "done thinking" in texts(log, sid))
+            wait_for(lambda: entry()["activity"] == "idle")
+        finally:
+            host.stop()

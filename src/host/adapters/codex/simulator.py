@@ -7,6 +7,9 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "crash"     exits abruptly after acknowledging the turn
   "slow:N"    N output lines, one every 100 ms, so a turn is still running
   "linger:N"  a helper outside the process group keeps this process's output open for N tenths of a second; the text is then echoed
+  "linger:N:inject"  the helper instead waits (at most N tenths) for the file `<received>.go`, writes a forged command line and a forged approval request into the
+              output it inherited, and then creates `<received>.injected`: a test closes the session first, lets the helper go, and waits for that file
+  "stall"     says "stalling", then nothing at all until the file `<received>.end` exists, then one line and the end of the turn (a turn a test decides to end)
   "bad"       malformed, oversize and endless messages
   "endless"   forty megabytes of one line that never ends, then a normal message
   "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
@@ -35,6 +38,10 @@ parser.add_argument("--grandchild", default="")                 # start a proces
 parser.add_argument("--resume-delay", type=float, default=0.0)   # seconds before answering thread/resume (widens a race for a test)
 args, _ = parser.parse_known_args()
 LINGER = "import sys, time; time.sleep(int(sys.argv[1]) / 10)"
+# the second argument is the file to wait for, the third the file to create after writing, the fourth a JSON list of the lines to write
+INJECT = ("import json, os, sys, time\nend = time.monotonic() + int(sys.argv[1]) / 10\n"
+          "while not os.path.exists(sys.argv[2]) and time.monotonic() < end:\n    time.sleep(0.02)\n"
+          "sys.stdout.write(''.join(line + '\\n' for line in json.loads(sys.argv[4])))\nsys.stdout.flush()\nopen(sys.argv[3], 'w').close()")
 
 if args.grandchild:
     import subprocess
@@ -110,7 +117,14 @@ def handle(message):
         out({"id": rid, "result": {"turn": {"id": tid, "items": [], "status": "inProgress"}}})
         notify("turn/started", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "inProgress"}})
         if text.startswith("linger:"):
-            subprocess.Popen([sys.executable, "-I", "-c", LINGER, text.split(":")[1]], start_new_session=True)
+            count, _, inject = text[len("linger:"):].partition(":")
+            program, extra = LINGER, []
+            if inject == "inject":
+                ids = {"threadId": active["thread"], "turnId": tid}
+                forged = [{"method": "item/started", "params": {**ids, "startedAtMs": 1, "item": {"id": "stale", "type": "commandExecution", "command": "STALE-FORGED-LINE"}}},
+                          {"id": 7001, "method": "item/commandExecution/requestApproval", "params": {**ids, "itemId": "stale-2", "command": "STALE-FORGED-APPROVAL"}}]
+                program, extra = INJECT, [f"{args.received}.go", f"{args.received}.injected", json.dumps([json.dumps(message) for message in forged])]
+            subprocess.Popen([sys.executable, "-I", "-c", program, count, *extra], start_new_session=True)
         if text == "crash":
             sys.exit(3)
         elif text == "fixture":
@@ -123,6 +137,13 @@ def handle(message):
             for k in range(count):
                 scheduled.append((now + 0.1 * (k + 1), ("delta", f"tick {k}\n")))
             scheduled.append((now + 0.1 * (count + 1), ("done", None)))
+        elif text == "stall":
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "stall", "delta": "stalling\n"})
+            while not os.path.exists(f"{args.received}.end"):
+                time.sleep(0.02)
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "stall", "delta": "done thinking\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text.startswith("say:"):
             for chunk in json.loads(text[4:]):
                 notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "say", "delta": chunk})
