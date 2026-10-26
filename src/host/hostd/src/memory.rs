@@ -1,7 +1,8 @@
 //! Memory per session. The figure a row shows is what the agent and everything it started hold of their own: `RssAnon` + `RssShmem` from
 //! `/proc/<pid>/status`, summed over the agent and all its descendants (kB). `VmRSS` (it also counts libraries and mapped files, and moves with what
 //! the kernel happens to keep cached) travels next to it for the hover text. PSS is not used: it moves with whatever other processes share. A program
-//! a tool detached from the session (`setsid`) is not a descendant and is not counted.
+//! a tool detached from the session (`setsid`) is not a descendant and is not counted. Memory that processes of one tree share (`RssShmem`: a segment, a
+//! shared mapping) counts in each of them, so the figure can overcount it; the hover text says so.
 //!
 //! One look serves every session, and it follows the `children` files of the agents' own threads, so it costs what the sessions' trees hold, not what the
 //! machine holds (the first version scanned all of `/proc`: 1380 processes here, 0.57 % of a core with a window attached; the scan is still the way on a

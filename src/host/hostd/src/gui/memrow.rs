@@ -104,7 +104,7 @@ pub fn sentence(row: &Row, cols: usize) -> Option<String> {
     let processes = if row.processes == 1 { "1 process".to_string() } else { format!("{} processes", row.processes) };
     let name = row.name();
     let name = if name.chars().count() > NAME_COLS { name.chars().take(NAME_COLS - 1).chain(['…']).collect() } else { name }; // the figures and the caveat must stay in view
-    let text = format!("{name}: {} of its own (RSS {}), {processes}; a program a tool detached is not counted", long(row.memory_kb), long(row.rss_kb));
+    let text = format!("{name}: {} of its own (RSS {}), {processes}; a program a tool detached is not counted; memory shared between processes counts in each", long(row.memory_kb), long(row.rss_kb));
     Some(text.chars().take(cols).collect())
 }
 
@@ -169,13 +169,13 @@ mod tests {
     #[test]
     fn the_hint_sentence_names_both_figures_and_the_processes_and_the_total_line_sums_the_sessions() {
         let a = row(350 * 1024, 707 * 1024, 4);
-        assert_eq!(sentence(&a, 200).unwrap(), "api: 350 MiB of its own (RSS 707 MiB), 4 processes; a program a tool detached is not counted");
+        assert_eq!(sentence(&a, 200).unwrap(), "api: 350 MiB of its own (RSS 707 MiB), 4 processes; a program a tool detached is not counted; memory shared between processes counts in each");
         assert_eq!(sentence(&a, 20).unwrap().chars().count(), 20);
         assert!(sentence(&row(0, 0, 0), 200).is_none());
         assert!(sentence(&row(1, 1, 1), 200).unwrap().contains("1 process;"));
         let long_named = Row { name: "a-very-long-session-name-that-needs-the-whole-row-width-1".into(), ..row(59 * 1024, 82 * 1024, 3) };
         let said = sentence(&long_named, 200).unwrap();
-        assert!(said.starts_with("a-very-long-session-nam…: 59 MiB") && said.ends_with("is not counted"), "{said}");
+        assert!(said.starts_with("a-very-long-session-nam…: 59 MiB") && said.ends_with("counts in each"), "{said}");
         assert!(total(&[row(123 * 1024 * 1024, 0, 1)], &Look { host: Figure { private_kb: 99 * 1024, ..Default::default() }, window: Figure { private_kb: 99 * 1024, ..Default::default() }, ..Default::default() }).chars().count() <= 39);
         let look = Look { host: Figure { private_kb: 41 * 1024, ..Default::default() }, window: Figure { private_kb: 28 * 1024, ..Default::default() }, ..Default::default() };
         assert_eq!(total(&[a, row(850 * 1024, 900 * 1024, 2)], &look), "mem sessions 1.2G  host 41M  window 28M");
