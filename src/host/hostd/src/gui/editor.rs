@@ -227,6 +227,13 @@ impl Editor {
         self.note = Some(note.into());
     }
 
+    /// Take back a line that said something was under way once it is over; any other line stays.
+    pub(crate) fn unsay(&mut self, note: &str) {
+        if self.note.as_deref() == Some(note) {
+            self.note = None;
+        }
+    }
+
     fn edited(&mut self) {
         self.stamp += 1;
         self.goal = None;
@@ -753,21 +760,15 @@ impl App {
 
     /// Send the draft of the visible session as one input with its own request id; over the limit it stays, with the reason under the box.
     pub(crate) fn send_draft(&mut self) {
-        if self.session.is_empty() {
+        if self.session.is_empty() || self.reconnect_instead() {
             return;
         }
         let Some(text) = self.ed.prepare_send(&self.session) else {
             self.dirty = true;
             return;
         };
-        self.sent_count += 1;
-        let request_id = format!("gui-{}-{}", std::process::id(), self.sent_count);
-        let msg = format!(
-            "{{\"op\":\"input\",\"id\":\"{}\",\"session\":\"{}\",\"generation\":{},\"request_id\":\"{}\",\"text\":\"{}\"}}",
-            request_id, self.session, self.generation, request_id, super::json_escape(&text)
-        );
-        self.pending_inputs.insert(request_id.clone(), (self.session.clone(), text.clone()));
-        self.send(&msg);
+        let (session, generation) = (self.session.clone(), self.generation);
+        self.send_input(&session, generation, text.clone(), false);
         emit_ime("sent", &text);
         emit_ime("text", self.ed.text());
         self.dirty = true;
@@ -779,13 +780,8 @@ impl App {
         let id = id.to_string();
         if line.contains("\"ok\":0") {
             if let Some((session, text)) = self.pending_inputs.remove(&id) {
-                let current = self.session == session;
-                self.ed.give_back(&session, current, &text);
-                if current {
-                    let reason = super::jstr(line, "error").unwrap_or("refused");
-                    self.ed.say(super::panel::sendto::input_refusal(reason));
-                }
-                emit_ime("send_failed", &text);
+                let note = super::ui::reconnect::input_note(&id, super::jstr(line, "error").unwrap_or("refused"));
+                self.give_back_to(&session, &text, note);
                 self.dirty = true;
             }
         } else {

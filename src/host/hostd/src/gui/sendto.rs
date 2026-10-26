@@ -92,7 +92,8 @@ pub fn failure_whole(error: &str) -> String {
 /// These are the codes an `input` can be answered with (`core::input`, the connection's checks of the request and of its size); the words of `failure` are reused.
 pub fn input_refusal(error: &str) -> String {
     let sentence = match error {
-        "unknown_session" | "session_disconnected" | "session_exited" | "busy" | "too_large" | "bad_request" => failure(error),
+        "unknown_session" | "session_exited" | "busy" | "too_large" | "bad_request" => failure(error),
+        "session_disconnected" => "that session was closed meanwhile; press Enter again to reconnect it and send".into(),
         "stale_generation" => "the session changed meanwhile; look at it and send again".into(),
         "version_unsupported" | "unknown_op" => "this window and the host do not understand each other (they are not the same build); restart the window".into(),
         other => format!("the host answered {other}"),

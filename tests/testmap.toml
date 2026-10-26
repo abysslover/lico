@@ -64,6 +64,7 @@
 "tests/test_selection.py" = []
 "tests/test_session_actions_window.py" = ["gui", "host"]
 "tests/test_send_to_session_window.py" = ["gui", "host"]
+"tests/test_reconnect_window.py" = ["gui", "host"]
 "tests/test_session_memory.py" = ["gui", "host"]
 "tests/test_session_lifecycle.py" = ["host"]
 "tests/test_single_executable.py" = ["cli", "gui", "host"]

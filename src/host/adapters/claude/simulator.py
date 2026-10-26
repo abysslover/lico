@@ -26,6 +26,7 @@ user message:
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
+While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
 `--help` prints the part of the real program's help that names `--effort` and `--model` (or the file `--help-file` names, for a test).
 """
 
@@ -73,6 +74,8 @@ if log:
 session = args.resume or str(uuid.uuid4())
 if log:
     log.write("SESSION " + session + "\nCWD " + os.getcwd() + "\n")
+if args.received and os.path.exists(args.received + ".die"):      # ends as soon as it starts (a test makes the file after the first turn)
+    sys.exit(3)
 started = False
 queued = []
 # the real program reads `--mcp-config` once, at its start, and keeps the url and the headers (measured, 2.1.310): the host removes the file at the first initialize

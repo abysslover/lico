@@ -19,6 +19,7 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "write:X"   writes X to auth.json in CODEX_HOME, as a provider keeps its own login there
   "env"       reports the names (never the values) of its environment, its working directory and its mode
   otherwise   echoes the text back, character for character
+While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
 """
 
 import argparse
@@ -53,6 +54,8 @@ threading.Thread(target=lambda: [lines.put(l) for l in sys.stdin] + [lines.put(N
 log = open(args.received, "a", buffering=1) if args.received else None
 if log:
     log.write("ARGV " + json.dumps(sys.argv[1:]) + "\n")     # what the host started this program with, as the other simulator records it
+if args.received and os.path.exists(args.received + ".die"):      # ends as soon as it starts (a test makes the file after the first turn)
+    sys.exit(3)
 turn_counter = 0
 active = {"turn": None, "thread": "th-1"}
 scheduled = []          # (time, message)

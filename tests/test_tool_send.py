@@ -351,6 +351,21 @@ def test_a_closed_session_cannot_send_with_the_credential_it_had_and_a_resumed_o
     assert "after the close" not in " ".join(records(world.log, target)) and "the old one again" not in " ".join(records(world.log, target))
 
 
+def test_a_send_to_a_disconnected_session_is_refused_at_once_and_does_not_start_the_session_again(world):
+    caller, generation = world.session(name="writer")
+    target, target_generation = world.session(name="docs")
+    world.first_turn(target, target_generation)
+    assert world.conn.call(op="session.close", session=target, generation=target_generation)["ok"] == 1
+    wait_for(lambda: status_of(world.conn, target)["state"] == "disconnected")
+    failed, answer = call(world.config(caller), "send", to=target, text="to a closed session")
+    assert failed and answer.startswith("session_disconnected: "), answer
+    assert not status_of(world.conn, caller).get("approvals"), "no card: the person was not asked about a text that cannot go"
+    row = status_of(world.conn, target)
+    assert (row["state"], row["generation"]) == ("disconnected", target_generation), "the send did not reconnect it: only the person does, from the window"
+    assert not [a for a in world.conn.call(op="resources")["agents"] if a["session"] == target], "and no provider process was started for it"
+    assert "to a closed session" not in " ".join(records(world.log, target))
+
+
 def test_a_request_waits_through_a_close_and_cannot_be_decided_until_the_session_is_back(world):
     caller, generation = world.session(name="closing")
     target, target_generation = world.session(name="docs")

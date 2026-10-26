@@ -244,6 +244,9 @@ def test_a_refused_transfer_delivers_nothing_leaves_no_file_and_the_command_line
     assert said.returncode == 2 and "session_disconnected" in said.stderr and json.loads(said.stdout)["ok"] == 0, (said.stdout, said.stderr)
     assert world.never_arrived(tag) and world.files(receiver) == []
     assert not [l for l in world.host_lines() if f"to={receiver}" in l], "a refused transfer is not logged as a done one"
+    row = status_of(world.conn, receiver)
+    assert (row["state"], row["generation"]) == ("disconnected", receiver_generation), "a send does not reconnect the session it was refused by"
+    assert not [a for a in world.conn.call(op="resources")["agents"] if a["session"] == receiver], "and starts no provider process for it"
 
 
 def test_a_line_in_the_text_that_looks_like_a_header_gets_a_space_and_only_the_hosts_own_header_starts_a_record(world):

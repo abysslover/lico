@@ -543,7 +543,7 @@ fn every_code_that_failure_words_is_in_the_table_of_the_hand_over() {
 fn a_refused_input_says_in_one_sentence_what_the_host_answered_and_always_that_the_text_is_back_in_the_box() {
     let table = [
         ("unknown_session", "does not know that session"),
-        ("session_disconnected", "Ctrl+R"),
+        ("session_disconnected", "press Enter again to reconnect it and send"),
         ("session_exited", "has ended"),
         ("stale_generation", "the session changed meanwhile; look at it and send again"),
         ("busy", "could not take it just now"),

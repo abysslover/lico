@@ -163,7 +163,7 @@ impl App {
         self.updating = false;
         self.ended_meanwhile = false;
         self.sock = sock;
-        self.pending_inputs.clear();
+        self.release_held();
         self.view_id.clear();
         self.subscribed = false;
         self.cursor = -1;
@@ -369,7 +369,7 @@ impl App {
     }
 
     fn on_sock_line(&mut self, line: &str) {
-        if self.on_input_reply(line) || self.on_resume_reply(line) {
+        if self.on_input_reply(line) || self.on_resume_reply(line) || self.on_reconnect_reply(line) {
             return;
         }
         match jstr(line, "ev") {
