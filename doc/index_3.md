@@ -19,5 +19,6 @@
 | [M02-P02 plan](plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | Sessions in a folder the person picks, a real input box, a host echo of each input, close/rename/delete, memory per session |
 | [M02-P02 report](reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | What was built, tests and mutations, memory and CPU numbers, folder trust, MI-07, try-it list; the owner's try and inspection pending |
 | [Daily run cost note](plans/202610/20261026/20261026_02_daily_run_cost_note.md) | What one changed line in the big Rust files costs the daily run, three options and a pick; for the owner at the P02 gate |
+| [M02-P03 plan](plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | Sending text between sessions (inline up to 4 KiB, longer as a file in the receiver's own folder) and a tool connection for Claude agents with approvals; in progress |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).
