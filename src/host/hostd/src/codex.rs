@@ -56,8 +56,13 @@ pub(crate) fn dropped(code: u32) -> bool {
         || code == 0xfeff || (0xe0000..=0xe007f).contains(&code)
 }
 
-/// Remove terminal escape sequences and control characters from untrusted provider text.
+/// Remove terminal escape sequences and control characters from untrusted provider text; a tab or a line break becomes a space (a record is one line).
 pub fn sanitize(text: &str) -> String {
+    strip(text, false)
+}
+
+/// The same, but a tab and a line feed stay: the text of an agent that a person reads and a session receives (`leads::agent_text`).
+pub(crate) fn strip(text: &str, keep_breaks: bool) -> String {
     // 1. OSC sequences: ESC ] ... (BEL | ESC \)
     let chars: Vec<char> = text.chars().collect();
     let mut out: Vec<char> = Vec::new();
@@ -119,7 +124,9 @@ pub fn sanitize(text: &str) -> String {
             continue;
         }
         let code = c as u32;
-        if c == '\t' || c == '\n' || c == '\r' {
+        if keep_breaks && (c == '\t' || c == '\n') {
+            result.push(c);
+        } else if c == '\t' || c == '\n' || c == '\r' {
             result.push(' '); // a record is one line: a line break inside it would forge a second record
         } else if !dropped(code) {
             result.push(c);

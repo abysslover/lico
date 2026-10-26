@@ -19,7 +19,7 @@ from lico_measure.rig import private_dir
 from lico_measure.p02 import ProtoConn
 from lico_protocol import v1
 
-from tests.test_claude_adapter import FIXTURE, SIM, records, status_of
+from tests.test_claude_adapter import FIXTURE, SIM, records, sent_users, status_of, user_text
 from tests.test_codex_adapter import wait_for
 from tests.test_tool_connection import World, raw, rpc
 
@@ -168,6 +168,58 @@ def test_the_text_of_an_agent_is_cleaned_and_tagged_and_cannot_pose_as_the_host_
     assert len(heads(world.log, target)) == 1 and not notices(world.log, target), "one record of the host's, and the text could not make a second"
     assert not any("\x1b" in r for r in records(world.log, target)) and any(r.startswith(f">> {tag} ") and "red" in r for r in shown), shown
     assert f">>  {forged}" in shown and f">>  {forged_notice}" in shown, "the look-alike lines have a space in front of them"
+
+
+DIRTY = "\x1b[31mred\x1b[0m\u202eevil\u200b\r\nsecond\U000e0041 line"                                              # 9 characters of colour, 3 that draw nothing, and a CR LF
+CLEAN = "redevil\nsecond line"
+PLAIN_HEADER = r"\[from session 'writer' \(.{{7}}\) \| \d\d:\d\d \| message \| {size} B\]"
+
+
+def received_with(world, tag):
+    """The texts the program of any session was handed (user messages, parsed from what it read) that carry `tag`."""
+    return [user_text(m) for m in sent_users(world.received) if tag in user_text(m)]
+
+
+def test_an_agents_text_is_cleaned_once_so_the_card_the_pages_the_command_the_history_and_the_program_all_have_the_same_string(world):
+    caller, generation = world.session(name="writer")
+    target, _ = world.session(name="docs")
+    tag = f"k{caller}"
+    clean = f"{tag} {CLEAN}"
+    number = asked(world, caller, target, f"{tag} {DIRTY}")
+    card = status_of(world.conn, caller)["approvals"][0]["prompt"]
+    assert card == f"send to 'docs' ({target[:7]}) | {len(clean)} B, 2 lines | 12 hidden characters removed | \"{tag} redevil\"", card
+    page = world.conn.call(op="approval.text", session=caller, generation=generation, approval_id=number, offset=0)
+    assert (page["text"], page["total"]) == (clean, len(clean)), page
+    code, out, _ = lico(world, "approval", "show", caller, str(number))
+    assert code == 0 and json.loads(out)["text"] == clean and json.loads(out)["total"] == len(clean), out
+    assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
+    got = wait_for(lambda: received_with(world, tag))
+    header, body = got[0].split("\n", 1)
+    assert len(got) == 1 and re.fullmatch(PLAIN_HEADER.format(size=len(clean)), header) and body == clean, got
+    wait_for(lambda: ">> second line" in records(world.log, target))
+    assert not any(c in r for r in records(world.log, target) for c in "\x1b\u202e\u200b\r"), "and the history holds the same text"
+
+
+def test_what_goes_without_a_card_because_the_receiver_was_allowed_is_cleaned_the_same_way(world):
+    caller, generation = world.session(name="writer")
+    target, _ = world.session(name="docs")
+    approved(world, caller, generation, target, "the first", keep=True)
+    wait_for(lambda: "[turn completed]" in records(world.log, target))
+    tag = f"j{caller}"
+    failed, answer = call(world.config(caller), "send", to=target, text=f"{tag} {DIRTY}")
+    assert not failed and json.loads(answer)["size"] == len(f"{tag} {CLEAN}"), answer
+    got = wait_for(lambda: received_with(world, tag))
+    assert len(got) == 1 and got[0].split("\n", 1)[1] == f"{tag} {CLEAN}", got
+    assert status_of(world.conn, caller).get("approvals") is None
+
+
+def test_a_text_that_is_nothing_once_cleaned_is_refused_as_an_empty_one_and_leaves_no_card(world):
+    caller, _ = world.session(name="writer")
+    target, _ = world.session(name="docs")
+    for text in ("\u200b", "\x1b[0m\U000e0041", "\x1b]0;title\x07"):
+        failed, answer = call(world.config(caller), "send", to=target, text=text)
+        assert failed and answer.startswith("bad_request: ") and "draw nothing" in answer, (text, answer)
+    assert status_of(world.conn, caller).get("approvals") is None and not heads(world.log, target)
 
 
 def test_the_program_in_the_session_calls_send_with_the_credential_it_read_at_its_start_and_is_told_the_decision_as_its_next_input(world):

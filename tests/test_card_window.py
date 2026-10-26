@@ -88,3 +88,14 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             assert "Declined: nothing was sent." in w.ui()["header"] and not w.ui()["approval_bar"], w.ui()["header"]
             wait_for(lambda: [r for r in records(log, writer) if re.fullmatch(r">> \[from lico \| \d\d:\d\d \| approval \d+\]", r)][-1:] and len([r for r in records(log, writer) if r.startswith(">> [from lico | ")]) == 3)
             assert ">> the fourth" not in records(log, notes), "a request that was denied sends nothing"
+
+            dirty = "\x1b[31mred\x1b[0m\u202eevil\u200b\r\nsecond\U000e0041 line"                       # the window drops some of this on its own; the host has cleaned it before the card
+            number = ask(w.directory, writer, notes, dirty)["approval_id"]
+            state = wait_for(lambda: w.ui()["approval_bar"] and w.ui())
+            assert state["approval_bar"].startswith(f"approval {number}: send to 'notes'") and "19 B, 2 lines | 12 hidden characters removed | \"redevil\"" in state["approval_bar"], state["approval_bar"]
+            w.key("v")
+            shown = "\n".join(panel(w)["body"])
+            assert "\nredevil\nsecond line\n" in shown and "[31m" not in shown and "\x1b" not in shown, shown
+            w.key("y")
+            wait_for(lambda: ">> second line" in records(log, notes))
+            assert ">> redevil" in records(log, notes) and not any(c in r for r in records(log, notes) for c in "\x1b\u202e\u200b\r"), records(log, notes)

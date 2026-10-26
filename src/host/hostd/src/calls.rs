@@ -12,6 +12,7 @@ use serde_json::json;
 
 use crate::codex::sanitize;
 use crate::core::{self, Shared};
+use crate::leads;
 use crate::pending::{self, Asked, Request};
 use crate::transfer::{self, By, MAX_HOPS};
 
@@ -69,6 +70,12 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     let to = arguments.get("to").and_then(Value::as_str).filter(|to| !to.is_empty() && to.len() <= 64);
     let text = arguments.get("text").and_then(Value::as_str).filter(|text| !text.is_empty());
     let (Some(to), Some(text)) = (to, text) else { return Err(refusal(shared, caller, "bad_request")) };
+    // the text is cleaned here, once: the card, the pages of it, the window, the command, the record and the receiver all get this string
+    let cleaned = leads::agent_text(text);
+    let (text, removed) = (cleaned.text.as_str(), cleaned.removed);
+    if text.is_empty() {
+        return Err(refusal(shared, caller, "bad_request"));
+    }
     if to == caller {
         return Err("bad_request: a session cannot send to itself".into());
     }
@@ -87,7 +94,7 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
             Err(code) => Err(refusal(shared, caller, code)),
         };
     }
-    let (card, who) = (send_card(&label, to, text), format!("session '{label}' ({})", transfer::id7(to)));
+    let (card, who) = (send_card(&label, to, text, removed), format!("session '{label}' ({})", transfer::id7(to)));
     let asked = pending::ask(shared, caller, &Request { tool: "send", target: to, who: &who, card: &card, text }, pending::now(), held)?;
     let (id, again) = match asked {
         Asked::New(id) => (id, false),
@@ -120,10 +127,20 @@ fn receiver_label(shared: &Shared, caller: &str, to: &str) -> Result<String, &'s
 }
 
 /// The line on the card of a send: to whom, how much, and the start of the text, in one line of at most `CARD_CHARS`.
-fn send_card(label: &str, to: &str, text: &str) -> String {
+fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
+    card_line(&format!("send to '{label}' ({})", transfer::id7(to)), text, removed)
+}
+
+/// A card's line: `head`, how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the start of it, in one line of at most `CARD_CHARS`.
+fn card_line(head: &str, text: &str, removed: usize) -> String {
     let lines = transfer::line_count(text);
     let size = if lines > 1 { format!("{}, {}", transfer::size_text(text.len()), transfer::lines_word(lines)) } else { transfer::size_text(text.len()) };
-    let head = format!("send to '{label}' ({}) | {size} | \"", transfer::id7(to));
+    let removed = match removed {
+        0 => String::new(),
+        1 => " | 1 hidden character removed".to_string(),
+        n => format!(" | {n} hidden characters removed"),
+    };
+    let head = format!("{head} | {size}{removed} | \"");
     let first = text.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
     let first = sanitize(first).replace('"', "'");
     let room = CARD_CHARS.saturating_sub(head.chars().count() + 2);
@@ -151,7 +168,7 @@ pub(crate) fn refusal(shared: &Shared, caller: &str, code: &str) -> String {
         "session_exited" => "the program of that session has ended".into(),
         "busy" => "the host could not take the text just now; try again in a moment".into(),
         "too_large" => "the text is too large; split it, or write it to a file and ask the person to hand it over".into(),
-        "bad_request" => "send needs `to` (a session id from the sessions tool) and `text` (not empty)".into(),
+        "bad_request" => "send needs `to` (a session id from the sessions tool) and `text` (not empty, and not only characters that draw nothing)".into(),
         "chain_depth" => {
             let hops = core::find(shared, caller).map_or(0, |found| found.lock().unwrap().incoming_hops) + 1;
             format!("this would be step {hops} in a row of sessions that pass text on without a person, and the limit is {MAX_HOPS}; stop here and tell the person")
@@ -280,6 +297,80 @@ pub(crate) mod tests {
         let again = call_counted(&w, ONE, &ask(TWO, "hello"), &Arc::default()).unwrap();
         let reply: Value = serde_json::from_str(&again).unwrap();
         assert_eq!(reply, json!({"sent": true, "to": TWO, "delivery": "inline", "size": 5, "receiver": "idle"}), "once allowed for the session the reply is the plain one");
+    }
+
+    /// The cards on the row of `id`, as the window gets them.
+    fn cards_of(w: &World, id: &str) -> Vec<String> {
+        let all = core::status(&w.shared).unwrap();
+        let row = all["sessions"].as_array().unwrap().iter().find(|s| s["session"] == id).unwrap().clone();
+        row["approvals"].as_array().map_or_else(Vec::new, |list| list.iter().map(|a| a["prompt"].as_str().unwrap().to_string()).collect())
+    }
+
+    fn card_of(w: &World, id: &str) -> String {
+        cards_of(w, id).remove(0)
+    }
+
+    const DIRTY: &str = "\u{1b}[31mred\u{1b}[0m\u{202e}evil\u{200b}\r\nsecond\u{e0041} line"; // 9 characters of colour, 3 that draw nothing, and a CR LF
+    const CLEAN: &str = "redevil\nsecond line";
+
+    #[test]
+    fn an_agents_text_is_cleaned_once_at_the_call_and_the_card_the_pages_and_the_receiver_all_get_the_same_string() {
+        let w = pair();
+        let got: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, DIRTY), &Arc::default()).unwrap()).unwrap();
+        let card = card_of(&w, ONE);
+        assert!(card.contains(" | 19 B, 2 lines | 12 hidden characters removed | \"redevil"), "{card}");
+        assert!(!card.chars().any(|c| c.is_control() || c == '\u{202e}'), "{card:?}");
+        let generation = w.with(ONE, |s| s.generation as i64);
+        let page = pending::text_page(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), 0, pending::PAGE).unwrap();
+        assert_eq!((page["text"].as_str(), page["total"].as_u64()), (Some(CLEAN), Some(19)), "the person reads what the receiver will get");
+        core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "allow", false).unwrap();
+        let delivered = w.delivered(TWO).unwrap();
+        let (head, body) = delivered.split_once('\n').unwrap();
+        assert!(head.ends_with(" | message | 19 B]"), "{head}");
+        assert_eq!(body, "redevil\nsecond line");
+    }
+
+    #[test]
+    fn what_is_allowed_for_the_session_is_cleaned_the_same_way_and_the_size_is_that_of_the_clean_text() {
+        let w = pair();
+        let id = call_counted(&w, ONE, &ask(TWO, "first"), &Arc::default()).unwrap();
+        let generation = w.with(ONE, |s| s.generation as i64);
+        core::approval_answer(&w.shared, ONE, generation, serde_json::from_str::<Value>(&id).unwrap()["approval_id"].as_i64().unwrap(), "allow", true).unwrap();
+        assert!(w.delivered(TWO).is_some());
+        let reply: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, DIRTY), &Arc::default()).unwrap()).unwrap();
+        assert_eq!((reply["sent"].as_bool(), reply["size"].as_u64()), (Some(true), Some(19)), "{reply}");
+        assert_eq!(w.delivered(TWO).unwrap().split_once('\n').unwrap().1, CLEAN);
+        let long = format!("{}{}", "a".repeat(4000), "\u{1b}[31m".repeat(40)); // 4200 bytes as written, 4000 as sent: it goes inline
+        let reply: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, &long), &Arc::default()).unwrap()).unwrap();
+        assert_eq!((reply["delivery"].as_str(), reply["size"].as_u64()), (Some("inline"), Some(4000)), "{reply}");
+        assert!(w.files(TWO).is_empty());
+    }
+
+    #[test]
+    fn the_card_says_how_many_characters_went_in_one_form_for_one_and_none_for_a_text_that_was_clean() {
+        let w = pair();
+        for (text, note) in [("clean", None), ("one\u{200b}", Some(" | 1 hidden character removed | ")), ("two\u{200b}\u{1b}[0m", Some(" | 5 hidden characters removed | "))] {
+            let got: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, text), &Arc::default()).unwrap()).unwrap();
+            let card = card_of(&w, ONE);
+            assert_eq!(card.contains("hidden character"), note.is_some(), "{card}");
+            if let Some(note) = note {
+                assert!(card.contains(note), "{card}");
+            }
+            let generation = w.with(ONE, |s| s.generation as i64);
+            core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "deny", false).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_text_of_nothing_that_draws_is_refused_as_an_empty_one_and_counts_as_a_call() {
+        let w = pair();
+        let window = Mutex::default();
+        for text in ["\u{200b}", "\u{1b}[0m\u{e0041}\u{202e}", "\u{1b}]0;title\u{7}"] {
+            let text = call_in(&w, ONE, &ask(TWO, text), &window, Instant::now(), &Arc::default()).unwrap_err();
+            assert!(text.starts_with("bad_request: ") && text.contains("draw nothing"), "{text}");
+        }
+        assert_eq!(held(&window.lock().unwrap(), ONE), 3);
+        assert!(cards_of(&w, ONE).is_empty() && w.delivered(TWO).is_none());
     }
 
     #[test]

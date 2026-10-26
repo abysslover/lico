@@ -744,7 +744,7 @@ mod tests {
     #[test]
     fn a_page_that_the_json_makes_longer_still_leaves_far_under_the_queue_of_a_connection() {
         let r = room();
-        let id = r.pend(ONE, TWO, &"\u{1}\"\\".repeat(20000));
+        let id = r.pend(ONE, TWO, &"\n\"\\".repeat(20000)); // a control character does not get here (the text is cleaned), the worst is the two bytes of an escape
         let page = text_page(&r.w.shared, ONE, r.w.with(ONE, |s| s.generation as i64), id, 0, PAGE).unwrap();
         let line = encode(page);
         assert!(line.len() > PAGE && line.len() < 6 * PAGE + 1024 && line.len() < 100_000, "{} bytes for one page", line.len());

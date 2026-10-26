@@ -264,3 +264,18 @@ fn end_reads_on_through_every_page_to_the_last_and_home_and_the_line_above_the_t
     assert_eq!((shown(&app).first().map(String::as_str), body(&app)[1].contains("(page 1 of ")), (Some("a00"), true));
     assert_eq!(host.join().unwrap(), [read(0), read(100), read(200), read(100), read(0)]);
 }
+
+/// The window drops some of what it is given on its own (`wrapped`), so a text that was not cleaned first would be read as one thing and sent as another:
+/// the escape of a colour code goes and its `[31m` stays. What the host has cleaned is shown whole.
+#[test]
+fn a_text_the_host_has_cleaned_is_wrapped_by_the_window_without_losing_or_adding_a_character() {
+    let letters = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    let raw = "\u{1b}[31mred\u{1b}[0m \u{202e}evil\u{200b}\r\nsecond\u{e0041} line";
+    assert!(letters(&wrapped(raw).concat()).contains("[31m"), "the window alone shows the rest of a sequence as text");
+    let long = format!("{}\u{1b}[1m{}\t{}", "x".repeat(200), "\u{d55c}".repeat(120), "y".repeat(97));
+    for text in [raw, "\u{2764}\u{fe0f}\u{fe0f}\u{fe0f} a\u{fe0f} \u{1f468}\u{200d}\u{1f469}", "a\u{85}b\u{2028}c\u{2029}d\u{200e}e\u{200f}f\u{61c}g", "\u{1b}]0;title\u{7}tab\there", long.as_str(), ""] {
+        let clean = crate::leads::agent_text(text).text;
+        assert!(clean.chars().all(|c| !hidden(c) && (!c.is_control() || c == '\n' || c == '\t')), "the window has nothing of its own to drop: {text:?}");
+        assert_eq!(letters(&wrapped(&clean).concat()), letters(&clean), "{text:?}");
+    }
+}
