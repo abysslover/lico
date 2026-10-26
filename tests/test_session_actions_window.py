@@ -81,7 +81,7 @@ def test_a_working_session_is_closed_resumed_renamed_and_deleted_from_the_window
             assert panel(w)["title"] == "Rename session" and w.ui()["selected"] == b
             w.key("Escape")
             assert panel(w) is None and w.ui()["input"] == "" and "name" not in status_of(conn, b)
-            scratch = [p for p in Path(w.directory).rglob(b) if p.is_dir()]
+            scratch = [p for p in Path(w.directory).rglob(b) if p.is_dir() and p.parent.name == "workspaces"]  # not the inbox of received files, which has the id too
             assert len(scratch) == 1
             w.key("ctrl+Delete", "y")
             wait_for(lambda: conn.call(op="status")["sessions"] == [])

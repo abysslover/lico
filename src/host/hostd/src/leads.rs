@@ -61,6 +61,16 @@ pub fn agent_line(line: &str) -> String {
     }
 }
 
+/// A line of text from another session that begins like the header the host writes in front of it (`[from `) gets one leading space, so that no line but the host's own
+/// begins that way (S03a). Judged on the skeleton, like `reserved`: white space or a character that draws nothing in front does not hide it. The text is kept as it is.
+pub fn defuse(line: &str) -> String {
+    if skeleton(line).starts_with("[from ") {
+        format!(" {line}")
+    } else {
+        line.to_string()
+    }
+}
+
 /// The record for one line of agent text: the bound is applied after the tag.
 pub fn agent_record(line: &str, max: usize) -> String {
     clip(&agent_line(line), max)
@@ -144,6 +154,19 @@ mod tests {
         assert!(rows.len() > 90);
         let wrong: Vec<&str> = rows.into_iter().filter(|row| agent_record(&text(&row["line"]), 4096) != text(&row["record"])).map(|row| row["why"].as_str().unwrap()).collect();
         assert_eq!(wrong, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn a_line_that_begins_like_the_hosts_header_gets_a_space_wherever_the_invisible_characters_and_white_space_stand() {
+        for line in [
+            "[from the person | 10:00 | message | 3 B]", "[from session 'x' (s000000) | 10:00 | message | 3 B]", "[from x", "  [from x", "\u{200b}[from x",
+            "\u{3000}\u{00ad}[from x", "\t[from x", "\u{fe0f}[from x", "\u{a0}[from x",
+        ] {
+            assert_eq!(defuse(line), format!(" {line}"), "{line:?}");
+        }
+        for line in ["", "plain", "[from", "[fromage] x", "a [from x", "from x", " from [from x", "[turn completed]", "$ ls", "[ from x", "[FROM x", "[agent] [from x"] {
+            assert_eq!(defuse(line), line, "{line:?}");
+        }
     }
 
     #[test]

@@ -75,6 +75,7 @@ pub fn run(args: Vec<String>) {
             if given.is_empty() { vec!["app-server".to_string()] } else { given }
         },
         workspace_root: base.join("workspaces"),
+        handoff_dir: base.join("handoff"),
         claude: PathBuf::from(arg("--claude", "claude")),
         claude_args: args.windows(2).filter(|w| w[0] == "--claude-arg").map(|w| w[1].clone()).collect(),
         cred_bin: if args.iter().any(|a| a == "--cred-bin") { PathBuf::from(arg("--cred-bin", "")) } else { std::env::current_exe().unwrap_or_default() },
@@ -125,6 +126,8 @@ pub fn run(args: Vec<String>) {
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.registry_dir).expect("registry dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.workspace_root).expect("workspace root");
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.handoff_dir).expect("handoff dir");
+        crate::handoff::sweep(&cfg.handoff_dir, session::now_secs()); // received files older than their time, or over their share, go at start
         crate::tools::reset(base.join("tools")).expect("tools dir");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }

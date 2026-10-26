@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.3.6
+> Version: 1.3.7
 > Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 tip b3b8edb, report 0.3.0, which carries the second reviewer's fix round; it stood on 8a0f0e9 until 2026-10-26, see "How this branch follows P02")
 > Approval: work on phases M02-P02 to M02-P07 is authorized by the owner's answer of 2026-10-26; Deviations 1 to 5 are marked accepted below. G3 and G4 are pending.
 
-**Version 1.3.6** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1), and 1.3.5 adds the policy sentence of the section "How this branch follows P02", and 1.3.6 records the V4 gate as closed, the lead's two small items on S02, the measurement S03b needs before it is committed, and the known-and-left lines for the report.
+**Version 1.3.7** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1), and 1.3.5 adds the policy sentence of the section "How this branch follows P02", 1.3.6 records the V4 gate as closed, the lead's two small items on S02, the measurement S03b needs before it is committed, and the known-and-left lines for the report, and 1.3.7 records what S03a was built as.
 
 This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2 when it moved. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
 
@@ -214,3 +214,12 @@ Screen capture and clipboard (P04), computer use and the real screen (P05), sear
 
 ## Changes since 1.3.5 (1.3.6, V4 closed and the lead's reading of S02)
 - The V4 gate is closed (`3cb21a3`), S02's two small items are done (`6ee3056`: the loopback is exempt from a proxy, the canary starts the program with the host's flags). The section S03b gets the measurement it needs before it is committed; the section S08 gets the known-and-left lines (M8, the proxy, the live turns, the test lane, private-use and unassigned code points). No step, test count or stop line changed.
+
+## Changes since 1.3.6 (1.3.7, S03a as built)
+- **Op and kinds.** `transfer.send` {to, kind: text|lines, text, optional from}; `conversation` comes with S05. Errors added by S03a: `chain_depth` only; `send_limit`, `not_allowed`, `record_not_found`, `expired` come with the step that needs each. The origin is `Person` or `Session(hops)`; `Host` comes with S04. A person who sends on behalf of a session (`--from`) starts the hop count again; `by Session` (S03b's internal path) without a `from` is `bad_request`.
+- **Inbox.** Made when a Claude session is started (the only `--add-dir`), lazily for the others (S03a changes the Claude spawn only; the other providers get no `--add-dir`); removed with the session, also when the start failed; `handoff_dir` is a folder a session may not be pointed at (`folder_protected`). A file is written under a temporary name, `0600`, and linked into place, so a taken name gets `-2`, `-3` instead of being replaced (a rename would replace); the temporary name goes. A file is deleted again when the input is refused after it was written.
+- **Header and notice.** The name in the header is the session's name, else the last part of its folder, else the first seven characters of its id; the characters `'` `[` `]` `|` `(` `)` become `_`. The time is local (`localtime_r`), the size `N B`, `x.y KiB`, `x.y MiB`; the header of a stored text also says the number of lines. A line of the text that begins like a header (invisible characters and white space looked through) gets a space, in the delivered text, in the stored file and in the first lines of the notice. In the history, every line of another session's text after the header is tagged like an agent's (`>> [agent] $ ls`), and only the host's own header begins a record with `>> [from `.
+- **Reply.** `{to, request_id, kind, delivery, size, receiver, hops}`; the receiver's state is read before the delivery; never a path. The host logs one line per transfer on its error stream (ids, kind, size, delivery, hops), never the text.
+- **Tests.** 10 in `tests/test_transfer.py` (1.5 s) and 21 unit tests (`transfer`, `handoff`, `leads`, `echo`). One older test (`test_session_actions_window`) looked for the scratch workspace by the session id anywhere under the run folder and now also found the inbox; it names the `workspaces` folder.
+- No step, test count (beyond the above) or stop line changed.
+

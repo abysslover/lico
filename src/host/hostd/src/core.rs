@@ -15,13 +15,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::payload;
-use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
+use crate::session::{obj, rec_line, InputState, LogView, Origin, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-escaped (up to 3 times its size) and the rest of the line
-pub const OPS: [&str; 31] = [
+pub const OPS: [&str; 32] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -44,7 +44,7 @@ pub struct Config {
     pub cred_bin: PathBuf,        // the credential command a provider calls as its key helper
     pub cred_args: Vec<String>,   // its leading arguments (`cred`, when the command is this very program)
     pub cred_dir: PathBuf,        // the credential metadata directory
-    pub workspace_root: PathBuf,
+    pub workspace_root: PathBuf, pub handoff_dir: PathBuf, // the second: the files of long text one session sent another (`handoff`)
     pub accounts_dir: PathBuf,
     pub registry_dir: PathBuf,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
@@ -711,7 +711,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
     }
     shared.sessions.write().unwrap().retain(|s| s.lock().unwrap().id != id);
     shared.views.lock().unwrap().retain(|_, v| v.session != id);
-    crate::folders::remove_scratch(shared, &id, scratch); // a folder the person chose is never touched
+    crate::folders::remove_own(shared, &id, scratch); // a folder the person chose is never touched
     crate::registry::save(shared);
     Ok(obj(json!({"session": id})))
 }
@@ -767,11 +767,11 @@ pub fn snapshot(shared: &Shared, session: &str, generation: Option<i64>) -> Repl
     Ok(s.snapshot())
 }
 
-/// An input is dispatched at most once per request id: a repeat returns its state.
-pub fn input(shared: &Shared, session: &str, generation: i64, request_id: &str, text: &str) -> Reply {
+/// An input is dispatched at most once per request id: a repeat returns its state. No generation: the target is whatever execution runs now (a transfer).
+pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id: &str, text: &str, origin: Origin) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();
-    check_generation(&s, Some(generation))?;
+    check_generation(&s, generation)?;
     if let Some(state) = s.input_state(request_id) {
         return Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": true})));
     }
@@ -783,17 +783,17 @@ pub fn input(shared: &Shared, session: &str, generation: i64, request_id: &str, 
     }
     if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, text)?;
-        s.record_input(request_id, text);
+        s.record_input(request_id, text, origin);
     } else if s.claude.is_some() {
         crate::claude::send_input(&mut s, request_id, text)?;
-        s.record_input(request_id, text);
+        s.record_input(request_id, text, origin);
     } else {
         if s.input_tx.is_none() {
             return Err("session_exited");
         }
         let line = format!("I {request_id} {}", payload::hex(text.as_bytes()));
         match s.input_tx.as_ref().map(|tx| tx.try_send(line)) {
-            Some(Ok(())) => s.record_input(request_id, text),
+            Some(Ok(())) => s.record_input(request_id, text, origin),
             Some(Err(mpsc::TrySendError::Full(_))) => return Err("busy"),
             _ => return Err("session_exited"),
         }
@@ -1093,7 +1093,7 @@ mod tests {
         let cfg = Config {
             login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
             queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
-            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"),
+            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
             accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false, realistic_text: false,
         };
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));

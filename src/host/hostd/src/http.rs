@@ -238,7 +238,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             if !valid_request("input", &map) {
                 return Err(bad("bad_request"));
             }
-            core::input(shared, id, int(&map, "generation").unwrap_or(0), crate::ipc::text(&map, "request_id"), crate::ipc::text(&map, "text"))
+            core::input(shared, id, Some(int(&map, "generation").unwrap_or(0)), crate::ipc::text(&map, "request_id"), crate::ipc::text(&map, "text"), crate::session::Origin::Person)
         }
         ["v1", "approvals", number, "response"] => {
             allowed(method == "POST")?;

@@ -213,6 +213,17 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             return Err(code);
         }
     };
+    // the program may read files other sessions send it, in its own inbox and nowhere else of the host's
+    match crate::handoff::inbox(&shared.cfg.handoff_dir, &id) {
+        Ok(inbox) => {
+            command.arg("--add-dir").arg(inbox);
+        }
+        Err(_) => {
+            stop_broker(&broker);
+            crate::tools::release(&grant.key);
+            return Err("busy");
+        }
+    }
     command.arg("--mcp-config").arg(&grant.path).args(["--allowedTools", "mcp__lico__*"]);
     let mut child = match core::spawn_provider_process(command) {
         Ok(child) => child,

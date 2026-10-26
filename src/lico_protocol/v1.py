@@ -21,7 +21,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
           "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
-          "no_conversation_yet")
+          "no_conversation_yet", "chain_depth")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -55,6 +55,7 @@ INVENTORY = {
     "session.options": {"state": "host", "mutates": False},
     "session.rename": {"state": "host", "mutates": True},
     "session.close": {"state": "host", "mutates": True},
+    "transfer.send": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -138,6 +139,10 @@ REPLIES = {
     "session.close": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}}, COMMON_REPLY_OPTIONAL),
     "session.rebind": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
+    "transfer.send": _obj({"v": _V, "ok": _OK, "to": {"type": STR}, "request_id": {"type": STR}, "kind": {"type": STR, "enum": ["text", "lines"]},
+                           "delivery": {"type": STR, "enum": ["inline", "file"]}, "size": {"type": INT, "minimum": 1},
+                           "receiver": {"type": STR, "enum": ["idle", "busy", "waiting_for_approval"]}, "hops": {"type": INT, "minimum": 0}},
+                          COMMON_REPLY_OPTIONAL),
     "account.create": _obj({"v": _V, "ok": _OK, "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]},
                             "label": {"type": STR, "max_length": 40}}, COMMON_REPLY_OPTIONAL),
     "account.list": _obj({"v": _V, "ok": _OK, "accounts": {"type": "array", "items": {
@@ -212,6 +217,9 @@ REQUESTS = {
     "account.credential": _obj({"account": {"type": STR, "max_length": 64}, "credential_ref": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.default": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.list": _obj({}, _COMMON_REQ),
+    "transfer.send": _obj({"to": {"type": STR, "max_length": 64}, "kind": {"type": STR, "enum": ["text", "lines"]},
+                           "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}},
+                          {**_COMMON_REQ, "from": {"type": STR, "max_length": 64}}),
     "input": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                    "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
                    "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}}, _COMMON_REQ),

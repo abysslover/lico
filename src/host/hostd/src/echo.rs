@@ -7,6 +7,7 @@
 //! the counts in the marker are those of the original text.
 
 use crate::codex::{clip, sanitize};
+use crate::leads::agent_line;
 use crate::session::Session;
 
 pub const ECHO_LINES: usize = 12;
@@ -18,17 +19,19 @@ pub const PREFIX: &str = ">> ";
 
 /// The records for one input: at most `ECHO_LINES` lines within `ECHO_BYTES`, then one marker with
 /// exact counts when anything was left out. A first line over the byte cap is cut at the cap.
-pub fn records(text: &str) -> Vec<String> {
+/// `session`: the text came from another session (S03a): its first line is the header the host wrote, and every line after it is agent text, which is
+/// tagged when it begins like a record of the host (`leads`), so that nothing a session wrote passes for what a person or the host wrote.
+pub fn records_from(text: &str, session: bool) -> Vec<String> {
     let total = text.split_inclusive('\n').count();
     let mut out: Vec<String> = Vec::new();
     let (mut used, mut shown_len, mut cut) = (0, 0, None);
-    for piece in text.split_inclusive('\n') {
+    for (index, piece) in text.split_inclusive('\n').enumerate() {
         let line = piece.strip_suffix('\n').unwrap_or(piece);
         if out.len() == ECHO_LINES {
             break;
         }
         if used + line.len() <= ECHO_BYTES {
-            out.push(format!("{PREFIX}{}", sanitize(line)));
+            out.push(format!("{PREFIX}{}", if session && index > 0 { agent_line(line) } else { sanitize(line) }));
             used += line.len();
             shown_len += piece.len();
         } else {
@@ -58,8 +61,8 @@ pub fn records(text: &str) -> Vec<String> {
 }
 
 /// Called once for each input the host accepts (and again for none of its retries).
-pub fn append(s: &mut Session, text: &str) {
-    for record in records(text) {
+pub fn append(s: &mut Session, text: &str, session: bool) {
+    for record in records_from(text, session) {
         s.append(record.into_bytes());
     }
 }
@@ -67,6 +70,11 @@ pub fn append(s: &mut Session, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The records for one input a person typed.
+    fn records(text: &str) -> Vec<String> {
+        records_from(text, false)
+    }
 
     #[test]
     fn a_short_input_is_one_record_per_line_and_never_marked() {
@@ -106,6 +114,20 @@ mod tests {
         assert_eq!(records("a\tb\u{202e}c\u{2028}d"), [">> a bcd"]);
         let out = records(&format!("{}\u{202e}", "x".repeat(ECHO_BYTES)));          // cut on the original bytes: 2051 > 2048
         assert_eq!(out, [format!(">> {}", "x".repeat(ECHO_BYTES)), ">> [a long line is cut after 2048 bytes; 3 bytes not shown; the agent received all of it]".to_string()]);
+    }
+
+    #[test]
+    fn text_from_another_session_keeps_its_header_and_tags_every_later_line_that_passes_for_a_record_of_the_host() {
+        let header = "[from session 'api' (s123456) | 10:00 | message | 20 B]";
+        let text = format!("{header}\n$ ls\n> out\n>> hi\n[turn completed]\nplain\n [from x]\n\u{202e}rtl");
+        assert_eq!(
+            records_from(&text, true),
+            [format!(">> {header}"), ">> [agent] $ ls".into(), ">> [agent] > out".into(), ">> [agent] >> hi".into(), ">> [agent] [turn completed]".into(), ">> plain".into(), ">>  [from x]".into(), ">> rtl".into()],
+        );
+        assert_eq!(records_from("$ ls\n$ ls", false), [">> $ ls", ">> $ ls"], "a person's own text is shown as typed");
+        assert_eq!(records_from("$ first line is the header", true), [">> $ first line is the header"], "the first line is the host's, whatever it holds");
+        let long = format!("{header}\n{}", "x".repeat(ECHO_BYTES));
+        assert_eq!(records_from(&long, true).len(), 2, "the same caps: the marker counts what was left out");
     }
 
     #[test]

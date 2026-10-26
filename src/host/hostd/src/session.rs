@@ -415,6 +415,14 @@ pub struct Session {
     pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
     pub input_tx: Option<SyncSender<String>>,
+    pub incoming_hops: u32, // how many sessions in a row forwarded the text this session last received (0: a person's)
+}
+
+/// Where an accepted input came from: a person typing, or another session's text (S03a), with the number of sessions in a row that forwarded it.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Origin {
+    Person,
+    Session(u32),
 }
 
 extern "C" {
@@ -469,6 +477,7 @@ impl Session {
             process_group: false,
             approval_counter: 0,
             input_tx: None,
+            incoming_hops: 0,
         }
     }
 
@@ -606,8 +615,12 @@ impl Session {
         self.inputs.get(&self.key(request_id)).copied()
     }
 
-    pub fn record_input(&mut self, request_id: &str, text: &str) {
-        crate::echo::append(self, text);
+    pub fn record_input(&mut self, request_id: &str, text: &str, origin: Origin) {
+        self.incoming_hops = match origin {
+            Origin::Person => 0,
+            Origin::Session(hops) => hops,
+        };
+        crate::echo::append(self, text, origin != Origin::Person);
         let key = self.key(request_id);
         self.inputs.insert(key, InputState::Accepted);
         self.input_order.push_back(key);

@@ -15,6 +15,7 @@ mod dbus;
 mod echo;
 mod folders;
 mod gui;
+mod handoff;
 mod host;
 mod http;
 mod ipc;
@@ -29,6 +30,7 @@ mod payload;
 mod registry;
 mod session;
 mod tools;
+mod transfer;
 
 const LICENSE: &str = include_str!("../../../../LICENSE");
 const NOTICES: &str = include_str!("../NOTICES.txt");

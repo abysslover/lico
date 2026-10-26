@@ -136,7 +136,7 @@ pub fn check_folder(shared: &Shared, text: &str) -> Result<String, &'static str>
         return Err("folder_unreadable");
     }
     let c = &shared.cfg;
-    for own in [&c.registry_dir, &c.log_dir, &c.accounts_dir, &c.cred_dir, &c.workspace_root] {
+    for own in [&c.registry_dir, &c.log_dir, &c.accounts_dir, &c.cred_dir, &c.workspace_root, &c.handoff_dir] {
         let own = std::fs::canonicalize(own).unwrap_or_else(|_| own.to_path_buf());
         if canonical.starts_with(&own) {
             return Err("folder_protected");
@@ -187,6 +187,12 @@ pub fn remove_scratch(shared: &Shared, id: &str, scratch: bool) {
     remove_scratch_in(&shared.cfg.workspace_root, id, scratch);
 }
 
+/// Everything the host made for a session that is deleted: its scratch workspace (if it had no chosen folder) and its inbox of received files.
+pub fn remove_own(shared: &Shared, id: &str, scratch: bool) {
+    remove_scratch(shared, id, scratch);
+    crate::handoff::remove_inbox(&shared.cfg.handoff_dir, id);
+}
+
 fn remove_scratch_in(root: &Path, id: &str, scratch: bool) {
     if !scratch || !crate::registry::valid_session_id(id) {
         return;
@@ -220,7 +226,7 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
         s.purged = true;
         s.stop_process();
         s.purge_log();
-        remove_scratch(shared, &s.id, s.settings.cwd.is_none());
+        remove_own(shared, &s.id, s.settings.cwd.is_none());
         return Err(code);
     }
     shared.sessions.write().unwrap().push(session.clone());
