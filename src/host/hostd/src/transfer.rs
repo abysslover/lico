@@ -274,7 +274,7 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::core::Config;
     use crate::handoff::Scratch;
@@ -286,8 +286,8 @@ mod tests {
     use std::sync::{Arc, Mutex, RwLock};
     use std::time::Instant;
 
-    const ONE: &str = "s0123456789abcdef";
-    const TWO: &str = "s1111111111111111";
+    pub(crate) const ONE: &str = "s0123456789abcdef";
+    pub(crate) const TWO: &str = "s1111111111111111";
 
     #[test]
     fn a_size_is_a_tenth_of_a_unit_rounded_half_up_and_never_1024_of_the_unit_before() {
@@ -377,13 +377,13 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------------ the operation, on sessions that have no program
-    struct World {
-        shared: Arc<Shared>,
-        dir: Scratch,
+    pub(crate) struct World {
+        pub(crate) shared: Arc<Shared>,
+        pub(crate) dir: Scratch,
         inputs: HashMap<String, Receiver<String>>,
     }
 
-    fn world(ids: &[&str]) -> World {
+    pub(crate) fn world(ids: &[&str]) -> World {
         let dir = Scratch::new("transfer");
         let path: PathBuf = dir.0.clone();
         let cfg = Config {
@@ -410,18 +410,18 @@ mod tests {
     }
 
     impl World {
-        fn with<T>(&self, id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
+        pub(crate) fn with<T>(&self, id: &str, f: impl FnOnce(&mut Session) -> T) -> T {
             let found = core::find(&self.shared, id).unwrap();
             let mut s = found.lock().unwrap();
             f(&mut s)
         }
         /// The text the session was handed, as the program would get it.
-        fn delivered(&self, id: &str) -> Option<String> {
+        pub(crate) fn delivered(&self, id: &str) -> Option<String> {
             let line = self.inputs[id].try_recv().ok()?;
             let hex = line.split(' ').nth(2).unwrap();
             Some(String::from_utf8(crate::payload::unhex(hex).unwrap()).unwrap())
         }
-        fn files(&self, id: &str) -> Vec<PathBuf> {
+        pub(crate) fn files(&self, id: &str) -> Vec<PathBuf> {
             let mut out = Vec::new();
             let mut stack = vec![self.dir.0.join("handoff").join(id)];
             while let Some(path) = stack.pop() {

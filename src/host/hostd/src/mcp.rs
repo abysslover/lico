@@ -15,13 +15,24 @@ const LIST_BUDGET: usize = 2048;
 pub struct Tool {
     pub name: &'static str,
     pub description: &'static str,
+    /// The arguments, each a string the call must have: (name, what it is).
+    pub args: &'static [(&'static str, &'static str)],
 }
 
-/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `send`, `create`, `history` and `read_handoff` join later.
-pub const TOOLS: [Tool; 1] = [Tool {
-    name: "sessions",
-    description: "List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to.",
-}];
+/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `create`, `history` and `read_handoff` join later.
+pub const TOOLS: [Tool; 2] = [
+    Tool {
+        name: "sessions",
+        description: "List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to.",
+        args: &[],
+    },
+    Tool {
+        name: "send",
+        description: "Send text to another Lico session. The person approves each send. Up to 4 KiB arrives with the message, longer text as a file the receiver is told to read. \
+                      Any answer comes later as a new message in this session, not as this result.",
+        args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send, 128 KiB at most")],
+    },
+];
 
 /// What to do with one HTTP request body.
 #[derive(Debug, PartialEq)]
@@ -57,13 +68,24 @@ pub fn failure(id: Value, code: i64, message: &str) -> String {
     answer(id, json!({"error": {"code": code, "message": message}}))
 }
 
+/// The schema of a tool's arguments: strings, all of them required.
+fn schema(tool: &Tool) -> Value {
+    let properties: Map<String, Value> = tool.args.iter().map(|(name, what)| (name.to_string(), json!({"type": "string", "description": what}))).collect();
+    let mut schema = json!({"type": "object", "properties": properties});
+    if !tool.args.is_empty() {
+        schema["required"] = tool.args.iter().map(|(name, _)| json!(name)).collect();
+    }
+    schema
+}
+
 fn list() -> Value {
-    let tools: Vec<Value> = TOOLS.iter().map(|t| json!({"name": t.name, "description": t.description, "inputSchema": {"type": "object", "properties": {}}})).collect();
+    let tools: Vec<Value> = TOOLS.iter().map(|t| json!({"name": t.name, "description": t.description, "inputSchema": schema(t)})).collect();
     json!({"tools": tools})
 }
 
 /// Handle one message. `run` performs a tool: its Ok text is the result, its Err text an error result that the model sees (`isError`).
-pub fn handle(body: &[u8], run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<String, String>) -> Outcome {
+/// `begun` is called for each `initialize` request, before it is answered.
+pub fn handle(body: &[u8], run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<String, String>, begun: &mut dyn FnMut()) -> Outcome {
     let Ok(parsed) = serde_json::from_slice::<Value>(body) else {
         return Outcome::Malformed(failure(Value::Null, -32700, "parse error"));
     };
@@ -85,6 +107,7 @@ pub fn handle(body: &[u8], run: &mut dyn FnMut(&str, &Map<String, Value>) -> Res
     let params = message.get("params").and_then(Value::as_object);
     match method {
         "initialize" => {
+            begun();
             let asked = params.and_then(|p| p.get("protocolVersion")).and_then(Value::as_str).unwrap_or("");
             let version = VERSIONS.iter().find(|v| **v == asked).unwrap_or(&VERSIONS[0]);
             result(id, json!({"protocolVersion": version, "capabilities": {"tools": {}}, "serverInfo": {"name": "lico", "version": env!("CARGO_PKG_VERSION")}}))
@@ -117,7 +140,7 @@ mod tests {
     use super::*;
 
     fn ask(message: Value) -> Outcome {
-        handle(message.to_string().as_bytes(), &mut |name, _| Ok(format!("ran {name}")))
+        handle(message.to_string().as_bytes(), &mut |name, _| Ok(format!("ran {name}")), &mut || {})
     }
 
     fn reply(outcome: Outcome) -> Value {
@@ -157,7 +180,7 @@ mod tests {
             assert_eq!(reply(ask(message.clone()))["error"]["code"], -32600, "{message}");
         }
         for body in [&b"{not json"[..], b"", b"\xff\xfe", &[b'['; 5000]] {
-            assert!(matches!(handle(body, &mut |_, _| Ok(String::new())), Outcome::Malformed(text) if text.contains("-32700")));
+            assert!(matches!(handle(body, &mut |_, _| Ok(String::new()), &mut || {}), Outcome::Malformed(text) if text.contains("-32700")));
         }
     }
 
@@ -173,6 +196,37 @@ mod tests {
     }
 
     #[test]
+    fn the_tools_say_their_arguments_and_send_names_the_receiver_and_the_text_and_needs_both() {
+        let got = reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})));
+        let tools = got["result"]["tools"].as_array().unwrap();
+        let find = |name: &str| tools.iter().find(|t| t["name"] == name).unwrap_or_else(|| panic!("no tool {name}"))["inputSchema"].clone();
+        assert_eq!(find("sessions"), json!({"type": "object", "properties": {}}), "nothing to give, nothing required");
+        let send = find("send");
+        assert_eq!((send["type"].clone(), send["required"].clone()), (json!("object"), json!(["to", "text"])));
+        let properties = send["properties"].as_object().unwrap();
+        assert_eq!(properties.keys().collect::<Vec<_>>(), ["text", "to"], "no third argument: the caller is the token's session, never a parameter");
+        assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
+    }
+
+    #[test]
+    fn begun_is_called_for_an_initialize_request_and_for_nothing_else() {
+        let mut count = 0;
+        for (message, want) in [
+            (json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}), 1),
+            (json!({"jsonrpc": "2.0", "id": 2, "method": "initialize"}), 1),
+            (json!({"jsonrpc": "2.0", "method": "initialize"}), 0),                      // a notification is not asked anything
+            (json!({"jsonrpc": "2.0", "id": 3, "method": "ping"}), 0),
+            (json!({"jsonrpc": "2.0", "id": 4, "method": "tools/list"}), 0),
+            (json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "sessions"}}), 0),
+            (json!({"jsonrpc": "2.0", "id": 6, "method": "notifications/initialized"}), 0),
+        ] {
+            let before = count;
+            handle(message.to_string().as_bytes(), &mut |_, _| Ok(String::new()), &mut || count += 1);
+            assert_eq!(count - before, want, "{message}");
+        }
+    }
+
+    #[test]
     fn a_call_runs_a_known_tool_and_refuses_an_unknown_one_or_arguments_that_are_not_an_object() {
         let got = reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "sessions", "arguments": {}}})));
         assert_eq!(got["result"], json!({"content": [{"type": "text", "text": "ran sessions"}], "isError": false}));
@@ -180,7 +234,7 @@ mod tests {
         for params in [json!({"name": "nothing"}), json!({"name": 5}), json!({"arguments": {}}), json!({"name": "sessions", "arguments": [1]}), json!([]), json!(null)] {
             assert_eq!(reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params})))["error"]["code"], -32602, "{params}");
         }
-        let refused = handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "sessions"}}).to_string().as_bytes(), &mut |_, _| Err("no".into()));
+        let refused = handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "sessions"}}).to_string().as_bytes(), &mut |_, _| Err("no".into()), &mut || {});
         assert_eq!(reply(refused)["result"], json!({"content": [{"type": "text", "text": "no"}], "isError": true}), "a refusal of the tool is a result the model reads");
     }
 }

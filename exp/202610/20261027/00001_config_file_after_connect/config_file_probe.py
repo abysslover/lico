@@ -4,7 +4,8 @@ No model call and no sign-in: an empty throwaway home, a dead proxy with the loo
 server is this script's own minimal JSON-RPC-over-HTTP server on a loopback port; it records every request with its Authorization header. Each scenario
 starts the program with the host's flags, waits until the program reports the server `connected`, changes the file, and asks the program to connect
 again (`mcp_reconnect`, or `mcp_toggle` off and on). The server then says which token the new `initialize` carried: the old one (the program kept what
-it read) or the new one (it read the file again), or none (it could not connect).
+it read) or the new one (it read the file again), or none (it could not connect). Before the throwaway folder is removed, every file under the program's
+home, work and temp folders and its stdout file is searched for the two token strings, and each row lists the paths that hold one (the tokens are fakes).
 
 Run: python3 -I config_file_probe.py          (needs `claude` on PATH, Python 3.11 or newer)
 """
@@ -67,6 +68,51 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(answer)
 
 
+def holders(root: Path) -> list:
+    """The files of the program's own folders (home, work, temp) and its stdout that hold a token string, as paths under the throwaway root."""
+    found = []
+    for top in (root / "home", root / "work", root / "tmp", root / "stdout"):
+        for path in ([top] if top.is_file() else sorted(top.rglob("*")) if top.is_dir() else []):
+            try:
+                data = path.read_bytes() if path.is_file() and not path.is_symlink() else b""
+            except OSError:
+                continue
+            if OLD.encode() in data or NEW.encode() in data:
+                found.append(str(path.relative_to(root)))
+    return found
+
+
+def searched(root: Path) -> str:
+    """How many files the program has made in each folder that is searched (so that 'none holds it' is not an empty search)."""
+    return ", ".join(f"{top} {sum(1 for path in (root / top).rglob('*') if path.is_file())}" for top in ("home", "work", "tmp"))
+
+
+def in_messages(out: Path) -> list:
+    """Which messages of the program's stdout hold a token string: `type/subtype` and the path of the value inside the message."""
+    found = []
+
+    def walk(value, trail):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                walk(item, trail + [str(key)])
+        elif isinstance(value, list):
+            for n, item in enumerate(value):
+                walk(item, trail + [str(n)])
+        elif isinstance(value, str) and (OLD in value or NEW in value):
+            found.append("/".join(trail))
+
+    for line in out.read_text(errors="replace").splitlines():
+        try:
+            message = json.loads(line)
+        except ValueError:
+            continue
+        before = len(found)
+        walk(message, [])
+        label = f"{message.get('type')}/{message.get('subtype') or (message.get('request') or {}).get('subtype') or (message.get('response') or {}).get('subtype')}"
+        found[before:] = [f"{label}: {path}" for path in found[before:]]
+    return sorted(set(found))
+
+
 def config(path: Path, port: int, token: str) -> None:
     path.write_text(json.dumps({"mcpServers": {"lico": {"type": "http", "url": f"http://127.0.0.1:{port}/mcp", "headers": {"Authorization": f"Bearer {token}"}}}}))
 
@@ -77,7 +123,8 @@ class Program:
     def __init__(self, root: Path, cfg: Path):
         (root / "home").mkdir()
         (root / "work").mkdir()
-        env = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "HOME": str(root / "home"), "HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9",
+        (root / "tmp").mkdir()
+        env = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "HOME": str(root / "home"), "TMPDIR": str(root / "tmp"), "HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9",
                "NO_PROXY": "127.0.0.1", "no_proxy": "127.0.0.1", "DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_TELEMETRY": "1"}
         argv = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages", "--setting-sources", "user",
                 "--permission-mode", "bypassPermissions", "--permission-prompt-tool", "stdio", "--mcp-config", str(cfg), "--allowedTools", "mcp__lico__*"]
@@ -162,9 +209,13 @@ def scenario(name: str, change: str, trigger: str) -> bool:
             program.ask(subtype="mcp_toggle", serverName="lico", enabled=False)
             answer = program.ask(subtype="mcp_toggle", serverName="lico", enabled=True)
         time.sleep(3)
+        live = holders(root)                                                                                           # while the program runs, and again after it is stopped
         after = server.seen("initialize")[before:]
         verdict = "none" if not after else ("old token" if set(after) == {OLD} else "new token" if set(after) == {NEW} else f"mixed {sorted(set(after))}")
         print(f"ROW {name}: file {states[change]}, trigger {trigger}: tools/list requests {len(server.seen('tools/list'))}, new initializes {len(after)}, token carried: {verdict}; control answer {answer.get('subtype')} {json.dumps(answer.get('error', ''))[:80]}; status after: {program.status()}")
+        program.stop()
+        print(f"     token string in files of the program's folders: while running {live or 'none'}, after it stopped {holders(root) or 'none'} (files made: {searched(root)})")
+        print(f"     messages on stdout that hold it: {in_messages(program.out) or 'none'}")
         return True
     finally:
         program.stop()

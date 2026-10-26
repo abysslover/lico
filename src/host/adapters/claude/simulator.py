@@ -14,6 +14,7 @@ user message:
   "stall"     says "stalling", then nothing at all until the file `<received>.end` exists, then one line and the result (a turn a test decides to end)
   "tools"     does what the real program does with `--mcp-config`: connects to the server of the file, lists its tools and calls
               `sessions`, and says the answers as they came (never the token)
+  "tool:NAME JSON"  calls the tool NAME with the arguments JSON on the server of the file and says the answer as it came
   "env"       reports the names (never the values) of its environment
   "proxyenv"  reports the values of NO_PROXY and no_proxy as they are in its environment (they hold no secret; unset is shown as "-")
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
@@ -74,6 +75,8 @@ if log:
     log.write("SESSION " + session + "\nCWD " + os.getcwd() + "\n")
 started = False
 queued = []
+# the real program reads `--mcp-config` once, at its start, and keeps the url and the headers (measured, 2.1.310): the host removes the file at the first initialize
+SERVER = json.load(open(sys.argv[sys.argv.index("--mcp-config") + 1]))["mcpServers"]["lico"] if "--mcp-config" in sys.argv else None
 
 # what the real program does with approvals (measured shapes, 2026-10-25): with `--permission-mode bypassPermissions` an ordinary tool runs without
 # asking and only the tools that always need a person (a question to the user, a plan) still ask; with any other mode a tool that needs approval asks the
@@ -264,11 +267,15 @@ def turn(message):
         say("still alive")
         out(result())
     elif text == "tools":
-        server = json.load(open(sys.argv[sys.argv.index("--mcp-config") + 1]))["mcpServers"]["lico"]
+        server = SERVER
         say("initialize %s %s" % mcp(server, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "simulator", "version": "0"}}, 1))
         say("initialized %s %r" % mcp(server, "notifications/initialized"))
         say("list %s %s" % mcp(server, "tools/list", {}, 2))
         say("call %s %s" % mcp(server, "tools/call", {"name": "sessions", "arguments": {}}, 3))
+        out(result())
+    elif text.startswith("tool:"):
+        name, _, arguments = text[len("tool:"):].partition(" ")
+        say("tool %s %s" % mcp(SERVER, "tools/call", {"name": name, "arguments": json.loads(arguments or "{}")}, 4))
         out(result())
     elif text.startswith("linger:"):
         count, _, inject = text[len("linger:"):].partition(":")

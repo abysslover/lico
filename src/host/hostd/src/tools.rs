@@ -19,6 +19,8 @@ use crate::http::{self, Bucket};
 use crate::mcp::{self, Outcome};
 
 const MAX_BODY: usize = 128 * 1024;
+const TOO_LARGE: &str = "too_large: the request is over 128 KiB; split the text into parts, or write it to a file and ask the person to hand it over";
+const _: () = assert!(MAX_BODY == 128 * 1024, "the words of TOO_LARGE say 128 KiB");
 const MAX_CONNECTIONS: usize = 32;
 const STACK: usize = 256 * 1024; // a connection only parses a small message and writes a small answer
 const DEADLINE: Duration = Duration::from_secs(5);
@@ -31,6 +33,7 @@ struct Key {
     session: String,
     generation: u64,
     secret: String,
+    begun: bool, // the program has said `initialize` with it: it has read its config file by then
 }
 
 /// The keys that are valid now, by key id. A session has at most one: a new key replaces the one before it.
@@ -72,7 +75,7 @@ impl Table {
         let _ = std::fs::remove_file(&path);
         let (key, secret) = (core::random_hex(16), core::random_hex(32));
         write_config(&path, port, &key, &secret)?;
-        self.keys.insert(key.clone(), Key { session: session.to_string(), generation, secret });
+        self.keys.insert(key.clone(), Key { session: session.to_string(), generation, secret, begun: false });
         Ok(Grant { key, path })
     }
 
@@ -81,6 +84,19 @@ impl Table {
         let (key, secret) = parse(header)?;
         let known = self.keys.get(key)?;
         http::constant_time_eq(secret.as_bytes(), known.secret.as_bytes()).then(|| (known.session.clone(), known.generation))
+    }
+
+    /// The first `initialize` of a key: the program has read its config file and keeps what it read (measured with the real program), so the file goes now. The key stays valid.
+    fn begin(&mut self, dir: &Path, header: &str) {
+        if self.lookup(header).is_none() {
+            return; // only a credential that is whole and exact is the program's
+        }
+        let Some(known) = parse(header).and_then(|(key, _)| self.keys.get_mut(key)) else { return };
+        if !std::mem::replace(&mut known.begun, true) {
+            if let Ok(path) = file_of(dir, &known.session) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
     }
 
     /// The end of the process a key was made for. A key that a newer one has replaced is gone already, and what the newer one made is left alone.
@@ -152,6 +168,14 @@ pub fn issue(shared: &Arc<Shared>, session: &str, generation: u64) -> Result<Gra
     state.table.issue(&dir, port, session, generation).map_err(|_| "busy")
 }
 
+/// The program with this credential has sent `initialize` (see `Table::begin`).
+fn begin(header: &str) {
+    let mut state = state();
+    if let Some(dir) = state.dir.clone() {
+        state.table.begin(&dir, header);
+    }
+}
+
 /// The provider process a key was made for has ended (or never started).
 pub fn release(key: &str) {
     let mut state = state();
@@ -198,9 +222,10 @@ fn sessions(shared: &Shared, caller: &str) -> String {
     json!({"sessions": rows}).to_string()
 }
 
-fn run(shared: &Shared, caller: &str, name: &str, _arguments: &Map<String, Value>) -> Result<String, String> {
+fn run(shared: &Shared, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<String, String> {
     match name {
         "sessions" => Ok(sessions(shared, caller)),
+        "send" => crate::calls::send(shared, caller, arguments),
         _ => Err("unknown tool".into()),
     }
 }
@@ -229,7 +254,8 @@ fn serve_one(mut stream: TcpStream, shared: &Shared, port: u16, limits: &Limits)
     if !matches!(http::header(request, "host"), Some(h) if h == format!("127.0.0.1:{port}") || h == format!("localhost:{port}")) || http::header(request, "origin").is_some() {
         return refuse(&mut stream, 403, "", "forbidden");
     }
-    let Some(session) = caller(shared, http::header(request, "authorization").unwrap_or("")) else {
+    let credential = http::header(request, "authorization").unwrap_or("").to_string();
+    let Some(session) = caller(shared, &credential) else {
         // failed attempts have a small budget of their own, so guessing is slow and cannot starve a real caller
         return if http::take(&limits.failed, FAILED_PER_SECOND, FAILED_PER_SECOND) {
             refuse(&mut stream, 401, "WWW-Authenticate: Bearer\r\n", "unauthorized")
@@ -248,9 +274,9 @@ fn serve_one(mut stream: TcpStream, shared: &Shared, port: u16, limits: &Limits)
     }
     let request = match http::read_body(&mut stream, head, MAX_BODY) {
         Ok(request) => request,
-        Err(status) => return refuse(&mut stream, status, "", if status == 413 { "too large" } else { "bad request" }),
+        Err(status) => return refuse(&mut stream, status, "", if status == 413 { TOO_LARGE } else { "bad request" }),
     };
-    match mcp::handle(&request.body, &mut |name, arguments| run(shared, &session, name, arguments)) {
+    match mcp::handle(&request.body, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
         Outcome::Accepted => http::write_response(&mut stream, 202, "", ""),
         Outcome::Reply(text) => http::write_response(&mut stream, 200, &text, ""),
         Outcome::Malformed(text) => http::write_response(&mut stream, 400, &text, ""),
@@ -385,6 +411,40 @@ mod tests {
         table.forget(&folder.0, "never-had-one");
         table.clear(&folder.0);
         assert!(!two.path.exists() && table.keys.is_empty() && folder.0.join("notes.txt").exists());
+    }
+
+    #[test]
+    fn the_first_initialize_of_a_key_takes_its_config_file_and_the_key_stays_valid() {
+        let folder = Folder::new();
+        let mut table = Table::default();
+        let one = table.issue(&folder.0, 1, "s1", 1).unwrap();
+        let two = table.issue(&folder.0, 1, "s2", 1).unwrap();
+        let header = header_of(&one, &table);
+        for bad in [format!("{}0000", &header[..header.len() - 4]), "Bearer nope".to_string(), String::new(), format!("Bearer {}.{}", "0".repeat(32), "0".repeat(64))] {
+            table.begin(&folder.0, &bad);
+            assert!(one.path.exists() && two.path.exists(), "{bad}: a credential that is not whole and exact takes nothing");
+        }
+        table.begin(&folder.0, &header);
+        assert!(!one.path.exists() && two.path.exists(), "its own file, and no other");
+        assert_eq!(table.lookup(&header), Some(("s1".to_string(), 1)), "the program goes on with the credential it read");
+        table.begin(&folder.0, &header); // again is nothing
+        table.release(&folder.0, &one.key);
+        assert!(table.keys.len() == 1 && two.path.exists());
+    }
+
+    #[test]
+    fn a_key_that_a_newer_one_replaced_cannot_take_the_file_of_the_newer() {
+        let folder = Folder::new();
+        let mut table = Table::default();
+        let old = table.issue(&folder.0, 1, "s1", 1).unwrap();
+        let old_header = header_of(&old, &table);
+        let new = table.issue(&folder.0, 1, "s1", 2).unwrap();
+        table.begin(&folder.0, &old_header);
+        assert!(new.path.exists(), "the file belongs to the process that is running");
+        table.begin(&folder.0, &header_of(&new, &table));
+        assert!(!new.path.exists());
+        let third = table.issue(&folder.0, 1, "s1", 3).unwrap();
+        assert!(third.path.exists(), "a resume is given a file again, to be taken at its own first initialize");
     }
 
     #[test]

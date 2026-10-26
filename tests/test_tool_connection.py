@@ -84,7 +84,8 @@ class World:
 
     def first_turn(self, sid, generation):
         """A close or a resume needs the provider's own session id, which the program sends with its first turn."""
-        assert self.conn.call(op="input", session=sid, generation=generation, request_id="first", text="hi")["ok"] == 1
+        reply = self.conn.call(op="input", session=sid, generation=generation, request_id="first", text="hi")
+        assert reply["ok"] == 1, reply
         wait_for(lambda: "[turn completed]" in records(self.log, sid))
 
 
@@ -222,7 +223,7 @@ def test_the_list_of_tools_is_small_and_names_sessions_and_an_unknown_tool_or_a_
     sid, _ = world.session()
     config = world.config(sid)
     status, body = rpc(config, "tools/list", {})
-    assert status == 200 and [t["name"] for t in body["result"]["tools"]] == ["sessions"]
+    assert status == 200 and [t["name"] for t in body["result"]["tools"]] == ["sessions", "send"]
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 2048                           # the definitions are paid in tokens in every session
     assert all(t["inputSchema"]["type"] == "object" and t["description"] for t in body["result"]["tools"])
     status, body = rpc(config, "tools/call", {"name": "no_such_tool", "arguments": {}})

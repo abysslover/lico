@@ -5,6 +5,7 @@
 
 mod accounts;
 mod broker;
+mod calls;
 mod claude;
 mod cli;
 mod codex;
