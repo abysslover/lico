@@ -244,3 +244,9 @@ def private_dir() -> tempfile.TemporaryDirectory:
     base = REPO / "private" / "scratch" / "runs"
     base.mkdir(parents=True, exist_ok=True)
     return tempfile.TemporaryDirectory(dir=base, prefix="run-")
+
+
+def finished_lines(path: Path) -> list[str]:
+    """The lines a simulator has finished writing to a file it is still writing: a long one is half there for a moment and is not yet a line, and the half
+    can end inside a character, so the file is read as bytes and each finished line is decoded alone."""
+    return [line.decode() for line in path.read_bytes().split(b"\n")[:-1]] if path.exists() else []

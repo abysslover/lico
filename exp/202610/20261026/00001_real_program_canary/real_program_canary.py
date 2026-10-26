@@ -68,7 +68,7 @@ def write_exec(path: Path, text: str) -> None:
 
 def lines_of(path: Path) -> list[str]:
     try:
-        return [l for l in path.read_text().splitlines() if l.strip()]
+        return [l.decode(errors="replace") for l in path.read_bytes().split(b"\n")[:-1] if l.strip()]       # a line still being written is not yet a line
     except OSError:
         return []
 

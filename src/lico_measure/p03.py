@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from .p02 import ProtoConn, read_log, start
-from .rig import REPO, private_dir
+from .rig import REPO, finished_lines, private_dir
 
 SIMULATOR = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
 FIXTURE = REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json"
@@ -32,9 +32,7 @@ def _simulated_host(directory: str) -> tuple:
 
 
 def _provider_messages(received: Path) -> list[dict]:
-    if not received.exists():
-        return []
-    return [json.loads(line) for line in received.read_text().splitlines() if line.strip().startswith("{")]
+    return [json.loads(line) for line in finished_lines(received) if line.strip().startswith("{")]          # the simulator may be mid-line
 
 
 def _until(check, seconds: float = 30.0):

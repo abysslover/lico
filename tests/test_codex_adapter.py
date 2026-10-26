@@ -6,8 +6,9 @@ import time
 from pathlib import Path
 
 from lico_measure.p02 import ProtoConn as Conn, read_log, start
+from lico_measure.p03 import _provider_messages
 from lico_measure.providers import generate_schema, message_errors
-from lico_measure.rig import REPO, private_dir
+from lico_measure.rig import REPO, finished_lines, private_dir
 
 SIM = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
 FIXTURE = REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json"
@@ -28,12 +29,6 @@ def new_session(host):
     made = conn.call(op="session.create", kind="codex")
     assert made["ok"] == 1, made
     return conn, made["session"], made["generation"]
-
-
-def finished_lines(path):
-    """The lines a simulator has finished writing to a file it is still writing: a long one is half there for a moment and is not yet a line, and the half
-    can end inside a character, so the file is read as bytes and each finished line is decoded alone."""
-    return [line.decode() for line in path.read_bytes().split(b"\n")[:-1]] if path.exists() else []
 
 
 def sent(received):
@@ -390,3 +385,12 @@ def test_a_helper_that_outlives_a_provider_replaced_by_a_resume_cannot_write_int
             wait_for(lambda: entry()["activity"] == "idle")
         finally:
             host.stop()
+
+
+def test_the_measurement_reads_the_providers_messages_up_to_the_last_finished_line_even_when_it_ends_inside_a_character(tmp_path):
+    """N6: src/lico_measure/p03.py polls the file while the simulator is still writing it. A read that ends inside a line (or inside a character) must not
+    reach json.loads."""
+    path = tmp_path / "received.jsonl"
+    path.write_bytes(b'{"id": 7, "result": {}}\n' + '{"id": 11, "result": {"text": "\ud55c"}}\n{"id": 12, "result": {"text": "\ud55c'.encode("utf-8")[:-1])
+    assert _provider_messages(path) == [{"id": 7, "result": {}}, {"id": 11, "result": {"text": "\ud55c"}}]
+    assert _provider_messages(tmp_path / "none") == []
