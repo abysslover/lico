@@ -19,6 +19,7 @@
 "tests/test_accounts.py" = ["cred", "host"]
 "tests/test_activity.py" = ["gui", "host"]
 "tests/test_adapter_contract.py" = []
+"tests/test_build_commit.py" = []
 "tests/test_card_window.py" = ["gui", "host"]
 "tests/test_claude_adapter.py" = ["host"]
 "tests/test_client_integration.py" = ["gui", "host", "synth"]
@@ -39,6 +40,7 @@
 "tests/test_host_replacement.py" = ["gui", "host"]
 "tests/test_host_resources.py" = ["host", "synth"]
 "tests/test_hostile.py" = ["host", "synth"]
+"tests/test_identity.py" = ["cli", "gui", "host"]
 "tests/test_korean_ime.py" = ["gui", "host", "synth"]
 "tests/test_latency.py" = []
 "tests/test_login.py" = ["cli", "host"]
@@ -97,6 +99,7 @@ gui = ["gui"]
 handoff = ["host"]
 host = ["host"]
 http = ["host"]
+ident = ["cli", "gui"]
 ipc = ["host"]
 keyring = ["cred"]
 leads = ["host"]
@@ -120,6 +123,7 @@ everything = [
     "src/host/hostd/Cargo.toml",
     "src/host/hostd/Cargo.lock",
     "src/host/hostd/build-release.sh",
+    "src/host/hostd/build.rs",          # bakes the commit into the binary
     "src/host/hostd/NOTICES.txt",       # printed by `lico licenses`, compiled in
     "LICENSE",                          # printed by `lico licenses`, compiled in
 ]
@@ -135,6 +139,7 @@ triggers = [
     "src/host/hostd/Cargo.toml",
     "src/host/hostd/Cargo.lock",
     "src/host/hostd/build-release.sh",
+    "src/host/hostd/build.rs",
     "src/host/hostd/NOTICES.txt",
     "LICENSE",
     ".gitignore",
@@ -149,6 +154,11 @@ tests = ["tests/test_size_ratchet.py"]
 [everywhere]
 # No tracked text file holds a character that draws as nothing or as something else (tests/test_no_hidden_characters.py).
 tests = ["tests/test_no_hidden_characters.py"]
+
+[[sources]]
+glob = "src/host/hostd/build.rs"
+tests = ["tests/test_build_commit.py"]
+reason = "the build script that bakes the commit in: the test compiles it alone and runs it in throw-away repositories"
 
 [[sources]]
 glob = "tests/testmap.toml"

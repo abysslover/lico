@@ -20,6 +20,7 @@ mod gui;
 mod handoff;
 mod host;
 mod http;
+mod ident;
 mod ipc;
 mod keyring;
 mod leads;
@@ -52,7 +53,7 @@ fn main() {
         (_, Some("cred")) => credcmd::run(shifted("lico-cred")),
         (_, Some("gui")) => gui::run(shifted("lico-gui")),
         (_, Some("licenses")) => print!("{LICENSE}\n{NOTICES}"),
-        (_, Some("version" | "--version")) => println!("lico {}", env!("CARGO_PKG_VERSION")),
+        (_, Some("version" | "--version")) => println!("{}", ident::cli_line()),
         _ => cli::run(args),
     }
 }

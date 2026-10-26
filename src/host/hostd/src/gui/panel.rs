@@ -214,7 +214,7 @@ impl App {
                 "Keys".to_string()
             }
             Step::About => {
-                body.extend([format!("Lico {} (build {})", env!("CARGO_PKG_VERSION"), crate::core::build_id()), "One program: this window, the host and the command line (`lico licenses` prints the licenses).".to_string()]);
+                body.extend([crate::ident::window_line(), "One program: this window, the host and the command line (`lico licenses` prints the licenses).".to_string()]);
                 "About Lico".to_string()
             }
             Step::Actions => {

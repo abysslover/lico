@@ -15,7 +15,12 @@ from lico_measure.rig import private_dir
 from tests.test_codex_adapter import FIXTURE, SIM, wait_for
 from tests.test_stale_host import alive, fnv, older_build, status as status_now
 
-NEW_LINE = "Restarted the host (new build); resumed {n} sessions."
+
+
+def restarted(old, n=None):
+    """The notice of a restart: both builds by the first eight digits of their ids (the old one is "an older build" when that host had no id); `n` adds the count."""
+    head = f"Restarted the host (new build {fnv(LICO)[:8]}, was {old[:8] if old else 'an older build'})"
+    return head if n is None else f"{head}; resumed {n} sessions."
 
 
 def fake_codex(directory):
@@ -77,7 +82,7 @@ def test_a_window_of_a_newer_build_replaces_the_host_by_itself_and_resumes_the_s
                 assert found[m["session"]]["generation"] == m["generation"] + 1      # a new generation: everything aimed at the old run is stale
             gone = w.crashed[0]
             assert found[gone["session"]]["state"] == "disconnected" and found[gone["session"]]["generation"] == gone["generation"]   # it stays as it was
-            assert NEW_LINE.format(n=2) in w.ui()["header"]
+            assert restarted(fnv(w.host_binary), 2) in w.ui()["header"]
             # no provider of the old host is left; the new host's providers are exactly those of the two resumed sessions
             wait_for(lambda: not any(alive(pid) for pid in w.providers_before), timeout=10)
             assert len(children_of(status(w)["pid"])) == 2
@@ -151,7 +156,7 @@ def test_a_running_turn_is_waited_for_and_then_the_host_is_replaced_without_cutt
             wait_for(lambda: header_has(w, "after the running turn"), timeout=10)
             assert alive(old) and status(w)["pid"] == old                              # nothing is cut while the turn runs
             wait_for(lambda: status(w).get("pid") != old, timeout=30)
-            wait_for(lambda: header_has(w, NEW_LINE.format(n=2)), timeout=30)
+            wait_for(lambda: header_has(w, restarted(fnv(w.host_binary), 2)), timeout=30)
             assert "interrupted" not in w.ui()["header"]                                # the turn had ended by then: nothing was lost
 
 
@@ -161,7 +166,7 @@ def test_a_turn_that_does_not_end_is_cut_after_the_limit_and_the_line_counts_it(
         with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=start_turn(1, 120), env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=30)
-            wait_for(lambda: header_has(w, "Restarted the host (new build); resumed 1 session; 1 turn was interrupted."), timeout=30)
+            wait_for(lambda: header_has(w, f"{restarted(fnv(w.host_binary))}; resumed 1 session; 1 turn was interrupted."), timeout=30)
             found = sessions_of(w)[w.made[0]["session"]]
             assert found["state"] == "running" and found["generation"] == w.made[0]["generation"] + 1 and found.get("activity") == "idle"   # back, without the turn
 
@@ -177,7 +182,7 @@ def test_an_approval_that_was_waiting_is_not_kept_and_the_line_says_so():
         with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=hook, env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=30)
-            wait_for(lambda: header_has(w, "Restarted the host (new build); resumed 1 session; 1 turn was interrupted; 1 approval waiting for an answer was not kept."), timeout=30)
+            wait_for(lambda: header_has(w, f"{restarted(fnv(w.host_binary))}; resumed 1 session; 1 turn was interrupted; 1 approval waiting for an answer was not kept."), timeout=30)
             assert not sessions_of(w)[w.made[0]["session"]].get("approvals")                       # the provider does not ask again after a resume (measured with codex and claude)
 
 
@@ -212,7 +217,7 @@ def test_a_sign_in_that_ends_during_the_wait_lets_the_replacement_go_on():
             assert alive(old)
             assert Conn(w.socket).call(op="account.login.input", account=w.account, code="CANARYCODE9")["ok"] == 1
             wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=30)
-            wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)
+            wait_for(lambda: header_has(w, restarted(fnv(w.host_binary), 0)), timeout=15)
 
 
 def fake_host(directory):
@@ -247,7 +252,7 @@ def test_the_helpers_of_a_provider_that_died_with_its_old_host_are_ended_too(how
                 wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
                 wait_for(lambda: not alive(found["child"]) and not alive(found["helper"]), timeout=10)
                 assert not alive(old) and alive(os.getpid()) and w.alive()                                       # only the old host's own processes are gone
-                wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)
+                wait_for(lambda: header_has(w, restarted("00000000000000aa", 0)), timeout=15)
                 assert "could not be ended" not in w.ui()["header"]
         finally:
             for pid in found.values():
@@ -266,7 +271,7 @@ def test_a_host_too_old_for_host_stop_is_ended_by_the_pid_its_status_named_and_r
             old, leftover = w.old_pid, w.leftover
             wait_for(lambda: not alive(old), timeout=15)
             wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=20)
-            wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)
+            wait_for(lambda: header_has(w, restarted(None, 0)), timeout=15)                                    # no build id in the status: "an older build", not an empty id
             assert not alive(leftover)                                                                         # what the old host left running is ended too, by its pid
 
 
@@ -323,7 +328,7 @@ def test_a_host_that_another_window_replaced_at_once_is_still_a_host_this_window
             try:
                 wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
                 try:
-                    wait_for(lambda: header_has(w, NEW_LINE.format(n=0)), timeout=15)                              # this window stopped the old host: it is the one that restarts
+                    wait_for(lambda: header_has(w, restarted("00000000000000aa", 0)), timeout=15)                       # this window stopped the old host: it is the one that restarts
                 except AssertionError:
                     raise AssertionError(f"the old host is gone and a new one answers, but this window did not take it as its own restart: header={w.ui()['header']!r}") from None
                 assert status(w)["pid"] != old and not alive(old)
@@ -443,7 +448,7 @@ def test_two_windows_at_once_make_one_host_and_one_set_of_resumes():
                 for m in w.made:
                     assert found[m["session"]]["generation"] == m["generation"] + 1, f"resumed more than once\n{explain(w, second)}"   # once, by the window that stopped the old host
                 assert not alive(old) and len(host_processes(w)) == 1, f"the old host is alive or there is not one host\n{explain(w, second)}"
-                kinds = {"restarted": NEW_LINE.format(n=2), "replaced by another window": "replaced by another window", "host ended": "The host ended and a new one answers"}
+                kinds = {"restarted": restarted(fnv(w.host_binary), 2), "replaced by another window": "replaced by another window", "host ended": "The host ended and a new one answers"}
                 reached("a header says what happened", lambda: any(header_has(w, text) for text in kinds.values()), 20, w, second)
                 print("FIRST_WINDOW_HEADER", [kind for kind, text in kinds.items() if header_has(w, text)], "second:", second.header())      # tallied by the loaded runs (pytest -s)
         finally:

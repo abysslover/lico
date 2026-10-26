@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -43,7 +44,10 @@ def test_the_single_executable_runs_every_role_alone_in_an_empty_directory():
         # it needs the C library and nothing else on disk; the display libraries are loaded by name when the client starts
         libraries = {line.split()[0] for line in subprocess.run(["ldd", str(exe)], capture_output=True, text=True).stdout.splitlines()}
         assert libraries <= ALLOWED_LIBRARIES, libraries
-        assert run(exe, env, "version").stdout.strip() == "lico 0.0.0"
+        for form in ("version", "--version"):
+            line = run(exe, env, form).stdout.strip()                       # the package version as it is, the commit it was built from, and the build id
+            assert re.fullmatch(r"lico \S+ \(commit ([0-9a-f]{7,}(-dirty)?|unknown), build [0-9a-f]{16}\)", line), line
+            assert line.startswith("lico 0.0.0 (commit "), line              # no release version is invented: it is the owner's to set
         text = run(exe, env, "licenses").stdout
         assert "Permission is hereby granted, free of charge" in text and "THIRD-PARTY NOTICES" in text and len(text) > 100_000   # its own and every crate's, inside the file
         status = run(exe, env, "cred", "--data-dir", str(Path(directory) / "creds"), "status")

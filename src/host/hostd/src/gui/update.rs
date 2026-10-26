@@ -344,6 +344,7 @@ pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<Str
     let interrupted = provider_sessions(&status).filter(|e| in_the_middle(e)).count();
     let approvals: usize = provider_sessions(&status).filter_map(|e| e["approvals"].as_array().map(Vec::len)).sum();
     say("Restarting the host with this build...");
+    let was = status["build"].as_str().map(str::to_string); // the id of the host that is being stopped, as its status reported it
     let children = status["pid"].as_u64().map(children_of).unwrap_or_default();
     let stopped = stop(socket, &status);
     trace(&format!("stop outcome: {}", match &stopped { Stopped::Here => "this window ended it".to_string(), Stopped::Elsewhere => "another window did".to_string(), Stopped::Ended => "it ended without an answer".to_string(), Stopped::Failed(why) => format!("failed: {why}") }));
@@ -362,7 +363,7 @@ pub(super) fn run(socket: &str, seen: Value, start_host: &dyn Fn() -> Result<Str
             trace(&format!("resuming {} session(s) that were alive", alive.len()));
             let (resumed, failures) = resume(socket, &alive);
             trace(&format!("resumed {resumed}, failures {failures:?}"));
-            let mut line = format!("Restarted the host (new build); resumed {}", plural(resumed, "session"));
+            let mut line = format!("Restarted the host ({}); resumed {}", crate::ident::builds(was.as_deref()), plural(resumed, "session"));
             if !failures.is_empty() {
                 let mut reasons: Vec<&str> = failures.iter().map(String::as_str).collect();
                 reasons.dedup();

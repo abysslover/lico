@@ -1,3 +1,4 @@
+import functools
 import json
 import shutil
 import subprocess
@@ -11,6 +12,7 @@ from lico_measure.rig import private_dir
 from tests.test_codex_adapter import wait_for
 
 
+@functools.cache
 def fnv(path):
     h = 0xCBF29CE484222325
     for b in Path(path).read_bytes():
@@ -54,7 +56,7 @@ def test_an_idle_host_of_another_build_is_replaced_by_the_window():
             wait_for(lambda: status(w)["pid"] != old, timeout=15)
             assert not alive(old)                                             # asked over its socket, not killed by name
             assert status(w)["build"] == fnv(LICO)                            # the new one is this window's build
-            wait_for(lambda: "Restarted the host (new build); resumed 0 sessions." in w.ui()["header"], timeout=10)
+            wait_for(lambda: f"Restarted the host (new build {fnv(LICO)[:8]}, was {fnv(w.host_binary)[:8]}); resumed 0 sessions." in w.ui()["header"], timeout=10)
 
 
 def test_a_host_of_another_build_with_a_session_is_replaced_too_and_the_stop_command_still_refuses_without_force():
@@ -63,7 +65,7 @@ def test_a_host_of_another_build_with_a_session_is_replaced_too_and_the_stop_com
             old = w.old_pid
             wait_for(lambda: status(w)["pid"] != old, timeout=15)             # sessions do not keep an old host alive any more (S04)
             assert not alive(old) and status(w)["build"] == fnv(LICO)
-            wait_for(lambda: "Restarted the host (new build)" in w.ui()["header"], timeout=10)
+            wait_for(lambda: f"Restarted the host (new build {fnv(LICO)[:8]}, was {fnv(w.host_binary)[:8]});" in w.ui()["header"], timeout=10)
     with private_dir() as directory:
         with ProductWindow(host_binary=LICO, host_sessions=1) as w:           # the same build: the window leaves it alone; the stop command is the explicit way
             old = w.old_pid
