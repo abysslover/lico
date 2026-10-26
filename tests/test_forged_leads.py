@@ -16,8 +16,9 @@ TAG = "[agent] "
 LINES = [
     (">> x", True), ("$ x", True), ("> x", True), ("[turn completed]", True), ("[session closed]", True), ("[provider reconnected]", True), ("[session started] model=m", True),
     ("[turn started]", True), ("[exit 0]", True), ("[3 more lines, 10 bytes not shown; the agent received all of it]", True),
-    ("­>> x", True), (">­> x", True), ("ㅤ>> x", True), (" $ x", True), (" [turn completed]", True), ("️> x", True),
-    ("​>> x", True), ("﻿$ x", True), ("\U000e0041> x", True), ("‌$ x", True),            # the first two and the tag character are removed by the cleaning, the joiner stays
+    ("[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]", True),
+    ("\u00ad>> x", True), (">\u00ad> x", True), ("\u3164>> x", True), ("\u00a0$ x", True), ("\u2003[turn completed]", True), ("\ufe0f> x", True),
+    ("\u200b>> x", True), ("\ufeff$ x", True), ("\U000e0041> x", True), ("\u200c$ x", True),            # the first two and the tag character are removed by the cleaning, the joiner stays
     ("> > x", True),                                                                                  # the `> ` lead with the text `> x`, not `>> x`
     ("[agent] >> x", False), ("a>> x", False), (">>x", False), ("$HOME is set", False), ("[1] first", False), ("plain text", False),
     ("> the last line, which has no line end when it arrives in pieces", True),
@@ -26,7 +27,7 @@ LINES = [
 
 def shown(line):
     """The record a line becomes: the cleaning removes the zero-width space, the byte order mark and the tag character before the decision."""
-    kept = "".join(c for c in line if c not in "​﻿\U000e0041")
+    kept = "".join(c for c in line if c not in "\u200b\ufeff\U000e0041")
     return (TAG + kept) if dict(LINES)[line] else kept
 
 

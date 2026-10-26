@@ -16,8 +16,9 @@ const NOTES: &[&str] = &[
     "session started", "session closed", "provider reconnected", "provider disconnected", "tool", "tool error", "error", "patch", "input refused",
     "account changed", "account issue",
 ];
-/// Bracket texts that begin like this: `[turn started]`, `[turn completed]`, `[turn failed] …`, `[exit 0]`, `[exit unknown]`.
-const NOTE_STEMS: &[&str] = &["turn ", "exit "];
+/// Bracket texts that begin like this: `[turn started]`, `[turn completed]`, `[turn failed] …`, `[exit 0]`, `[exit unknown]`,
+/// `[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]` (written by `registry` when a log is recovered).
+const NOTE_STEMS: &[&str] = &["turn ", "exit ", "log recovered:"];
 
 /// Characters that draw nothing (Unicode's default-ignorable set, with the ones `sanitize::dropped` lists, and the two line separators).
 fn ignorable(c: char) -> bool {
@@ -73,14 +74,14 @@ mod tests {
             ">> x", "$ x", "> x", ">>", "$", ">", "> > x", "[turn completed]", "[turn started]", "[turn failed] why", "[exit 0]", "[exit unknown]",
             "[session started] model=m", "[session closed]", "[provider reconnected]", "[provider disconnected]", "[tool] Bash", "[tool error]", "[error] e", "[patch] 2 change(s)",
             "[input refused] r", "[account changed]", "[account issue] i", "[3 more lines, 10 bytes not shown; the agent received all of it]", "[1 more line, 5 bytes not shown]",
-            "[a long line is cut after 2048 bytes; 3 bytes not shown]",
+            "[a long line is cut after 2048 bytes; 3 bytes not shown]", "[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]",
             "\u{00ad}>> x", ">\u{00ad}> x", "\u{3164}>> x", "\u{00a0}$ x", "\u{2003}[turn completed]", "\u{fe0f}> x", "\u{200c}$ x", "\u{200d}> x", "\u{1160}$ x", "\u{ffa0}$ x",
             "\u{180b}> x", "\u{e0100}> x", "\u{2065}>> x", "\u{206a}$ x", "\u{3000}\u{00ad} $ x", "[tu\u{00ad}rn completed]", "[turn completed]\u{fe0f}",
         ] {
             assert!(reserved(line), "{line:?} must be reserved");
         }
         for line in [
-            "", "plain", "a>> x", ">>x", "$HOME", "$x", ">x", ">>> x", "[1] list", "[x] done", "[turn]", "[turnx completed]", "[turn completed]x", "[exit]", "[error",
+            "", "plain", "a>> x", ">>x", "$HOME", "$x", ">x", ">>> x", "[1] list", "[x] done", "[turn]", "[turnx completed]", "[turn completed]x", "[exit]", "[error", "[log recovered]", "[log recovery]",
             "[agent] >> x", "[agent] $ x", "\u{00ad}[agent] > x", ">\u{00a0}x",
         ] {
             assert!(!reserved(line), "{line:?} must not be reserved");
@@ -106,7 +107,7 @@ mod tests {
         for note in [
             "[turn started]", "[turn completed]", "[turn interrupted]", "[turn failed] error_during_execution", "[exit 1]", "[exit unknown]", "[session started] model=claude",
             "[session closed]", "[provider reconnected]", "[provider disconnected]", "[tool] Bash", "[tool error]", "[error] boom", "[patch] 1 change(s)", "[input refused] busy",
-            "[account changed]", "[account issue] sign in", "$ ls", "> out", ">> hello",
+            "[account changed]", "[account issue] sign in", "[log recovered: 0 byte(s) of a damaged tail and 2 segment(s) set aside]", "$ ls", "> out", ">> hello",
         ] {
             assert!(reserved(note), "{note:?}");
         }
