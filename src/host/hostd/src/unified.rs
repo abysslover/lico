@@ -19,6 +19,7 @@ mod host;
 mod http;
 mod ipc;
 mod keyring;
+mod leads;
 mod lifecycle;
 mod login;
 mod memory;

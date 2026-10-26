@@ -148,6 +148,11 @@ fn record(s: &mut Session, line: &str) {
     s.append(clip(&sanitize(line), MAX_RECORD).into_bytes());
 }
 
+/// A line of what the agent said or a command printed: tagged when it begins like a record of the host (see `leads`).
+fn record_agent(s: &mut Session, line: &str) {
+    s.append(crate::leads::agent_record(line, MAX_RECORD).into_bytes());
+}
+
 // ------------------------------------------------------------------- sending
 fn send(link: &Link, line: Value, request_id: Option<String>) -> Result<(), &'static str> {
     match link.tx.try_send((line.to_string(), request_id)) {
@@ -461,7 +466,7 @@ fn flush(s: &mut Session, item: &str) {
     let item = item.as_str();
     let rest = s.codex.as_mut().and_then(|l| l.buffers.remove(item)).unwrap_or_default();
     if !rest.is_empty() {
-        record(s, rest.trim_end_matches('\r'));
+        record_agent(s, rest.trim_end_matches('\r'));
     }
 }
 
@@ -483,7 +488,7 @@ fn delta(s: &mut Session, item: &str, text: &str) {
         lines.extend(link.buffers.drain().map(|(_, partial)| partial).filter(|partial| !partial.is_empty()));
     }
     for line in lines {
-        record(s, &line);
+        record_agent(s, &line);
     }
 }
 

@@ -24,6 +24,7 @@
 "tests/test_decision.py" = []
 "tests/test_first_view.py" = ["gui", "host", "synth"]
 "tests/test_folders.py" = ["cli", "host"]
+"tests/test_forged_leads.py" = ["host"]
 "tests/test_input_echo.py" = ["cli", "host"]
 "tests/test_input_box.py" = ["gui", "host"]
 "tests/test_frame_cost.py" = ["gui", "host", "synth"]
@@ -60,6 +61,7 @@
 "tests/test_unicode_clients.py" = ["gui", "host"]
 "tests/test_view_lifecycle.py" = ["gui", "host", "synth"]
 "tests/test_window_keys.py" = ["gui", "host"]
+"tests/test_window_stdout.py" = ["gui", "host"]
 
 [rust.modules]
 # The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
@@ -80,6 +82,7 @@ host = ["host"]
 http = ["host"]
 ipc = ["host"]
 keyring = ["cred"]
+leads = ["host"]
 lifecycle = ["host"]
 login = ["host"]
 memory = ["host"]

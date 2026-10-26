@@ -43,6 +43,11 @@ fn record(s: &mut Session, line: &str) {
     s.append(clip(&sanitize(line), MAX_RECORD).into_bytes());
 }
 
+/// A line of what the agent said: tagged when it begins like a record of the host (see `leads`).
+fn record_agent(s: &mut Session, line: &str) {
+    s.append(crate::leads::agent_record(line, MAX_RECORD).into_bytes());
+}
+
 pub fn note(s: &mut Session, line: &str) {
     record(s, line);
 }
@@ -303,7 +308,7 @@ fn handle(session: &Arc<Mutex<Session>>, message: &Value) {
                 match block["type"].as_str() {
                     Some("text") => {
                         for line in block["text"].as_str().unwrap_or("").split('\n') {
-                            record(&mut s, line.trim_end_matches('\r'));
+                            record_agent(&mut s, line.trim_end_matches('\r'));
                         }
                     }
                     Some("tool_use") => match (block["name"].as_str(), block["input"]["command"].as_str()) {

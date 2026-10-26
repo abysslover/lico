@@ -9,6 +9,7 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "bad"       malformed, oversize and endless messages
   "endless"   forty megabytes of one line that never ends, then a normal message
   "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
+  "say:J"     J is a JSON list of strings: each is one agent-message delta of one item, as given (a test chooses the chunks); then the item ends and the turn completes
   "escape"    terminal escapes (clear screen, clipboard write, hyperlink, title, backspaces, bidi override, bell) and a very long line
   "home"      reports the values of HOME and CODEX_HOME (paths, never secrets)
   "write:X"   writes X to auth.json in CODEX_HOME, as a provider keeps its own login there
@@ -117,6 +118,12 @@ def handle(message):
             for k in range(count):
                 scheduled.append((now + 0.1 * (k + 1), ("delta", f"tick {k}\n")))
             scheduled.append((now + 0.1 * (count + 1), ("done", None)))
+        elif text.startswith("say:"):
+            for chunk in json.loads(text[4:]):
+                notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "say", "delta": chunk})
+            notify("item/completed", {"threadId": active["thread"], "turnId": tid, "completedAtMs": 2, "item": {"id": "say", "type": "agentMessage", "text": ""}})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text == "escape":
             esc, bel = chr(27), chr(7)
             body = ("before\n" + esc + "[2J" + esc + "[H" + "cleared?\n" + esc + "]52;c;aGVsbG8=" + bel + "clip?\n"

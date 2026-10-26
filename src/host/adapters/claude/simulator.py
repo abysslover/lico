@@ -13,6 +13,7 @@ user message:
               the provider would and reports the key's length and a short hash (never the key)
   "hostile"   hundreds of permission requests (one id repeated, an unknown subtype, an oversize id, an oversize input)
   "lines:N"   N assistant lines at once
+  "say:J"     J is a JSON list of strings: each is one assistant message with that text, as given
   "hold:A:C:G"  holds A MiB itself, in a child C MiB and in that child's child G MiB (touched pages, kept until the process group ends)
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
@@ -200,6 +201,10 @@ def turn(message):
             held[-1][i] = 1
         subprocess.Popen([sys.executable, "-I", "-c", HOLD_AND_SPAWN, str(child), str(grandchild), HOLD])
         say(f"holding {own} {child} {grandchild}")
+        out(result())
+    elif text.startswith("say:"):
+        for message_text in json.loads(text[4:]):
+            say(message_text)
         out(result())
     elif text.startswith("lines:"):
         for k in range(int(text.split(":")[1])):

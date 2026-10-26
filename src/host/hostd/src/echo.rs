@@ -13,7 +13,7 @@ pub const ECHO_LINES: usize = 12;
 pub const ECHO_BYTES: usize = 2048; // of line text, newlines not counted
 /// History records have no kind field: this prefix is the marker. No other kind of record may begin
 /// with it (`> ` is a tool result, `$ ` a command, `[` a note): the window styles `>> ` as text a person
-/// (later also another session) sent.
+/// (later also another session) sent. Agent text that begins like this is tagged by both adapters (`leads`).
 pub const PREFIX: &str = ">> ";
 
 /// The records for one input: at most `ECHO_LINES` lines within `ECHO_BYTES`, then one marker with
