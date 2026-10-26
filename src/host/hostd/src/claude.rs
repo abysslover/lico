@@ -26,6 +26,7 @@ const MAX_PROMPT: usize = 200;
 const MAX_RESULT_LINES: usize = 20;
 const MAX_TRACKED_INPUTS: usize = 1024; // user messages written and not yet acknowledged
 const MAX_REQUEST_INPUT: usize = 16 * 1024; // a permission request whose input is larger is refused, not held
+const LOOPBACK: &str = "127.0.0.1,localhost"; // the value of NO_PROXY for the program: the tool connection is on the loopback
 const ACCOUNT_ISSUES: [&str; 5] = ["authentication_failed", "oauth_org_not_allowed", "account_on_hold", "billing_error", "rate_limit"];
 const PERMISSION_SUBTYPE: &str = "can_use_tool"; // assumed: the documentation does not state it (unverified)
 
@@ -161,6 +162,10 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             command.env(key, value);
         }
     }
+    // The tool connection is on the loopback. A proxy that the person's own Claude settings give the program (the `env` block of the user settings, which
+    // `--setting-sources user` still reads) would catch that connection and the tool would fail without a word, so the loopback is exempt at every start and
+    // every resume. A `NO_PROXY` the person's settings set themselves replaces this one: the host does not read their settings.
+    command.env("NO_PROXY", LOOPBACK).env("no_proxy", LOOPBACK);
     let mut broker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
     let bound = session.lock().unwrap().account.clone();
     match bound {

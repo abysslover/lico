@@ -16,10 +16,12 @@ Re-run this script whenever either program updates.
 Usage: python3 -I real_program_canary.py [claude|codex|all] [--lico PATH_TO_LICO_BINARY] [--live]
 Exit: 0 every expectation held, 1 one did not, 2 a program (or the given lico binary) is missing. Takes about 5 minutes (295 s measured, load average about 4).
 `--live` (needs --lico) adds the rows that make a few short model turns with the sign-in of the home this script runs under (`run_lico_tools_live`).
-Rows: claude (a) real flags `--setting-sources user`, auto and default permission mode, canary must not run; (b) positive control
+Rows: claude (a) the flags the host uses (`--setting-sources user`, and since S02 `--mcp-config` with a dead file and `--allowedTools 'mcp__lico__*'`), auto and
+default permission mode, canary must not run; (b) positive control
 `user,project,local`, canary MUST run (otherwise the method is blind); codex per folder kind (plain, repo): `old-auto` positive control, `new-auto` `new-default`
 `resume-auto` `resume-default` must not load; codex through the Lico host (needs --lico): no trust entry, canary 0; claude through the Lico host (needs
---lico): the program connects to the host's tool listener and lists `mcp__lico__sessions` (no sign-in, no model call); with --live a model turn calls it.
+--lico): the program connects to the host's tool listener and lists `mcp__lico__sessions` (no sign-in, no model call; the wrapper gives the program a dead proxy
+and does NOT exempt the loopback: the host's own `NO_PROXY` does, and the row fails with `lico: failed` without it); with --live a model turn calls it.
 """
 import json
 import os
@@ -115,8 +117,11 @@ def claude_start(sources: str, mode: str = "auto") -> tuple[list[str], str]:
         env = {"PATH": os.environ["PATH"], "LANG": os.environ.get("LANG", "C.UTF-8"), "HOME": str(root / "home"),
                "HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": "",
                "DISABLE_AUTOUPDATER": "1", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", "DISABLE_TELEMETRY": "1"}
+        dead = root / "lico.mcp.json"          # the tool connection of S02 pointing at a port nobody listens on: the flags are the host's, no model call, no sign-in
+        dead.write_text(json.dumps({"mcpServers": {"lico": {"type": "http", "url": "http://127.0.0.1:9/mcp", "headers": {"Authorization": "Bearer dead"}}}}))
         argv = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
-                "--setting-sources", sources, "--permission-mode", "default" if mode == "default" else "bypassPermissions", "--permission-prompt-tool", "stdio"]
+                "--setting-sources", sources, "--permission-mode", "default" if mode == "default" else "bypassPermissions", "--permission-prompt-tool", "stdio",
+                "--mcp-config", str(dead), "--allowedTools", "mcp__lico__*"]
         out = open(root / "stdout", "wb")
         p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=out, stderr=subprocess.DEVNULL, env=env, cwd=proj, start_new_session=True)
 
@@ -378,7 +383,7 @@ def run_lico(lico: str) -> None:
 
 # ------------------------------------------------------------------ claude through the Lico host: the tool connection
 
-WRAPPER = '#!/bin/sh\nexport HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1\nclaude "$@" | tee -a "{out}"\n'
+WRAPPER = '#!/bin/sh\nexport HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1\nclaude "$@" | tee -a "{out}"\n'
 TOOL = "[tool] mcp__lico__sessions"
 
 

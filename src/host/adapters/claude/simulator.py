@@ -15,6 +15,7 @@ user message:
   "tools"     does what the real program does with `--mcp-config`: connects to the server of the file, lists its tools and calls
               `sessions`, and says the answers as they came (never the token)
   "env"       reports the names (never the values) of its environment
+  "proxyenv"  reports the values of NO_PROXY and no_proxy as they are in its environment (they hold no secret; unset is shown as "-")
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
   "hostile"   hundreds of permission requests (one id repeated, an unknown subtype, an oversize id, an oversize input)
@@ -205,6 +206,9 @@ def turn(message):
         out(result())
     elif text == "env":
         say("\n".join(f"ENV {name}" for name in sorted(os.environ)))
+        out(result())
+    elif text == "proxyenv":
+        say("\n".join(f"{name} {os.environ.get(name, '-')}" for name in ("NO_PROXY", "no_proxy")))
         out(result())
     elif text == "keyenv":
         say(f"CLAUDE_CONFIG_DIR {os.environ.get('CLAUDE_CONFIG_DIR', '')}\nHOME {os.environ.get('HOME', '')}")

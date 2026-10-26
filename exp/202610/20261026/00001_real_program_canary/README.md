@@ -1,6 +1,6 @@
 # 00001 real_program_canary
 
-Version 1.1.0
+Version 1.1.1
 
 **Question.** When a person picks a folder for a Lico session, can that folder make the installed `claude` or `codex` program
 load or run its own configuration (settings hook, MCP server, notify hook, skills, agents, commands, model provider)? Lico
@@ -11,7 +11,8 @@ The mocks in the test suite cannot say whether the real programs honour that; th
 Each start uses an empty throwaway home and a dead proxy or dead model port. The folder holds canary scripts that append a
 line to a file when they run. Rows, one `PASS/FAIL` line each:
 
-- Claude, `--setting-sources user`, auto and default permission mode: the canary must not run and no folder skill, agent or
+- Claude, `--setting-sources user`, auto and default permission mode, tested with the S02 flags (`--mcp-config` with a dead file and
+  `--allowedTools 'mcp__lico__*'`, as the host starts the program): the canary must not run and no folder skill, agent or
   command may be named in the program's output.
 - Claude positive control, `--setting-sources user,project,local`: the settings hook and the MCP canary MUST run, and the
   folder's skill, agent and command are named; otherwise the method is blind and the row fails.
@@ -22,9 +23,9 @@ line to a file when they run. Rows, one `PASS/FAIL` line each:
   and canary 0.
 - Claude through the Lico host (`--lico PATH`, added with P03 step S02): the host starts the real program with its real flags,
   including `--mcp-config` and `--allowedTools`; after the first input the program's `init` message must show the server `lico`
-  as `connected` and `mcp__lico__sessions` among its tools. Auto and default mode. No sign-in and no model call (a dead proxy;
-  the loopback is in `NO_PROXY`, otherwise the program sends its connection to the dead proxy and reports `failed`: the first run
-  of this row did exactly that).
+  as `connected` and `mcp__lico__sessions` among its tools. Auto and default mode. No sign-in and no model call (the wrapper gives
+  the program a dead proxy and does not exempt the loopback: the host sets `NO_PROXY` and `no_proxy` for the program, so these two rows prove the
+  host's line. Without it the program sends its connection to the dead proxy and reports `lico: failed`: the first run of this row did exactly that).
 - Claude live (`--live`, needs `--lico`): model turns with the sign-in of the home the script runs under, model `haiku`, one
   `sessions` call each: 3 tries in auto, 1 in default. A row passes when the turn completes, the record shows the call and the
   result names the other session, and the host raised no approval. About 5 short turns of the subscription.
@@ -48,6 +49,13 @@ to the list of names the Claude control must see, the control row fails with "th
 **Observed result, tool connection (2026-10-26, host built from S02).** `claude` 2.1.310: both lico-path rows passed (`lico` connected,
 tools `['mcp__lico__sessions']`); the first run failed both rows with `lico: failed` because of the proxy (see above). Live: 4 of 4 passed
 (3 in auto, 1 in default; completed, called, result delivered, no approval). Not tried: other models, a second sign-in, a resumed session.
+
+**Observed result, 1.1.1 (2026-10-26, host with the `NO_PROXY` line).** `claude` 2.1.310, `claude --lico`: 5 of 5 rows passed (the three direct rows now start the
+program with the host's S02 flags: canary 0, nothing named; both lico-path rows `lico` connected). The same rows against the host without the line: the three
+direct rows pass, both lico-path rows fail with `lico: failed` (the wrapper's dead proxy catches the loopback connection). A one-off probe, not a row: a dead
+proxy in the `env` block of the user settings of the home, with the host's line: no `NO_PROXY` in the settings, `connected` (without the line: `failed`); an empty
+`NO_PROXY` or `no_proxy` in the settings, `connected`; `NO_PROXY=example.invalid` alone, `connected`; `no_proxy=example.invalid` alone, or both names, `failed`. So a
+value the person's own settings give for `no_proxy` replaces the host's (the program reads the lower-case name first); one for the upper-case name alone does not.
 
 **Run.** `python3 -I real_program_canary.py all --lico PATH_TO_LICO_BINARY [--live]` (Python 3.11 or newer, as the project asks; `claude` and `codex` on
 `PATH`). Exit 0 all rows held, 1 a row did not, 2 a program or the given binary is missing.

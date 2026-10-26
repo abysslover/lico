@@ -132,6 +132,23 @@ def test_a_program_in_the_session_connects_lists_the_tools_and_calls_one(world):
     assert '"name":"sessions"' in listed and other in called and "api-server" in called and sid not in called
 
 
+def test_the_program_is_told_at_every_start_and_resume_that_the_loopback_needs_no_proxy(world):
+    """The tool connection is on the loopback. A proxy in the person's own Claude settings (the `env` block of the user settings, which `--setting-sources user`
+    still reads) would catch it and the tool would fail without a word: the first real-program run of S02 showed exactly that with a proxy in the wrapper."""
+    sid, generation = world.session()
+    world.first_turn(sid, generation)                                                    # the provider's own session id, which a resume needs
+    assert world.conn.call(op="input", session=sid, generation=generation, request_id="n-1", text="proxyenv")["ok"] == 1
+    wait_for(lambda: records(world.log, sid).count("[turn completed]") == 2)           # the answer is a record the reader writes: wait for the end of the turn
+    shown = records(world.log, sid)
+    assert "NO_PROXY 127.0.0.1,localhost" in shown and "no_proxy 127.0.0.1,localhost" in shown
+    assert world.conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+    resumed = world.conn.call(op="session.resume", session=sid, generation=generation)
+    assert resumed["ok"] == 1
+    assert world.conn.call(op="input", session=sid, generation=resumed["generation"], request_id="n-2", text="proxyenv")["ok"] == 1
+    wait_for(lambda: records(world.log, sid).count("NO_PROXY 127.0.0.1,localhost") == 2)   # the second start's answer, written by its reader
+    assert records(world.log, sid).count("no_proxy 127.0.0.1,localhost") == 2
+
+
 def test_the_head_is_judged_before_the_body_in_the_order_host_origin_credential_rate_and_only_then_the_body(world):
     sid, _ = world.session()
     config = world.config(sid)
