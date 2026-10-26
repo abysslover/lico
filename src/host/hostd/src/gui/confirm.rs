@@ -36,7 +36,7 @@ pub struct Ask {
 fn why(error: &str) -> String {
     match error {
         "stale_generation" => "the session has changed since it was shown; try again".into(),
-        "bad_request" => "this session has no conversation to come back to yet".into(),
+        "no_conversation_yet" => "this session has no conversation to come back to yet".into(),
         "session_exited" => "the session has ended".into(),
         "unknown_session" => "the host does not know it any more".into(),
         "host_unreachable" | "host_timeout" => "the host did not answer".into(),

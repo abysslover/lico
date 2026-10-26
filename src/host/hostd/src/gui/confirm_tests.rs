@@ -148,3 +148,9 @@ fn a_deleted_session_leaves_the_screen_the_list_the_draft_and_the_bookkeeping_an
     app.ed.resume("other");
     assert_eq!(app.ed.text(), "draft of the other");
 }
+
+#[test]
+fn a_close_the_host_refuses_for_want_of_a_conversation_is_said_in_the_windows_words() {
+    assert_eq!(why("no_conversation_yet"), "this session has no conversation to come back to yet");
+    assert_eq!(why("bad_request"), "the host answered bad_request"); // a malformed request is no longer taken for it
+}

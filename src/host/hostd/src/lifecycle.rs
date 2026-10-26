@@ -9,13 +9,14 @@ use crate::core::{check_generation, find, Reply, Shared};
 use crate::session::{obj, State};
 
 /// End the process of a session that is running. A session that is already disconnected is closed (the answer is the same, so a
-/// second click or a second command does no harm); a session that cannot be resumed is refused, as closing it would be deleting it.
+/// second click or a second command does no harm); a session that cannot be resumed (its program has not
+/// told its own session id yet) is refused as `no_conversation_yet`, as closing it would be deleting it.
 pub fn session_close(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();
     check_generation(&s, Some(generation))?;
     if s.codex_thread.is_none() {
-        return Err("bad_request");
+        return Err("no_conversation_yet"); // the program has not told its session id yet: a close now would be a delete
     }
     match s.state {
         State::Exited => return Err("session_exited"),

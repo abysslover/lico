@@ -61,6 +61,23 @@ def test_closing_a_session_in_the_middle_of_a_turn_ends_the_process_keeps_the_se
             host.stop()
 
 
+def test_closing_a_session_with_no_conversation_yet_is_refused_in_a_word_of_its_own_and_works_after_its_first_turn():
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)                                  # the program is started but has said nothing: no session id of its own yet
+            refused = conn.call(op="session.close", session=sid, generation=generation)
+            assert (refused["ok"], refused["error"]) == (0, "no_conversation_yet") and status_of(conn, sid)["state"] == "running"
+            said = subprocess.run([str(LICO), "--socket", host.socket, "session", "close", sid], capture_output=True, text=True, timeout=20)
+            assert said.returncode != 0 and "no_conversation_yet" in said.stdout + said.stderr             # the command line prints the word as it is
+            begin(conn, sid, generation, "hi")
+            wait_for(lambda: registered(directory).get(sid, {}).get("provider_session"))      # the program's first line has told its id
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+        finally:
+            host.stop()
+
+
 def test_deleting_a_session_in_the_middle_of_a_turn_stops_the_turn_removes_the_record_and_leaves_the_chosen_folder_alone():
     with private_dir() as directory:
         host, log, received = claude_host(directory)
