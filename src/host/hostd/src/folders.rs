@@ -34,7 +34,7 @@ pub struct Settings {
 
 /// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
 /// (the list `codex::dropped` removes from provider text), so a name read from a list cannot hide behind one.
-fn refused_char(c: char) -> bool {
+pub fn refused_char(c: char) -> bool {
     c.is_control() || crate::codex::dropped(c as u32)
 }
 
@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(wrong("invalid", false), Vec::<String>::new(), "accepted, but invalid in the table");
     }
 
-    /// The table of what a name, a folder path and an input text may hold, that the protocol rule (`lico_protocol/v1.py`) is tested against as well.
+    /// The table of what a name, a folder path, an input text and an account label may hold, that the protocol rule (`lico_protocol/v1.py`) is tested against as well.
     #[test]
     fn the_name_folder_and_text_rules_agree_with_the_shared_table() {
         let table: Value = serde_json::from_str(include_str!("../../../../tests/fixtures/text_rules.json")).unwrap();
@@ -469,10 +469,11 @@ mod tests {
                 (text, e["why"].as_str().unwrap().to_string())
             }).collect()
         };
-        let rules: [(&str, fn(&str) -> bool); 3] = [
+        let rules: [(&str, fn(&str) -> bool); 4] = [
             ("name", valid_name),
             ("folder", valid_path_shape),
             ("text", |text| crate::ipc::valid_text(&Value::String(text.to_string()))),
+            ("label", |text| crate::ipc::valid_label(&Value::String(text.to_string()))),
         ];
         for (rule, accepts) in rules {
             let wrong = |kind: &str, want: bool| entries(rule, kind).into_iter().filter(|(text, _)| accepts(text) != want).map(|(_, why)| why).collect::<Vec<_>>();

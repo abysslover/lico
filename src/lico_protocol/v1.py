@@ -201,7 +201,7 @@ REQUESTS = {
     "session.rebind": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                             "account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
-                            "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True}}, _COMMON_REQ),
+                            "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
     "account.list": _obj({}, _COMMON_REQ),
     "history": _obj({"session": {"type": STR, "max_length": 64}, "before": {"type": INT, "minimum": 0}, "limit": {"type": INT, "minimum": 1, "maximum": 200}}, _COMMON_REQ),
     "account.affected": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),

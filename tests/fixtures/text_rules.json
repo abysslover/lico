@@ -1,5 +1,5 @@
 {
-  "about": "What the host accepts and refuses in a session name, in a folder path (its shape: absolute and existing are checked elsewhere) and in the text sent to an agent. Read by tests/test_text_rules.py against the protocol rule (lico_protocol/v1.py) and by a unit test in folders.rs (valid_name, valid_path_shape and ipc.rs valid_text), so the readers cannot drift apart. Names and folders refuse C0, DEL, C1 and the characters that draw nothing or reorder text (the list of codex.rs `dropped`); U+200C and U+200D stay allowed (Persian and Indic scripts, emoji sequences), and so do U+180B..U+180D, U+1160 and U+FE0F. Free input text refuses only the controls (C0 except newline and tab, DEL, C1). An entry is `text`, or `unit` repeated `times`.",
+  "about": "What the host accepts and refuses in a session name, in a folder path (its shape: absolute and existing are checked elsewhere), in the text sent to an agent and in an account label. Read by tests/test_text_rules.py against the protocol rule (lico_protocol/v1.py) and by a unit test in folders.rs (valid_name, valid_path_shape and ipc.rs valid_text and valid_label) and, through the built host, for the labels, so the readers cannot drift apart. Names, labels and folders refuse C0, DEL, C1 and the characters that draw nothing or reorder text (the list of codex.rs `dropped`); U+200C and U+200D stay allowed (Persian and Indic scripts, emoji sequences), and so do U+180B..U+180D, U+1160 and U+FE0F. Free input text refuses only the controls (C0 except newline and tab, DEL, C1). An entry is `text`, or `unit` repeated `times`.",
   "name": {
     "valid": [
       {"text": "", "why": "empty: the default name is used"},
@@ -104,6 +104,38 @@
       {"text": "a\u0080b", "why": "C1, the first"},
       {"text": "a\u0085b", "why": "C1, next line"},
       {"text": "a\u009fb", "why": "C1, the last"}
+    ]
+  },
+  "label": {
+    "valid": [
+      {"text": "Work", "why": "plain words"},
+      {"text": "\ud55c\uae00 \uacc4\uc815 \ud83d\ude00", "why": "Hangul and an emoji"},
+      {"text": "a\u200cb", "why": "U+200C (zero-width non-joiner) is allowed"},
+      {"text": "a\u200db", "why": "U+200D (zero-width joiner) is allowed"},
+      {"text": "a\u00a0b", "why": "a no-break space is not a control"},
+      {"unit": "n", "times": 40, "why": "exactly the limit"}
+    ],
+    "invalid": [
+      {"text": "", "why": "empty"},
+      {"unit": "n", "times": 41, "why": "one over the limit"},
+      {"text": "a\u0000b", "why": "NUL"},
+      {"text": "a\tb", "why": "a tab"},
+      {"text": "a\nb", "why": "a line break"},
+      {"text": "a\u007fb", "why": "DEL"},
+      {"text": "Work\u0085x", "why": "C1, next line (refused before the hidden characters were)"},
+      {"text": "Work\u202egpj.exe", "why": "right-to-left override: the label would read Workexe.jpg"},
+      {"text": "a\u061cb", "why": "Arabic letter mark"},
+      {"text": "a\u200bb", "why": "zero-width space"},
+      {"text": "a\u200eb", "why": "left-to-right mark"},
+      {"text": "a\u2028b", "why": "line separator"},
+      {"text": "a\u2060b", "why": "word joiner"},
+      {"text": "a\u2064b", "why": "invisible plus"},
+      {"text": "a\u2066b", "why": "left-to-right isolate"},
+      {"text": "a\u2069b", "why": "pop directional isolate"},
+      {"text": "a\ufeffb", "why": "byte order mark"},
+      {"text": "a\udb40\udc00b", "why": "tag, the first"},
+      {"text": "a\udb40\udc41b", "why": "tag letter A"},
+      {"text": "a\udb40\udc7fb", "why": "tag, the last"}
     ]
   }
 }
