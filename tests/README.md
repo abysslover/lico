@@ -10,6 +10,8 @@ group (`lico_measure.legacy`: the retired prototype clients and hosts, kept and 
 
 Run them in the heavy lane (`pri-heavy --label lico --cap 5G --wait 3600 -- …`); `PYTHONPATH=src:.` and `LICO_BUILD_ROOT` are set by the runner.
 
+The suite needs Python 3.11 or newer: `requires-python = ">=3.11"` in `pyproject.toml`, because five files import `tomllib`; `tests/test_python_requirement.py` pins the bound.
+
 | | |
 |---|---|
 | `python -m lico_measure.suite run` | build once (not when the sources hash to the one the binary was built from), then every test file on up to 3 workers |

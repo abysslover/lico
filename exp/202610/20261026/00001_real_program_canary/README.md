@@ -1,6 +1,6 @@
 # 00001 real_program_canary
 
-Version 1.0.1
+Version 1.0.2
 
 **Question.** When a person picks a folder for a Lico session, can that folder make the installed `claude` or `codex` program
 load or run its own configuration (settings hook, MCP server, notify hook, skills, agents, commands, model provider)? Lico
@@ -37,5 +37,5 @@ host canary 0 and trust 0. Mutation 1: with `thread/start` and `thread/resume` m
 rows fail (canary ran 4 times, trust entries 2) and the other 10 rows still pass. Mutation 2: with a name the folder does not have added
 to the list of names the Claude control must see, the control row fails with "the method is blind" and the two `user` rows still pass.
 
-**Run.** `python3 -I real_program_canary.py all --lico PATH_TO_LICO_BINARY` (Python 3.10 or newer; `claude` and `codex` on
+**Run.** `python3 -I real_program_canary.py all --lico PATH_TO_LICO_BINARY` (Python 3.11 or newer, as the project asks; `claude` and `codex` on
 `PATH`). Exit 0 all rows held, 1 a row did not, 2 a program or the given binary is missing.

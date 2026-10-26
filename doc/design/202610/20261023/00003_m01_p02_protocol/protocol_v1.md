@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.2
+Version: 0.1.3
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -37,7 +37,7 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `session.create` | host | yes | start a synthetic agent session (`kind` `synthetic`, optional `rate`, `history`, `payload`) or a provider session (`kind` `codex`: one provider process and one thread) |
 | `session.purge` | host | yes | delete a session: its process is ended, its log segments and its workspace are removed and the session is forgotten; nothing of any other session is touched and nothing of this one can be written again (local socket and `lico session purge` only, not on HTTP) |
 | `session.close` | host | yes | stop the provider process of a resumable session and keep the session: it becomes `disconnected` with its history, its generation unchanged, and `session.resume` brings it back; closing a disconnected session answers ok again, an ended session answers `session_exited`, a session that cannot be resumed (the program has not yet told its own session id) answers `no_conversation_yet` |
-| `session.resume` | host | yes | bring a disconnected provider session back with a new provider process that resumes the same thread; the execution generation rises by one, so every older target is stale |
+| `session.resume` | host | yes | bring a disconnected provider session back with a new provider process that resumes the same thread; the execution generation rises by one, so every older target is stale; a session whose provider has not yet told its own session id has no conversation to resume and answers `bad_request` (the same cause makes `session.close` answer `no_conversation_yet`: one word each for now) |
 | `account.create` | host | yes | add an account of a provider (`codex` or `claude`) with an editable label (at most 40 printable characters); a stable opaque id (`a` and twelve hex digits) is returned, a private home is created for it (mode 0700, never read by Lico), and a provider's first account becomes its default (local socket only) |
 | `account.list` | host | no | the accounts with provider, label, whether each is its provider's default and its credential generation |
 | `history` | host | no | up to 200 older records of a session (`before` is a sequence number, `limit` at most 200), oldest first, read from the durable log on demand; the reply names the oldest sequence still kept |
