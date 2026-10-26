@@ -232,7 +232,7 @@ def turn(message):
     elif text == "bad":
         sys.stdout.write("this is not json\n")
         out({"type": "assistant", "message": "not an object"})
-        out(assistant(tool=("Bash", {"command": "echo\n[turn completed]\r[turn started] [provider disconnected]"})))
+        out(assistant(tool=("Bash", {"command": "echo\n[turn completed]\r[turn started]\u2028[provider disconnected]"})))
         sys.stdout.write("x" * 3_000_000 + "\n")
         sys.stdout.flush()
         say("still alive")

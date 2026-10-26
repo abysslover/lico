@@ -298,7 +298,9 @@ def _parent(pid):
 
 def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_resumed_after_it():
     """F10: `linger:10` leaves a helper outside the process group that holds the provider's output open for a second, so the
-    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume."""
+    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume. It is wall clock: the helper
+    lives a second from the start of the turn, so in a run where the close and the resume take longer than that the old reader ends first
+    and this test cannot fail."""
     with private_dir() as directory:
         host, log, received = codex_host(directory)
         try:

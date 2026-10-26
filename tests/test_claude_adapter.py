@@ -200,7 +200,7 @@ def test_claude_adapter_survives_malformed_oversize_and_hostile_provider_message
             entry = status_of(conn, sid)
             assert entry["state"] == "running"                # the host did not drop the provider session
             shown = records(log, sid)
-            assert all(len(r.encode()) <= 4096 for r in shown) and not any(c < " " or c == "\x7f" or c in "  " for r in shown for c in r)
+            assert all(len(r.encode()) <= 4096 for r in shown) and not any(c < " " or c == "\x7f" or c in "\u2028\u2029" for r in shown for c in r)
             # line breaks inside a command cannot forge status records
             assert "$ echo [turn completed] [turn started][provider disconnected]" in shown and "[provider disconnected]" not in shown
             # approvals stay bounded, prompts are short, plain and say when they are cut, a repeated id is one approval
@@ -267,7 +267,9 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
 
 def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_resumed_after_it():
     """F10: `linger:10` leaves a helper outside the process group that holds the provider's output open for a second, so the
-    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume."""
+    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume. It is wall clock: the helper
+    lives a second from the start of the turn, so in a run where the close and the resume take longer than that the old reader ends first
+    and this test cannot fail."""
     with private_dir() as directory:
         host, log, received = claude_host(directory)
         try:

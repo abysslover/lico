@@ -16,7 +16,7 @@ from lico_measure.xpixel import PixelReader
 from tests.test_codex_adapter import codex_host, new_session, sent, texts, wait_for
 
 CLIENTS = legacy.clients(["a2", "c2"])
-DANGEROUS = ["\x1b", "\x07", "\x08", "\r", "\x85", "‮", "‬", "\u2028", "\u2029", "\u200e", "\u200f"]
+DANGEROUS = ["\x1b", "\x07", "\x08", "\r", "\x85", "\u202e", "\u202c", "\u2028", "\u2029", "\u200e", "\u200f"]
 
 
 def shown_lines(client):

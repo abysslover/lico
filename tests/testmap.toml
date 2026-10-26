@@ -7,6 +7,8 @@
 #                process kinds of a ledger run: python -m lico_measure.ledger_report LEDGER.json --areas
 #   [rust]       which area runs the code of each top-level module of src/host/hostd/src; a module that USES a changed one is
 #                added by reading `crate::` in the sources, so the area of a dependent counts too
+#   [always]     guards that read the source and test files of the whole tree: they run for every change that is not inert
+#   [everywhere] guards that read the text of every tracked file: they run for every change, an inert one too, and their receipt names every file
 #   [[sources]]  files that tests read or start by path, not by import (`cargo = ["module::"]`: also read by that module's unit tests)
 #   [[inert]]    files no test reads (each says why)
 # A changed file that none of these explains selects EVERYTHING. A test file that is not listed under [areas] is assumed to
@@ -23,6 +25,7 @@
 "tests/test_credential_store.py" = ["cred"]
 "tests/test_decision.py" = []
 "tests/test_first_view.py" = ["gui", "host", "synth"]
+"tests/test_no_hidden_characters.py" = []
 "tests/test_folders.py" = ["cli", "host"]
 "tests/test_forged_leads.py" = ["host"]
 "tests/test_input_echo.py" = ["cli", "host"]
@@ -124,6 +127,10 @@ triggers = [
 # Guards that read the whole tree: cheap (a file read each), so they run for every change that is not inert, and their receipt
 # names every source and test file.
 tests = ["tests/test_size_ratchet.py"]
+
+[everywhere]
+# No tracked text file holds a character that draws as nothing or as something else (tests/test_no_hidden_characters.py).
+tests = ["tests/test_no_hidden_characters.py"]
 
 [[sources]]
 glob = "tests/testmap.toml"

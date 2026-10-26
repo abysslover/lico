@@ -120,6 +120,19 @@ def test_an_inert_file_selects_nothing(tree):
     assert tests == [] and not result.cargo and not result.everything
 
 
+def test_a_guard_listed_as_everywhere_runs_for_an_inert_change_too_and_its_receipt_names_every_file(tree):
+    tmap = {**TMAP, "everywhere": {"tests": ["tests/test_cred.py"]}}
+    result = testmap.select(["README.md"], tmap=tmap, files=sorted(TREE), root=tree)
+    assert result.tests(EVERY) == ["tests/test_cred.py"] and not result.cargo and not result.everything          # a document selects the guard, and only it
+    assert testmap.select([], tmap=tmap, files=sorted(TREE), root=tree).tests(EVERY) == []                         # no change, no guard
+    files = sorted(TREE)
+    graph = testmap.python_graph(files, tree)
+    old = receipts.key("tests/test_cred.py", graph, tmap, files, {}, {}, root=tree)
+    (tree / "README.md").write_text("changed\n")
+    assert receipts.key("tests/test_cred.py", graph, tmap, files, {}, {}, root=tree) != old                       # the document it reads
+    assert receipts.key("tests/test_logic.py", graph, tmap, files, {}, {}, root=tree) == receipts.key("tests/test_logic.py", graph, TMAP, files, {}, {}, root=tree)
+
+
 def test_a_new_test_file_the_map_does_not_list_runs_for_every_rust_change(tree):
     (tree / "tests/test_new.py").write_text("")
     files = sorted(TREE) + ["tests/test_new.py"]
@@ -190,11 +203,11 @@ def test_in_the_real_tree_a_window_change_leaves_the_host_and_credential_tests_a
     assert {"tests/test_menu_bar.py", "tests/test_recovery.py"} <= set(tests) and "tests/test_credential_store.py" not in tests
     assert {"core::", "gui::", "session::"} <= result.cargo
     result, tests = real("tests/test_menu_bar.py")
-    assert tests == ["tests/test_menu_bar.py", "tests/test_size_ratchet.py"] and not result.cargo       # itself, and the guard that reads the whole tree
+    assert tests == ["tests/test_menu_bar.py", "tests/test_no_hidden_characters.py", "tests/test_size_ratchet.py"] and not result.cargo       # itself, and the guards that read the whole tree
     result, tests = real("src/lico_measure/captures.py")
     assert "tests/test_menu_bar.py" in tests and "tests/test_recovery.py" not in tests
     assert real("a/file/nobody/declared.bin")[1] == REAL_TESTS
-    print(f"real map: gui/ui.rs -> {len(real(HOSTD + 'gui/ui.rs')[1])} of {len(REAL_TESTS)} test files; core.rs -> {len(real(HOSTD + 'core.rs')[1])}; a test file -> 2 (itself and the size guard)")
+    print(f"real map: gui/ui.rs -> {len(real(HOSTD + 'gui/ui.rs')[1])} of {len(REAL_TESTS)} test files; core.rs -> {len(real(HOSTD + 'core.rs')[1])}; a test file -> 3 (itself and the two guards)")
 
 
 def test_the_rust_scan_reads_grouped_imports_nested_groups_aliases_and_ignores_comments(tmp_path):

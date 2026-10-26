@@ -9,6 +9,7 @@ A changed file selects tests by what it is:
                        files that start a process running that code (the "areas" of the map)
   a file the map calls inert (a document)   nothing
   any change but an inert one      also the tests the map lists as `always` (guards that read the whole tree, cheap)
+  any change at all                also the tests the map lists as `everywhere` (guards that read the text of every tracked file)
   anything else        EVERYTHING (default-deny): a file nobody declared is a file nobody can say is safe to skip
 Imports are read from the source, not listed by hand; what the map lists is what a test starts (areas) and which modules run in
 which process. Nothing is guessed from a file's name."""
@@ -298,6 +299,8 @@ def select(paths, tmap=None, files=None, root=REPO):
             everything(path, "not in the map (default-deny)")
     if any(not r[1].startswith("inert") for r in result.reasons):
         result.files |= set(tmap.get("always", {}).get("tests", [])) & set(test_files)       # the cheap guards that read the whole tree
+    if paths:
+        result.files |= set(tmap.get("everywhere", {}).get("tests", [])) & set(test_files)     # guards that read every tracked file: any change, an inert one too
     if result.everything:
         result.files |= set(test_files)
     return result

@@ -66,6 +66,8 @@ def key(test_file, graph, tmap, files, hashes, binary_hashes, root=testmap.REPO)
             read |= {f for f in files if testmap.glob_match(f, entry["glob"])}
     if test_file in tmap.get("always", {}).get("tests", []):
         read |= {f for f in files if f.endswith((".rs", ".py", ".toml")) and f.startswith(("src/", "tests/"))}      # it reads the whole tree
+    if test_file in tmap.get("everywhere", {}).get("tests", []):
+        read |= set(files)                                                                  # it reads every tracked file, a document too
     read.add("pyproject.toml")
     parts = [f"python {sys.version_info[:3]}"]
     for f in sorted(read):
