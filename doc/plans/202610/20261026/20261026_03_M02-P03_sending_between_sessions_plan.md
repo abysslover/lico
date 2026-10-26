@@ -2,13 +2,13 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.3.2
+> Version: 1.3.3
 > Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 FINAL tip 8a0f0e9, 2026-10-26)
 > Approval: work on phases M02-P02 to M02-P07 is authorized by the owner's answer of 2026-10-26; Deviations 1 to 5 are marked accepted below. G3 and G4 are pending.
 
-**Version 1.3.2** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2.
+**Version 1.3.3** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, and 1.3.3 adds the section "What the P02 fix round teaches this phase".
 
-This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
+This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2 when it moved. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
 
 ## Goal
 
@@ -145,6 +145,16 @@ The phase report: captures (picker, a received header in the window, an approval
 - **Who queues a notice behind a running turn.** The program, *measured* in S01c: a message written during a running tool or a pending approval is queued at once and injected at the next tool boundary of the same turn, with one `result`.
 - **Hop count of a notice.** Left unchanged on purpose (a person's decision on a card is not a typed input): after a chain of 4 a woken worker can send again only after a person types. The alternative, reset on a notice, lets a chain run on through approvals; not chosen.
 
+## What the P02 fix round teaches this phase (1.3.3)
+The independent review of P02 and its fix round (F1 to F11b, in the P02 report) found things that this phase would otherwise repeat. They are a list for the author to check before each commit, not new requirements.
+- **`create` and `send` ride the paths `input` rides.** A message that `send` delivers and the first prompt of `create` go through the same spawn and record paths as an `input` from the window, so what F1 and F3 settled covers them and is not built again: a Codex thread is always started `read-only` with the policy set per turn (F1), and text that an agent wrote goes through `sanitize` and the `[agent] ` rule (`leads.rs`, F3/F7) before it is recorded. A test of S03b and S04 states that it reaches those paths and does not copy them.
+- **The listener of S02 gets the F6 order from its first line:** the head, then Host and Origin (403), then the credential (401, or 429 when throttled), the rate, and only then the body. Red test first: a head with a large `Content-Length` and no token is answered in under 3 s, as the F6 test does for `http.rs`. The helpers `tools.rs` shares from `http.rs` keep that order.
+- **A token and a config file belong to the process they were made for (F10).** The reader of a closed session must not revoke or delete what a resume made after it (the guard is `agent_pid == pid` in `claude.rs`); a test with a lingering process proves it for the token table and for `<state>/tools/<session>.mcp.json`.
+- **Text of another session under the `>> ` marker** goes through `sanitize` and the `[agent] ` rule (F3, F7). The `from <name>` header is written by the host in one place, `echo::append`; a rule is extended as a row of the shared tables (`tests/fixtures/provider_text.json`, `tests/fixtures/text_rules.json`), never copied (F4).
+- **No raw invisible character in any tracked file (F11).** A red guard (`tests/test_no_hidden_characters.py`) on this phase's own commit is the guard working: the character is written as an escape.
+- **A wait in a test that hides a race is a finding (F10, `f7c32e5`).** A test that waits says in a comment why the wait is there and what it waits for.
+- **What a real program does is claimed only from a probe or from the opt-in canary** (`exp/202610/20261026/00001_real_program_canary/`). When S04 and S05 land, the real Claude connecting to the tool listener, listing the tools and calling one gets a row in that script.
+
 ## Tests, the test rules and file sizes
 Every new module (`tools`, `mcp`, `transfer`, `handoff`, `pending`, `provider_record`, `gui::sendto`) gets a map line; new files follow the checklist of `tests/README.md`: one main-path test per feature, smaller unit first. Estimated additions: about 38 tests, +35 s on top of today's 112 s from scratch (P02's own steps add more first; the S08 report gives the measured number against the 180 s limit). A host module that `core` calls selects the same 32 files, so a changed run is about 113 s while such a module is in the diff; only `gui/*` and `cli`-like modules are cheap. Eight steps at one or two runs each: 10 to 14 runs, about 25 minutes of runs for the phase. Files stay under 800 lines; `core.rs`, `gui/ui.rs` and `gui/mod.rs` do not grow.
 
@@ -176,3 +186,6 @@ Screen capture and clipboard (P04), computer use and the real screen (P05), sear
 - **Measured instead of documented:** decision point 3, the receiver states (busy, waiting for an approval) and the "Who queues" bullet now say *measured* (S01c). The mid-turn try of the opt-in check of S04 is replaced by one try of the case not covered: a long answer with no tool.
 - **"Delivered"** is defined once (S03a, Receiver states): written to the program, not read by the model; the replay mark may come a tool later; the window empties its box at Enter and restores it on a refusal, shows no in-flight state, and P03 changes none of that. S06 points to it.
 - **Probes:** a foreground `sleep N` is blocked by the program, so a slow tool in any probe is a script (S02 and S04 opt-in checks).
+
+## Changes since 1.3.2 (1.3.3, at the start of the phase)
+- The section "What the P02 fix round teaches this phase" is new; no step, test count or stop line changed.
