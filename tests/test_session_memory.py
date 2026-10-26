@@ -48,9 +48,9 @@ def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the
             top, bottom, _ = next(r for r in w.ui()["layout"]["rows"] if r[2] == sid)
             w.move(100, (top + bottom) / 2)                                             # the pointer over the row: the hint line tells what the figure is
             state = w.ui()
-            assert state["memory"]["hover"] == sid and "of its own (RSS" in state["hint"] and "3 processes" in state["hint"] and "detached" in state["hint"] and "shared between processes" in state["hint"], state["hint"]
+            assert state["memory"]["hover"] == sid and " own (RSS " in state["hint"] and "3 processes" in state["hint"] and "detached" in state["hint"] and "shared between processes" in state["hint"], state["hint"]
             w.move(w.ui()["layout"]["list_w"] + 200, 300)
-            assert w.ui()["memory"]["hover"] is None and "of its own" not in w.ui()["hint"]
+            assert w.ui()["memory"]["hover"] is None and " own (RSS " not in w.ui()["hint"]
 
             assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
             assert "memory" not in status_of(conn, sid), "a session that is closed holds nothing"

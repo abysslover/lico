@@ -14,6 +14,7 @@ use crate::memory::Figure;
 const AMBER_KB: u64 = 1 << 20; // 1 GiB
 const RED_KB: u64 = 2 << 20; // 2 GiB
 const NAME_COLS: usize = 24; // the longest name the hint sentence repeats
+const FLOOR_COLS: usize = 6; // the shortest it is cut to, so that the figures and the caveats stay in view
 
 /// What the list drew last time and what the mouse is over.
 #[derive(Default)]
@@ -102,10 +103,11 @@ pub fn sentence(row: &Row, cols: usize) -> Option<String> {
         return None;
     }
     let processes = if row.processes == 1 { "1 process".to_string() } else { format!("{} processes", row.processes) };
+    let rest = format!(": {} own (RSS {}), {processes}; detached programs not counted; memory shared between processes counts in each", long(row.memory_kb), long(row.rss_kb));
+    let room = cols.saturating_sub(rest.chars().count()).clamp(FLOOR_COLS, NAME_COLS); // the name gives way, the figures and the caveats do not
     let name = row.name();
-    let name = if name.chars().count() > NAME_COLS { name.chars().take(NAME_COLS - 1).chain(['…']).collect() } else { name }; // the figures and the caveat must stay in view
-    let text = format!("{name}: {} of its own (RSS {}), {processes}; a program a tool detached is not counted; memory shared between processes counts in each", long(row.memory_kb), long(row.rss_kb));
-    Some(text.chars().take(cols).collect())
+    let name = if name.chars().count() > room { name.chars().take(room - 1).chain(['…']).collect() } else { name };
+    Some(format!("{name}{rest}").chars().take(cols).collect())
 }
 
 impl Look {
@@ -169,7 +171,7 @@ mod tests {
     #[test]
     fn the_hint_sentence_names_both_figures_and_the_processes_and_the_total_line_sums_the_sessions() {
         let a = row(350 * 1024, 707 * 1024, 4);
-        assert_eq!(sentence(&a, 200).unwrap(), "api: 350 MiB of its own (RSS 707 MiB), 4 processes; a program a tool detached is not counted; memory shared between processes counts in each");
+        assert_eq!(sentence(&a, 200).unwrap(), "api: 350 MiB own (RSS 707 MiB), 4 processes; detached programs not counted; memory shared between processes counts in each");
         assert_eq!(sentence(&a, 20).unwrap().chars().count(), 20);
         assert!(sentence(&row(0, 0, 0), 200).is_none());
         assert!(sentence(&row(1, 1, 1), 200).unwrap().contains("1 process;"));
@@ -180,6 +182,23 @@ mod tests {
         let look = Look { host: Figure { private_kb: 41 * 1024, ..Default::default() }, window: Figure { private_kb: 28 * 1024, ..Default::default() }, ..Default::default() };
         assert_eq!(total(&[a, row(850 * 1024, 900 * 1024, 2)], &look), "mem sessions 1.2G  host 41M  window 28M");
         assert_eq!(total(&[], &Look::default()), "mem sessions <1M  window <1M");
+    }
+
+    #[test]
+    fn the_hint_sentence_keeps_its_figures_and_clauses_in_the_default_window_for_every_name_up_to_the_limit() {
+        const CLAUSE: &str = "memory shared between processes counts in each";
+        let default_window = (1200.0_f32 / 8.5) as usize; // hint_text: the width over the width of one column, at scale 1.0
+        assert_eq!(default_window, 141);
+        for name in ["a", "api", "twelve-chars", "a-name-of-24-chars-long", "a-name-of-exactly-24-char", &"n".repeat(60)] {
+            for (kb, rss, processes) in [(350 * 1024, 707 * 1024, 4), (1023 * 1024, 1023 * 1024, 12), (126_000_000, 127_000_000, 12)] {
+                let said = sentence(&Row { name: name.into(), ..row(kb, rss, processes) }, default_window).unwrap();
+                assert!(said.chars().count() <= default_window && said.ends_with(CLAUSE), "{said}");
+                assert!(said.starts_with(&name.chars().take(FLOOR_COLS - 1).collect::<String>()), "{said}");
+                assert!(said.contains(&long(kb)) && said.contains(&format!("(RSS {})", long(rss))), "{said}");
+            }
+        }
+        let cut = sentence(&Row { name: "n".repeat(60), ..row(350 * 1024, 707 * 1024, 4) }, default_window).unwrap();
+        assert!(cut.starts_with(&format!("{}…: 350 MiB", "n".repeat(21))), "{cut}");
     }
 
     #[test]
