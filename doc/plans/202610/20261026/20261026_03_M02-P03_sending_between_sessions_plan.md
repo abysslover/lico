@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.3.3
+> Version: 1.3.4
 > Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 FINAL tip 8a0f0e9, 2026-10-26)
 > Approval: work on phases M02-P02 to M02-P07 is authorized by the owner's answer of 2026-10-26; Deviations 1 to 5 are marked accepted below. G3 and G4 are pending.
 
-**Version 1.3.3** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, and 1.3.3 adds the section "What the P02 fix round teaches this phase".
+**Version 1.3.4** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", and 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1).
 
 This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2 when it moved. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
 
@@ -14,7 +14,7 @@ This note moved here on 2026-10-26 from the working draft (kept outside git), co
 
 A person, or an agent with the person's approval, sends text, selected lines or a whole conversation from one session to another. Up to 4 KiB goes inline with a header the host writes; longer goes to a file in the receiver's own handoff folder and the receiver gets a notice. Agents reach Lico through a tool connection served inside the host (no new process per session). The window shows who sent what (`from <name>`). Claude Code sessions only for the tool connection (SF-05).
 
-**Order of the steps:** S01 and S01c (done), S02, S03a, S06, S03b, S04, S05, S07, S08 (report). The person-facing path comes first (transfer core, then the window modal), then the agent tools and their approvals. S06 does not need S03b: it calls the owner op `transfer.send` of S03a. Its "Hand over conversation..." entry is dimmed (`not available yet`) until S05 supplies the content; S05 enables it (a few lines in `gui/sendto.rs`).
+**Order of the steps:** S01 and S01c (done), S02, the V4 gate (below, closed before S03a is committed), S03a, S06, S03b, S04, S05, S07, S08 (report). The person-facing path comes first (transfer core, then the window modal), then the agent tools and their approvals. S06 does not need S03b: it calls the owner op `transfer.send` of S03a. Its "Hand over conversation..." entry is dimmed (`not available yet`) until S05 supplies the content; S05 enables it (a few lines in `gui/sendto.rs`).
 
 ## What S01 measured (AC-07; done 2026-10-26)
 
@@ -155,6 +155,13 @@ The independent review of P02 and its fix round (F1 to F11b, in the P02 report) 
 - **A wait in a test that hides a race is a finding (F10, `f7c32e5`).** A test that waits says in a comment why the wait is there and what it waits for.
 - **What a real program does is claimed only from a probe or from the opt-in canary** (`exp/202610/20261026/00001_real_program_canary/`). When S04 and S05 land, the real Claude connecting to the tool listener, listing the tools and calling one gets a row in that script.
 
+## What the second reviewer of P02 teaches this phase (1.3.4)
+A second reviewer went through the P02 fix round (findings V1 to V8, in the P02 report, section "The second reviewer"). Three things reach this phase; the first is a gate.
+- **Gate V4: closed before S03a is committed.** The skeleton that decides the `[agent] ` tag (`leads.rs`, F3) takes out white space and default-ignorable characters. It does not see through the braille blank U+2800 (category So), 32 format characters (Cf) that `ignorable` lacks (U+0600 to U+0605, U+06DD, U+070F, U+0890 and U+0891, U+08E2, U+FFF9 to U+FFFB, U+110BD, U+110CD, U+13430 to U+1343F), 1,722 nonspacing marks (Mn) and 13 enclosing marks (Me) (Unicode 15, computed against the `ignorable` set of `8a0f0e9`; the musical format characters U+1D173 to U+1D17A are already in it and are not part of the gap). A line that starts with one of them and then `>> x` stays untagged; it does not match the exact `>> ` the window styles, so it can only mislead a person who reads the plain history. S03a is the first step where text written by another session's agent lands in a history, so the gap is closed first: a generated table (Cf, Mn, Me) with a pinned Unicode version, a Python mirror and rows in `tests/fixtures/provider_text.json`, as a change of its own on this branch, red first, mutation-checked as F3 and F4 were.
+- **The reader of a closed session must not feed a live one (V1; S02 inherits it).** After `session.close`, and after an immediate `session.resume`, a program the agent detached keeps the provider's output open and keeps writing; since V1 `handle` and `handle_message` ignore every line whose process is not the session's `agent_pid`. The listener of S02 has the same shape: a request that carries the key of a closed process, or that arrived on a connection opened for it, must not reach a live session (no reply that changes a record, an approval or the activity clock of the session that was resumed). A test with a lingering helper that waits for a go file and writes a marker after its last request, as the V1 tests do (`linger:N:inject`): it calls a tool after the close and again after the resume, and the new session shows nothing of it and still works.
+- **A token is revoked for the process it was made for (extends the F10 bullet of 1.3.3).** The key table is keyed by the process the key was made for; the end of a process revokes that process's key and nothing else, so the reader of a closed process cannot revoke the key a resume made for the new one, and the config file of the new process is not removed by the old one. The test is the same pair: close, immediate resume, the old reader ends late, the new key still answers 200 and the old one 401.
+- **A test that reads a file a simulator is still writing** reads bytes and keeps the finished lines (`finished_lines`, V5), and a test that compares a log size waits first for the provider's last record (V5b); a wait says what it waits for.
+
 ## Tests, the test rules and file sizes
 Every new module (`tools`, `mcp`, `transfer`, `handoff`, `pending`, `provider_record`, `gui::sendto`) gets a map line; new files follow the checklist of `tests/README.md`: one main-path test per feature, smaller unit first. Estimated additions: about 38 tests, +35 s on top of today's 112 s from scratch (P02's own steps add more first; the S08 report gives the measured number against the 180 s limit). A host module that `core` calls selects the same 32 files, so a changed run is about 113 s while such a module is in the diff; only `gui/*` and `cli`-like modules are cheap. Eight steps at one or two runs each: 10 to 14 runs, about 25 minutes of runs for the phase. Files stay under 800 lines; `core.rs`, `gui/ui.rs` and `gui/mod.rs` do not grow.
 
@@ -189,3 +196,6 @@ Screen capture and clipboard (P04), computer use and the real screen (P05), sear
 
 ## Changes since 1.3.2 (1.3.3, at the start of the phase)
 - The section "What the P02 fix round teaches this phase" is new; no step, test count or stop line changed.
+
+## Changes since 1.3.3 (1.3.4, after the second review of P02)
+- The section "What the second reviewer of P02 teaches this phase" is new: the V4 gate before S03a (the class behind U+2800, in the corrected Unicode 15 numbers) and the two things S02 inherits from V1. The order of the steps names the gate between S02 and S03a. No step, test count or stop line changed.
