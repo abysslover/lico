@@ -157,9 +157,38 @@ fn rpc(link: &mut Link, method: &str, params: Value, pending: Pending, request_i
     Ok(())
 }
 
+/// What a mode lets a turn do: the approval policy, and the sandbox policy the turn runs under. The mode lives in the turns and never in the thread: a thread
+/// that starts or resumes with a sandbox that can write makes Codex trust the folder it was given, and then the folder's own `.codex/config.toml` (MCP servers,
+/// notify, hooks, model providers) runs as the owner's own settings (Codex 0.164.0). A turn-level override does not do that, so every thread is `read-only`.
+/// Auto: nothing asks and nothing is sandboxed (owner rule of 2026-10-25). Default: the provider asks, and a command runs read-only.
+fn turn_settings(mode: &str) -> (&'static str, Value) {
+    if mode == "default" {
+        ("untrusted", json!({"type": "readOnly"}))
+    } else {
+        ("never", json!({"type": "dangerFullAccess"}))
+    }
+}
+
+/// The parameters of `thread/start`, or of `thread/resume` when `thread` is given.
+fn thread_params(mode: &str, cwd: &str, thread: Option<&str>) -> Value {
+    let mut params = json!({"cwd": cwd, "approvalPolicy": turn_settings(mode).0, "sandbox": "read-only", "approvalsReviewer": "user"});
+    if let Some(thread) = thread {
+        params["threadId"] = json!(thread);
+        params["excludeTurns"] = json!(true);
+    }
+    params
+}
+
+/// A `turn/start` with the settings of the session's mode. The one place that starts a turn, so none can start without them.
+fn start_turn(link: &mut Link, mode: &str, thread: &str, input: Value, pending: Pending, request_id: Option<String>) -> Result<(), &'static str> {
+    let (policy, sandbox) = turn_settings(mode);
+    rpc(link, "turn/start", json!({"threadId": thread, "input": input, "approvalPolicy": policy, "sandboxPolicy": sandbox}), pending, request_id)
+}
+
 /// One host input becomes one provider turn, or steers the turn that is running.
 pub fn send_input(s: &mut Session, request_id: &str, text: &str) -> Result<(), &'static str> {
     let thread = s.codex_thread.clone().ok_or("busy")?;
+    let mode = s.mode;
     let link = s.codex.as_mut().ok_or("session_disconnected")?;
     if !link.ready {
         return Err("busy");
@@ -167,7 +196,7 @@ pub fn send_input(s: &mut Session, request_id: &str, text: &str) -> Result<(), &
     let input = json!([{"type": "text", "text": text, "text_elements": []}]);
     match link.active_turn.clone() {
         Some(turn) => rpc(link, "turn/steer", json!({"threadId": thread, "expectedTurnId": turn, "input": input}), Pending::Steer(request_id.to_string(), text.to_string()), Some(request_id.to_string())),
-        None => rpc(link, "turn/start", json!({"threadId": thread, "input": input}), Pending::Turn(request_id.to_string()), Some(request_id.to_string())),
+        None => start_turn(link, mode, &thread, input, Pending::Turn(request_id.to_string()), Some(request_id.to_string())),
     }
 }
 
@@ -341,13 +370,11 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
     match pending {
         Pending::Init => {
             let _ = send(link, json!({"method": "initialized"}), None);
-            let (policy, sandbox) = if s.mode == "default" { ("untrusted", "read-only") } else { ("never", "danger-full-access") }; // auto: nothing asks and nothing is sandboxed (owner rule of 2026-10-25)
-            let params = json!({"cwd": cwd, "approvalPolicy": policy, "sandbox": sandbox, "approvalsReviewer": "user"});
-            let resumed = s.codex_thread.clone();
+            let (mode, resumed) = (s.mode, s.codex_thread.clone());
             let link = s.codex.as_mut().unwrap();
             let _ = match resumed {
-                Some(thread) => rpc(link, "thread/resume", json!({"threadId": thread, "excludeTurns": true, "cwd": cwd, "approvalPolicy": policy, "sandbox": sandbox, "approvalsReviewer": "user"}), Pending::ThreadResume, None),
-                None => rpc(link, "thread/start", params, Pending::ThreadStart, None),
+                Some(thread) => rpc(link, "thread/resume", thread_params(mode, cwd, Some(&thread)), Pending::ThreadResume, None),
+                None => rpc(link, "thread/start", thread_params(mode, cwd, None), Pending::ThreadStart, None),
             };
         }
         Pending::ThreadStart | Pending::ThreadResume => {
@@ -365,11 +392,11 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
         Pending::Steer(rid, text) if failed.is_some() => {
             // the turn ended before the steer arrived and the provider refused it, so nothing was
             // applied: the input starts a turn of its own (and is still never sent twice)
-            let thread = s.codex_thread.clone().unwrap_or_default();
+            let (thread, mode) = (s.codex_thread.clone().unwrap_or_default(), s.mode);
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = None;
                 let input = json!([{"type": "text", "text": text, "text_elements": []}]);
-                if rpc(link, "turn/start", json!({"threadId": thread, "input": input}), Pending::Turn(rid.clone()), None).is_err() {
+                if start_turn(link, mode, &thread, input, Pending::Turn(rid.clone()), None).is_err() {
                     s.advance_input(&rid, InputState::Failed);
                 }
             }

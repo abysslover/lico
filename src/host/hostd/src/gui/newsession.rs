@@ -222,7 +222,11 @@ impl App {
             .collect();
         lines.push(String::new());
         lines.push("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: start".into());
-        lines.push("A folder's own Claude settings (hooks, environment) are not used; its CLAUDE.md is.".into());
+        lines.push(if p.provider == "codex" {
+            "A folder's own Codex settings (.codex: config, hooks, rules) are not used.".into() // the thread is read-only, so Codex does not trust the folder
+        } else {
+            "A folder's own Claude settings (hooks, environment) are not used; its CLAUDE.md is.".into()
+        });
         lines
     }
 

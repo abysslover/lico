@@ -249,7 +249,7 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
                 assert "bypassPermissions" == argv[argv.index("--permission-mode") + 1] and argv[argv.index("--permission-prompt-tool") + 1] == "stdio"
         finally:
             host.stop()
-    # the same for the Codex provider: each session's thread is started with its own workspace and the strict policy
+    # the same for the Codex provider: each session's thread is started with its own workspace and a read-only sandbox (the turns carry the mode)
     with private_dir() as codex_dir:
         host, log, received = codex_host(codex_dir)
         try:
@@ -258,7 +258,7 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
             made = [conn.call(op="session.create", kind="codex", account=acc) for acc in (ca, cb, ca)]
             starts = [m for m in sent(received) if m.get("method") == "thread/start"]
             assert len(starts) == 3 and len({m["params"]["cwd"] for m in starts}) == 3
-            assert all(m["params"]["approvalPolicy"] == "never" and m["params"]["sandbox"] == "danger-full-access" for m in starts)
+            assert all(m["params"]["approvalPolicy"] == "never" and m["params"]["sandbox"] == "read-only" for m in starts)
             pids = {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}
             assert len({pids[m["session"]] for m in made}) == 3
         finally:

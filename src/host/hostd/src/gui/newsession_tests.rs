@@ -39,6 +39,16 @@ fn the_form_lists_its_rows_in_order_with_the_input_line_on_the_folder() {
 }
 
 #[test]
+fn the_line_about_a_folders_own_settings_is_the_one_of_the_chosen_provider() {
+    let mut app = opened();
+    let p = app.ui.panel.as_mut().unwrap();
+    (p.provider, p.account) = ("codex".into(), "a3".into());
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body.iter().any(|l| l.contains("Codex settings (.codex: config, hooks, rules) are not used")), "{body:?}");
+    assert!(!body.iter().any(|l| l.contains("Claude") || l.contains("CLAUDE.md")), "a Codex session is not told about Claude: {body:?}");
+}
+
+#[test]
 fn what_is_typed_stays_with_its_row_when_the_focus_moves() {
     let mut app = opened();
     app.ed.put("/tmp/project");

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from lico_measure.p02 import ProtoConn as Conn, read_log, start
+from lico_measure.providers import generate_schema, message_errors
 from lico_measure.rig import REPO, private_dir
 
 SIM = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
@@ -191,6 +192,50 @@ def test_provider_exit_is_disconnected_not_idle():
             assert "[provider reconnected]" in texts(log, sid)
         finally:
             host.stop()
+
+
+# What a mode lets Codex do. A thread always starts and resumes `read-only`: a thread whose sandbox can write makes Codex trust the folder it was given and
+# load that folder's own `.codex/config.toml` (MCP servers, notify, hooks, providers) as the owner's own settings (Codex 0.164.0). The turn-level override
+# does not do that, so the mode lives in the turns.
+TURN_RULES = {
+    "auto": ("never", {"type": "dangerFullAccess"}),
+    "default": ("untrusted", {"type": "readOnly"}),
+}
+
+
+def test_a_codex_thread_never_starts_or_resumes_with_a_writable_sandbox_and_every_turn_carries_the_policy_of_its_mode():
+    with private_dir() as scratch:
+        schema = Path(scratch) / "schema"
+        generate_schema(Path(scratch) / "home", schema)
+        for mode, (policy, sandbox) in TURN_RULES.items():
+            with private_dir() as directory:
+                host, log, received = codex_host(directory)
+                try:
+                    conn = Conn(host.socket)
+                    made = conn.call(op="session.create", kind="codex", mode=mode)
+                    sid, generation = made["session"], made["generation"]
+                    for k in range(12):                                   # some of these steer a running turn, some start one, and a refused steer starts one
+                        assert conn.call(op="input", session=sid, generation=generation, request_id=f"{mode}-{k}", text=f"t{k}")["ok"] == 1
+                    wait_for(lambda: all(f"echo: t{k}" in texts(log, sid) or f"steer: t{k}" in texts(log, sid) for k in range(12)))
+                    assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+                    time.sleep(0.5)                                       # the closed process's reader ends a moment after the close; this test is about what the resume sends
+                    resumed = conn.call(op="session.resume", session=sid, generation=generation)
+                    assert resumed["ok"] == 1, resumed
+                    assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id=f"{mode}-after", text="after")["ok"] == 1
+                    wait_for(lambda: "echo: after" in texts(log, sid))
+                    messages = sent(received)
+                    threads = [m for m in messages if m.get("method") in ("thread/start", "thread/resume")]
+                    turns = [m for m in messages if m.get("method") == "turn/start"]
+                    assert [m["method"] for m in threads] == ["thread/start", "thread/resume"], mode
+                    assert len(turns) >= 2, mode
+                    for m in threads:
+                        assert (m["params"]["approvalPolicy"], m["params"]["sandbox"]) == (policy, "read-only"), (mode, m["method"], m["params"])
+                    for m in turns:
+                        assert (m["params"]["approvalPolicy"], m["params"]["sandboxPolicy"]) == (policy, sandbox), (mode, m["params"])
+                    for m in threads + turns:                              # and the provider's own schema accepts what is sent
+                        assert message_errors(schema, "ClientRequest.json", m["method"], m["params"]) == [], (m["method"], m["params"])
+                finally:
+                    host.stop()
 
 
 def _hwm_kb(pid):

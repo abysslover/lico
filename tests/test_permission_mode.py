@@ -33,7 +33,7 @@ def test_a_new_session_skips_permissions_by_default_asks_the_window_for_the_rest
             conn.call(op="session.create", kind="codex")
             conn.call(op="session.create", kind="codex", mode="default")
             starts = [m["params"] for m in sent(received) if m.get("method") == "thread/start"]
-            assert (starts[0]["approvalPolicy"], starts[0]["sandbox"]) == ("never", "danger-full-access")
+            assert (starts[0]["approvalPolicy"], starts[0]["sandbox"]) == ("never", "read-only")           # the sandbox of a thread is never writable; the turns carry the mode
             assert (starts[1]["approvalPolicy"], starts[1]["sandbox"]) == ("untrusted", "read-only")
         finally:
             host.stop()

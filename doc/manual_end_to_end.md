@@ -23,6 +23,9 @@ State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`). Use the file y
 6. **A folder you choose** (Ctrl+N, the Folder row): Claude is started in it and reads its `CLAUDE.md`, but not the folder's own Claude settings
    (`.claude/settings.json`: hooks, environment, helper programs; nor its `.mcp.json`), because those would run without your decision. Your own
    Claude settings are used. A session without a folder works in a scratch folder Lico made, which has none of these.
+   A Codex session in a chosen folder does not load the folder's `.codex/` configuration (MCP servers, hooks, notify, model providers) either: Codex
+   trusts a folder when a thread may write in it, so Lico starts every Codex thread read-only and carries the mode in each turn. That is Codex's
+   behaviour at 0.164.0; run the check again when Codex updates.
 7. **Memory** (right end of each row, and one line at the bottom of the list): what the session's program and everything it started hold of their
    own (`RssAnon` + `RssShmem`, in M or G; amber from 1 GiB, red from 2 GiB). Put the mouse on a row and the bottom line gives the figure, the RSS
    beside it and the number of processes. A program a tool detached from the session (`setsid`) is not counted. The host looks only while a window is
