@@ -14,6 +14,8 @@ import re
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .unicode_marks import RANGES as MARKS
+
 MAX_PROMPT = 200
 MAX_RECORD = 4096
 _CSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -27,7 +29,8 @@ NOTES = ("session started", "session closed", "provider reconnected", "provider 
          "account changed", "account issue")
 NOTE_STEMS = ("turn ", "exit ", "log recovered:")
 _IGNORABLE = re.compile("[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0"
-                        "\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff]")   # the default-ignorable characters
+                        "\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"       # the default-ignorable characters
+                        + "".join(f"{chr(low)}-{chr(high)}" for low, high in MARKS) + "]")                       # and the format characters, marks and U+2800 (V4)
 _WHITE = "\t\n\x0b\x0c\r \x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
 _FOLDED = re.compile(r"[0-9]+ more line|a long line is cut")   # the echo's markers
 

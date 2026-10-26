@@ -22,6 +22,7 @@ mod keyring;
 mod leads;
 mod lifecycle;
 mod login;
+mod marks;
 mod mcp;
 mod memory;
 mod payload;

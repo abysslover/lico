@@ -26,6 +26,7 @@
 "tests/test_decision.py" = []
 "tests/test_first_view.py" = ["gui", "host", "synth"]
 "tests/test_no_hidden_characters.py" = []
+"tests/test_mark_table.py" = []
 "tests/test_folders.py" = ["cli", "host"]
 "tests/test_forged_leads.py" = ["host"]
 "tests/test_input_echo.py" = ["cli", "host"]
@@ -92,6 +93,7 @@ keyring = ["cred"]
 leads = ["host"]
 lifecycle = ["host"]
 login = ["host"]
+marks = ["host"]
 mcp = ["host"]
 memory = ["host"]
 payload = ["host"]
@@ -162,6 +164,11 @@ glob = "tests/fixtures/text_rules.json"
 tests = ["tests/test_text_rules.py"]
 cargo = ["folders::"]
 reason = "what a name, a folder path and an input text may hold: the protocol rule reads it in the Python test, the host rules in a unit test of folders.rs (include_str!)"
+
+[[sources]]
+glob = "src/host/hostd/src/marks/table.rs"
+tests = ["tests/test_mark_table.py"]
+reason = "the Rust table of the marks, generated: the test reads it by path and compares it with its Python mirror and with the generator"
 
 [[sources]]
 glob = "tests/fixtures/provider_text.json"

@@ -20,9 +20,11 @@ const NOTES: &[&str] = &[
 /// `[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]` (written by `registry` when a log is recovered).
 const NOTE_STEMS: &[&str] = &["turn ", "exit ", "log recovered:"];
 
-/// Characters that draw nothing (Unicode's default-ignorable set, with the ones `sanitize::dropped` lists, and the two line separators).
+/// Characters that draw nothing (Unicode's default-ignorable set, with the ones `sanitize::dropped` lists, and the two line separators), and those that draw
+/// nothing alone or only on the character before them: the format characters, the nonspacing and enclosing marks and U+2800 (`marks`).
 fn ignorable(c: char) -> bool {
-    matches!(c as u32,
+    crate::marks::covers(c)
+        || matches!(c as u32,
         0x00ad | 0x034f | 0x061c | 0x115f..=0x1160 | 0x17b4..=0x17b5 | 0x180b..=0x180f | 0x200b..=0x200f | 0x2028..=0x202e | 0x2060..=0x206f
         | 0x3164 | 0xfe00..=0xfe0f | 0xfeff | 0xffa0 | 0xfff0..=0xfff8 | 0x1bca0..=0x1bca3 | 0x1d173..=0x1d17a | 0xe0000..=0xe0fff)
 }
@@ -88,6 +90,22 @@ mod tests {
         }
         // white space inside a lead is not removed: this is the `> ` lead with the text `> x`, not `>> x`; both are tagged, once
         assert_eq!(agent_line("> > x"), "[agent] > > x");
+    }
+
+    /// V4: the first and the last code point of every range of `marks` (format characters, nonspacing and enclosing marks, U+2800), in front of a lead, inside
+    /// it, between it and its space and inside the word of a note; and where a mark does not make a lead (a letter in front, no space behind).
+    #[test]
+    fn a_mark_does_not_hide_a_lead_at_either_end_of_any_range_of_the_table() {
+        for &(first, last) in crate::marks::RANGES {
+            for c in [first, last].map(|code| char::from_u32(code).unwrap()) {
+                for line in [format!("{c}>> x"), format!(">{c}> x"), format!("{c}$ x"), format!(">{c} x"), format!("{c}[turn completed]"), format!("[turn{c} completed]")] {
+                    assert!(reserved(&line), "{line:?} must be reserved");
+                }
+                for line in [format!("a{c}>> x"), format!(">{c}x"), format!("${c}HOME")] {
+                    assert!(!reserved(&line), "{line:?} must not be reserved");
+                }
+            }
+        }
     }
 
     #[test]
