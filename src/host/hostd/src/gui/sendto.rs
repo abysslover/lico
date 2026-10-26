@@ -72,6 +72,13 @@ pub fn failure(error: &str) -> String {
     }
 }
 
+/// After which answers of a hand-over the host may already have stored the file and told the other session: only when the request was written and no answer came back.
+/// Every code the host itself answers is a refusal before anything is stored (`deliver` takes the file away again when the input is refused), and `host_unreachable`
+/// is a connection that was not made or a request that could not be written. A new code has to be put in the table of `sendto_tests.rs`, which says which it is.
+fn may_have_gone(error: &str) -> bool {
+    error == "host_timeout"
+}
+
 /// The same for a whole conversation, where a word differs.
 pub fn failure_whole(error: &str) -> String {
     match error {
@@ -328,7 +335,11 @@ impl App {
             self.host_call(json!({"op": "transfer.send", "from": from, "to": to, "kind": kind, "text": text}))
         };
         if reply["ok"] != json!(1) {
-            let (why, kept) = (reply["error"].as_str().unwrap_or("unknown"), if whole { "Nothing was sent." } else { "The text is kept." });
+            let why = reply["error"].as_str().unwrap_or("unknown");
+            if whole && may_have_gone(why) {
+                return self.send_notice("The host has not said yet whether it handed the conversation over; look at the other session before you hand it over again.".into());
+            }
+            let kept = if whole { "Nothing was sent." } else { "The text is kept." };
             return self.send_notice(format!("Not {}: {}. {kept}", if whole { "handed over" } else { "sent" }, if whole { failure_whole(why) } else { failure(why) }));
         }
         let how = if reply["delivery"] == json!("file") { "as a file" } else { "inline" };

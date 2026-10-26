@@ -477,3 +477,45 @@ fn the_question_of_the_program_keeps_its_keys_and_is_answered_at_once() {
     assert!(!app.answer_key("S") && !app.answer_key("V") && app.ui.rows[0].approvals.len() == 1, "the program's question has neither");
     assert!(!app.card_ready(), "the dwell is for the host's own cards");
 }
+
+#[test]
+fn an_answer_the_host_did_not_confirm_is_not_called_unanswered_and_the_list_is_asked_for_at_once() {
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+    const WORDS: &str = "The host has not said yet whether it took your answer; the list shows it when it has.";
+    // the host takes the connection, reads the answer and says nothing that is a reply: the window cannot know whether the answer was taken
+    let silent = || json!({"nothing": "that answers"});
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![silent()]);
+    let mut app = with_card();
+    app.socket = path;
+    let (sock, mut peer) = UnixStream::pair().unwrap();
+    app.sock = sock;
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    assert!(app.answer_key("y"));
+    assert_eq!(host.join().unwrap(), [answer("allow", false)]);
+    assert_eq!(app.ui.flash.as_deref(), Some(WORDS), "it does not say that the request waits, nor that the answer failed");
+    assert_eq!(app.ui.rows[0].approvals.len(), 1, "the row keeps the request until the list says otherwise");
+    let mut asked = [0u8; 64];
+    let n = peer.read(&mut asked).unwrap();
+    assert_eq!(&asked[..n], b"{\"op\":\"status\"}\n", "the status is asked for at once, so the list shows what the host did");
+    // the host had taken the answer: a second Y gets the words of a request that is gone
+    let (path, host) = fake_host(&dir, vec![json!({"ok": 0, "error": "unknown_approval"})]);
+    app.socket = path;
+    assert!(app.answer_key("y"));
+    assert_eq!(host.join().unwrap(), [answer("allow", false)]);
+    assert!(app.ui.rows[0].approvals.is_empty() && app.ui.flash.as_deref() == Some("Request 7 is not waiting any more."), "{:?}", app.ui.flash);
+    // from the view the words are in the panel, which stays open
+    let (path, host) = fake_host(&dir, vec![page("first line", 0, None, 10), silent()]);
+    let mut app = with_card();
+    app.socket = path;
+    let (sock, mut peer) = UnixStream::pair().unwrap();
+    app.sock = sock;
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    assert!(app.answer_key("V"));
+    app.card_key('n');
+    assert_eq!(host.join().unwrap(), [read(0), answer("deny", false)]);
+    assert!(app.ui.panel.as_ref().is_some_and(|p| p.notice == WORDS) && app.ui.rows[0].approvals.len() == 1, "{:?}", app.ui.panel.as_ref().map(|p| &p.notice));
+    let n = peer.read(&mut asked).unwrap();
+    assert_eq!(&asked[..n], b"{\"op\":\"status\"}\n");
+}

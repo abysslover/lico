@@ -243,7 +243,11 @@ impl App {
         match reply["error"].as_str().unwrap_or("bad_request") {
             "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
             "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", if makes { "made" } else { "sent" })),
-            "host_timeout" => self.card_say(format!("Not answered: {}.", failure("host_timeout"))),
+            "host_timeout" => {
+                // the answer was written and nothing came back: it may have been taken, so the request is not called unanswered and the list is asked at once
+                self.card_say("The host has not said yet whether it took your answer; the list shows it when it has.".into());
+                self.send("{\"op\":\"status\"}");
+            }
             other => self.card_say(format!("Not answered: {}; the request waits.", failure(other))),
         }
     }

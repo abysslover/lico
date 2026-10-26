@@ -467,3 +467,74 @@ fn the_look_changes_colours_only_and_keeps_the_font_of_every_character_of_a_name
 fn the_window_waits_for_a_record_to_be_read_longer_than_for_an_ordinary_reply() {
     assert!(RECORD_WAIT > 3 * super::super::CALL_SECONDS, "a record of up to 1 GiB is read before the host answers: the window must not give up at the time of an ordinary call");
 }
+
+/// What the hand-over panel says after each code the host (or the window, when it heard nothing) can answer: whether the panel may say that nothing was sent.
+/// A new code in `failure` has to be put here, and so has to choose.
+const HAND_OVER_REFUSALS: [(&str, bool); 18] = [
+    ("unknown_session", true), ("session_disconnected", true), ("session_exited", true), ("busy", true), ("queue_full", true), ("chain_depth", true), ("too_large", true),
+    ("no_conversation_yet", true), ("record_not_found", true), ("record_ambiguous", true), ("record_format", true), ("bad_request", true), ("send_limit", true),
+    ("unknown_account", true), ("option_unavailable", true), ("folder_gone", true),
+    ("host_unreachable", true), // the window found no host or could not write the request: the host had nothing to act on
+    ("host_timeout", false),    // the request was written and no answer came: the host may have stored the file and told the other session
+];
+
+fn hand_over_panel_after(code: &str) -> String {
+    let dir = Scratch::new("sendto");
+    let mut app = two();
+    app.run_cmd(Cmd::HandOver);
+    let reply = match code {
+        "host_unreachable" => None, // no host at all
+        "host_timeout" => Some(json!({"nothing": "that answers"})), // the host reads the request and lets go of the connection without a reply
+        other => Some(json!({"ok": 0, "error": other})),
+    };
+    let host = reply.map(|reply| {
+        let (path, host) = fake_host(&dir, vec![reply]);
+        app.socket = path;
+        host
+    });
+    app.send_go();
+    if let Some(host) = host {
+        host.join().unwrap();
+    }
+    assert_eq!(step(&app), Some(Step::Send), "{code}: the panel stays");
+    notice(&app)
+}
+
+#[test]
+fn a_hand_over_the_host_may_have_carried_out_does_not_say_that_nothing_was_sent() {
+    for (code, nothing_sent) in HAND_OVER_REFUSALS {
+        let said = hand_over_panel_after(code);
+        assert_eq!(said.contains("Nothing was sent."), nothing_sent, "{code}: {said}");
+        assert_eq!(said.starts_with("Not handed over: "), nothing_sent, "{code}: {said}");
+    }
+    assert_eq!(
+        hand_over_panel_after("host_timeout"),
+        "The host has not said yet whether it handed the conversation over; look at the other session before you hand it over again."
+    );
+    // a draft is a text: it keeps the words of a text, and the draft is kept
+    let dir = Scratch::new("sendto");
+    let (path, host) = fake_host(&dir, vec![json!({"nothing": "that answers"})]);
+    let mut app = two();
+    app.socket = path;
+    app.send_ask();
+    app.send_go();
+    host.join().unwrap();
+    assert_eq!(notice(&app), "Not sent: the host did not answer in time; the text may have been delivered, so look at the other session before sending it again. The text is kept.");
+}
+
+#[test]
+fn every_code_that_failure_words_is_in_the_table_of_the_hand_over() {
+    let source = include_str!("sendto.rs");
+    let start = source.find("pub fn failure(").unwrap();
+    let words = &source[start..source[start..].find("/// The same for a whole conversation").unwrap() + start];
+    let mut found = Vec::new();
+    for line in words.lines().map(str::trim).filter(|l| l.starts_with('"') && l.contains(" => ")) {
+        for code in line.split(" => ").next().unwrap().split(" | ") {
+            found.push(code.trim_matches('"').to_string());
+        }
+    }
+    assert!(found.len() >= 17, "the codes were not found in the source: {found:?}");
+    for code in &found {
+        assert!(HAND_OVER_REFUSALS.iter().any(|(c, _)| c == code), "{code} has to say in HAND_OVER_REFUSALS whether the panel may call it 'Nothing was sent.'");
+    }
+}
