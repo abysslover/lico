@@ -53,6 +53,7 @@ def test_purge_removes_the_session_log_and_nothing_else():
             for sid, gen in ((doomed, gd), (kept, gk)):
                 conn.call(op="input", session=sid, generation=gen, request_id="c", text=f"keep nothing {CANARY}")
                 wait_for(lambda: any(CANARY in t for t in texts(log, sid)))
+                wait_for(lambda: "[turn completed]" in texts(log, sid))        # the echo of the input comes first; the size below is taken when the provider has said all it will
             before = {p.name: p.stat().st_size for p in log.iterdir() if p.name.startswith(kept)}
             pids = {a["session"]: a["pid"] for a in conn.call(op="resources")["agents"]}
             workspace = Path(directory) / "workspaces" / doomed
