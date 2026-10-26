@@ -1,0 +1,109 @@
+{
+  "about": "What the host accepts and refuses in a session name, in a folder path (its shape: absolute and existing are checked elsewhere) and in the text sent to an agent. Read by tests/test_text_rules.py against the protocol rule (lico_protocol/v1.py) and by a unit test in folders.rs (valid_name, valid_path_shape and ipc.rs valid_text), so the readers cannot drift apart. Names and folders refuse C0, DEL, C1 and the characters that draw nothing or reorder text (the list of codex.rs `dropped`); U+200C and U+200D stay allowed (Persian and Indic scripts, emoji sequences), and so do U+180B..U+180D, U+1160 and U+FE0F. Free input text refuses only the controls (C0 except newline and tab, DEL, C1). An entry is `text`, or `unit` repeated `times`.",
+  "name": {
+    "valid": [
+      {"text": "", "why": "empty: the default name is used"},
+      {"text": "refactor the parser", "why": "plain words"},
+      {"text": "\ud55c\uae00 \uc774\ub984 \ud83d\ude00", "why": "Hangul and an emoji"},
+      {"text": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645", "why": "U+200C (zero-width non-joiner) is allowed"},
+      {"text": "\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67", "why": "U+200D (zero-width joiner) is allowed"},
+      {"text": "a\u00a0b", "why": "a no-break space is not a control"},
+      {"text": "a\u180bb", "why": "U+180B (Mongolian free variation selector) is needed for Mongolian"},
+      {"text": "a\u1160b", "why": "U+1160 (Hangul jungseong filler) is needed for old Hangul"},
+      {"text": "\u2764\ufe0f", "why": "U+FE0F (variation selector-16) is needed for emoji"},
+      {"unit": "n", "times": 60, "why": "exactly the limit"}
+    ],
+    "invalid": [
+      {"unit": "n", "times": 61, "why": "one over the limit"},
+      {"text": "a\u0000b", "why": "NUL"},
+      {"text": "a\tb", "why": "a tab"},
+      {"text": "a\nb", "why": "a line break"},
+      {"text": "a\rb", "why": "a carriage return"},
+      {"text": "a\u001bb", "why": "ESC"},
+      {"text": "a\u007fb", "why": "DEL"},
+      {"text": "a\u0080b", "why": "C1, the first"},
+      {"text": "a\u0085b", "why": "C1, next line"},
+      {"text": "a\u009fb", "why": "C1, the last"},
+      {"text": "a\u061cb", "why": "Arabic letter mark"},
+      {"text": "a\u200bb", "why": "zero-width space"},
+      {"text": "a\u200eb", "why": "left-to-right mark"},
+      {"text": "a\u200fb", "why": "right-to-left mark"},
+      {"text": "a\u2028b", "why": "line separator"},
+      {"text": "a\u2029b", "why": "paragraph separator"},
+      {"text": "a\u202ab", "why": "left-to-right embedding"},
+      {"text": "a\u202eb", "why": "right-to-left override"},
+      {"text": "a\u2060b", "why": "word joiner"},
+      {"text": "a\u2062b", "why": "invisible times"},
+      {"text": "a\u2064b", "why": "invisible plus"},
+      {"text": "a\u2066b", "why": "left-to-right isolate"},
+      {"text": "a\u2069b", "why": "pop directional isolate"},
+      {"text": "a\ufeffb", "why": "byte order mark"},
+      {"text": "a\udb40\udc00b", "why": "tag, the first"},
+      {"text": "a\udb40\udc41b", "why": "tag letter A"},
+      {"text": "a\udb40\udc7fb", "why": "tag, the last"}
+    ]
+  },
+  "folder": {
+    "valid": [
+      {"text": "/work/project", "why": "an absolute path"},
+      {"text": "relative/ok-as-a-shape", "why": "absolute is checked elsewhere"},
+      {"text": "/work/\ud55c\uae00 \ud3f4\ub354 \ud83d\ude00", "why": "Hangul, a space and an emoji"},
+      {"text": "/work/\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645", "why": "U+200C is allowed"},
+      {"text": "/work/\ud83d\udc68\u200d\ud83d\udc69", "why": "U+200D is allowed"},
+      {"text": "/work/a\u180bb", "why": "U+180B is allowed"},
+      {"text": "/work/\u2764\ufe0f", "why": "U+FE0F is allowed"},
+      {"text": "/ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "why": "exactly the limit of 1,024 characters"}
+    ],
+    "invalid": [
+      {"text": "", "why": "empty"},
+      {"text": "/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "why": "one over the limit"},
+      {"text": "/work/a\u0000b", "why": "NUL"},
+      {"text": "/work/a\tb", "why": "a tab"},
+      {"text": "/work/a\nb", "why": "a line break"},
+      {"text": "/work/a\rb", "why": "a carriage return"},
+      {"text": "/work/a\u001bb", "why": "ESC"},
+      {"text": "/work/a\u007fb", "why": "DEL"},
+      {"text": "/work/a\u0080b", "why": "C1, the first"},
+      {"text": "/work/a\u0085b", "why": "C1, next line"},
+      {"text": "/work/a\u009fb", "why": "C1, the last"},
+      {"text": "/work/a\u061cb", "why": "Arabic letter mark"},
+      {"text": "/work/a\u200bb", "why": "zero-width space"},
+      {"text": "/work/a\u200eb", "why": "left-to-right mark"},
+      {"text": "/work/a\u200fb", "why": "right-to-left mark"},
+      {"text": "/work/a\u2028b", "why": "line separator"},
+      {"text": "/work/a\u2029b", "why": "paragraph separator"},
+      {"text": "/work/a\u202ab", "why": "left-to-right embedding"},
+      {"text": "/work/a\u202eb", "why": "right-to-left override"},
+      {"text": "/work/a\u2060b", "why": "word joiner"},
+      {"text": "/work/a\u2062b", "why": "invisible times"},
+      {"text": "/work/a\u2064b", "why": "invisible plus"},
+      {"text": "/work/a\u2066b", "why": "left-to-right isolate"},
+      {"text": "/work/a\u2069b", "why": "pop directional isolate"},
+      {"text": "/work/a\ufeffb", "why": "byte order mark"},
+      {"text": "/work/a\udb40\udc00b", "why": "tag, the first"},
+      {"text": "/work/a\udb40\udc41b", "why": "tag letter A"},
+      {"text": "/work/a\udb40\udc7fb", "why": "tag, the last"}
+    ]
+  },
+  "text": {
+    "valid": [
+      {"text": "hello", "why": "plain"},
+      {"text": "two\nlines\tand a tab", "why": "newline and tab are the only controls allowed"},
+      {"text": "\ud55c\uae00 \ud83d\ude00", "why": "Hangul and an emoji"},
+      {"text": "a\u00a0b", "why": "U+00A0 is not a control"},
+      {"text": "a\u200bb", "why": "free text keeps the zero-width space (the echo and the records clean it)"},
+      {"text": "a\u202eb", "why": "free text keeps a bidi override (the echo and the records clean it)"},
+      {"text": "a\ufeffb", "why": "free text keeps the byte order mark"}
+    ],
+    "invalid": [
+      {"text": "", "why": "empty"},
+      {"text": "a\u0000b", "why": "NUL"},
+      {"text": "a\rb", "why": "a carriage return"},
+      {"text": "a\u001bb", "why": "ESC"},
+      {"text": "a\u007fb", "why": "DEL"},
+      {"text": "a\u0080b", "why": "C1, the first"},
+      {"text": "a\u0085b", "why": "C1, next line"},
+      {"text": "a\u009fb", "why": "C1, the last"}
+    ]
+  }
+}

@@ -49,7 +49,7 @@ extern "C" {
 /// Characters that are removed from provider text: controls, and those that draw nothing or reorder what is drawn, so that a line cannot look like another
 /// one (a forged lead behind a zero-width space, a tag or a bidi override). U+200C and U+200D are kept on purpose: Persian and Indic scripts need the
 /// non-joiner and the joiner, and an emoji sequence (family, flag, skin tone) is joined by U+200D; they draw nothing alone but never hide a lead.
-fn dropped(code: u32) -> bool {
+pub(crate) fn dropped(code: u32) -> bool {
     code <= 8 || code == 0x0b || code == 0x0c || (0x0e..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
         || code == 0x061c || code == 0x200b || code == 0x200e || code == 0x200f || code == 0x2028 || code == 0x2029
         || (0x202a..=0x202e).contains(&code) || (0x2060..=0x2064).contains(&code) || (0x2066..=0x2069).contains(&code)

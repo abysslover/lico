@@ -192,11 +192,11 @@ REQUESTS = {
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096},
                             "account": {"type": STR, "max_length": 64},
-                            "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True},
-                            "name": {"type": STR, "max_length": MAX_NAME, "no_control": True},
+                            "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
+                            "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True},
                             "model": {"type": STR, "min_length": 1, "max_length": 60, "charset": "model"},
                             "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"}}),
-    "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True}}, _COMMON_REQ),
+    "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
     "session.options": _obj({}, _COMMON_REQ),
     "session.rebind": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                             "account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
@@ -241,6 +241,14 @@ def _is(value, kind) -> bool:
     return False
 
 
+def _is_hidden(char: str) -> bool:
+    """A character that draws nothing or reorders text; the list of `dropped` in hostd/src/codex.rs.
+    U+200C and U+200D are not on it (Persian and Indic scripts, emoji sequences)."""
+    code = ord(char)
+    return (code in (0x061C, 0x200B, 0x200E, 0x200F, 0x2028, 0x2029, 0xFEFF) or 0x202A <= code <= 0x202E
+            or 0x2060 <= code <= 0x2064 or 0x2066 <= code <= 0x2069 or 0xE0000 <= code <= 0xE007F)
+
+
 def _check(value, spec: dict, path: str, errors: list[str]) -> None:
     kinds = spec["type"] if isinstance(spec["type"], list) else [spec["type"]]
     if not any(_is(value, k) for k in kinds):
@@ -264,7 +272,9 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: only letters, digits, dot, dash and underscore, starting with a letter or digit")
     if isinstance(value, str) and spec.get("charset") == "lower" and not all("a" <= c <= "z" for c in value):
         errors.append(f"{path}: only lowercase letters")
-    if isinstance(value, str) and spec.get("no_control") and any((ord(c) < 32 or ord(c) == 127) and c not in spec.get("allow", "") for c in value):
+    if isinstance(value, str) and spec.get("no_control") and any((ord(c) < 32 or 127 <= ord(c) <= 159) and c not in spec.get("allow", "") for c in value):
+        errors.append(f"{path}: control characters")
+    if isinstance(value, str) and spec.get("no_hidden") and any(_is_hidden(c) for c in value):
         errors.append(f"{path}: control characters")
     if isinstance(value, list):
         if "length" in spec and len(value) != spec["length"]:

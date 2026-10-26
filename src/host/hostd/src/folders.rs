@@ -32,12 +32,18 @@ pub struct Settings {
     pub effort: Option<String>, // `--effort`; none = the program's default
 }
 
+/// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
+/// (the list `codex::dropped` removes from provider text), so a name read from a list cannot hide behind one.
+fn refused_char(c: char) -> bool {
+    c.is_control() || crate::codex::dropped(c as u32)
+}
+
 pub fn valid_path_shape(text: &str) -> bool {
-    !text.is_empty() && text.chars().count() <= MAX_PATH && !text.chars().any(char::is_control)
+    !text.is_empty() && text.chars().count() <= MAX_PATH && !text.chars().any(refused_char)
 }
 
 pub fn valid_name(text: &str) -> bool {
-    text.chars().count() <= MAX_NAME && !text.chars().any(char::is_control)
+    text.chars().count() <= MAX_NAME && !text.chars().any(refused_char)
 }
 
 pub fn valid_model(text: &str) -> bool {
@@ -87,7 +93,15 @@ impl Settings {
         if scratch == cwd.is_some() {
             return Err(bad("folder"));
         }
-        Ok(Settings { cwd, name: text("name", valid_name)?, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)? })
+        // A name stored before the hidden characters were refused loads without them; one holding a control character stops the load as before.
+        let name = match value.get("name") {
+            Some(Value::String(s)) if !s.chars().any(char::is_control) => {
+                let kept: String = s.chars().filter(|c| !refused_char(*c)).collect();
+                if valid_name(&kept) { Some(kept) } else { return Err(bad("name")) }
+            }
+            _ => text("name", valid_name)?,
+        };
+        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)? })
     }
 }
 
@@ -445,6 +459,28 @@ mod tests {
         assert_eq!(wrong("invalid", false), Vec::<String>::new(), "accepted, but invalid in the table");
     }
 
+    /// The table of what a name, a folder path and an input text may hold, that the protocol rule (`lico_protocol/v1.py`) is tested against as well.
+    #[test]
+    fn the_name_folder_and_text_rules_agree_with_the_shared_table() {
+        let table: Value = serde_json::from_str(include_str!("../../../../tests/fixtures/text_rules.json")).unwrap();
+        let entries = |rule: &str, kind: &str| -> Vec<(String, String)> {
+            table[rule][kind].as_array().unwrap().iter().map(|e| {
+                let text = e["text"].as_str().map(str::to_string).unwrap_or_else(|| e["unit"].as_str().unwrap().repeat(e["times"].as_u64().unwrap() as usize));
+                (text, e["why"].as_str().unwrap().to_string())
+            }).collect()
+        };
+        let rules: [(&str, fn(&str) -> bool); 3] = [
+            ("name", valid_name),
+            ("folder", valid_path_shape),
+            ("text", |text| crate::ipc::valid_text(&Value::String(text.to_string()))),
+        ];
+        for (rule, accepts) in rules {
+            let wrong = |kind: &str, want: bool| entries(rule, kind).into_iter().filter(|(text, _)| accepts(text) != want).map(|(_, why)| why).collect::<Vec<_>>();
+            assert_eq!(wrong("valid", true), Vec::<String>::new(), "{rule}: refused, but valid in the table");
+            assert_eq!(wrong("invalid", false), Vec::<String>::new(), "{rule}: accepted, but invalid in the table");
+        }
+    }
+
     #[test]
     fn a_stored_record_gives_back_only_fields_of_the_right_shape() {
         let text = |last: Value| json!({"folders": ["/a", "relative/ok-as-a-list-entry?", 7, "/b\0c"], "last": last}).to_string();
@@ -456,6 +492,18 @@ mod tests {
         assert_eq!(parse_record(&text(json!({"kind": 1, "model": ["opus"], "effort": null}))).1, Map::new());
         assert_eq!(parse_record("not json"), (Vec::new(), Map::new()));
         assert_eq!(parse_record(&json!({"folders": (0..30).map(|n| format!("/f{n}")).collect::<Vec<_>>()}).to_string()).0.len(), RECENT);
+    }
+
+    #[test]
+    fn a_name_stored_with_a_hidden_character_loads_without_it_and_a_folder_with_one_does_not_load() {
+        let record = |fields: Value| { let mut r = json!({"scratch": true}); r.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone()); r };
+        let name = |name: &str| Settings::from_record(&record(json!({"name": name})), "s1");
+        assert_eq!(name("a\u{200b}b\u{202e}c\u{e0041}").unwrap().name.as_deref(), Some("abc"));
+        assert_eq!(name("a\u{200d}b").unwrap().name.as_deref(), Some("a\u{200d}b")); // the joiner stays
+        assert!(name("a\u{85}b").is_err() && name("a\nb").is_err());                // a control character stopped the load before, and still does
+        assert!(name(&"\u{200b}".repeat(5).chars().chain("x".repeat(MAX_NAME + 1).chars()).collect::<String>()).is_err());
+        let folder = Settings::from_record(&json!({"scratch": false, "cwd": "/work/\u{202e}p"}), "s1");
+        assert_eq!(folder, Err("sessions.json has an invalid cwd for s1".to_string()));
     }
 
     #[test]

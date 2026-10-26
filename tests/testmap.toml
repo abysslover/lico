@@ -58,6 +58,7 @@
 "tests/test_single_executable.py" = ["cli", "gui", "host"]
 "tests/test_size_ratchet.py" = []
 "tests/test_stale_host.py" = ["cli", "gui", "host", "synth"]
+"tests/test_text_rules.py" = []
 "tests/test_unicode_clients.py" = ["gui", "host"]
 "tests/test_view_lifecycle.py" = ["gui", "host", "synth"]
 "tests/test_window_keys.py" = ["gui", "host"]
@@ -143,6 +144,12 @@ glob = "tests/fixtures/model_names.json"
 tests = ["tests/test_model_names.py"]
 cargo = ["folders::"]
 reason = "the table of model names: the protocol rule reads it in the Python test, the host rule in a unit test of folders.rs (include_str!)"
+
+[[sources]]
+glob = "tests/fixtures/text_rules.json"
+tests = ["tests/test_text_rules.py"]
+cargo = ["folders::"]
+reason = "what a name, a folder path and an input text may hold: the protocol rule reads it in the Python test, the host rules in a unit test of folders.rs (include_str!)"
 
 [[sources]]
 glob = "src/host/adapters/codex/**"
