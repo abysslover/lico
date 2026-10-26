@@ -986,7 +986,7 @@ impl App {
             }
         }
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
-        let dim = Color::rgb(0x6A, 0x72, 0x7E);
+        let dim = super::panel::sendto::DIM;
         let hint_ink = Color::rgb(0x9A, 0xA4, 0xB0);
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;

@@ -324,7 +324,7 @@ mod tests {
         "℃ ℉ № ℮ Ⅰ Ⅱ Ⅲ ⅰ ⅱ ⅓ ⅔ ⌘ ⌥ ⇧ ⌫ ⏎ ⏩ ☀ ☁ ☂ ☃ ★ ☎ ☑ ♠ ♣ ♥ ♦ ⚠ ⚡ ✂ ✅ ✈ ✉ ✔ ✖ ❄ ❌ ❓ ➕ ➖ ➡ ⤴ ⤵ ⬅ ⬆ ⬇ ⬛ ⬜",
         "a가b나c다 한A글B 漢a字b かA な 가漢 나か 다ㅋ 한→글 ✓완료 🙂파일 Привет파일 α한",
         "  leading and trailing spaces  ",
-    ">> [from session 'api-server' (s012345) | 14:02 | message | 27 B]", ">> [from session '한글-api' (s012345) | 14:02 | selection | 3.1 KiB, 24 lines]", // the header of another session's text: dimmed, the name lit
+        ">> [from session 'api-server' (s012345) | 14:02 | message | 27 B]", ">> [from session '한글-api' (s012345) | 14:02 | selection | 3.1 KiB, 24 lines]", // the header of another session's text: dimmed, the name lit
         "tab-free text with Ünïcödé and 한국어 and 日本語 and emoji 🙂 in one line that is long enough to wrap around the edge of the window and go on",
     ];
 
@@ -391,6 +391,25 @@ mod tests {
         assert!(routed.is_empty(), "whitelisted lines were given to the exact path: {routed:?}");
         assert!(pair.faces.probes > 50, "the lines must reach the lookup of characters ({} probes)", pair.faces.probes);
         assert!(fonts >= 3 || pair.faces.named.len() >= 3, "the corpus must use several faces, or comparing proves nothing");
+    }
+
+    /// The colours a line was drawn with, the alpha of the blit left out.
+    fn inks(drawn: &Drawn) -> HashSet<u32> {
+        drawn.rects.iter().map(|r| r.4 & 0x00FF_FFFF).collect()
+    }
+
+    #[test]
+    fn the_header_of_another_sessions_text_is_drawn_dimmed_with_the_name_lit_and_any_other_line_in_the_ink_on_both_paths() {
+        use super::super::panel::sendto::{DIM, NAME};
+        let (dim, name, ink) = (DIM.0 & 0x00FF_FFFF, NAME.0 & 0x00FF_FFFF, 0x00E0_E0E0);
+        let mut pair = Pair::new();
+        for (fs, swash, faces) in [(&mut pair.fast, &mut pair.swash, &mut pair.faces), (&mut pair.plain, &mut pair.plain_swash, &mut pair.plain_faces)] {
+            let mut ink_of = |text: &str| inks(&draw(fs, swash, faces, text));
+            assert_eq!(ink_of(">> [from session 'api-server' (s012345) | 14:02 | message | 27 B]"), HashSet::from([dim, name]), "the record dimmed, the name lit");
+            assert_eq!(ink_of(">> [from the person | 14:02 | message | 27 B]"), HashSet::from([dim]), "the person has no name to light");
+            assert_eq!(ink_of(">> please check the login test"), HashSet::from([ink]), "the text itself is not dimmed");
+            assert_eq!(ink_of(">> [from session 'api-server' (s012345) | 14:02 | message | the password is hunter2]"), HashSet::from([ink]), "what only looks like a header is not");
+        }
     }
 
     #[test]

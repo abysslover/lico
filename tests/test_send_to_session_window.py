@@ -1,4 +1,4 @@
-"""M02-P03-S06 in the product window: the draft in the box of one session is sent to another from the Session menu; the panel lists the other sessions by
+"""M02-P03-S06 in the product window: the draft in the box of one session is sent to another by Ctrl+Shift+S (the Session menu shows the entry and its key); the panel lists the other sessions by
 their numbers, the person picks one by its number, and the receiver's history shows the host's header in front of the text."""
 import re
 from pathlib import Path
@@ -30,7 +30,7 @@ def item(m, text):
 HEADER = re.compile(r">> \[from session 'api-server' \((s[0-9a-f]{6})\) \| \d\d:\d\d \| message \| 27 B\]")
 
 
-def test_a_draft_goes_from_the_menu_to_the_session_picked_by_its_number_and_the_receiver_history_shows_the_hosts_header():
+def test_a_draft_goes_by_the_chord_to_the_session_picked_by_its_number_and_the_receiver_history_shows_the_hosts_header():
     with private_dir() as directory:
         args, _ = claude_args(directory)
         log = Path(directory) / "log"
@@ -51,9 +51,11 @@ def test_a_draft_goes_from_the_menu_to_the_session_picked_by_its_number_and_the_
             w.click(*centre(menu(w)["titles"][1]["rect"]))                                        # Session
             entry = item(menu(w), "Send to session")
             assert entry["enabled"] and entry["key"] == "Ctrl+Shift+S", entry
-            w.click(*centre(entry["rect"]))
+            w.key("Escape")                                                                       # the menu shows the entry and its key; the key itself opens the panel
+            assert menu(w)["open"] is None and panel(w) is None
+            w.key("ctrl+shift+s")
             asked = panel(w)
-            assert asked["title"] == "Send to session" and menu(w)["open"] is None, asked
+            assert asked and asked["title"] == "Send to session", asked
             body = asked["body"]
             line = next(l for l in body if "docs" in l)
             number = re.search(r"\[ \] (\d)\s+docs", line)

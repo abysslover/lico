@@ -1,5 +1,5 @@
 //! Sending text to another session from the window: the panel (what, to whom, how it is delivered) and the look of the header that the receiving
-//! window shows. The host does the work (`transfer.send`, on the connection of the window's other requests); this asks it and says what came of it.
+//! window shows. The host does the work (`transfer.send`, asked over the host socket like the window's other requests, one connection for the call); this asks it and says what came of it.
 //! The text of both sources is taken when the panel opens, and the draft is cleared only when the host says it was delivered.
 
 use std::ops::Range;

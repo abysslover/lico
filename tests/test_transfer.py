@@ -3,6 +3,7 @@
 A host with the Claude simulator. What the receiving program was sent is read from the simulator's own file (the user messages it received), what the
 history shows from the durable log, and the handoff files from the disk. The host decides the header and where long text goes; the sender never does."""
 import json
+import os
 import re
 import subprocess
 import time
@@ -293,6 +294,7 @@ def test_the_host_logs_each_transfer_without_its_text_and_the_log_ends_up_in_no_
     assert tag not in (Path(world.directory) / "host.err").read_text() and "hunter2" not in (Path(world.directory) / "host.err").read_text()
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can write into a 0500 folder, so there is no store that fails")
 def test_a_file_that_cannot_be_stored_is_logged_with_the_kind_of_the_error_and_neither_the_text_nor_a_path(world):
     receiver, _ = world.session()
     tag = mark()
