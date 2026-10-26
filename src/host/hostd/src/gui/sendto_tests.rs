@@ -69,7 +69,7 @@ fn at(body: &[String], needle: &str) -> usize {
 
 /// A host that answers each connection with the next reply and keeps what it was asked. One that is not asked within three seconds stops waiting
 /// (the test then finds fewer questions than it expected, and says so, instead of hanging).
-fn fake_host(dir: &Scratch, replies: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+pub(in super::super) fn fake_host(dir: &Scratch, replies: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<Value>>) {
     let path = dir.0.join("h.sock");
     let _ = std::fs::remove_file(&path); // a test that asks twice leaves the first one's file behind
     let listener = UnixListener::bind(&path).unwrap();

@@ -36,7 +36,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                                  [from session 'NAME' (ID7) | HH:MM | message | SIZE] and saves a long text as a file
   input status ID RID            state of an earlier request id\n\
   session watch ID [--after N] [--seconds S]\n\
-  approval answer SESSION N allow|deny\n\
+  approval answer SESSION N allow|deny [--keep]   (--keep: with allow, an agent's request of this kind to this session needs no more questions while the session lives)\n\
+  approval show SESSION N [OFFSET]   one page (16 KiB at most) of the whole text an agent's request waits with; `next` is the offset of the following page\n\
   view attach SESSION [--kind gui|cli]\n\
   view detach VIEW\n\
 The socket defaults to $LICO_SOCKET, then to $XDG_RUNTIME_DIR/lico/host.sock.";
@@ -315,11 +316,22 @@ pub fn run(args: Vec<String>) {
                 }
             }
         }
-        ["approval", "answer", session, number, answer] => {
+        ["approval", "answer", session, number, answer, rest @ ..] if matches!(rest, [] | ["--keep"]) => {
             let mut conn = connect(&socket);
             let generation = session_generation(&mut conn, session);
             let approval: i64 = number.parse().unwrap_or_else(|_| die(1, USAGE));
-            expect_ok(call(&mut conn, json!({"op": "approval.answer", "session": session, "generation": generation, "approval_id": approval, "answer": answer})));
+            let mut request = json!({"op": "approval.answer", "session": session, "generation": generation, "approval_id": approval, "answer": answer});
+            if !rest.is_empty() {
+                request["keep"] = json!(true);
+            }
+            expect_ok(call(&mut conn, request));
+        }
+        ["approval", "show", session, number, rest @ ..] if rest.len() <= 1 => {
+            let mut conn = connect(&socket);
+            let generation = session_generation(&mut conn, session);
+            let approval: i64 = number.parse().unwrap_or_else(|_| die(1, USAGE));
+            let offset: i64 = rest.first().map_or(0, |at| at.parse().unwrap_or_else(|_| die(1, USAGE)));
+            expect_ok(call(&mut conn, json!({"op": "approval.text", "session": session, "generation": generation, "approval_id": approval, "offset": offset})));
         }
         ["view", "attach", session, ..] => {
             let kind = flag(&args, "--kind").unwrap_or_else(|| "cli".to_string());

@@ -24,6 +24,7 @@ pub enum Step {
     Rename,  // the new name of a session, on the input line
     Confirm, // a question about a session that Y answers
     Send,    // text of the box or lines of the screen, for another session (sendto.rs)
+    Card,    // the whole text behind a card of the host's own (cardview.rs)
 }
 
 pub struct Panel {
@@ -41,6 +42,7 @@ pub struct Panel {
     pub form: Option<newsession::Form>, // the new-session form: what it holds stays while the label or the sign-in is asked for
     pub ask: Option<confirm::Ask>, // the session that a rename or a confirmation is about
     pub send: Option<sendto::Outgoing>, // what the send-to-session panel holds
+    pub card: Option<cardview::View>, // the text of a request, as far as it was read
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -100,7 +102,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -189,6 +191,11 @@ impl App {
                 body.extend(lines);
                 heading
             }
+            Step::Card => {
+                let (heading, lines) = self.card_view(p);
+                body.extend(lines);
+                heading
+            }
             Step::Rename | Step::Confirm => {
                 let (heading, lines) = self.ask_view(p);
                 body.extend(lines);
@@ -197,7 +204,7 @@ impl App {
             Step::Keys => {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
-                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty)", "Ctrl+V or Shift+Insert paste   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
+                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V or Shift+Insert paste   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
                     "Page Up, Page Down, End  scroll the output", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
                     "Ctrl+Shift+S  send the input box, or the selected lines, to another session",
                 ].map(String::from));
@@ -341,6 +348,7 @@ impl App {
                 self.send_go();
                 true
             }
+            Key::Named(key) if step == Step::Card && self.card_named(key) => true,
             Key::Named(NamedKey::Enter) if text_mode => {
                 let text = self.ed.take().text();
                 self.preedit.clear();
@@ -422,6 +430,7 @@ impl App {
             Step::Actions => self.action_key(key),
             Step::Confirm => self.confirm_key(key),
             Step::Send => self.send_key(key),
+            Step::Card => self.card_key(key),
             _ => {}
         }
     }
@@ -498,6 +507,8 @@ impl App {
     }
 }
 
+#[path = "cardview.rs"]
+pub(super) mod cardview;
 #[path = "confirm.rs"]
 pub(super) mod confirm;
 #[path = "newsession.rs"]

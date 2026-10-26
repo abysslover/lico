@@ -224,7 +224,7 @@ impl App {
     }
 
     /// The list as the host last said it: group headings and rows with their numbers; the boxes are made when it is drawn (see `draw_ui`).
-    fn refresh_list(&mut self) {
+    pub(super) fn refresh_list(&mut self) {
         let now = self.clock_now();
         let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
         for row in &self.ui.rows {
@@ -310,6 +310,7 @@ impl App {
     pub(crate) fn answer_approval(&mut self, allow: bool) {
         let Some(row) = self.selected_row() else { return };
         let Some((id, _)) = row.approvals.first().cloned() else { return };
+        if self.lico_card() == Some(id) { return self.answer_card(allow, false) } // the host's own: answered on a call that says what came of it
         let msg = format!(
             "{{\"op\":\"approval.answer\",\"session\":\"{}\",\"generation\":{},\"approval_id\":{},\"answer\":\"{}\"}}",
             self.session, row.generation, id, if allow { "allow" } else { "deny" }
@@ -664,7 +665,7 @@ impl App {
             items.insert(2, e);
         }
         if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) {
-            items.insert(0, "Y allow  N deny");
+            items.insert(0, self.approval_hint());
         }
         let mut text = String::new();
         for item in items {
@@ -687,8 +688,7 @@ impl App {
             return false;
         }
         match &event.logical_key {
-            Key::Character(c) if c.eq_ignore_ascii_case("y") => self.answer_approval(true),
-            Key::Character(c) if c.eq_ignore_ascii_case("n") => self.answer_approval(false),
+            Key::Character(c) if self.answer_key(c) => {}
             _ => return false,
         }
         self.dirty = true;

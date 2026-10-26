@@ -185,6 +185,30 @@ fn answer_at(shared: &Shared, session: &str, generation: i64, id: i64, answer: &
     Some(Ok(reply))
 }
 
+/// The longest page of a request's text that one `approval.text` returns, in bytes.
+pub const PAGE: usize = 16 * 1024;
+
+/// One page of the text that waits behind a request, for the person who has to decide on it.
+/// A page is cut on a character boundary (so `limit` of 4 always holds one character) and `next` is where the following page starts, null at the end.
+pub fn text_page(shared: &Shared, session: &str, generation: i64, id: i64, offset: usize, limit: usize) -> Reply {
+    let found = core::find(shared, session).ok_or("unknown_session")?;
+    let s = found.lock().unwrap();
+    core::check_generation(&s, Some(generation))?;
+    let record = s.pending.records.iter().find(|r| r.id == id).ok_or("unknown_approval")?;
+    if record.expires <= now() {
+        return Err("expired");
+    }
+    let (text, total) = (&record.text, record.text.len());
+    if offset > total || !text.is_char_boundary(offset) {
+        return Err("bad_request");
+    }
+    let mut end = (offset + limit.min(PAGE)).min(total);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    Ok(obj(json!({"session": s.id, "approval_id": id, "text": &text[offset..end], "offset": offset, "next": (end < total).then_some(end), "total": total})))
+}
+
 /// The host's word to the session that asked, once per decision. It is input like a person's but written by the host: it opens no card and is answered by no notice.
 fn notify(shared: &Shared, session: &str, id: i64, words: &str) {
     let text = format!("[from lico | {} | approval {id}]\n{words}", crate::transfer::hhmm_now());
@@ -239,11 +263,8 @@ pub fn waits(s: &Session) -> bool {
     s.approvals.iter().any(|(n, _)| !s.pending.has(*n))
 }
 
-/// The approvals of a status entry: the program's, and the host's own marked with the tool they are for.
+/// The approvals of a status entry: the program's, and the host's own marked with the tool they are for; and what is allowed for the session.
 pub fn annotate(entry: &mut Value, s: &Session) {
-    if s.approvals.is_empty() {
-        return;
-    }
     let card = |(n, prompt): &(i64, String)| {
         let mut card = json!({"approval_id": n, "prompt": prompt});
         if let Some(tool) = s.pending.records.iter().find(|r| r.id == *n).map(|r| r.tool) {
@@ -251,7 +272,12 @@ pub fn annotate(entry: &mut Value, s: &Session) {
         }
         card
     };
-    entry["approvals"] = Value::Array(s.approvals.iter().map(card).collect());
+    if !s.approvals.is_empty() {
+        entry["approvals"] = Value::Array(s.approvals.iter().map(card).collect());
+    }
+    if !s.pending.keeps.is_empty() {
+        entry["allowed"] = Value::Array(s.pending.keeps.iter().map(|(tool, to)| json!({"tool": tool, "to": to})).collect()); // what the person said yes to for as long as the session lives
+    }
 }
 
 impl Session {
@@ -652,5 +678,92 @@ mod tests {
         let card = r.status_of(ONE)["approvals"][1]["prompt"].as_str().unwrap().to_string();
         assert!(card.starts_with("send to 'third' (s222222) | ") && card.ends_with("\"say 'hi'!\""), "{card:?}");
         assert!(!card.chars().any(|c| c.is_control() || c == '\u{202e}'), "{card:?}");
+    }
+
+    /// The pages of a request read one after the other, as the window and `lico approval show` read them: the text, and how many pages it took.
+    fn read_all(r: &Room, from: &str, id: i64, limit: usize) -> (String, usize) {
+        let generation = r.w.with(from, |s| s.generation as i64);
+        let (mut text, mut at, mut pages) = (String::new(), 0, 0);
+        loop {
+            let page = text_page(&r.w.shared, from, generation, id, at, limit).unwrap();
+            assert_eq!(page["offset"], at);
+            assert!(page["text"].as_str().unwrap().len() <= limit.min(PAGE));
+            text.push_str(page["text"].as_str().unwrap());
+            pages += 1;
+            match page["next"].as_u64() {
+                Some(next) => {
+                    assert!(next as usize > at, "every page moves on");
+                    at = next as usize;
+                }
+                None => return (text, pages),
+            }
+        }
+    }
+
+    #[test]
+    fn a_long_text_is_read_in_pages_that_join_to_the_whole_and_are_cut_between_characters() {
+        let r = room();
+        let text = "\u{e9}\u{d55c}\u{1f600}".repeat(7000); // 2, 3 and 4 bytes: 63000 bytes
+        let id = r.pend(ONE, TWO, &text);
+        let generation = r.w.with(ONE, |s| s.generation as i64);
+        let first = text_page(&r.w.shared, ONE, generation, id, 0, PAGE).unwrap();
+        assert_eq!((first["offset"].as_u64(), first["total"].as_u64()), (Some(0), Some(63000)));
+        assert!(first["next"].as_u64().unwrap() <= PAGE as u64 && first["next"].as_u64().unwrap() > PAGE as u64 - 4, "{first:?}");
+        assert_eq!(read_all(&r, ONE, id, PAGE), (text.clone(), 4));
+        assert_eq!(read_all(&r, ONE, id, 4).0, text, "four bytes always hold a character");
+        assert_eq!(read_all(&r, ONE, id, 1 << 40), (text.clone(), 4), "a longer page than the host gives is asked for and is not given");
+        let small = r.pend(ONE, TWO, "short");
+        let only = text_page(&r.w.shared, ONE, generation, small, 0, PAGE).unwrap();
+        assert_eq!((only["text"].as_str(), only["next"].is_null(), only["total"].as_u64()), (Some("short"), true, Some(5)));
+        assert_eq!(r.waiting(ONE), 2, "reading takes nothing away");
+        assert!(r.inbox(TWO).is_empty() && r.inbox(ONE).is_empty());
+    }
+
+    #[test]
+    fn a_page_is_refused_for_what_is_not_a_request_that_waits_for_this_person_here_and_now() {
+        let r = room();
+        let id = r.pend(ONE, TWO, "h\u{e9}llo");
+        let generation = r.w.with(ONE, |s| s.generation as i64);
+        let page = |session: &str, generation: i64, id: i64, offset: usize| text_page(&r.w.shared, session, generation, id, offset, PAGE);
+        assert_eq!(page("s999999", 1, id, 0).unwrap_err(), "unknown_session");
+        assert_eq!(page(ONE, generation + 1, id, 0).unwrap_err(), "stale_generation");
+        assert_eq!(page(ONE, generation, 99, 0).unwrap_err(), "unknown_approval");
+        assert_eq!(page(TWO, r.w.with(TWO, |s| s.generation as i64), id, 0).unwrap_err(), "unknown_approval", "the request of another session");
+        r.w.with(ONE, |s| s.approvals.push((7, "ls".into())));
+        assert_eq!(page(ONE, generation, 7, 0).unwrap_err(), "unknown_approval", "the program's own question has no text of ours");
+        assert_eq!(page(ONE, generation, id, 7).unwrap_err(), "bad_request", "past the end");
+        assert_eq!(page(ONE, generation, id, 2).unwrap_err(), "bad_request", "inside a character");
+        assert_eq!(page(ONE, generation, id, 6).unwrap()["text"], "", "the end itself is an empty page");
+        r.w.with(ONE, |s| s.pending.records[0].expires = 0);
+        assert_eq!(page(ONE, generation, id, 0).unwrap_err(), "expired");
+        r.w.with(ONE, |s| s.pending.records[0].expires = now() + 60);
+        assert_eq!(r.decide(ONE, id, "deny", false).unwrap()["outcome"], "declined");
+        assert_eq!(page(ONE, generation, id, 0).unwrap_err(), "unknown_approval", "a decided request is gone");
+    }
+
+    #[test]
+    fn a_page_that_the_json_makes_longer_still_leaves_far_under_the_queue_of_a_connection() {
+        let r = room();
+        let id = r.pend(ONE, TWO, &"\u{1}\"\\".repeat(20000));
+        let page = text_page(&r.w.shared, ONE, r.w.with(ONE, |s| s.generation as i64), id, 0, PAGE).unwrap();
+        let line = encode(page);
+        assert!(line.len() > PAGE && line.len() < 6 * PAGE + 1024 && line.len() < 100_000, "{} bytes for one page", line.len());
+    }
+
+    #[test]
+    fn what_the_person_allowed_for_the_session_is_listed_on_the_row_and_nothing_else_is() {
+        let r = room();
+        assert!(r.status_of(ONE).get("allowed").is_none());
+        let id = r.pend(ONE, TWO, "first");
+        assert!(r.status_of(ONE).get("allowed").is_none(), "a question is not an allowance");
+        r.decide(ONE, id, "allow", false).unwrap();
+        assert!(r.status_of(ONE).get("allowed").is_none(), "a yes without the keep is not one either");
+        let id = r.pend(ONE, TWO, "second");
+        r.decide(ONE, id, "allow", true).unwrap();
+        assert_eq!(r.status_of(ONE)["allowed"], json!([{"tool": "send", "to": TWO}]));
+        assert!(r.status_of(ONE).get("approvals").is_none() && r.status_of(TWO).get("allowed").is_none(), "an allowance is the asker's own");
+        r.pend(ONE, THREE, "third");
+        let both = r.status_of(ONE);
+        assert_eq!((both["approvals"].as_array().map(Vec::len), both["allowed"].as_array().map(Vec::len)), (Some(1), Some(1)));
     }
 }

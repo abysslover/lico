@@ -18,6 +18,7 @@ pub struct Row {
     pub activity: String,
     pub generation: i64,
     pub approvals: Vec<(i64, String)>,
+    pub asks: Vec<i64>, // the ones of those that are the host's own question for an agent's request (cardview.rs), not the program's
     pub issue: String,
     pub mode: String,
     pub busy_since: u64,    // the host's start of the open turn (unix seconds), 0 when none
@@ -64,9 +65,10 @@ impl Row {
         let text = |key: &str| entry[key].as_str().unwrap_or("").to_string();
         let number = |key: &str| entry[key].as_u64().unwrap_or(0);
         let approvals = entry["approvals"].as_array().into_iter().flatten().filter_map(|a| Some((a["approval_id"].as_i64()?, clean(a["prompt"].as_str()?)))).collect();
+        let asks = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"].is_string()).filter_map(|a| a["approval_id"].as_i64()).collect();
         Some(Row {
             session: text("session"), provider: text("provider"), account: text("account"), model: clean(&text("model")), state: text("state"), state_at: number("state_at"),
-            activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, issue: text("account_issue"), mode: text("mode"),
+            activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, asks, issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
             cwd: clean(&text("cwd")), name: clean(&text("name")),
             memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,

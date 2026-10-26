@@ -18,9 +18,9 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Origin, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-escaped (up to 3 times its size) and the rest of the line
-pub const OPS: [&str; 32] = [
+pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
+    "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send",
 ];
 pub const REPLAY_CHUNK: usize = 256;

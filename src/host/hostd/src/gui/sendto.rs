@@ -49,6 +49,8 @@ pub fn failure(error: &str) -> String {
         "session_disconnected" => "that session is closed (Ctrl+R in it brings it back)".into(),
         "session_exited" => "that session has ended".into(),
         "busy" => "the host could not take it just now".into(),
+        "queue_full" => "that session's input queue is full; try again in a moment".into(),
+        "chain_depth" => "the chain of agents is too long; a person has to start it again".into(),
         "too_large" => "the text is too large for the host".into(),
         "bad_request" => "the host does not accept that text".into(),
         "host_unreachable" => "the host did not answer".into(),
@@ -324,4 +326,4 @@ pub fn tint(list: AttrsList, text: &str) -> AttrsList {
 
 #[cfg(test)]
 #[path = "sendto_tests.rs"]
-mod tests;
+pub(super) mod tests;

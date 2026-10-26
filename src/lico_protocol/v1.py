@@ -40,6 +40,7 @@ INVENTORY = {
     "input": {"state": "host", "mutates": True},
     "input.status": {"state": "host", "mutates": False},
     "approval.answer": {"state": "host", "mutates": True},
+    "approval.text": {"state": "host", "mutates": False},
     "view.attach": {"state": "host", "mutates": True},
     "view.detach": {"state": "host", "mutates": True},
     "resources": {"state": "host", "mutates": False},
@@ -91,13 +92,14 @@ REPLIES = {
                      "producing": {"type": BOOL}, "subscribers": {"type": INT, "minimum": 0},
                      "bytes_total": {"type": INT, "minimum": 0}},
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
-                     "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
+                     "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "busy_since": {"type": INT, "minimum": 0}, "last_event_at": {"type": INT, "minimum": 0}, "stalled": {"type": BOOL}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
                      "memory": MEMORY,   # of a running session, from the second status call on
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
-                         "optional": {"tool": {"type": STR, "enum": ["send"]}}}}}}}},    # a question the host asks for an agent's request; the program's own has none
+                         "optional": {"tool": {"type": STR, "enum": ["send"]}}}},    # a question the host asks for an agent's request; the program's own has none
+                     "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
@@ -117,6 +119,8 @@ REPLIES = {
                              "state": {"type": STR, "enum": ["answered"]}},
                             {**COMMON_REPLY_OPTIONAL, "outcome": {"type": STR, "enum": ["done", "declined", "not_done"]},   # only of an agent's request: what the answer led to
                              "reason": {"type": STR, "max_length": 64}}),                                                    # why it was not done: the name of the refusal
+    "approval.text": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "approval_id": {"type": INT, "minimum": 1}, "text": {"type": STR, "max_length": 16384},
+                           "offset": {"type": INT, "minimum": 0}, "next": {"type": [INT, "null"], "minimum": 1}, "total": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
     "view.attach": _obj({"v": _V, "ok": _OK, "view": {"type": STR}, "session": {"type": STR},
                          "generation": {"type": INT, "minimum": 1}, "gap": {"type": BOOL}, "from": {"type": INT, "minimum": 0},
                          "snapshot": SNAPSHOT_BODY}, {**COMMON_REPLY_OPTIONAL, "missed": {"type": [INT, "null"]}}),
@@ -231,6 +235,8 @@ REQUESTS = {
     "approval.answer": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                              "approval_id": {"type": INT, "minimum": 1}, "answer": {"type": STR, "enum": ["allow", "deny"]}},
                             {**_COMMON_REQ, "keep": {"type": BOOL}}),    # with an allow of an agent's request: no more questions for this kind of request while the session lives
+    "approval.text": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}, "approval_id": {"type": INT, "minimum": 1}},
+                          {**_COMMON_REQ, "offset": {"type": INT, "minimum": 0}, "limit": {"type": INT, "minimum": 4, "maximum": 16384}}),    # one page of the text that waits behind an agent's request
     "view.attach": _obj({"session": {"type": STR, "max_length": 64}, "kind": {"type": STR, "enum": ["gui", "cli"]}},
                         {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "after": {"type": INT, "minimum": -1}}),
     "view.detach": _obj({"view": {"type": STR, "max_length": 64}}, _COMMON_REQ),

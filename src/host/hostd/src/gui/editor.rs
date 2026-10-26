@@ -47,7 +47,7 @@ fn width(text: &str) -> usize {
 }
 
 /// Direction overrides and line separators: shown by `clean()` nowhere, so a paste does not bring them into what is about to be sent.
-fn hidden(c: char) -> bool {
+pub(crate) fn hidden(c: char) -> bool {
     matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{2028}' | '\u{2029}' | '\u{200E}' | '\u{200F}' | '\u{061C}')
 }
 

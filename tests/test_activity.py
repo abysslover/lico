@@ -5,6 +5,7 @@ import time
 
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Xvfb, private_dir
+from lico_protocol import v1
 
 from tests.test_claude_adapter import claude_host, new_claude, records, status_of
 from tests.test_codex_adapter import wait_for
@@ -33,6 +34,7 @@ def test_a_working_turn_says_since_when_it_works_and_when_the_provider_last_spok
             working = wait_for(lambda: (lambda e: e if e.get("activity") == "working" else None)(status_of(conn, sid)))
             assert before <= working["busy_since"] <= int(time.time()) and working["busy_since"] <= working["last_event_at"]
             assert working["stalled"] is False                                    # three seconds of quiet is thinking
+            assert v1.validate_response("status", conn.call(op="status")) == []   # the three fields of an open turn are in the schema (a status taken while a session works did not conform)
             wait_for(lambda: completed(log, sid) == 1, timeout=15)
             done = status_of(conn, sid)
             assert done["activity"] == "idle" and "busy_since" not in done and "stalled" not in done

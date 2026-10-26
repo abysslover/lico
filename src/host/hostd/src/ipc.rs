@@ -112,6 +112,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "transfer.send" => &["to", "kind", "text"],
         "input.status" => &["session", "request_id"],
         "approval.answer" => &["session", "generation", "approval_id", "answer"],
+        "approval.text" => &["session", "generation", "approval_id"],
         "view.attach" => &["session", "kind"],
         _ => &["view"], // view.detach
     };
@@ -120,9 +121,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
-            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
+            ("snapshot" | "subscribe" | "input" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
             ("session.create", "mode") => matches!(value.as_str(), Some("auto" | "default")),
             ("session.create", "kind") => matches!(value.as_str(), Some("synthetic" | "codex" | "claude")),
@@ -149,7 +150,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("input" | "transfer.send", "text") => valid_text(value),
             ("transfer.send", "from" | "to") => valid_str(value, 64),
             ("transfer.send", "kind") => matches!(value.as_str(), Some("text" | "lines")),
-            ("approval.answer", "approval_id") => in_range(value, 1, i64::MAX),
+            ("approval.answer" | "approval.text", "approval_id") => in_range(value, 1, i64::MAX),
+            ("approval.text", "offset") => in_range(value, 0, i64::MAX),
+            ("approval.text", "limit") => in_range(value, 4, crate::pending::PAGE as i64),
             ("approval.answer", "answer") => matches!(value.as_str(), Some("allow" | "deny")),
             ("approval.answer", "keep") => value.is_boolean(),
             ("view.attach", "kind") => matches!(value.as_str(), Some("gui" | "cli")),
@@ -218,6 +221,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "input" => core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person),
         "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(&request, "to"), text(&request, "kind"), text(&request, "text"), crate::transfer::By::Person),
         "input.status" => core::input_status(shared, &session, text(&request, "request_id")),
+        "approval.text" => crate::pending::text_page(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), int(&request, "offset").unwrap_or(0) as usize, int(&request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
         "view.attach" => match core::view_attach(shared, Some((sub, &rid)), &session, generation, int(&request, "after").unwrap_or(-1)) {
             Ok(_) => return, // the reply was queued under the session lock

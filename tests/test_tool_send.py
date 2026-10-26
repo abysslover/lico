@@ -6,6 +6,7 @@ card on the row of the caller, and the text goes when the card is answered."""
 import itertools
 import json
 import re
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -356,6 +357,70 @@ def test_the_card_the_event_the_status_and_the_answer_of_a_request_follow_the_pr
     bad = world.conn.call(**{**request, "keep": "yes"})
     assert v1.validate_error(bad) == [] and bad["error"] == "bad_request", "keep is a boolean"
     assert "expired" in v1.ERRORS
+
+
+def pages(world, caller, generation, number, limit=None):
+    """The text behind a card, read page by page as the window and the command read it: the pages in order."""
+    got, at = [], 0
+    while at is not None:
+        request = {"op": "approval.text", "session": caller, "generation": generation, "approval_id": number, "offset": at, **({"limit": limit} if limit else {})}
+        assert v1.validate_request("approval.text", request) == []
+        reply = world.conn.call(**request)
+        assert v1.validate_response("approval.text", reply) == [] and reply["offset"] == at, reply
+        got.append(reply)
+        at = reply["next"]
+    return got
+
+
+def test_the_whole_text_behind_a_card_is_read_page_by_page_while_it_waits_and_only_then(world):
+    caller, generation = world.session(name="writer")
+    target, target_generation = world.session(name="docs")
+    text = "\u00e9\ud55c\U0001f600 line\n" * 3000                                                              # 15 bytes a time: 45000 bytes, three pages
+    number = asked(world, caller, target, text)
+    got = pages(world, caller, generation, number)
+    assert "".join(p["text"] for p in got) == text and len(got) == 3, [len(p["text"]) for p in got]
+    assert all(len(p["text"].encode()) <= 16384 and p["total"] == len(text.encode()) for p in got) and got[-1]["next"] is None
+    assert [len(p["text"].encode()) for p in pages(world, caller, generation, number, limit=4)][:3] == [2, 3, 4], "four bytes at most, and a character is never cut"
+    for bad in ({"limit": 3}, {"limit": 16385}, {"offset": -1}, {"offset": 10 ** 6}, {"offset": 1}):
+        assert world.conn.call(op="approval.text", session=caller, generation=generation, approval_id=number, **bad)["error"] == "bad_request", bad
+    assert world.conn.call(op="approval.text", session=caller, generation=generation + 1, approval_id=number)["error"] == "stale_generation"
+    assert world.conn.call(op="approval.text", session=caller, generation=generation, approval_id=number + 5)["error"] == "unknown_approval"
+    assert world.conn.call(op="approval.text", session=target, generation=target_generation, approval_id=number)["error"] == "unknown_approval", "the request is the caller's"
+    assert not heads(world.log, target), "reading is not deciding"
+    assert decide(world, caller, generation, number, "allow", keep=True)["outcome"] == "done"
+    assert world.conn.call(op="approval.text", session=caller, generation=generation, approval_id=number)["error"] == "unknown_approval", "a decided request has no text to read"
+    status = world.conn.call(op="status")
+    assert v1.validate_response("status", status) == []
+    row = next(s for s in status["sessions"] if s["session"] == caller)
+    assert row["allowed"] == [{"tool": "send", "to": target}] and "approvals" not in row, row
+    assert "approval.text" in world.conn.call(op="hello")["ops"]
+
+
+def lico(world, *arguments):
+    """The command line against the host of the tests: the exit code and what it printed."""
+    done = subprocess.run([str(HOSTD_DIR / "lico"), "--socket", str(world.host.socket), *arguments], capture_output=True, text=True, timeout=30)
+    return done.returncode, done.stdout, done.stderr
+
+
+def test_the_command_shows_the_pages_of_a_card_and_answers_it_with_or_without_the_allowance_for_the_session(world):
+    caller, generation = world.session(name="writer")
+    target, _ = world.session(name="docs")
+    text = "word " * 5000                                                                                          # 25000 bytes: two pages
+    number = asked(world, caller, target, text)
+    code, out, _ = lico(world, "approval", "show", caller, str(number))
+    first = json.loads(out)
+    assert code == 0 and first["offset"] == 0 and first["total"] == 25000 and first["text"] == text[:16384] and first["next"] == 16384, (code, out[:200])
+    code, out, _ = lico(world, "approval", "show", caller, str(number), str(first["next"]))
+    last = json.loads(out)
+    assert code == 0 and last["text"] == text[16384:] and last["next"] is None, out[:200]
+    assert lico(world, "approval", "show", caller, str(number), "x")[0] == 1 and lico(world, "approval", "show", caller, "9999")[0] == 2
+    code, out, _ = lico(world, "approval", "answer", caller, str(number), "allow", "--keep")
+    assert code == 0 and json.loads(out)["outcome"] == "done"
+    assert call(world.config(caller), "send", to=target, text="after the allowance")[1].startswith('{"delivery"'), "the allowance holds"
+    second = asked(world, caller, world.session(name="other")[0], "to another")
+    assert lico(world, "approval", "answer", caller, str(second), "deny", "--keep")[0] == 2, "a no cannot be kept: the host refuses"
+    assert lico(world, "approval", "answer", caller, str(second), "deny", "--forever")[0] == 1
+    assert lico(world, "approval", "answer", caller, str(second), "deny")[0] == 0
 
 
 def test_the_flag_that_once_let_a_test_send_without_the_question_opens_nothing():

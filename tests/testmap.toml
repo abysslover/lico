@@ -19,6 +19,7 @@
 "tests/test_accounts.py" = ["cred", "host"]
 "tests/test_activity.py" = ["gui", "host"]
 "tests/test_adapter_contract.py" = []
+"tests/test_card_window.py" = ["gui", "host"]
 "tests/test_claude_adapter.py" = ["host"]
 "tests/test_client_integration.py" = ["gui", "host", "synth"]
 "tests/test_codex_adapter.py" = ["host"]
