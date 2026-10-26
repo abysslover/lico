@@ -45,7 +45,9 @@ def test_host_restart_recovers_sessions_as_disconnected_with_bindings_and_histor
             sid, generation = kept["session"], kept["generation"]
             for k in range(3):
                 conn.call(op="input", session=sid, generation=generation, request_id=f"h-{k}", text=f"hello 한글 {k}")
-            wait_for(lambda: "echo: hello 한글 2" in texts(log, sid))
+                # one turn at a time: an input that comes while the host still holds the last turn as running is a steer, which the provider refuses
+                # and the host then starts as a turn of its own, after any input sent in between (the order of quick inputs is not what this test is about)
+                wait_for(lambda: f"echo: hello 한글 {k}" in texts(log, sid) and "busy_since" not in sessions(conn)[sid])
             assert conn.call(op="session.purge", session=gone["session"], generation=gone["generation"])["ok"] == 1
             wait_for(lambda: sid in registered(directory) and registered(directory)[sid].get("provider_session") and gone["session"] not in registered(directory))
             # the turn is closed and the last line the host holds is on disk: the log is read, and the host killed, only after that
