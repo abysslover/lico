@@ -62,6 +62,10 @@ def _obj(required: dict, optional: dict | None = None) -> dict:
     return {"type": "object", "required": required, "optional": optional or {}}
 
 
+# what an agent and all its descendants hold of their own (RssAnon + RssShmem), their VmRSS, and how many processes that is; kB
+MEMORY = {"type": "object", "required": {"private_kb": {"type": INT, "minimum": 0}, "rss_kb": {"type": INT, "minimum": 0}, "processes": {"type": INT, "minimum": 1}},
+          "optional": {}}
+
 COMMON_REPLY_OPTIONAL = {"id": {"type": STR, "max_length": 64}}
 _V = {"type": INT, "enum": [PROTOCOL]}
 _OK = {"type": INT, "enum": [1]}
@@ -85,11 +89,12 @@ REPLIES = {
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
                      "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
+                     "memory": MEMORY,   # of a running session, from the second status call on
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {}}}}}}},
-                  {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}}),
+                  {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "session.rename": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "name": {"type": [STR, "null"], "max_length": MAX_NAME}}, COMMON_REPLY_OPTIONAL),

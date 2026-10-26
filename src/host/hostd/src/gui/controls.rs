@@ -29,7 +29,7 @@ pub struct Hit {
 pub struct Controls {
     pub hits: Vec<Hit>,
     labels: HashMap<String, (Buffer, f32)>,
-    scale: f32,
+    pub scale: f32,
     /// How many labels were shaped since the start (a label whose text and scale are unchanged is shaped once and reused).
     pub shapes: u64,
 }

@@ -21,6 +21,7 @@ mod ipc;
 mod keyring;
 mod lifecycle;
 mod login;
+mod memory;
 mod payload;
 mod registry;
 mod session;

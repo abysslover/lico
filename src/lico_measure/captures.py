@@ -19,7 +19,7 @@ from pathlib import Path
 from .p02 import LICO
 from .rig import REPO, Xvfb, private_dir
 
-TEXT_X = 284          # the main area starts right of the session list
+TEXT_X = 334          # the main area starts right of the session list (LIST_W 330 in gui/ui.rs)
 GRAY_THRESHOLD = 140  # text is light on a near-black background
 
 
@@ -172,6 +172,13 @@ class ProductWindow:
         wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
         since = self.frames()
         subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", "--repeat", str(times), "--delay", "80", str(button)], env=self.env, check=True)
+        self.settle(since, 0.7)
+
+    def move(self, x: float, y: float) -> None:
+        """Put the pointer at (x, y) in the window without a click, and wait for the frame it causes."""
+        wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
+        since = self.frames()
+        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y))], env=self.env, check=True)
         self.settle(since, 0.7)
 
     def ui(self) -> dict:

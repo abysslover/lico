@@ -1,6 +1,7 @@
 # M02-P02 — Sessions with a folder, a real input box, a memory figure per session (2026-10-26)
 
 > Status: in_progress
+> Version: 0.1.0
 > Branch: `phase/M02-P02-sessions-in-a-real-folder` (on the M02-P01 tip b75267f; renamed from `phase/M02-P02-folder-sessions` on 2026-10-26)
 > Approval: the owner's G1 of 2026-10-26 (includes this phase plan = G2; the input-box group IN is in, option A). G3 and G4 are pending.
 

@@ -13,6 +13,7 @@ user message:
               the provider would and reports the key's length and a short hash (never the key)
   "hostile"   hundreds of permission requests (one id repeated, an unknown subtype, an oversize id, an oversize input)
   "lines:N"   N assistant lines at once
+  "hold:A:C:G"  holds A MiB itself, in a child C MiB and in that child's child G MiB (touched pages, kept until the process group ends)
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
   otherwise   echoes the text back
@@ -114,6 +115,12 @@ def init():
              "slash_commands": [], "output_style": "default", "skills": [], "plugins": [], "apiKeySource": "none"})
 
 
+# a child that holds C MiB and starts a child of its own that holds G MiB; the sizes and the grandchild's program arrive as arguments
+HOLD = "import sys,time\nb=bytearray(int(sys.argv[1])<<20)\nfor i in range(0,len(b),4096):b[i]=1\ntime.sleep(120)"
+HOLD_AND_SPAWN = "import subprocess,sys,time\nb=bytearray(int(sys.argv[1])<<20)\nfor i in range(0,len(b),4096):b[i]=1\nsubprocess.Popen([sys.executable,'-I','-c',sys.argv[3],sys.argv[2]])\ntime.sleep(120)"
+held = []
+
+
 def say(text):
     out(assistant(text))
 
@@ -185,6 +192,14 @@ def turn(message):
         out(result())
     elif text.startswith("hangul:"):                  # one long line of wide glyphs
         say(("작업공간과 계획을 세워 한글 줄바꿈을 확인합니다 " * 40)[: int(text.split(":")[1])])
+        out(result())
+    elif text.startswith("hold:"):
+        own, child, grandchild = (int(n) for n in text.split(":")[1:4])
+        held.append(bytearray(own << 20))
+        for i in range(0, len(held[-1]), 4096):
+            held[-1][i] = 1
+        subprocess.Popen([sys.executable, "-I", "-c", HOLD_AND_SPAWN, str(child), str(grandchild), HOLD])
+        say(f"holding {own} {child} {grandchild}")
         out(result())
     elif text.startswith("lines:"):
         for k in range(int(text.split(":")[1])):

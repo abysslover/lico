@@ -79,7 +79,7 @@ def test_a_session_that_waits_for_a_person_is_not_stalled():
             host.stop()
 
 
-def changed_below_header(a, b, width=1200, list_w=300, header_rows=40):
+def changed_below_header(a, b, width=1200, list_w=340, header_rows=40):
     """The pixel rows under the header, right of the session list, that differ between two screens: the transcript's last line is there."""
     stride = width * 3
     return [y for y in range(header_rows, len(a) // stride) if a[y * stride + list_w * 3:(y + 1) * stride] != b[y * stride + list_w * 3:(y + 1) * stride]]

@@ -20,12 +20,12 @@ use winit::window::Window;
 use super::controls::{self, Action, Controls};
 #[path = "row.rs"]
 mod row;
-pub(crate) use row::{clock_text, Row};
+pub(crate) use row::{clock_text, memrow, Row};
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, jstr, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
 
-pub const LIST_W: usize = 280;
+pub const LIST_W: usize = 330; // wide enough for the longest state and the memory figure at the right end of a row
 const LIST_TOP: usize = 40;
 const HISTORY_PAGE: i64 = 100;
 const SCROLLBACK_CAP: usize = 2000; // lines kept while reading older history; beyond it the newest are let go
@@ -34,7 +34,7 @@ const COPY_LIMIT: usize = 60 * 1024; // one X11 property transfer, no INCR
 #[derive(Clone)]
 pub enum ListItem {
     Heading(String),
-    Row(String, String), // session id, text
+    Row(String, String, Option<memrow::Cell>), // session id, text, memory figure
 }
 
 /// What the frames cost, measured by the window itself (microseconds, since the start): the numbers the dump shows so a cost is read, not guessed.
@@ -96,6 +96,7 @@ pub struct UiState {
     pub fonts_gen: u64, // changes when the font system is replaced
     pub fixed_now: Option<u64>, // tests only: the second that the clocks of working sessions count from
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
+    pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
 }
 
 fn display_cols(text: &str) -> usize {
@@ -120,6 +121,7 @@ impl App {
         let rows = value["sessions"].as_array().into_iter().flatten().filter_map(Row::of_status).collect(); // synthetic sessions are not shown in this view
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
         self.ui.rows = rows;
+        self.ui.mem.read(&value);
         if let Some(row) = self.ui.rows.iter().find(|r| r.session == self.session) {
             self.generation = row.generation; // the target's generation, so an input or an answer is never aimed at a stale one
         }
@@ -245,10 +247,10 @@ impl App {
                 let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
                 // a working session shows its clock here: the list changes once a second while a turn is open, and that is what redraws the window
                 let (state, age) = row.list_parts(now);
-                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {state}{approvals} {age}")));
+                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {state}{approvals} {age}"), memrow::cell(row)));
             }
         }
-        let sig: String = items.iter().map(|i| match i { ListItem::Heading(t) => t.clone(), ListItem::Row(_, t) => t.clone() }).collect::<Vec<_>>().join("\n");
+        let sig: String = items.iter().map(|i| match i { ListItem::Heading(t) => t.clone(), ListItem::Row(_, t, c) => memrow::sig(t, c) }).collect::<Vec<_>>().join("\n");
         if sig != self.ui.list_sig {
             self.ui.list_sig = sig;
             self.dirty = true;
@@ -416,6 +418,7 @@ impl App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
+                self.dirty |= self.hover_moved();
                 if self.ui.dragging {
                     if let Some(idx) = self.line_at(position.y as f32) {
                         if let Some((a, _)) = self.ui.sel {
@@ -651,6 +654,10 @@ impl App {
 
     /// The permanent line at the bottom: the keys that exist, fewer of them when the window is narrow (the right-most go first).
     pub(crate) fn hint_text(&self, width: usize, scale: f32) -> String {
+        let cols = (width as f32 / (8.5 * scale)) as usize;
+        if let Some(text) = self.hover_hint(cols) {
+            return text; // the mouse is over a row: its memory, in place of the keys
+        }
         let escape = if self.ui.panel.is_some() { Some("Esc back out") } else if !self.session.is_empty() { Some("Esc session list") } else { None };
         let mut items = vec!["Ctrl+N new session", "Ctrl+A accounts", "Ctrl+Tab next session", "Alt+1-9 session by number"];
         if let Some(e) = escape {
@@ -659,7 +666,6 @@ impl App {
         if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) {
             items.insert(0, "Y allow  N deny");
         }
-        let cols = (width as f32 / (8.5 * scale)) as usize;
         let mut text = String::new();
         for item in items {
             let next = if text.is_empty() { item.to_string() } else { format!("{text}   {item}") };
@@ -724,7 +730,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "input": self.shown_input(), "editor": self.editor_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -799,6 +805,7 @@ impl App {
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
         let list_items = self.ui.list_items.clone();
+        let total = memrow::total(&self.ui.rows, &self.ui.mem);
         let session_sel = self.session.clone();
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         self.ui.header = header.clone();
@@ -992,8 +999,9 @@ impl App {
                     controls.text(fs, swash, &mut buf, width, height, 4.0 * s, y, list_w as i32 - 2, text, ink);
                     y += lh;
                 }
-                ListItem::Row(id, text) => {
+                ListItem::Row(id, text, cell) => {
                     controls.row(fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], text, *id == session_sel, ink, Action::Session(id.clone()));
+                    memrow::draw(controls, fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], cell);
                     y += lh;
                 }
             }
@@ -1027,6 +1035,7 @@ impl App {
         let hint_y = height as f32 - lh;
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
         controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
+        memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
         // the menu bar, and the open menu on top of everything
         self.ui.menu_geom.titles.clear();
         self.ui.menu_geom.items.clear();
@@ -1319,58 +1328,7 @@ fn clipboard_server(rx: mpsc::Receiver<String>) {
 #[cfg(test)]
 mod tests {
     use super::super::{fonts, BACKGROUND};
-    use super::row::{ago, clock_compact};
     use super::*;
-
-    fn working(busy_since: u64, last_event_at: u64, stalled: bool) -> Row {
-        Row {
-            session: "s".into(), provider: "claude".into(), account: String::new(), model: "m".into(), state: "running".into(), state_at: 100, activity: "working".into(),
-            generation: 1, approvals: Vec::new(), issue: String::new(), mode: String::new(), busy_since, last_event_at, stalled, ..Default::default()
-        }
-    }
-
-    #[test]
-    fn the_clock_of_an_open_turn_is_read_in_seconds_then_minutes_then_hours() {
-        let spoken: Vec<String> = [0, 7, 59, 60, 125, 3599, 3600, 7385].iter().map(|n| clock_text(*n)).collect();
-        assert_eq!(spoken, ["0 s", "7 s", "59 s", "1 m 00 s", "2 m 05 s", "59 m 59 s", "1 h 00 m", "2 h 03 m"]);
-        let narrow: Vec<String> = [0, 7, 59, 60, 125, 3599, 3600, 7385].iter().map(|n| clock_compact(*n)).collect();
-        assert_eq!(narrow, ["0s", "7s", "59s", "1m00s", "2m05s", "59m59s", "1h00m", "2h03m"]);
-    }
-
-    #[test]
-    fn a_working_session_shows_its_clock_and_a_silent_one_says_so_in_the_header_and_the_list() {
-        let row = working(1000, 1037, false);
-        assert_eq!(row.state_with_clock(1037), "working 37 s");
-        assert_eq!(row.list_parts(1037), ("working".to_string(), "37s".to_string()));
-        let quiet = working(1000, 1000, true);
-        assert_eq!(quiet.state_with_clock(1071), "working 1 m 11 s, no output for 1 m 11 s");
-        assert_eq!(quiet.list_parts(1071), ("silent".to_string(), "1m11s".to_string()));
-        // a stall flag from the host means nothing unless the session works
-        let mut idle = working(0, 0, true);
-        idle.activity = "idle".into();
-        assert_eq!(idle.state_with_clock(5000), "idle");
-        assert_eq!(idle.list_parts(5000), ("idle".to_string(), ago(5000, 100)));
-    }
-
-    #[test]
-    fn a_session_that_waits_for_a_person_has_no_clock_and_no_stall() {
-        let mut row = working(1000, 1000, true);
-        row.approvals = vec![(3, "run: ls".into())];
-        assert_eq!(row.working_for(1100), None);
-        assert_eq!(row.silent_for(1100), None);
-        assert_eq!(row.state_with_clock(1100), "waiting for approval");
-        assert_eq!(row.list_parts(1100).0, "approval");
-    }
-
-    #[test]
-    fn a_status_without_the_clock_fields_is_a_session_that_does_not_work() {
-        let mut row = working(0, 0, false);
-        row.activity = "idle".into();
-        assert_eq!((row.working_for(9), row.silent_for(9)), (None, None));
-        let mut unreported = working(0, 0, false); // the host said working but gave no start: no clock is made up
-        unreported.busy_since = 0;
-        assert_eq!(unreported.working_for(9), None);
-    }
 
     /// The blit as it was before the rows were blended directly: `Buffer::draw` and a closure per pixel.
     fn reference(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {

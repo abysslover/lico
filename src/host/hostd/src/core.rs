@@ -338,6 +338,7 @@ fn status_entry(s: &Session) -> Value {
     if !s.provider.is_empty() {
         entry["provider"] = json!(s.provider);
         entry["mode"] = json!(s.mode);
+        crate::folders::annotate(&mut entry, s);
     }
     if let Some(model) = &s.model {
         entry["model"] = json!(model);
@@ -359,19 +360,17 @@ fn status_entry(s: &Session) -> Value {
     if let Some(issue) = &s.account_issue {
         entry["account_issue"] = json!(issue);
     }
-    if !s.provider.is_empty() {
-        crate::folders::annotate(&mut entry, s);
-    }
     if !s.approvals.is_empty() {
         entry["approvals"] = Value::Array(s.approvals.iter().map(|(n, p)| json!({"approval_id": n, "prompt": p})).collect());
     }
+    crate::memory::annotate(&mut entry, s);
     entry
 }
 
 pub fn status(shared: &Shared) -> Reply {
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(&s.lock().unwrap())).collect();
-    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries})))
+    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json()})))
 }
 
 /// Which executable this process runs: a hash of its own file as it was started (a replaced file on disk does not change it), so a window and a host

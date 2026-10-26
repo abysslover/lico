@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.1
+Version: 0.1.2
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -30,7 +30,7 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | Operation | State | Mutates | Meaning |
 |---|---|---|---|
 | `hello` | oracle | no | protocol version, limits, retain window, operation list |
-| `status` | oracle | no | per-session id, generation, last sequence, subscribers, bytes (the host adds `oldest` retained sequence and `state`) |
+| `status` | oracle | no | per-session id, generation, last sequence, subscribers, bytes (the host adds `oldest` retained sequence and `state`; a running session also `memory`: `private_kb` = `RssAnon` + `RssShmem`, `rss_kb` = `VmRSS`, both summed over the agent and all its descendants, and `processes`, absent until the first look is done, which a `status` call starts when the last is 3 s old; a process that vanished or cannot be read counts for nothing; a program detached with `setsid` is not a descendant; the reply carries `host_memory` for the host itself) |
 | `snapshot` | oracle | no | latest screen lines and last sequence of one session |
 | `subscribe` | oracle | yes | start the live stream; `after` is the client cursor; `snapshot: true` asks for the latest screen first |
 | `unsubscribe` | oracle | yes | stop the stream, keep the cursor |

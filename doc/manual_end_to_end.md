@@ -1,6 +1,6 @@
 # Owner end-to-end use of Lico (M01-P06)
 
-Version: 0.1.0
+Version: 0.1.1
 
 This is for the person who owns the accounts. Lico never reads a provider's login files and never stores a provider secret; each
 account only has a private directory that the provider itself fills when you sign in. A real session can be billed by the provider.
@@ -23,6 +23,10 @@ State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`). Use the file y
 6. **A folder you choose** (Ctrl+N, the Folder row): Claude is started in it and reads its `CLAUDE.md`, but not the folder's own Claude settings
    (`.claude/settings.json`: hooks, environment, helper programs; nor its `.mcp.json`), because those would run without your decision. Your own
    Claude settings are used. A session without a folder works in a scratch folder Lico made, which has none of these.
+7. **Memory** (right end of each row, and one line at the bottom of the list): what the session's program and everything it started hold of their
+   own (`RssAnon` + `RssShmem`, in M or G; amber from 1 GiB, red from 2 GiB). Put the mouse on a row and the bottom line gives the figure, the RSS
+   beside it and the number of processes. A program a tool detached from the session (`setsid`) is not counted. The host looks only while a window is
+   open and asks the system every 3 seconds at most.
 
 ## On the command line (same host)
 

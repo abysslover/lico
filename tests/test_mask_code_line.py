@@ -18,7 +18,7 @@ def ink(display):
     """How many pixels of the main area are light: the prompt row is the only part that changes with what is typed."""
     time.sleep(0.8)                                                                                # the frame after the last key has been presented
     data = subprocess.run(["import", "-window", "root", "-depth", "8", "gray:-"], env={"DISPLAY": display, "PATH": "/usr/bin:/bin"}, capture_output=True, check=True).stdout
-    return sum(1 for y in range(800) for x in range(284, 1200) if data[y * 1200 + x] > 140)
+    return sum(1 for y in range(800) for x in range(334, 1200) if data[y * 1200 + x] > 140)
 
 
 def test_the_sign_in_code_is_drawn_as_stars_and_is_in_no_dump_notice_or_output():
