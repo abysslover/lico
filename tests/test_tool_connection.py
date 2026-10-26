@@ -67,6 +67,11 @@ def listening_ports(pid):
     return ports
 
 
+def refusal_lines(world):
+    """The lines the host wrote for the requests its tool listener refused: `lico-host: tool refused 401 reason=...`."""
+    return [line for line in (Path(world.directory) / "host.err").read_text(errors="replace").splitlines() if "lico-host: tool refused " in line]
+
+
 class World:
     def __init__(self, directory, host, log, received):
         self.directory, self.host, self.log, self.received = directory, host, log, received
@@ -186,6 +191,29 @@ def test_a_run_of_wrong_credentials_is_throttled_and_a_right_one_still_gets_thro
     assert rpc(config, "ping")[0] == 200                                                             # the throttle is for wrong credentials only
 
 
+def test_a_credential_that_is_refused_leaves_a_line_in_the_log_with_the_reason_and_never_the_credential(world):
+    """R5: one 401 was seen once at the tool connection and could not be explained. The host now says why it refused: the credential was not of the shape the host makes,
+    named a key the host does not have (never made, or replaced), or had the wrong secret. The line names the session when the key is known, and never the key or the secret."""
+    sid, _ = world.session()
+    config = world.config(sid)
+    key, secret = config["authorization"].removeprefix("Bearer ").split(".")
+    port = config["port"]
+    before = len(refusal_lines(world))
+    assert rpc(config, "ping")[0] == 200 and len(refusal_lines(world)) == before, "a request that is accepted says nothing"
+    for what, header, wanted in [("not the shape of a credential", "Bearer nope", "reason=malformed"),
+                                 ("a key the host does not have", f"Bearer {'0' * 32}.{secret}", "reason=unknown_key"),
+                                 ("the right key and another secret", f"Bearer {key}.{'0' * 64}", f"reason=wrong_secret session={sid}")]:
+        line = f"lico-host: tool refused 401 {wanted}"
+
+        def written():
+            assert raw(port, headers={"Authorization": header})[0] == 401, what
+            time.sleep(0.25)                                       # the log has a budget of its own (a burst of 20 and 5 a second): a try is made a few times a second until one has room
+            return line in refusal_lines(world)
+        wait_for(written)
+    for line in refusal_lines(world):
+        assert key not in line and secret not in line and "Bearer" not in line, line
+
+
 def test_a_body_that_stops_short_is_given_up_at_the_deadline_of_five_seconds(world):
     """Clock-bound on purpose: the host gives up a body at its 5 s deadline, so the answer comes after 4 s and before 9 s. The deadline is a constant of the host, not an argument the test can shorten."""
     sid, _ = world.session()
@@ -218,7 +246,8 @@ def test_json_rpc_answers_the_calls_the_program_makes_and_every_other_method_wit
     assert status == 400 and json.loads(payload)["error"]["code"] == -32700
     nested = b"[" * 20000 + b"]" * 20000                                                              # a hostile depth: refused by the parser, the listener stays up
     assert raw(config["port"], headers={"Authorization": config["authorization"]}, body=nested)[0] in (200, 400)
-    assert rpc(config, "ping")[0] == 200
+    status = rpc(config, "ping")[0]
+    assert status == 200, (status, "the host refused with:", refusal_lines(world)[-5:], status_of(world.conn, sid))      # a 401 here says why in the host's log
 
 
 def test_the_list_of_tools_is_small_and_names_sessions_and_an_unknown_tool_or_a_wrong_argument_is_an_error(world):

@@ -27,6 +27,8 @@ const DEADLINE: Duration = Duration::from_secs(5);
 const RATE_PER_SECOND: f64 = 100.0;
 const BURST: f64 = 50.0;
 const FAILED_PER_SECOND: f64 = 20.0;
+const NOTED_PER_SECOND: f64 = 5.0; // the lines the host writes for refusals have a budget of their own: a guesser cannot fill the log
+const NOTED_BURST: f64 = 20.0;
 const CONFIG_SUFFIX: &str = ".mcp.json";
 
 struct Key {
@@ -34,6 +36,28 @@ struct Key {
     generation: u64,
     secret: String,
     begun: bool, // the program has said `initialize` with it: it has read its config file by then
+}
+
+/// Why a credential was not accepted. The word goes to the host's log with the refusal; it names a session when the key is known, and never shows the key or the secret.
+#[derive(Debug, PartialEq)]
+enum Refusal {
+    Malformed,
+    UnknownKey,
+    WrongSecret(String),
+    SessionGone(String),
+    StaleGeneration { session: String, made_for: u64, now: u64 },
+}
+
+impl Refusal {
+    fn describe(&self) -> String {
+        match self {
+            Refusal::Malformed => "malformed".into(),
+            Refusal::UnknownKey => "unknown_key".into(),
+            Refusal::WrongSecret(session) => format!("wrong_secret session={session}"),
+            Refusal::SessionGone(session) => format!("session_gone session={session}"),
+            Refusal::StaleGeneration { session, made_for, now } => format!("stale_generation session={session} key_generation={made_for} generation={now}"),
+        }
+    }
 }
 
 /// The keys that are valid now, by key id. A session has at most one: a new key replaces the one before it.
@@ -79,11 +103,19 @@ impl Table {
         Ok(Grant { key, path })
     }
 
-    /// The session and generation a credential belongs to.
+    /// The session and generation a credential belongs to, or why it belongs to none.
+    fn check(&self, header: &str) -> Result<(String, u64), Refusal> {
+        let (key, secret) = parse(header).ok_or(Refusal::Malformed)?;
+        let known = self.keys.get(key).ok_or(Refusal::UnknownKey)?;
+        if http::constant_time_eq(secret.as_bytes(), known.secret.as_bytes()) {
+            Ok((known.session.clone(), known.generation))
+        } else {
+            Err(Refusal::WrongSecret(known.session.clone()))
+        }
+    }
+
     fn lookup(&self, header: &str) -> Option<(String, u64)> {
-        let (key, secret) = parse(header)?;
-        let known = self.keys.get(key)?;
-        http::constant_time_eq(secret.as_bytes(), known.secret.as_bytes()).then(|| (known.session.clone(), known.generation))
+        self.check(header).ok()
     }
 
     /// The first `initialize` of a key: the program has read its config file and keeps what it read (measured with the real program), so the file goes now. The key stays valid.
@@ -201,11 +233,32 @@ pub fn clear() {
 }
 
 /// The caller of a credential, when it is still the live process of its session: the session exists, is not deleted, and is of the generation the key was made for.
-fn caller(shared: &Shared, header: &str) -> Option<String> {
-    let (session, generation) = state().table.lookup(header)?;
-    let found = core::find(shared, &session)?;
+fn caller(shared: &Shared, header: &str) -> Result<String, Refusal> {
+    let key = state().table.check(header)?;
+    live(shared, key)
+}
+
+/// The session a key was made for, when it is still the one the key was made for.
+fn live(shared: &Shared, (session, generation): (String, u64)) -> Result<String, Refusal> {
+    let Some(found) = core::find(shared, &session) else { return Err(Refusal::SessionGone(session)) };
     let s = found.lock().unwrap();
-    (!s.purged && s.generation == generation).then_some(session)
+    if s.purged {
+        Err(Refusal::SessionGone(session))
+    } else if s.generation != generation {
+        Err(Refusal::StaleGeneration { session, made_for: generation, now: s.generation })
+    } else {
+        Ok(session)
+    }
+}
+
+/// The line the host writes for a refused credential: the status and the reason, never the credential or any part of it.
+fn refusal_line(status: u16, why: &Refusal) -> String {
+    format!("lico-host: tool refused {status} reason={}", why.describe())
+}
+
+/// The line for a refusal, when the log's own budget has room: a caller that guesses cannot fill the log.
+fn noted(limits: &Limits, status: u16, why: &Refusal) -> Option<String> {
+    http::take(&limits.noted, NOTED_PER_SECOND, NOTED_BURST).then(|| refusal_line(status, why))
 }
 
 /// The other sessions of the host that run a provider: five fields each, nothing of their folder, account, model or history.
@@ -234,6 +287,7 @@ fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, V
 struct Limits {
     rate: Mutex<Bucket>,
     failed: Mutex<Bucket>,
+    noted: Mutex<Bucket>,
 }
 
 /// Answer without reading more of the request, then read what the client still sends so that it can see the answer.
@@ -256,13 +310,20 @@ fn serve_one(mut stream: TcpStream, shared: &Arc<Shared>, port: u16, limits: &Li
         return refuse(&mut stream, 403, "", "forbidden");
     }
     let credential = http::header(request, "authorization").unwrap_or("").to_string();
-    let Some(session) = caller(shared, &credential) else {
-        // failed attempts have a small budget of their own, so guessing is slow and cannot starve a real caller
-        return if http::take(&limits.failed, FAILED_PER_SECOND, FAILED_PER_SECOND) {
-            refuse(&mut stream, 401, "WWW-Authenticate: Bearer\r\n", "unauthorized")
-        } else {
-            refuse(&mut stream, 429, "Retry-After: 1\r\n", "too many requests")
-        };
+    let session = match caller(shared, &credential) {
+        Ok(session) => session,
+        Err(why) => {
+            // failed attempts have a small budget of their own, so guessing is slow and cannot starve a real caller
+            let (status, extra, message) = if http::take(&limits.failed, FAILED_PER_SECOND, FAILED_PER_SECOND) {
+                (401, "WWW-Authenticate: Bearer\r\n", "unauthorized")
+            } else {
+                (429, "Retry-After: 1\r\n", "too many requests")
+            };
+            if let Some(line) = noted(limits, status, &why) {
+                eprintln!("{line}");
+            }
+            return refuse(&mut stream, status, extra, message);
+        }
     };
     if !http::take(&limits.rate, RATE_PER_SECOND, BURST) {
         return refuse(&mut stream, 429, "Retry-After: 1\r\n", "too many requests");
@@ -289,6 +350,7 @@ fn serve(listener: TcpListener, shared: Arc<Shared>, port: u16) {
     let limits = Arc::new(Limits {
         rate: Mutex::new(Bucket { tokens: BURST, at: Instant::now() }),
         failed: Mutex::new(Bucket { tokens: FAILED_PER_SECOND, at: Instant::now() }),
+        noted: Mutex::new(Bucket { tokens: NOTED_BURST, at: Instant::now() }),
     });
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else {
@@ -468,5 +530,55 @@ mod tests {
         reset(dir.clone()).unwrap();
         assert_eq!(std::fs::metadata(&dir).unwrap().mode() & 0o777, 0o700);
         assert!(!dir.join("old.mcp.json").exists() && dir.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn a_credential_that_is_not_accepted_says_why_in_a_word_and_never_shows_the_credential() {
+        let folder = Folder::new();
+        let mut table = Table::default();
+        let old = table.issue(&folder.0, 1, "s1", 1).unwrap();
+        let old_header = header_of(&old, &table);
+        let new = table.issue(&folder.0, 1, "s1", 2).unwrap();
+        let good = header_of(&new, &table);
+        let wrong_secret = format!("{}0000", &good[..good.len() - 4]);
+        assert_eq!(table.check(&good), Ok(("s1".to_string(), 2)));
+        assert_eq!(table.check("Bearer nope"), Err(Refusal::Malformed));
+        assert_eq!(table.check(""), Err(Refusal::Malformed));
+        assert_eq!(table.check(&format!("Bearer {}.{}", "0".repeat(32), "0".repeat(64))), Err(Refusal::UnknownKey));
+        assert_eq!(table.check(&old_header), Err(Refusal::UnknownKey), "a key that a resume replaced is unknown, not wrong");
+        assert_eq!(table.check(&wrong_secret), Err(Refusal::WrongSecret("s1".to_string())));
+        let words: Vec<String> = [Refusal::Malformed, Refusal::UnknownKey, Refusal::WrongSecret("s1".into()), Refusal::SessionGone("s1".into()),
+                                  Refusal::StaleGeneration { session: "s1".into(), made_for: 1, now: 2 }].iter().map(Refusal::describe).collect();
+        assert_eq!(words, ["malformed", "unknown_key", "wrong_secret session=s1", "session_gone session=s1", "stale_generation session=s1 key_generation=1 generation=2"]);
+        for word in &words {
+            assert!(!word.contains(&new.key) && !word.contains("Bearer"), "{word}");
+        }
+    }
+
+    #[test]
+    fn a_key_of_a_session_that_is_gone_or_has_moved_on_is_refused_with_the_word_for_it() {
+        use crate::transfer::tests::{world, ONE, TWO};
+        let w = world(&[ONE, TWO]);
+        assert_eq!(live(&w.shared, (ONE.to_string(), 1)), Ok(ONE.to_string()));
+        assert_eq!(live(&w.shared, ("no-such-session".to_string(), 1)), Err(Refusal::SessionGone("no-such-session".to_string())));
+        w.with(TWO, |s| s.purged = true);
+        assert_eq!(live(&w.shared, (TWO.to_string(), 1)), Err(Refusal::SessionGone(TWO.to_string())));
+        w.with(ONE, |s| s.generation = 3);
+        assert_eq!(live(&w.shared, (ONE.to_string(), 1)), Err(Refusal::StaleGeneration { session: ONE.to_string(), made_for: 1, now: 3 }));
+    }
+
+    #[test]
+    fn the_refusal_line_is_logged_with_a_word_and_a_budget_of_its_own() {
+        let limits = Limits {
+            rate: Mutex::new(Bucket { tokens: BURST, at: Instant::now() }),
+            failed: Mutex::new(Bucket { tokens: FAILED_PER_SECOND, at: Instant::now() }),
+            noted: Mutex::new(Bucket { tokens: NOTED_BURST, at: Instant::now() }),
+        };
+        assert_eq!(refusal_line(401, &Refusal::UnknownKey), "lico-host: tool refused 401 reason=unknown_key");
+        assert_eq!(refusal_line(429, &Refusal::WrongSecret("s1".into())), "lico-host: tool refused 429 reason=wrong_secret session=s1");
+        assert_eq!(noted(&limits, 401, &Refusal::Malformed).as_deref(), Some("lico-host: tool refused 401 reason=malformed"), "the first refusal is written");
+        assert_eq!(noted(&limits, 429, &Refusal::UnknownKey).as_deref(), Some("lico-host: tool refused 429 reason=unknown_key"), "the status written is the status answered");
+        let said = (0..1000).filter(|_| noted(&limits, 401, &Refusal::Malformed).is_some()).count();
+        assert!(said as f64 <= NOTED_BURST + 2.0, "a guesser cannot fill the log: {said} lines in an instant");
     }
 }
