@@ -89,6 +89,34 @@ def test_a_64_kib_input_gives_twelve_lines_and_one_marker_with_exact_counts_and_
             host.stop()
 
 
+def test_after_a_close_and_a_resume_each_input_is_echoed_before_the_provider_output_of_its_own_turn_and_in_the_order_it_was_given():
+    """A question that is missing from the history after a reconnect was seen on an older host that did not echo what it accepted. This host does, and this
+    pins it across a resume: the first input, the provider ending, `session.resume`, the second input with the new generation."""
+    for name, make in (("claude", claude), ("codex", codex)):
+        with private_dir() as directory:
+            conn, sid, generation, log, stop = make(directory)
+            try:
+                records = lambda: [p.decode() for _, p in read_log(log, sid)]
+                give = lambda rid, text, gen: conn.call(op="input", session=sid, generation=gen, request_id=rid, text=text)
+                assert give("h-1", "question A", generation)["ok"] == 1, name
+                wait_for(lambda: "[turn completed]" in records())
+                assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1, name
+                wait_for(lambda: status_of(conn, sid)["state"] == "disconnected")
+                resumed = conn.call(op="session.resume", session=sid, generation=generation)
+                assert resumed["ok"] == 1 and resumed["generation"] > generation, (name, resumed)
+                wait_for(lambda: status_of(conn, sid)["state"] == "running")
+                assert give("h-2", "question B", resumed["generation"])["ok"] == 1, name
+                wait_for(lambda: "echo: question B" in records())
+                got = records()
+                where = lambda text: [n for n, record in enumerate(got) if record == text]
+                order = [where(">> question A"), where("echo: question A"), where("[session closed]"), where("[provider reconnected]"), where(">> question B"), where("echo: question B")]
+                assert all(len(places) == 1 for places in order), (name, got)
+                places = [places[0] for places in order]
+                assert places == sorted(places), (name, got)
+            finally:
+                stop()
+
+
 def test_the_echo_survives_a_host_restart_and_a_second_reader_sees_it_in_the_history():
     with private_dir() as directory:
         host, log, received = claude_host(directory)
