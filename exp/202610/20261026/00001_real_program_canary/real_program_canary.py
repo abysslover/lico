@@ -14,7 +14,7 @@ The result is only as good as the versions printed on the first lines: the progr
 Re-run this script whenever either program updates.
 
 Usage: python3 -I real_program_canary.py [claude|codex|all] [--lico PATH_TO_LICO_BINARY]
-Exit: 0 every expectation held, 1 one did not, 2 a program (or the given lico binary) is missing. Takes about 1 to 3 minutes.
+Exit: 0 every expectation held, 1 one did not, 2 a program (or the given lico binary) is missing. Takes about 5 minutes (295 s measured, load average about 4).
 Rows: claude (a) real flags `--setting-sources user`, auto and default permission mode, canary must not run; (b) positive control
 `user,project,local`, canary MUST run (otherwise the method is blind); codex per folder kind (plain, repo): `old-auto` positive control, `new-auto` `new-default`
 `resume-auto` `resume-default` must not load; codex through the Lico host (needs --lico): no trust entry, canary 0.
@@ -153,9 +153,10 @@ def run_claude() -> None:
     lines, text = claude_start("user,project,local")
     k = kinds(lines)
     names = [n for n in CLAUDE_NAMES if n in text]
-    report("settings_hook" in k and "mcp_json" in k, "claude positive control setting-sources=user,project,local",
+    missing = [n for n in ("settings_hook", "mcp_json") if n not in k] + [n for n in CLAUDE_NAMES if n not in names]
+    report(not missing, "claude positive control setting-sources=user,project,local",
            f"canary ran {len(lines)} times {sorted(set(k))}; folder items named in its output: {names or 'none'}"
-           + ("" if "settings_hook" in k and "mcp_json" in k else " (needs settings_hook and mcp_json: the method is blind)"))
+           + (f" (not seen: {missing}; the method is blind)" if missing else ""))
 
 
 # ------------------------------------------------------------------ codex
