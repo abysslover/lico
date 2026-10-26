@@ -30,7 +30,7 @@ pub const TOOLS: [Tool; 2] = [
         name: "send",
         description: "Send text to another Lico session. The person approves each send. Up to 4 KiB arrives with the message, longer text as a file the receiver is told to read. \
                       Any answer comes later as a new message in this session, not as this result.",
-        args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send, 128 KiB at most")],
+        args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send; the whole request may be 128 KiB, so about 100 KiB of plain text at most, and longer is refused with too_large")],
     },
 ];
 

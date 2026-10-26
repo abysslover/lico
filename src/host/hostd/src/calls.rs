@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::core::{self, Shared};
 use crate::transfer::{self, By, MAX_HOPS};
 
-/// Calls per minute of one session; every authenticated call counts, a refused one too.
+/// Calls per minute of one session. Every `send` counts, a refused one too; `sessions` does not (`create` and `history` count from S04).
 pub const PER_MINUTE: usize = 20;
 const MINUTE: Duration = Duration::from_secs(60);
 const KEPT: usize = 2 * PER_MINUTE; // a session that goes on asking does not make its list grow
