@@ -2,6 +2,8 @@
 //! window says of the answer. (The host's side is in `tests/test_tool_send.py`, the whole way through the window in `tests/test_card_window.py`; the host here
 //! is a few lines that answer.)
 
+use std::time::{Duration, Instant};
+
 use serde_json::{json, Value};
 
 use super::super::sendto::tests::fake_host;
@@ -13,16 +15,32 @@ use crate::handoff::Scratch;
 
 const CARD: &str = "send to 'docs' (s111111) | 22 B, 2 lines | \"first line\"";
 
-/// `api` is open with a card of the host's own (7) on it; `program` has the card of its program instead.
-fn with_card() -> App {
+/// `api` is open with a card of the host's own (7) that came up just now and has not been drawn yet.
+fn fresh_card() -> App {
     let mut app = app(1.0, false);
     app.ui.rows = vec![Row { session: "session-s0".into(), name: "api".into(), provider: "claude".into(), state: "running".into(), activity: "idle".into(), generation: 1, approvals: vec![(7, CARD.into())], asks: vec![7], ..Default::default() }];
     app.ui.numbered = vec!["session-s0".into()];
     app
 }
 
+/// The first frame with the card was drawn at the returned instant, and the clock stands `ms` after it.
+fn drawn_ms_ago(app: &mut App, ms: u64) -> Instant {
+    let first = Instant::now();
+    app.ui.clock = Some(first);
+    app.card_drawn();
+    app.ui.clock = Some(first + Duration::from_millis(ms));
+    first
+}
+
+/// `fresh_card()` as it is a moment later, when a key means an answer: the dwell has passed (the tests of what a key does start here).
+fn with_card() -> App {
+    let mut app = fresh_card();
+    drawn_ms_ago(&mut app, DWELL.as_millis() as u64);
+    app
+}
+
 fn with_program_card() -> App {
-    let mut app = with_card();
+    let mut app = fresh_card();
     app.ui.rows[0].approvals = vec![(7, "run: ls".into())];
     app.ui.rows[0].asks.clear();
     app
@@ -66,7 +84,7 @@ fn forty() -> String {
 #[test]
 fn a_card_of_the_host_adds_two_keys_to_the_hint_and_a_card_of_the_program_does_not() {
     let app = with_card();
-    assert!(app.hint_text(2000, 1.0).starts_with("Y allow  N deny  S allow for the session  V read it all   "), "{}", app.hint_text(2000, 1.0));
+    assert!(app.hint_text(2000, 1.0).starts_with("Y allow  N deny  Shift+S allow for the session  V read it all   "), "{}", app.hint_text(2000, 1.0));
     let mut program = with_program_card();
     let hint = program.hint_text(2000, 1.0);
     assert!(hint.starts_with("Y allow  N deny   ") && !hint.contains("V read"), "{hint}");
@@ -91,7 +109,7 @@ fn v_opens_the_text_with_what_the_card_said_and_where_the_page_stands_and_esc_gi
     assert_eq!(lines[0], CARD);
     assert_eq!(lines[1], "bytes 0 to 22 of 22 (page 1 of 1)");
     assert_eq!(shown(&app), ["first line", "second line"]);
-    assert!(lines.iter().any(|l| l.starts_with("Y allow  N deny  S allow for the session")) && lines.last().map(String::as_str) == Some("Esc  back out"), "{lines:?}");
+    assert!(lines.iter().any(|l| l.starts_with("Y allow  N deny  Shift+S allow for the session")) && lines.last().map(String::as_str) == Some("Esc  back out"), "{lines:?}");
     app.panel_close();
     assert!(app.ui.panel.is_none());
 }
@@ -152,10 +170,12 @@ fn the_view_moves_by_line_and_page_and_reads_the_next_page_when_this_one_is_pass
 
 #[test]
 fn y_n_and_s_in_the_view_answer_with_the_text_that_was_read_and_say_what_came_of_it() {
-    let cases: [(char, &str, bool, Value, &str); 5] = [
+    let cases: [(char, &str, bool, Value, &str); 7] = [
+        ('Y', "allow", false, answered("done"), "Allowed: the text was sent."),
+        ('N', "deny", false, answered("declined"), "Declined: nothing was sent."),
         ('y', "allow", false, answered("done"), "Allowed: the text was sent."),
         ('n', "deny", false, answered("declined"), "Declined: nothing was sent."),
-        ('s', "allow", true, answered("done"), "Allowed for the session: the text was sent, and later sends to that session are not asked."),
+        ('S', "allow", true, answered("done"), "Allowed for the session: the text was sent, and later sends to that session are not asked."),
         ('y', "allow", false, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "session_exited"}), "Allowed, but not sent: that session has ended."),
         ('y', "allow", false, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "chain_depth"}), "Allowed, but not sent: the chain of agents is too long; a person has to start it again."),
     ];
@@ -177,7 +197,7 @@ fn a_card_answered_from_the_list_without_the_view_is_answered_the_same_way_with_
     let (path, host) = fake_host(&dir, vec![answered("done")]);
     let mut app = with_card();
     app.socket = path;
-    assert!(app.answer_key("s"));
+    assert!(app.answer_key("S"));
     assert_eq!(host.join().unwrap(), [answer("allow", true)]);
     assert!(app.ui.rows[0].approvals.is_empty() && app.ui.flash.as_deref().is_some_and(|f| f.starts_with("Allowed for the session: ")), "{:?}", app.ui.flash);
     // the menu entries and the old key path reach the same function
@@ -295,7 +315,7 @@ fn a_request_for_a_session_has_no_yes_for_the_session_in_the_hint_the_view_or_th
     let mut app = with_make_card();
     let hint = app.hint_text(2000, 1.0);
     assert!(hint.starts_with("Y allow  N deny  V read it all   ") && !hint.contains("for the session"), "{hint}");
-    assert!(!app.answer_key("s") && app.ui.flash.is_none() && app.ui.panel.is_none(), "S is typing here, not an answer");
+    assert!(!app.answer_key("s") && !app.answer_key("S") && app.ui.flash.is_none() && app.ui.panel.is_none(), "S is typing here, not an answer");
     let dir = Scratch::new("cardview");
     let (path, host) = fake_host(&dir, vec![page("first line\nsecond line", 0, None, 22)]);
     app.socket = path;
@@ -304,6 +324,7 @@ fn a_request_for_a_session_has_no_yes_for_the_session_in_the_hint_the_view_or_th
     assert_eq!(lines[0], MAKE, "the view starts with the card, with what the cleaning took out and that the session starts at once");
     assert!(lines.contains(&"Y allow  N deny   Up Down PgUp PgDn Home End  move".to_string()), "{lines:?}");
     app.card_key('s');
+    app.card_key('S');
     assert_eq!(host.join().unwrap(), [read(0)], "nothing was asked of the host for S");
     assert!(app.ui.panel.is_some() && app.ui.rows[0].approvals.len() == 1, "the request still waits");
 }
@@ -343,4 +364,116 @@ fn a_yes_for_the_session_is_never_sent_with_a_request_for_a_session_whoever_asks
     app.socket = path;
     app.answer_id(7, true, true);
     assert_eq!(host.join().unwrap(), [answer("allow", false)], "the host refuses `keep` for a session to be made; the person would be told it was not answered");
+}
+
+/// Every bare key that answers or opens a card of the host's own, with what the host is asked for it and says back.
+fn bare_keys() -> Vec<(&'static str, Value, Value)> {
+    vec![
+        ("y", answer("allow", false), answered("done")),
+        ("Y", answer("allow", false), answered("done")),
+        ("n", answer("deny", false), answered("declined")),
+        ("N", answer("deny", false), answered("declined")),
+        ("S", answer("allow", true), answered("done")),
+        ("v", read(0), page("first line", 0, None, 10)),
+        ("V", read(0), page("first line", 0, None, 10)),
+    ]
+}
+
+#[test]
+fn a_bare_key_answers_a_card_of_the_host_only_after_the_card_has_been_on_screen_for_the_dwell() {
+    for ms in [0, 1, 400, 799] {
+        for (key, _, _) in bare_keys() {
+            let mut app = fresh_card(); // no host at all: a key that was taken would say that the host did not answer
+            drawn_ms_ago(&mut app, ms);
+            assert!(!app.card_ready(), "{ms} ms");
+            assert!(!app.answer_key(key), "{key} at {ms} ms is not an answer: it goes to the input box");
+            assert!(app.ui.rows[0].approvals.len() == 1 && app.ui.flash.is_none() && app.ui.panel.is_none(), "{key} at {ms} ms changed something: {:?}", app.ui.flash);
+        }
+    }
+    for (key, asked, reply) in bare_keys() {
+        let dir = Scratch::new("cardview");
+        let (path, host) = fake_host(&dir, vec![reply]);
+        let mut app = fresh_card();
+        app.socket = path;
+        drawn_ms_ago(&mut app, 800);
+        assert!(app.card_ready() && app.answer_key(key), "{key} at 800 ms");
+        assert_eq!(host.join().unwrap(), [asked], "{key}");
+    }
+}
+
+#[test]
+fn the_dwell_counts_from_the_first_frame_that_drew_the_card_and_from_no_other_event() {
+    let mut app = fresh_card(); // the status that brought the card came long ago, but no frame has drawn it
+    app.ui.clock = Some(Instant::now() + Duration::from_secs(3600));
+    assert!(!app.card_ready() && !app.answer_key("y") && app.ui.rows[0].approvals.len() == 1, "a card that was not drawn is not read");
+    let first = drawn_ms_ago(&mut app, 500);
+    app.ui.clock = Some(first + Duration::from_millis(600));
+    app.card_drawn(); // a later frame with the same card does not start the count again
+    app.ui.clock = Some(first + Duration::from_millis(800));
+    assert!(app.card_ready());
+    app.ui.rows[0].approvals.clear(); // a frame without the card forgets it
+    app.card_drawn();
+    assert!(app.ui.card_seen.is_none() && !app.card_ready());
+}
+
+#[test]
+fn another_card_and_another_session_start_the_dwell_again() {
+    let mut app = with_card();
+    assert!(app.card_ready());
+    app.ui.rows[0].approvals = vec![(8, CARD.into())]; // the next request of the same session
+    app.ui.rows[0].asks = vec![8];
+    assert!(!app.card_ready(), "the card that was seen was another one");
+    let first = Instant::now();
+    app.ui.clock = Some(first);
+    app.card_drawn();
+    app.ui.clock = Some(first + Duration::from_millis(799));
+    assert!(!app.card_ready() && !app.answer_key("y"));
+    app.ui.clock = Some(first + Duration::from_millis(800));
+    assert!(app.card_ready());
+    // the person goes to another session with a card of its own and comes back: each time the card is new to the window
+    let mut other = app.ui.rows[0].clone();
+    (other.session, other.name) = ("session-s1".into(), "docs".into());
+    app.ui.rows.push(other);
+    app.session = "session-s1".into();
+    assert!(!app.card_ready(), "the card that was seen was in another session, whatever its number");
+    app.card_forget();
+    assert!(!app.card_ready(), "selected just now");
+    app.card_drawn();
+    app.ui.clock = Some(first + Duration::from_millis(1599));
+    assert!(!app.card_ready());
+    app.ui.clock = Some(first + Duration::from_millis(1600));
+    assert!(app.card_ready());
+    app.session = "session-s0".into();
+    app.card_forget();
+    app.card_drawn();
+    assert!(!app.card_ready() && !app.answer_key("y"), "back in the first session the count starts at the first frame again");
+}
+
+#[test]
+fn only_a_capital_s_allows_for_the_session_and_a_small_one_is_typing_in_the_list_and_in_the_view() {
+    for small in ["s", "\u{17f}"] {
+        let mut app = with_card();
+        assert!(!app.answer_key(small) && app.ui.flash.is_none() && app.ui.rows[0].approvals.len() == 1, "{small:?} is typing");
+    }
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![page("first line", 0, None, 10), answered("done")]);
+    let mut app = with_card();
+    app.socket = path;
+    assert!(app.answer_key("V"));
+    app.card_key('s');
+    assert!(app.ui.panel.is_some() && app.ui.rows[0].approvals.len() == 1, "a small s in the view keeps nothing");
+    app.card_key('S');
+    assert_eq!(host.join().unwrap(), [read(0), answer("allow", true)]);
+    assert!(app.ui.rows[0].approvals.is_empty());
+}
+
+#[test]
+fn the_question_of_the_program_keeps_its_keys_and_is_answered_at_once() {
+    for key in ["y", "Y", "n", "N"] {
+        let mut app = with_program_card(); // never drawn: there is no dwell for a question that is not ours
+        assert!(app.answer_key(key) && app.ui.rows[0].approvals.is_empty(), "{key}");
+    }
+    let mut app = with_program_card();
+    assert!(!app.answer_key("S") && !app.answer_key("V") && app.ui.rows[0].approvals.len() == 1, "the program's question has neither");
+    assert!(!app.card_ready(), "the dwell is for the host's own cards");
 }

@@ -284,6 +284,7 @@ impl App {
             lines: VecDeque::new(), surface, buffer, swash: SwashCache::new(), session_rgb: rgb, seq_rgb: 0xFF00_0000,
         });
         self.session = id.to_string();
+        self.card_forget(); // a card of this session has not been on screen yet
         let remembered = self.meta.iter().find(|m| m.id == id).map(|m| m.cursor).unwrap_or(-1);
         // an explicit cursor replays after it; otherwise ask for the latest screen
         self.cursor = after.unwrap_or(remembered);
@@ -492,6 +493,7 @@ impl App {
                 self.send("{\"op\":\"status\"}");
             }
             Some("load") => self.send("{\"op\":\"status\"}"),
+            Some("clock") => self.card_clock(words.next(), words.next()), // tests only
             Some("quit") => event_loop.exit(),
             _ => {}
         }

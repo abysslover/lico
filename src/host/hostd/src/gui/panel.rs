@@ -361,7 +361,7 @@ impl App {
             }
             _ if text_mode => false, // typing (and the input method) go to the input line
             Key::Character(c) => {
-                let key = c.to_lowercase();
+                let key = if step == Step::Card { c.to_string() } else { c.to_lowercase() }; // the view tells S from s
                 self.panel_choice(step, key.chars().next().unwrap_or(' '));
                 self.dirty = true;
                 true

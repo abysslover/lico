@@ -2,8 +2,10 @@
 //! to allow it reads what it would send, page by page, before they answer. The host keeps the text (`approval.text`); this asks it a page at a time, so that
 //! the window holds one page, and shows it cleaned: the text is an agent's, shown and never obeyed.
 
+use std::time::{Duration, Instant};
+
 use serde_json::{json, Value};
-use winit::keyboard::NamedKey;
+use winit::keyboard::{Key, NamedKey};
 
 use super::super::editor::{hidden, wide};
 use super::sendto::failure;
@@ -15,7 +17,10 @@ use crate::pending::PAGE;
 pub const SHOWN: usize = 14;
 pub const WIDE: usize = 96;
 
-const KEYS: &str = "Y allow  N deny  S allow for the session";
+/// How long a card of the host's own is on screen before a bare key answers it: a key pressed while the card comes up was meant for what the person was typing.
+pub const DWELL: Duration = Duration::from_millis(800);
+
+const KEYS: &str = "Y allow  N deny  Shift+S allow for the session";
 const KEYS_MAKE: &str = "Y allow  N deny"; // a session is made once for each yes: there is no yes for the session
 
 /// The text read so far: the page that is shown, and where the pages before it start.
@@ -97,10 +102,61 @@ impl App {
         row.asks.contains(id).then_some(*id)
     }
 
+    /// The instant the dwell counts to (a test sets it).
+    fn card_now(&self) -> Instant {
+        self.ui.clock.unwrap_or_else(Instant::now)
+    }
+
+    /// A frame with the first request of the open session was shown: the dwell of that request counts from the first such frame.
+    pub(crate) fn card_drawn(&mut self) {
+        let Some(id) = self.lico_card() else {
+            self.ui.card_seen = None;
+            return;
+        };
+        if self.ui.card_seen.as_ref().is_some_and(|(session, seen, _)| *session == self.session && *seen == id) {
+            return;
+        }
+        self.ui.card_seen = Some((self.session.clone(), id, self.card_now()));
+    }
+
+    /// A session was selected: its card has not been on screen yet.
+    pub(crate) fn card_forget(&mut self) {
+        self.ui.card_seen = None;
+    }
+
+    /// After a frame was presented: a request on screen starts (or keeps) its count; one that is not (gone, or under another panel) is forgotten, so that it is
+    /// new to the person when it shows again. The view of the text (V) is the card on screen.
+    pub(crate) fn card_frame(&mut self, presented: bool) {
+        if !presented {
+            return;
+        }
+        if self.ui.bar.is_some() {
+            self.card_drawn();
+        } else if !self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Card) {
+            self.card_forget();
+        }
+    }
+
+    /// The window's test clock (stdin `clock ...`): `freeze` stops the instant that the dwell counts to, `advance MS` moves it on, anything else lets it run.
+    pub(crate) fn card_clock(&mut self, word: Option<&str>, ms: Option<&str>) {
+        match (word, ms.and_then(|n| n.parse::<u64>().ok())) {
+            (Some("freeze"), _) => self.ui.clock = Some(Instant::now()),
+            (Some("advance"), Some(ms)) => self.ui.clock = self.ui.clock.map(|t| t + Duration::from_millis(ms)),
+            _ => self.ui.clock = None,
+        }
+        self.dirty = true;
+    }
+
+    /// Whether the first request of the open session is a card of the host's own that has been on screen for the dwell.
+    pub(crate) fn card_ready(&self) -> bool {
+        let Some(id) = self.lico_card() else { return false };
+        self.ui.card_seen.as_ref().is_some_and(|(session, seen, at)| *session == self.session && *seen == id && self.card_now().saturating_duration_since(*at) >= DWELL)
+    }
+
     /// The keys offered beside the input line for the first request.
     pub(crate) fn approval_hint(&self) -> &'static str {
         if self.lico_card().is_some() {
-            if self.makes_card() { "Y allow  N deny  V read it all" } else { "Y allow  N deny  S allow for the session  V read it all" }
+            if self.makes_card() { "Y allow  N deny  V read it all" } else { "Y allow  N deny  Shift+S allow for the session  V read it all" }
         } else {
             "Y allow  N deny"
         }
@@ -111,19 +167,56 @@ impl App {
         self.lico_card().is_some_and(|id| self.selected_row().is_some_and(|r| r.makes.contains(&id)))
     }
 
-    /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of them).
+    /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of
+    /// them). A card of the host's own is answered only once it has been on screen for the dwell (before that the key is typing: the person was writing
+    /// when the card came up), and S needs the capital. The question of the program keeps the old rule: Y and N at once.
     pub(crate) fn answer_key(&mut self, key: &str) -> bool {
         if self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
             return false;
         }
         let ours = self.lico_card().is_some();
-        match key.to_ascii_lowercase().as_str() {
-            "y" => self.answer_approval(true),
-            "n" => self.answer_approval(false),
-            "s" if ours && !self.makes_card() => self.answer_card(true, true),
-            "v" if ours => self.card_open(),
+        if ours && !self.card_ready() {
+            return false;
+        }
+        match key {
+            "y" | "Y" => self.answer_approval(true),
+            "n" | "N" => self.answer_approval(false),
+            "S" if ours && !self.makes_card() => self.answer_card(true, true),
+            "v" | "V" if ours => self.card_open(),
             _ => return false,
         }
+        true
+    }
+
+    pub(crate) fn answer_approval(&mut self, allow: bool) {
+        let Some(row) = self.selected_row() else { return };
+        let Some((id, _)) = row.approvals.first().cloned() else { return };
+        if self.lico_card() == Some(id) { return self.answer_card(allow, false) } // the host's own: answered on a call that says what came of it
+        let msg = format!(
+            "{{\"op\":\"approval.answer\",\"session\":\"{}\",\"generation\":{},\"approval_id\":{},\"answer\":\"{}\"}}",
+            self.session, row.generation, id, if allow { "allow" } else { "deny" }
+        );
+        self.send(&msg);
+        if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == self.session) {
+            row.approvals.remove(0); // answered once: it is not offered again; the next status confirms
+        }
+        self.refresh_list();
+    }
+
+    /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
+    /// one of them is never taken for an answer) and no panel is open; for a card of the host's own `answer_key` adds the dwell and the capital S.
+    pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if self.ui.panel.is_some() || !self.ed.is_empty() || !self.preedit.is_empty() || event.repeat {
+            return false;
+        }
+        if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
+            return false;
+        }
+        match &event.logical_key {
+            Key::Character(c) if self.answer_key(c) => {}
+            _ => return false,
+        }
+        self.dirty = true;
         true
     }
 
@@ -237,9 +330,9 @@ impl App {
     pub(crate) fn card_key(&mut self, key: char) {
         let Some(id) = self.card_current() else { return };
         match key {
-            'y' => self.answer_id(id, true, false),
-            'n' => self.answer_id(id, false, false),
-            's' if !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
+            'y' | 'Y' => self.answer_id(id, true, false),
+            'n' | 'N' => self.answer_id(id, false, false),
+            'S' if !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
             _ => {}
         }
     }

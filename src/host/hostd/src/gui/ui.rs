@@ -95,6 +95,8 @@ pub struct UiState {
     pub no_scroll_step: bool, // measurement client only: every frame is a full repaint
     pub fonts_gen: u64, // changes when the font system is replaced
     pub fixed_now: Option<u64>, // tests only: the second that the clocks of working sessions count from
+    pub clock: Option<Instant>, // tests only: the instant that the dwell of a card counts to
+    pub card_seen: Option<(String, i64, Instant)>, // the card of the host's own that was last drawn: its session, its id, and the instant of its first frame
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
 }
@@ -307,21 +309,6 @@ impl App {
     }
 
     // ------------------------------------------------------------------ approvals, copy
-    pub(crate) fn answer_approval(&mut self, allow: bool) {
-        let Some(row) = self.selected_row() else { return };
-        let Some((id, _)) = row.approvals.first().cloned() else { return };
-        if self.lico_card() == Some(id) { return self.answer_card(allow, false) } // the host's own: answered on a call that says what came of it
-        let msg = format!(
-            "{{\"op\":\"approval.answer\",\"session\":\"{}\",\"generation\":{},\"approval_id\":{},\"answer\":\"{}\"}}",
-            self.session, row.generation, id, if allow { "allow" } else { "deny" }
-        );
-        self.send(&msg);
-        if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == self.session) {
-            row.approvals.remove(0); // answered once: it is not offered again; the next status confirms
-        }
-        self.refresh_list();
-    }
-
     /// Why the selected session cannot be resumed now (None: it can). Only a session that was disconnected can.
     pub(crate) fn resume_reason(&self) -> Option<&'static str> {
         match self.selected_row().map(|r| r.state.as_str()) {
@@ -678,23 +665,6 @@ impl App {
         text
     }
 
-    /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
-    /// one of them is never taken for an answer) and no panel is open.
-    pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        if self.ui.panel.is_some() || !self.ed.is_empty() || !self.preedit.is_empty() || event.repeat {
-            return false;
-        }
-        if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
-            return false;
-        }
-        match &event.logical_key {
-            Key::Character(c) if self.answer_key(c) => {}
-            _ => return false,
-        }
-        self.dirty = true;
-        true
-    }
-
     fn line_at(&self, y: f32) -> Option<usize> {
         self.ui.hit_lines.iter().find(|l| y >= l.0 && y < l.1).map(|l| l.2)
     }
@@ -724,6 +694,7 @@ impl App {
         let dump = json!({
             "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
             "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
+            "card_seen": self.ui.card_seen.is_some(), "card_ready": self.card_ready(),
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
@@ -765,6 +736,7 @@ impl App {
         if !presented {
             self.ui.composed = None; // what the buffer holds is not known
         }
+        self.card_frame(presented);
         let done = Instant::now();
         let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
         let stats = &mut self.ui.stats;

@@ -1,5 +1,5 @@
 """M02-P03-S04b in the product window: a send that an agent asks for is a card on the row of the agent's session; V shows the whole text it would send, page by page,
-Y and N answer it, and S allows the later sends to that session too. A create (S04c) is a card too, with no S: a session is made once for each yes. The agent here is
+Y and N answer it once it has been on screen for a moment, and Shift+S allows the later sends to that session too. A create (S04c) is a card too, with no S: a session is made once for each yes. The agent here is
 the simulator's program; its call is made with the config file it was given."""
 import json
 import re
@@ -24,6 +24,11 @@ def ask(directory, caller, to, text):
     status, body = rpc(config_of(Path(directory) / "state" / "lico", caller), "tools/call", {"name": "send", "arguments": {"to": to, "text": text}})
     assert status == 200, (status, body)
     return json.loads(body["result"]["content"][0]["text"])
+
+
+def ready(w):
+    """The card has been on screen for the dwell (here the window's own clock runs): from now a bare key is an answer."""
+    return wait_for(lambda: w.ui() if w.ui()["card_ready"] else None)
 
 
 def ask_create(directory, caller, prompt, name):
@@ -58,7 +63,8 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             assert state["approval_bar"].startswith(f"approval {number}: send to 'docs'"), state["approval_bar"]
             w.move(700, 400)                                                                           # off the list: over a row, the hint line shows its memory instead of the keys
             state = wait_for(lambda: w.ui() if w.ui()["hint"].startswith("Y allow") else None)
-            assert state["hint"].startswith("Y allow  N deny  S allow for the session  V read it all"), state["hint"]
+            assert state["hint"].startswith("Y allow  N deny  Shift+S allow for the session  V read it all"), state["hint"]
+            ready(w)
             w.key("v")
             shown = panel(w)
             assert shown["title"] == f"Request {number}" and shown["body"][1] == f"bytes 0 to {PAGE} of {len(text)} (page 1 of 3)", shown["body"]
@@ -72,6 +78,7 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             assert panel(w)["body"][1].startswith("bytes 0 to ") and "row 0000" in panel(w)["body"][3]
             w.key("Escape")
             assert panel(w) is None and w.ui()["approval_bar"], "leaving the view leaves the request asked"
+            ready(w)
             w.key("v")
             w.key("y")                                                                                 # the answer to the request that was read
             state = w.ui()
@@ -82,7 +89,11 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
 
             pending = ask(w.directory, writer, docs, "the second")                                       # S: this one and the later ones to that session
             wait_for(lambda: w.ui()["approval_bar"])
+            ready(w)
             w.key("s")
+            assert w.ui()["input"] == "s" and w.ui()["approval_bar"], "a small s is typing"
+            w.key("BackSpace")
+            w.key("shift+s")
             assert "Allowed for the session" in w.ui()["header"] and not w.ui()["approval_bar"], w.ui()["header"]
             wait_for(lambda: ">> the second" in records(log, docs))
             wait_for(lambda: "[turn completed]" in records(log, docs))
@@ -92,6 +103,7 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
 
             ask(w.directory, writer, notes, "the fourth")                                              # N, for another receiver (the allowance is for docs only): nothing is sent
             wait_for(lambda: w.ui()["approval_bar"])
+            ready(w)
             w.key("n")
             assert "Declined: nothing was sent." in w.ui()["header"] and not w.ui()["approval_bar"], w.ui()["header"]
             wait_for(lambda: [r for r in records(log, writer) if re.fullmatch(r">> \[from lico \| \d\d:\d\d \| approval \d+\]", r)][-1:] and len([r for r in records(log, writer) if r.startswith(">> [from lico | ")]) == 3)
@@ -101,6 +113,7 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             number = ask(w.directory, writer, notes, dirty)["approval_id"]
             state = wait_for(lambda: w.ui()["approval_bar"] and w.ui())
             assert state["approval_bar"].startswith(f"approval {number}: send to 'notes'") and "19 B, 2 lines | 12 hidden characters removed | \"redevil\"" in state["approval_bar"], state["approval_bar"]
+            ready(w)
             w.key("v")
             shown = "\n".join(panel(w)["body"])
             assert "\nredevil\nsecond line\n" in shown and "[31m" not in shown and "\x1b" not in shown, shown
@@ -114,7 +127,79 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
             state = wait_for(lambda: w.ui() if w.ui()["hint"].startswith("Y allow") else None)
             assert state["hint"].startswith("Y allow  N deny  V read it all") and "S allow" not in state["hint"], state["hint"]
             assert len(w.ui()["rows"]) == 3, "nothing is made until the answer"
+            ready(w)
             w.key("y")
             assert "Allowed: the session was made and is working on its first prompt." in w.ui()["header"], w.ui()["header"]
             wait_for(lambda: len(w.ui()["rows"]) == 4)
             assert "scribe - made by writer" in [r.get("name") for r in Conn(w.socket).call(op="status")["sessions"]]
+
+            ask(w.directory, writer, notes, "the fifth")                                               # S in the view is the capital too: a small s there keeps nothing
+            wait_for(lambda: w.ui()["approval_bar"])
+            ready(w)
+            w.key("v")
+            assert panel(w) is not None
+            w.key("s")
+            assert panel(w) is not None and w.ui()["approval_bar"] and ">> the fifth" not in records(log, notes)
+            w.key("shift+s")
+            assert "Allowed for the session" in w.ui()["header"] and not w.ui()["approval_bar"], w.ui()["header"]
+            wait_for(lambda: ">> the fifth" in records(log, notes))
+
+
+def clock(w, *words):
+    """The window's test clock: `freeze` stops the instant that the dwell of a card counts to, `advance MS` moves it on, nothing lets it run."""
+    w.proc.stdin.write(" ".join(["clock", *words]) + "\n")
+    w.proc.stdin.flush()
+
+
+def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_is_the_answer():
+    with private_dir() as directory:
+        args, _ = claude_args(directory)
+        log = Path(directory) / "log"
+        made = {}
+
+        def sessions(w):
+            conn = Conn(w.socket)
+            made["writer"], _ = new_claude(conn, name="writer")
+            made["docs"], _ = new_claude(conn, name="docs")
+
+        with ProductWindow(host_binary=LICO, host_args=[*args, "--log-dir", str(log)], before_window=sessions) as w:
+            writer, docs = made["writer"], made["docs"]
+            wait_for(lambda: len(w.ui()["rows"]) == 2)
+            w.click(*row_centre(w, writer))
+            assert w.ui()["selected"] == writer
+            clock(w, "freeze")                                                                         # the dwell is counted on a clock that stands still
+            assert ask(w.directory, writer, docs, "the first")["status"] == "pending"
+            wait_for(lambda: w.ui()["approval_bar"] and w.ui()["card_seen"])                           # a frame has drawn the card: the count starts there
+            assert not w.ui()["card_ready"]
+            w.key("y")                                                                                 # typed at once: the person was writing, the card came up under the key
+            state = w.ui()
+            assert state["input"] == "y" and state["approval_bar"] and not state["card_ready"], state["input"]
+            w.key("BackSpace")
+            clock(w, "advance", "799")
+            w.key("n")
+            state = w.ui()
+            assert state["input"] == "n" and state["approval_bar"] and not state["card_ready"], state["input"]
+            w.key("BackSpace")
+            clock(w, "advance", "1")
+            assert wait_for(lambda: w.ui()["card_ready"] and w.ui()["input"] == "")
+            w.key("y")                                                                                 # the box is empty and the card has been there for the dwell
+            state = w.ui()
+            assert not state["approval_bar"] and "Allowed: the text was sent." in state["header"], state["header"]
+            wait_for(lambda: ">> the first" in records(log, docs))
+
+            assert ask(w.directory, writer, docs, "the second")["status"] == "pending"                  # a panel over the card hides it: when it is shown again the count starts again
+            wait_for(lambda: w.ui()["approval_bar"] and w.ui()["card_seen"])
+            clock(w, "advance", "800")
+            assert w.ui()["card_ready"]
+            w.key("ctrl+a")
+            assert panel(w) is not None
+            wait_for(lambda: not w.ui()["card_seen"])
+            w.key("Escape")
+            wait_for(lambda: panel(w) is None and w.ui()["card_seen"])
+            assert not w.ui()["card_ready"]
+            clock(w, "advance", "799")
+            assert not w.ui()["card_ready"]
+            clock(w, "advance", "1")
+            assert wait_for(lambda: w.ui()["card_ready"])
+            w.key("n")
+            assert "Declined: nothing was sent." in w.ui()["header"], w.ui()["header"]
