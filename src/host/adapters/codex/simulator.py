@@ -6,6 +6,7 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "fixture"   replays the recorded turn (waiting for the host's approval answers)
   "crash"     exits abruptly after acknowledging the turn
   "slow:N"    N output lines, one every 100 ms, so a turn is still running
+  "linger:N"  a helper outside the process group keeps this process's output open for N tenths of a second; the text is then echoed
   "bad"       malformed, oversize and endless messages
   "endless"   forty megabytes of one line that never ends, then a normal message
   "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
@@ -21,6 +22,7 @@ import argparse
 import json
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -32,6 +34,7 @@ parser.add_argument("--survive-eof", action="store_true")      # stay alive for 
 parser.add_argument("--grandchild", default="")                 # start a process of its own in the provider's group and write its pid here (a tool the provider started)
 parser.add_argument("--resume-delay", type=float, default=0.0)   # seconds before answering thread/resume (widens a race for a test)
 args, _ = parser.parse_known_args()
+LINGER = "import sys, time; time.sleep(int(sys.argv[1]) / 10)"
 
 if args.grandchild:
     import subprocess
@@ -106,6 +109,8 @@ def handle(message):
         text = "".join(i.get("text", "") for i in params.get("input", []))
         out({"id": rid, "result": {"turn": {"id": tid, "items": [], "status": "inProgress"}}})
         notify("turn/started", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "inProgress"}})
+        if text.startswith("linger:"):
+            subprocess.Popen([sys.executable, "-I", "-c", LINGER, text.split(":")[1]], start_new_session=True)
         if text == "crash":
             sys.exit(3)
         elif text == "fixture":

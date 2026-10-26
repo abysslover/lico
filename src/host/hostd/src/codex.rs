@@ -308,10 +308,11 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
         let _ = child.wait();
         let mut s = reader_session.lock().unwrap();
-        if s.agent_pid == pid {
+        let mine = s.agent_pid == pid; // a close or a purge zeroed it, and a resume may have put its own process there
+        if mine {
             s.agent_pid = 0; // reaped: the number may now belong to another process
         }
-        if s.state == State::Running && s.codex.is_some() {
+        if mine && s.state == State::Running && s.codex.is_some() {
             s.set_state(State::Disconnected);
             s.set_busy(false);
             s.codex = None; // its approvals and unanswered requests are stale now

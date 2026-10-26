@@ -183,6 +183,8 @@ def test_http_requires_credential_host_and_origin():
             assert len(shown_back()) == before                        # nothing delivered, nothing echoed
         finally:
             host.stop()
+
+
 def test_http_answers_401_and_403_from_the_head_alone_without_waiting_for_a_body():
     """F6: a request that declares a body but never sends it, with no credential or a wrong Host or Origin, is answered at once; the body is read only after
     the head has passed (it used to be read first, until the read timed out, so a caller without the token held a connection for five seconds and answered 400)."""
@@ -210,5 +212,3 @@ def test_http_answers_401_and_403_from_the_head_alone_without_waiting_for_a_body
             assert status == 200 and body["request_id"] == "h-after"               # the body of a request that passes is still read and used
         finally:
             host.stop()
-
-

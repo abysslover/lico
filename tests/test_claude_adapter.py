@@ -263,3 +263,25 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
             assert len({pids[m["session"]] for m in made}) == 3
         finally:
             host.stop()
+
+
+def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_resumed_after_it():
+    """F10: `linger:10` leaves a helper outside the process group that holds the provider's output open for a second, so the
+    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume."""
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:10")["ok"] == 1
+            wait_for(lambda: "echo: linger:10" in records(log, sid) and "[turn completed]" in records(log, sid))
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)        # at once, no wait
+            assert resumed["ok"] == 1, resumed
+            time.sleep(1.6)                                                                      # the helper has ended by now, and the old reader with it
+            assert status_of(conn, sid)["state"] == "running", status_of(conn, sid)["state"]
+            assert "[provider disconnected]" not in records(log, sid)
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="l-2", text="after")["ok"] == 1
+            wait_for(lambda: "echo: after" in records(log, sid))
+        finally:
+            host.stop()

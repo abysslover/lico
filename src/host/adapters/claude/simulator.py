@@ -8,6 +8,7 @@ user message:
   "crash"     exits abruptly after the acknowledgment
   "slow:N"    N assistant lines, one every 100 ms
   "quiet:N"   nothing at all for N tenths of a second (a turn that thinks), then one line and the result
+  "linger:N"  a helper outside the process group keeps this process's output open for N tenths of a second; the text is then echoed
   "env"       reports the names (never the values) of its environment
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
@@ -118,6 +119,7 @@ def init():
 
 # a child that holds C MiB and starts a child of its own that holds G MiB; the sizes and the grandchild's program arrive as arguments
 HOLD = "import sys,time\nb=bytearray(int(sys.argv[1])<<20)\nfor i in range(0,len(b),4096):b[i]=1\ntime.sleep(120)"
+LINGER = "import sys, time; time.sleep(int(sys.argv[1]) / 10)"
 HOLD_AND_SPAWN = "import subprocess,sys,time\nb=bytearray(int(sys.argv[1])<<20)\nfor i in range(0,len(b),4096):b[i]=1\nsubprocess.Popen([sys.executable,'-I','-c',sys.argv[3],sys.argv[2]])\ntime.sleep(120)"
 held = []
 
@@ -234,6 +236,10 @@ def turn(message):
         sys.stdout.write("x" * 3_000_000 + "\n")
         sys.stdout.flush()
         say("still alive")
+        out(result())
+    elif text.startswith("linger:"):
+        subprocess.Popen([sys.executable, "-I", "-c", LINGER, text.split(":")[1]], start_new_session=True)
+        say("echo: " + text)
         out(result())
     else:
         say("echo: " + text)

@@ -218,7 +218,6 @@ def test_a_codex_thread_never_starts_or_resumes_with_a_writable_sandbox_and_ever
                         assert conn.call(op="input", session=sid, generation=generation, request_id=f"{mode}-{k}", text=f"t{k}")["ok"] == 1
                     wait_for(lambda: all(f"echo: t{k}" in texts(log, sid) or f"steer: t{k}" in texts(log, sid) for k in range(12)))
                     assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
-                    time.sleep(0.5)                                       # the closed process's reader ends a moment after the close; this test is about what the resume sends
                     resumed = conn.call(op="session.resume", session=sid, generation=generation)
                     assert resumed["ok"] == 1, resumed
                     assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id=f"{mode}-after", text="after")["ok"] == 1
@@ -295,3 +294,25 @@ def _parent(pid):
         return int(open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[1])
     except (OSError, ValueError):
         return -1
+
+
+def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_resumed_after_it():
+    """F10: `linger:10` leaves a helper outside the process group that holds the provider's output open for a second, so the
+    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume."""
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            state = lambda: [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0]["state"]
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:10")["ok"] == 1
+            wait_for(lambda: "echo: linger:10" in texts(log, sid))
+            assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)         # at once, no wait
+            assert resumed["ok"] == 1, resumed
+            time.sleep(1.6)                                                                      # the helper has ended by now, and the old reader with it
+            assert state() == "running", state()
+            assert "[provider disconnected]" not in texts(log, sid)
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="l-2", text="after")["ok"] == 1
+            wait_for(lambda: "echo: after" in texts(log, sid))
+        finally:
+            host.stop()
