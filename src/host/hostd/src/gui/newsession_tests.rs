@@ -89,6 +89,9 @@ fn start_says_why_it_waits() {
     app.ed.put("a\nb");
     assert!(form(&app)["problem"].as_str().unwrap().contains("line break"), "{}", form(&app));
     app.ed.clear();
+    app.ed.put("\u{3164}"); // N1: a name that shows nothing is refused by the host, and the form says so instead of "more than 60"
+    assert!(form(&app)["problem"].as_str().unwrap().contains("shows nothing"), "{}", form(&app));
+    app.ed.clear();
     app.form_focus(Field::Account);
     app.ui.panel.as_mut().unwrap().account = String::new(); // "add a new account"
     assert!(form(&app)["problem"].as_str().unwrap().contains("account"));

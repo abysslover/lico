@@ -85,9 +85,9 @@ pub fn valid_text(value: &Value) -> bool {
     matches!(value, Value::String(s) if !s.is_empty() && s.len() <= MAX_INPUT_TEXT && !s.chars().any(|c| c.is_control() && c != '\n' && c != '\t'))
 }
 
-/// An account label: 1 to 40 characters, none a control character or one that draws nothing or reorders text (the same rule as a name).
+/// An account label: 1 to 40 characters, none a control character or one that draws nothing or reorders text, and not only characters that show nothing (the same rule as a name).
 pub fn valid_label(value: &Value) -> bool {
-    matches!(value, Value::String(s) if !s.is_empty() && s.chars().count() <= 40 && !s.chars().any(crate::folders::refused_char))
+    matches!(value, Value::String(s) if !s.is_empty() && s.chars().count() <= 40 && !s.chars().any(crate::folders::refused_char) && !crate::folders::shows_nothing(s))
 }
 
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.

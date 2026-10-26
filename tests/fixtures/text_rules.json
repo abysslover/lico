@@ -11,6 +11,8 @@
       {"text": "a\u180bb", "why": "U+180B (Mongolian free variation selector) is needed for Mongolian"},
       {"text": "a\u1160b", "why": "U+1160 (Hangul jungseong filler) is needed for old Hangul"},
       {"text": "\u2764\ufe0f", "why": "U+FE0F (variation selector-16) is needed for emoji"},
+      {"text": "a\u0301", "why": "a letter and the mark that draws on it (N1: a mark with a letter is a name)"},
+      {"text": "   \u3000", "why": "only white space: the host trims it, which takes the name away (rename to a blank)"},
       {"unit": "n", "times": 60, "why": "exactly the limit"}
     ],
     "invalid": [
@@ -40,7 +42,18 @@
       {"text": "a\ufeffb", "why": "byte order mark"},
       {"text": "a\udb40\udc00b", "why": "tag, the first"},
       {"text": "a\udb40\udc41b", "why": "tag letter A"},
-      {"text": "a\udb40\udc7fb", "why": "tag, the last"}
+      {"text": "a\udb40\udc7fb", "why": "tag, the last"},
+      {"text": "\u3164", "why": "only a Hangul filler: it draws nothing (N1)"},
+      {"text": "\u2800", "why": "only a braille blank: it draws nothing"},
+      {"text": "\u115f\u1160", "why": "a Hangul choseong filler and a jungseong filler: nothing is drawn"},
+      {"text": "\u00ad", "why": "only a soft hyphen"},
+      {"text": "\u200c", "why": "only a zero-width non-joiner (allowed between letters, not alone)"},
+      {"text": "\u2065", "why": "only U+2065, an unassigned default-ignorable code point"},
+      {"text": "\u034f", "why": "only a combining grapheme joiner"},
+      {"text": "\uffa0", "why": "only a halfwidth Hangul filler"},
+      {"text": "\u180e", "why": "only a Mongolian vowel separator"},
+      {"text": "\u0301", "why": "only a combining acute accent: it needs a letter before it"},
+      {"text": " \u3164 ", "why": "a filler with white space around it: the host trims the white space, then nothing shows"}
     ]
   },
   "folder": {
@@ -113,6 +126,7 @@
       {"text": "a\u200cb", "why": "U+200C (zero-width non-joiner) is allowed"},
       {"text": "a\u200db", "why": "U+200D (zero-width joiner) is allowed"},
       {"text": "a\u00a0b", "why": "a no-break space is not a control"},
+      {"text": "a\u0301", "why": "a letter and the mark that draws on it (N1)"},
       {"unit": "n", "times": 40, "why": "exactly the limit"}
     ],
     "invalid": [
@@ -135,7 +149,18 @@
       {"text": "a\ufeffb", "why": "byte order mark"},
       {"text": "a\udb40\udc00b", "why": "tag, the first"},
       {"text": "a\udb40\udc41b", "why": "tag letter A"},
-      {"text": "a\udb40\udc7fb", "why": "tag, the last"}
+      {"text": "a\udb40\udc7fb", "why": "tag, the last"},
+      {"text": "\u3164", "why": "only a Hangul filler: it draws nothing (N1)"},
+      {"text": "\u2800", "why": "only a braille blank: it draws nothing"},
+      {"text": "\u115f\u1160", "why": "a Hangul choseong filler and a jungseong filler: nothing is drawn"},
+      {"text": "\u00ad", "why": "only a soft hyphen"},
+      {"text": "\u200c", "why": "only a zero-width non-joiner (allowed between letters, not alone)"},
+      {"text": "\u2065", "why": "only U+2065, an unassigned default-ignorable code point"},
+      {"text": "\u034f", "why": "only a combining grapheme joiner"},
+      {"text": "\uffa0", "why": "only a halfwidth Hangul filler"},
+      {"text": "\u180e", "why": "only a Mongolian vowel separator"},
+      {"text": "\u0301", "why": "only a combining acute accent: it needs a letter before it"},
+      {"text": "   \u3000", "why": "only white space: spaces and an ideographic space"}
     ]
   }
 }

@@ -42,8 +42,20 @@ pub fn valid_path_shape(text: &str) -> bool {
     !text.is_empty() && text.chars().count() <= MAX_PATH && !text.chars().any(refused_char)
 }
 
-pub fn valid_name(text: &str) -> bool {
+/// A text with something in it that shows nothing: every character is white space or draws nothing (`leads::ignorable`: the default-ignorable
+/// characters, the format characters, the marks and U+2800). A name or a label like that cannot be told from none (N1; the Python mirror is
+/// `codex_mapping.shows_nothing`). A name is judged after the host trims it (white space alone is no name, which takes the name away); a label is not trimmed.
+pub fn shows_nothing(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_whitespace() || crate::leads::ignorable(c))
+}
+
+/// What a name may be made of, and how long: the shape a stored name is loaded by (a name stored before N1 that shows nothing stays as stored).
+fn name_shape(text: &str) -> bool {
     text.chars().count() <= MAX_NAME && !text.chars().any(refused_char)
+}
+
+pub fn valid_name(text: &str) -> bool {
+    name_shape(text) && !shows_nothing(text.trim())
 }
 
 pub fn valid_model(text: &str) -> bool {
@@ -97,9 +109,9 @@ impl Settings {
         let name = match value.get("name") {
             Some(Value::String(s)) if !s.chars().any(char::is_control) => {
                 let kept: String = s.chars().filter(|c| !refused_char(*c)).collect();
-                if valid_name(&kept) { Some(kept) } else { return Err(bad("name")) }
+                if name_shape(&kept) { Some(kept) } else { return Err(bad("name")) }
             }
-            _ => text("name", valid_name)?,
+            _ => text("name", name_shape)?,
         };
         Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)? })
     }
@@ -505,6 +517,14 @@ mod tests {
         assert!(name(&"\u{200b}".repeat(5).chars().chain("x".repeat(MAX_NAME + 1).chars()).collect::<String>()).is_err());
         let folder = Settings::from_record(&json!({"scratch": false, "cwd": "/work/\u{202e}p"}), "s1");
         assert_eq!(folder, Err("sessions.json has an invalid cwd for s1".to_string()));
+    }
+
+    /// N1 refuses what comes in; a name already stored that shows nothing loads as it was stored, as a label does.
+    #[test]
+    fn a_name_stored_before_that_shows_nothing_still_loads_as_stored() {
+        let name = |name: &str| Settings::from_record(&json!({"scratch": true, "name": name}), "s1");
+        assert_eq!(name("\u{3164}").unwrap().name.as_deref(), Some("\u{3164}"));
+        assert_eq!(name("\u{2800}\u{2800}").unwrap().name.as_deref(), Some("\u{2800}\u{2800}"));
     }
 
     #[test]

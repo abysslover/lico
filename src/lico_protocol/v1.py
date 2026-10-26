@@ -10,6 +10,8 @@ prototype clients keep working.
 
 from __future__ import annotations
 
+from .codex_mapping import shows_nothing
+
 PROTOCOL = 1
 MAX_INPUT_TEXT = 64 * 1024     # bytes of one `input`: newline and tab allowed, no other control character
 MAX_PATH = 1024                # characters of a folder path a session may be created in
@@ -194,15 +196,15 @@ REQUESTS = {
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096},
                             "account": {"type": STR, "max_length": 64},
                             "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
-                            "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True},
+                            "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True, "no_blank": "trimmed"},
                             "model": {"type": STR, "min_length": 1, "max_length": 60, "charset": "model"},
                             "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"}}),
-    "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
+    "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True, "no_blank": "trimmed"}}, _COMMON_REQ),
     "session.options": _obj({}, _COMMON_REQ),
     "session.rebind": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                             "account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.create": _obj({"provider": {"type": STR, "enum": ["codex", "claude"]},
-                            "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
+                            "label": {"type": STR, "min_length": 1, "max_length": 40, "no_control": True, "no_hidden": True, "no_blank": True}}, _COMMON_REQ),
     "account.list": _obj({}, _COMMON_REQ),
     "history": _obj({"session": {"type": STR, "max_length": 64}, "before": {"type": INT, "minimum": 0}, "limit": {"type": INT, "minimum": 1, "maximum": 200}}, _COMMON_REQ),
     "account.affected": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
@@ -277,6 +279,8 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         errors.append(f"{path}: control characters")
     if isinstance(value, str) and spec.get("no_hidden") and any(_is_hidden(c) for c in value):
         errors.append(f"{path}: control characters")
+    if isinstance(value, str) and spec.get("no_blank") and shows_nothing(value, trimmed=spec["no_blank"] == "trimmed"):
+        errors.append(f"{path}: shows nothing")
     if isinstance(value, list):
         if "length" in spec and len(value) != spec["length"]:
             errors.append(f"{path}: length {len(value)}")

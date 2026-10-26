@@ -22,7 +22,7 @@ const NOTE_STEMS: &[&str] = &["turn ", "exit ", "log recovered:"];
 
 /// Characters that draw nothing (Unicode's default-ignorable set, with the ones `sanitize::dropped` lists, and the two line separators), and those that draw
 /// nothing alone or only on the character before them: the format characters, the nonspacing and enclosing marks and U+2800 (`marks`).
-fn ignorable(c: char) -> bool {
+pub(crate) fn ignorable(c: char) -> bool {
     crate::marks::covers(c)
         || matches!(c as u32,
         0x00ad | 0x034f | 0x061c | 0x115f..=0x1160 | 0x17b4..=0x17b5 | 0x180b..=0x180f | 0x200b..=0x200f | 0x2028..=0x202e | 0x2060..=0x206f

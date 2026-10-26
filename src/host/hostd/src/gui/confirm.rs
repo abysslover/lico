@@ -162,7 +162,13 @@ impl App {
     /// Enter on the name line: the host keeps the name (an empty one takes it away).
     pub(crate) fn rename_submit(&mut self, text: &str) {
         let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
-        let outcome = if crate::folders::valid_name(text) { self.ask_do(&ask, text) } else { Err(format!("a name has at most {} characters and no line break", crate::folders::MAX_NAME)) };
+        let outcome = if crate::folders::valid_name(text) {
+            self.ask_do(&ask, text)
+        } else if crate::folders::shows_nothing(text.trim()) {
+            Err("the name shows nothing (only characters that are not drawn)".to_string())
+        } else {
+            Err(format!("a name has at most {} characters and no line break", crate::folders::MAX_NAME))
+        };
         match outcome {
             Ok(done) => {
                 self.panel_close();

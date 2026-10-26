@@ -47,6 +47,14 @@ def sanitize(text: str) -> str:
     return _CONTROL.sub("", text.replace("\t", " ").replace("\n", " ").replace("\r", " "))
 
 
+def shows_nothing(text: str, trimmed: bool = False) -> bool:
+    """Whether a text has something in it and every character is white space or draws nothing (hostd/src/folders.rs `shows_nothing`, N1).
+    A session name is judged `trimmed`, as the host trims it; an account label is not."""
+    if trimmed:
+        text = text.strip(_WHITE)
+    return text != "" and _IGNORABLE.sub("", text).strip(_WHITE) == ""
+
+
 def reserved(record: str) -> bool:
     """Whether a record begins like something the host writes, judged on a skeleton: nothing that draws nothing, no white space in front."""
     skeleton = _IGNORABLE.sub("", record).lstrip(_WHITE)

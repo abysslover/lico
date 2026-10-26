@@ -60,6 +60,9 @@ fn a_name_the_host_would_refuse_stays_on_the_line_with_the_reason_and_nothing_is
     app.rename_submit(&"n".repeat(61));
     assert!(notice(&app).contains("at most 60 characters") && app.ed.text().len() == 61, "{}", notice(&app));
     app.ed.clear();
+    app.rename_submit("\u{3164}\u{2800}"); // N1: a name that shows nothing is refused by the host, with the reason
+    assert!(notice(&app).contains("shows nothing") && app.ed.text().len() == 6, "{}", notice(&app));
+    app.ed.clear();
     app.rename_submit("api2"); // a good name, but the host does not answer: it stays to be tried again
     assert!(notice(&app).contains("the host did not answer") && app.ed.text() == "api2" && step(&app) == Some(Step::Rename), "{}", notice(&app));
 }

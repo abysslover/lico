@@ -188,6 +188,8 @@ impl App {
             Some("the folder must be a full path that starts with /".into())
         } else if self.live(p, f, Field::Name).trim().chars().any(char::is_control) {
             Some("the name has a line break or another control character".into())
+        } else if crate::folders::shows_nothing(self.live(p, f, Field::Name).trim()) {
+            Some("the name shows nothing (only characters that are not drawn)".into())
         } else if !crate::folders::valid_name(self.live(p, f, Field::Name).trim()) {
             Some("the name has more than 60 characters".into())
         } else {
