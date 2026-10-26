@@ -258,7 +258,7 @@ fn stored(shared: &Shared) -> (Vec<String>, Map<String, Value>) {
 fn parse_record(text: &str) -> (Vec<String>, Map<String, Value>) {
     let parsed: Value = serde_json::from_str(text).unwrap_or_default();
     let list = parsed["folders"].as_array().cloned().unwrap_or_default();
-    let folders = list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f)).take(RECENT).map(str::to_string).collect();
+    let folders = list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f) && Path::new(f).is_absolute()).take(RECENT).map(str::to_string).collect();
     let checks: [(&str, fn(&str) -> bool); 6] = [
         ("kind", |s| matches!(s, "claude" | "codex")),
         ("account", |s| !s.is_empty() && s.chars().count() <= 64 && !s.chars().any(char::is_control)),
@@ -450,7 +450,7 @@ mod tests {
         let text = |last: Value| json!({"folders": ["/a", "relative/ok-as-a-list-entry?", 7, "/b\0c"], "last": last}).to_string();
         let good = json!({"kind": "claude", "account": "acc-1", "mode": "default", "cwd": "/work/p", "model": "opus", "effort": "high"});
         assert_eq!(parse_record(&text(good.clone())).1, obj(good.clone()));
-        assert_eq!(parse_record(&text(good)).0, ["/a", "relative/ok-as-a-list-entry?"]);          // the list keeps what has the shape of a path; it is checked again when used
+        assert_eq!(parse_record(&text(good)).0, ["/a"]);          // a list entry is a full path like `cwd` (a relative one would be read from the host's own folder)
         let bad = json!({"kind": "synthetic", "account": "", "mode": "ask", "cwd": "work", "model": "-x", "effort": "High"});
         assert_eq!(parse_record(&text(bad)).1, Map::new());
         assert_eq!(parse_record(&text(json!({"kind": 1, "model": ["opus"], "effort": null}))).1, Map::new());

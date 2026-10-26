@@ -4,6 +4,7 @@
 use winit::event::KeyEvent;
 use winit::keyboard::{Key, NamedKey};
 
+use super::panel::confirm::Act;
 use super::panel::Step;
 use super::App;
 
@@ -21,6 +22,9 @@ pub enum Cmd {
     Allow,
     Deny,
     Resume,
+    Rename,
+    Close,
+    Delete,
     Copy,
     Paste,
     Older,
@@ -76,6 +80,9 @@ impl App {
                 }
                 let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason } else { Some("no approval is pending") };
                 v.push(Self::entry("Resume session", "Ctrl+R", Cmd::Resume, panel_reason.or(self.resume_reason())));
+                v.push(Self::entry("Rename session", "F2", Cmd::Rename, panel_reason.or(self.ask_reason(Act::Rename))));
+                v.push(Self::entry("Close session", "Ctrl+Shift+W", Cmd::Close, panel_reason.or(self.ask_reason(Act::Close))));
+                v.push(Self::entry("Delete session", "Ctrl+Delete", Cmd::Delete, panel_reason.or(self.ask_reason(Act::Delete))));
                 v.push(Self::entry("Allow approval", "Y", Cmd::Allow, pending));
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
                 v.push(Self::entry("Copy selected lines", "Ctrl+Shift+C", Cmd::Copy, if self.ui.sel.is_some() { None } else { Some("nothing is selected") }));
@@ -133,6 +140,9 @@ impl App {
             Cmd::Allow => self.answer_approval(true),
             Cmd::Deny => self.answer_approval(false),
             Cmd::Resume => self.resume_session(),
+            Cmd::Rename => self.ask_open(Act::Rename),
+            Cmd::Close => self.ask_open(Act::Close),
+            Cmd::Delete => self.ask_open(Act::Delete),
             Cmd::Copy => self.copy_selection(),
             Cmd::Paste => self.start_paste(b"CLIPBOARD"),
             Cmd::Older => self.scroll_by(20),

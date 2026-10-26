@@ -35,6 +35,7 @@ fn the_form_lists_its_rows_in_order_with_the_input_line_on_the_folder() {
     assert!(app.text_mode(), "the folder takes text");
     let (_, body) = app.panel_view().unwrap();
     assert!(body[2].starts_with("> Folder") && body[3].contains("/work/one") && body[0].starts_with("  Provider"), "{body:?}");
+    assert!(body.iter().any(|l| l.contains("settings (hooks, environment) are not used; its CLAUDE.md is")), "{body:?}");
 }
 
 #[test]
@@ -74,6 +75,10 @@ fn start_says_why_it_waits() {
     app.form_focus(Field::Name);
     app.ed.put(&"n".repeat(61));
     assert!(form(&app)["problem"].as_str().unwrap().contains("60"), "{}", form(&app));
+    app.ed.clear();
+    app.ed.put("a\nb");
+    assert!(form(&app)["problem"].as_str().unwrap().contains("line break"), "{}", form(&app));
+    app.ed.clear();
     app.form_focus(Field::Account);
     app.ui.panel.as_mut().unwrap().account = String::new(); // "add a new account"
     assert!(form(&app)["problem"].as_str().unwrap().contains("account"));
@@ -162,4 +167,16 @@ fn the_form_with_all_ten_recent_folders_and_a_notice_still_fits_a_window_of_600_
     // the header, the title, the body, the prompt row: one text row of 18 px each, with 22 px of menu bar and 24 px of hint bar around them
     let rows = 1 + 1 + body.len() + 1;
     assert!(title == "New session" && rows * 18 + 22 + 24 <= 600, "{rows} rows: {body:?}");
+}
+
+#[test]
+fn a_name_that_reads_like_the_default_is_still_a_name_and_a_default_model_and_effort_are_left_out() {
+    let mut app = opened();
+    app.form_focus(Field::Name);
+    app.ed.put(" default ");
+    app.form_focus(Field::Model); // the text goes into the form on leaving the row
+    let p = app.ui.panel.as_ref().unwrap();
+    let request = request_of(p, p.form.as_ref().unwrap());
+    assert_eq!(request["name"], "default");
+    assert!(request.get("model").is_none() && request.get("effort").is_none() && request.get("cwd").is_none(), "{request}");
 }

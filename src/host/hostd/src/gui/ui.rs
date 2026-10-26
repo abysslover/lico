@@ -20,7 +20,7 @@ use winit::window::Window;
 use super::controls::{self, Action, Controls};
 #[path = "row.rs"]
 mod row;
-pub(crate) use row::{ago, clock_compact, clock_text, Row};
+pub(crate) use row::{clock_text, Row};
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, jstr, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
@@ -95,6 +95,7 @@ pub struct UiState {
     pub no_scroll_step: bool, // measurement client only: every frame is a full repaint
     pub fonts_gen: u64, // changes when the font system is replaced
     pub fixed_now: Option<u64>, // tests only: the second that the clocks of working sessions count from
+    pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
 }
 
 fn display_cols(text: &str) -> usize {
@@ -440,17 +441,13 @@ impl App {
                     } else {
                         match hit {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
-                            Some(Action::Session(id)) => {
-                                if self.ui.panel.is_none() && id != self.session {
-                                    self.switch_to(&id); // (a panel owns the input line: leaving for another session would carry its text along)
-                                }
-                            }
+                            Some(Action::Session(id)) => self.row_click(id),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::Item(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
                             None => match self.line_at(y) {
-                                Some(idx) if self.form_click(idx) => {} // a row of the new-session form
+                                Some(idx) if self.form_click(idx) || self.confirm_click(idx) => {} // a row of the new-session form, the Y or N of a question
                                 Some(idx) => {
                                     self.ui.sel = Some((idx, idx));
                                     self.ui.dragging = true;
@@ -1322,6 +1319,7 @@ fn clipboard_server(rx: mpsc::Receiver<String>) {
 #[cfg(test)]
 mod tests {
     use super::super::{fonts, BACKGROUND};
+    use super::row::{ago, clock_compact};
     use super::*;
 
     fn working(busy_since: u64, last_event_at: u64, stalled: bool) -> Row {

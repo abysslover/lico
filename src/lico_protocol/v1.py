@@ -51,6 +51,7 @@ INVENTORY = {
     "host.stop": {"state": "host", "mutates": True},
     "session.options": {"state": "host", "mutates": False},
     "session.rename": {"state": "host", "mutates": True},
+    "session.close": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -126,6 +127,7 @@ REPLIES = {
     "session.resume": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "session.purge": _obj({"v": _V, "ok": _OK, "session": {"type": STR}}, COMMON_REPLY_OPTIONAL),
+    "session.close": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}}, COMMON_REPLY_OPTIONAL),
     "session.rebind": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "account.create": _obj({"v": _V, "ok": _OK, "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]},
@@ -179,6 +181,7 @@ REQUESTS = {
     "unsubscribe": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.resume": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
     "session.purge": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
+    "session.close": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
     "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic", "codex", "claude"]}},
                            {**_COMMON_REQ, "mode": {"type": STR, "enum": ["auto", "default"]}, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},

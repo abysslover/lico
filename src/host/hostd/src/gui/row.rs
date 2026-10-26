@@ -94,6 +94,11 @@ impl Row {
         }
     }
 
+    /// A turn is open and the host is not waiting for a person: the work an interruption would cut short.
+    pub fn is_working(&self) -> bool {
+        self.state == "running" && self.activity == "working"
+    }
+
     /// Seconds the open turn has been running: only while the host says the session works and nothing waits for a person.
     pub fn working_for(&self, now: u64) -> Option<u64> {
         (self.state == "running" && self.activity == "working" && self.approvals.is_empty() && self.busy_since > 0).then(|| now.saturating_sub(self.busy_since))

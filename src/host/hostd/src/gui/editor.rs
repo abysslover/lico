@@ -2,8 +2,8 @@
 //! A state machine with no window and no host in it: `mod.rs` and `ui.rs` hand it the keys and ask it for the rows to draw.
 //!
 //! Limits. One input is at most `MAX_TEXT` bytes (the host's own limit). The recall history keeps 20 inputs per session and 256 KiB in all
-//! sessions together, the oldest dropped first (the transcript has what was sent). A draft is never dropped: one per session, and the
-//! box refuses what would take it past the limit; only a refused input that comes back into it can leave it over, and then it is kept
+//! sessions together, the oldest dropped first (the transcript has what was sent). A draft is never dropped (a deleted session's goes with
+//! it: `forget`): one per session, and the box refuses what would take it past the limit; only a refused input that comes back into it can leave it over, and then it is kept
 //! and not sent, with the reason under the box.
 
 use std::collections::{HashMap, VecDeque};
@@ -491,6 +491,11 @@ impl Editor {
             draft.text.insert_str(0, text);
             draft.cursor += text.len();
         }
+    }
+
+    pub(crate) fn forget(&mut self, session: &str) {
+        self.parked.remove(session);
+        self.sent.retain(|e| e.0 != session);
     }
 
     pub(crate) fn sent_count(&self, session: &str) -> usize {

@@ -12,7 +12,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use super::App;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Step {
     NewSession,
     Label,
@@ -21,6 +21,8 @@ pub enum Step {
     Actions,
     Keys,
     About,
+    Rename,  // the new name of a session, on the input line
+    Confirm, // a question about a session that Y answers
 }
 
 pub struct Panel {
@@ -36,6 +38,7 @@ pub struct Panel {
     pub opened: bool, // the browser was opened for this sign-in attempt
     pub stash: super::editor::Parked, // what was typed in the input line before the panel took it over
     pub form: Option<newsession::Form>, // the new-session form: what it holds stays while the label or the sign-in is asked for
+    pub ask: Option<confirm::Ask>, // the session that a rename or a confirmation is about
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -95,7 +98,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -116,7 +119,7 @@ impl App {
     }
 
     pub(crate) fn text_mode(&self) -> bool {
-        self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Label || p.text_field() || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
+        self.ui.panel.as_ref().map_or(false, |p| matches!(p.step, Step::Label | Step::Rename) || p.text_field() || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
     }
 
     /// The sign-in code is being typed: it is drawn as stars and never put in the window's model.
@@ -179,11 +182,16 @@ impl App {
                 }
                 "Accounts".to_string()
             }
+            Step::Rename | Step::Confirm => {
+                let (heading, lines) = self.ask_view(p);
+                body.extend(lines);
+                heading
+            }
             Step::Keys => {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
                     "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty)", "Ctrl+V or Shift+Insert paste   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
-                    "Page Up, Page Down, End  scroll the output",
+                    "Page Up, Page Down, End  scroll the output", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
                 ].map(String::from));
                 "Keys".to_string()
             }
@@ -267,6 +275,9 @@ impl App {
     pub(crate) fn panel_key(&mut self, event: &KeyEvent) -> bool {
         let ctrl = self.ui.mods.control_key();
         if self.ui.panel.is_none() {
+            if self.lifecycle_key(event) {
+                return true;
+            }
             if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
                 match c.to_ascii_lowercase().as_str() {
                     "n" => {
@@ -331,10 +342,11 @@ impl App {
     }
 
     fn submit_text(&mut self, step: Step, text: &str) {
-        if text.is_empty() {
-            return;
+        if text.is_empty() && step != Step::Rename {
+            return; // an empty name is a name taken away; the other lines have nothing to send
         }
         match step {
+            Step::Rename => self.rename_submit(text),
             Step::Label => {
                 let provider = self.ui.panel.as_ref().map(|p| p.provider.clone()).unwrap_or_default();
                 let reply = self.host_call(json!({"op": "account.create", "provider": provider, "label": text}));
@@ -385,6 +397,7 @@ impl App {
                 }
             }
             Step::Actions => self.action_key(key),
+            Step::Confirm => self.confirm_key(key),
             _ => {}
         }
     }
@@ -461,6 +474,8 @@ impl App {
     }
 }
 
+#[path = "confirm.rs"]
+pub(super) mod confirm;
 #[path = "newsession.rs"]
 mod newsession;
 

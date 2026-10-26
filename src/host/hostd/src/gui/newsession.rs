@@ -98,6 +98,17 @@ impl Panel {
     }
 }
 
+/// The request the form makes: a folder and a name only when given (a name may be any text, `default` too), a model and an effort only when not the default.
+fn request_of(p: &Panel, f: &Form) -> Value {
+    let mut request = json!({"op": "session.create", "kind": p.provider, "account": p.account, "mode": p.mode});
+    for (key, value) in [("cwd", f.folder.trim()), ("name", f.name.trim()), ("model", f.model.as_str()), ("effort", f.effort.as_str())] {
+        if !value.is_empty() && (value != DEFAULT || matches!(key, "cwd" | "name")) {
+            request[key] = json!(value);
+        }
+    }
+    request
+}
+
 /// The sentence for a word the host refused with.
 fn refusal(code: &str) -> String {
     match code {
@@ -175,6 +186,8 @@ impl App {
             Some("add an account first (Enter on the Account row)".into())
         } else if !folder.trim().is_empty() && !(folder.trim().starts_with('/') && crate::folders::valid_path_shape(folder.trim())) {
             Some("the folder must be a full path that starts with /".into())
+        } else if self.live(p, f, Field::Name).trim().chars().any(char::is_control) {
+            Some("the name has a line break or another control character".into())
         } else if !crate::folders::valid_name(self.live(p, f, Field::Name).trim()) {
             Some("the name has more than 60 characters".into())
         } else {
@@ -209,6 +222,7 @@ impl App {
             .collect();
         lines.push(String::new());
         lines.push("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: start".into());
+        lines.push("A folder's own Claude settings (hooks, environment) are not used; its CLAUDE.md is.".into());
         lines
     }
 
@@ -391,13 +405,7 @@ impl App {
         self.form_store();
         self.form_resume(); // (the text stays on the input line while the form is shown)
         let Some((problem, request)) = self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))).map(|(p, f)| {
-            let mut request = json!({"op": "session.create", "kind": p.provider, "account": p.account, "mode": p.mode});
-            for (key, value) in [("cwd", f.folder.trim()), ("name", f.name.trim()), ("model", f.model.as_str()), ("effort", f.effort.as_str())] {
-                if !value.is_empty() && value != DEFAULT {
-                    request[key] = json!(value);
-                }
-            }
-            (self.form_problem(p, f), request)
+            (self.form_problem(p, f), request_of(p, f))
         }) else {
             return;
         };

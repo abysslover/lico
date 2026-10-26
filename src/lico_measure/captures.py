@@ -168,10 +168,10 @@ class ProductWindow:
             start -= 1
         return sum(lit[start:end + 1]) if end >= 0 else 0
 
-    def click(self, x: float, y: float, button: int = 1) -> None:
+    def click(self, x: float, y: float, button: int = 1, times: int = 1) -> None:
         wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
         since = self.frames()
-        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", str(button)], env=self.env, check=True)
+        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", "--repeat", str(times), "--delay", "80", str(button)], env=self.env, check=True)
         self.settle(since, 0.7)
 
     def ui(self) -> dict:

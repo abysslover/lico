@@ -289,3 +289,20 @@ fn the_box_shows_at_most_the_cap_and_keeps_the_cursor_row_in_view() {
     // a cap of one row is honoured on a small window
     assert_eq!(e.prompt(30, 1, "").rows.len(), 1);
 }
+
+#[test]
+fn a_deleted_session_leaves_neither_a_draft_nor_a_history_and_the_others_keep_theirs() {
+    let mut e = ed("");
+    for s in ["gone", "kept"] {
+        e.set(format!("sent in {s}"));
+        e.prepare_send(s);
+        e.set(format!("draft of {s}"));
+        e.park(s, "");
+    }
+    e.forget("gone");
+    assert_eq!((e.sent_count("gone"), e.sent_count("kept")), (0, 1));
+    e.resume("gone");
+    assert_eq!(e.text, "");
+    e.resume("kept");
+    assert_eq!(e.text, "draft of kept");
+}

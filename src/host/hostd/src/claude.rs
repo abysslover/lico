@@ -134,6 +134,9 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     ]);
     // A new session skips permission checks (the owner's rule of 2026-10-25) and the prompt tool is ALWAYS on: what the program still asks about
     // (a question to the person, a plan, an explicit ask rule) reaches the window instead of failing with "requires approval". `default` asks for everything.
+    // `-p` skips the program's "do you trust this folder?" question, so a chosen folder's own settings (hooks, `env`, `apiKeyHelper`, its `.mcp.json`) would run
+    // without the person's decision; only the user's settings are read (the folder's CLAUDE.md still is) and `--settings` below still applies.
+    command.args(["--setting-sources", "user"]);
     let mode = session.lock().unwrap().mode;
     command.args(["--permission-mode", if mode == "default" { "default" } else { "bypassPermissions" }, "--permission-prompt-tool", "stdio"]);
     if let Some(provider_session) = &resume {

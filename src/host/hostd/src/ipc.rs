@@ -89,7 +89,7 @@ pub fn valid_text(value: &Value) -> bool {
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
         "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" => &[],
-        "session.resume" | "session.purge" => &["session", "generation"],
+        "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
         "session.rebind" => &["session", "generation", "account"],
         "account.create" => &["provider", "label"],
@@ -114,9 +114,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
-            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
+            ("snapshot" | "subscribe" | "input" | "approval.answer" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
             ("session.create", "mode") => matches!(value.as_str(), Some("auto" | "default")),
             ("session.create", "kind") => matches!(value.as_str(), Some("synthetic" | "codex" | "claude")),
@@ -179,6 +179,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "resources" => core::resources(shared),
         "session.resume" => core::session_resume(shared, &session, generation.unwrap_or(0)),
         "session.purge" => core::session_purge(shared, &session, generation.unwrap_or(0)),
+        "session.close" => crate::lifecycle::session_close(shared, &session, generation.unwrap_or(0)),
         "session.create" => core::session_create(
             shared,
             text(&request, "kind"),

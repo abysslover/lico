@@ -18,10 +18,10 @@ use crate::payload;
 use crate::session::{obj, rec_line, InputState, LogView, Session, State, Sub};
 
 pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-escaped (up to 3 times its size) and the rest of the line
-pub const OPS: [&str; 30] = [
+pub const OPS: [&str; 31] = [
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -312,7 +312,7 @@ pub fn find(shared: &Shared, wanted: &str) -> Option<Arc<Mutex<Session>>> {
 }
 
 /// A target of another execution generation is stale: nothing is dispatched to it.
-fn check_generation(s: &Session, generation: Option<i64>) -> Result<(), &'static str> {
+pub(crate) fn check_generation(s: &Session, generation: Option<i64>) -> Result<(), &'static str> {
     match generation {
         Some(g) if g != s.generation as i64 => Err("stale_generation"),
         _ => Ok(()),

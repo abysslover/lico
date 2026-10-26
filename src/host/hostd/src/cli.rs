@@ -17,6 +17,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                  [--cwd DIR] [--name TEXT] [--model NAME] [--effort LEVEL]   (DIR: the folder it runs in; none = a scratch workspace)\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
+  session close ID               end a session's process and keep it, disconnected (`session resume` brings it back)\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   account create --provider codex|claude --label TEXT\n\
@@ -26,7 +27,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   session show ID                one session
-  session purge ID               delete a session: its process, log and workspace\n\
+  session delete ID              delete a session: its process, log and workspace (a folder you chose is never touched; `purge` is the same)\n\
   session send ID TEXT|- [--request-id RID]
                                  send input (- reads it from standard input; at most 64 KiB, newlines and tabs allowed);
                                  the request id is printed first, so after a timeout the
@@ -253,10 +254,15 @@ pub fn run(args: Vec<String>) {
             let before: i64 = before.parse().unwrap_or_else(|_| die(1, USAGE));
             expect_ok(call(&mut connect(&socket), json!({"op": "history", "session": id, "before": before, "limit": limit})));
         }
-        ["session", "purge", id] => {
+        ["session", "purge" | "delete", id] => {
             let mut conn = connect(&socket);
             let generation = session_generation(&mut conn, id);
             expect_ok(call(&mut conn, json!({"op": "session.purge", "session": id, "generation": generation})));
+        }
+        ["session", "close", id] => {
+            let mut conn = connect(&socket);
+            let generation = session_generation(&mut conn, id);
+            expect_ok(call(&mut conn, json!({"op": "session.close", "session": id, "generation": generation})));
         }
         ["session", "show", id] => {
             let mut conn = connect(&socket);

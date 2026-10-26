@@ -114,6 +114,8 @@ def test_a_session_runs_in_the_folder_the_person_picked_keeps_it_across_a_restar
             wait_for(lambda: len(argv_of(received)) > spawned)
             argv = argv_of(received)[-1]
             assert argv[argv.index("--resume") + 1] and argv[argv.index("--model") + 1] == "opus" and lines_of(received).count(f"CWD {project}") == 2
+            # a chosen folder's own Claude settings (hooks, env, its .mcp.json) are not read, on the first start and on the resume (mail 048)
+            assert len(argv_of(received)) >= 2 and all(a[a.index("--setting-sources") + 1] == "user" for a in argv_of(received))
             assert conn.call(op="session.purge", session=sid, generation=resumed["generation"])["ok"] == 1
             assert (project / "notes.txt").read_text() == "mine"
         finally:
