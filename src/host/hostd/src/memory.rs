@@ -9,7 +9,7 @@
 //! a window costs nothing) and a window that asks every second costs one look in three. The look runs on its own short thread: a status call never
 //! waits for it and shows what the last one found. A process that vanished or cannot be read counts for nothing.
 //!
-//! The kernel's own words on a `children` file (`Documentation/filesystems/proc.rst`, section 3.7): it is fast and cheap, not exact; a child that
+//! As the kernel documents a `children` file (`Documentation/filesystems/proc.rst`, section 3.7): it is fast and cheap, not exact; a child that
 //! exited right after its pid was printed can be skipped; an exact list needs the processes stopped. So a look was measured against a scan on one tree
 //! whose children start and end all the time (200 looks each; kept locally): 30 alive at 450 starts a second, none of 5747 children that were certainly
 //! alive missing; 450 alive, none of 87673; 700 alive, 12 looks lost a live child. The file is handed out a page at a time and the lock is let go
