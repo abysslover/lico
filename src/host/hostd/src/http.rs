@@ -22,24 +22,24 @@ const BURST: f64 = 50.0;
 const FAILED_AUTH_PER_SECOND: f64 = 20.0;
 const READ_DEADLINE: Duration = Duration::from_secs(10);
 
-struct Bucket {
-    tokens: f64,
-    at: Instant,
+pub(crate) struct Bucket {
+    pub(crate) tokens: f64,
+    pub(crate) at: Instant,
 }
 
-struct Request {
-    method: String,
-    path: String,
-    query: String,
-    headers: Vec<(String, String)>,
-    body: Vec<u8>,
+pub(crate) struct Request {
+    pub(crate) method: String,
+    pub(crate) path: String,
+    pub(crate) query: String,
+    pub(crate) headers: Vec<(String, String)>,
+    pub(crate) body: Vec<u8>,
 }
 
-fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
+pub(crate) fn header<'a>(request: &'a Request, name: &str) -> Option<&'a str> {
     request.headers.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -57,6 +57,7 @@ fn status_of(code: &str) -> u16 {
 fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",
+        202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",
         403 => "Forbidden",
@@ -75,7 +76,11 @@ fn respond(stream: &mut TcpStream, status: u16, body: Map<String, Value>, extra:
     for (key, value) in body {
         all.insert(key, value);
     }
-    let text = String::from_utf8(encode(all).to_vec()).unwrap_or_default();
+    write_response(stream, status, &String::from_utf8(encode(all).to_vec()).unwrap_or_default(), extra);
+}
+
+/// One response whose body is already JSON text (`respond` wraps a v1 body in it; the tool connection speaks JSON-RPC).
+pub(crate) fn write_response(stream: &mut TcpStream, status: u16, text: &str, extra: &str) {
     let head = format!(
         "HTTP/1.1 {status} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n{extra}\r\n",
         reason(status),
@@ -90,14 +95,14 @@ fn error(stream: &mut TcpStream, status: u16, code: &str) {
 }
 
 /// A request whose head has been read: the body is not, and is only read once the head has passed (`read_body`).
-struct Head {
-    request: Request,
+pub(crate) struct Head {
+    pub(crate) request: Request,
     length: usize,   // the declared length of the body
     started: Instant, // one deadline for the whole request, not one per read
 }
 
 /// Read the request head. Err carries the status to answer with.
-fn read_head(stream: &mut TcpStream) -> Result<Head, u16> {
+pub(crate) fn read_head(stream: &mut TcpStream) -> Result<Head, u16> {
     let started = Instant::now();
     let mut data: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 2048];
@@ -138,9 +143,9 @@ fn read_head(stream: &mut TcpStream) -> Result<Head, u16> {
 }
 
 /// Read the rest of a bounded body. Err carries the status to answer with.
-fn read_body(stream: &mut TcpStream, head: Head) -> Result<Request, u16> {
+pub(crate) fn read_body(stream: &mut TcpStream, head: Head, max: usize) -> Result<Request, u16> {
     let Head { mut request, length, started } = head;
-    if length > MAX_BODY {
+    if length > max {
         return Err(413);
     }
     let mut chunk = [0u8; 2048];
@@ -158,7 +163,7 @@ fn read_body(stream: &mut TcpStream, head: Head) -> Result<Request, u16> {
 }
 
 /// Read what the client still sends, so that it can see the answer before the connection closes (a close with unread data resets it).
-fn drain(stream: &mut TcpStream) {
+pub(crate) fn drain(stream: &mut TcpStream) {
     let _ = stream.shutdown(Shutdown::Write);
     let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
     let mut sink = [0u8; 4096];
@@ -264,7 +269,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
     result.map_err(|code| (status_of(code), code))
 }
 
-fn take(bucket: &Mutex<Bucket>, per_second: f64, burst: f64) -> bool {
+pub(crate) fn take(bucket: &Mutex<Bucket>, per_second: f64, burst: f64) -> bool {
     let mut b = bucket.lock().unwrap();
     let now = Instant::now();
     b.tokens = (b.tokens + now.duration_since(b.at).as_secs_f64() * per_second).min(burst);
@@ -312,7 +317,7 @@ fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<S
         respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
         return drain(&mut stream);
     }
-    let request = match read_body(&mut stream, head) {
+    let request = match read_body(&mut stream, head, MAX_BODY) {
         Ok(request) => request,
         Err(status) => {
             error(&mut stream, status, if status == 413 { "too_large" } else { "bad_request" });

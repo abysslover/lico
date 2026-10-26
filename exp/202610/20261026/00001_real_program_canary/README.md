@@ -1,6 +1,6 @@
 # 00001 real_program_canary
 
-Version 1.0.2
+Version 1.1.0
 
 **Question.** When a person picks a folder for a Lico session, can that folder make the installed `claude` or `codex` program
 load or run its own configuration (settings hook, MCP server, notify hook, skills, agents, commands, model provider)? Lico
@@ -20,6 +20,14 @@ line to a file when they run. Rows, one `PASS/FAIL` line each:
   project layer disabled, run no canary and write no trust entry.
 - Codex through the Lico host (`--lico PATH`): auto and default sessions, create, input, close, resume, input; no trust entry
   and canary 0.
+- Claude through the Lico host (`--lico PATH`, added with P03 step S02): the host starts the real program with its real flags,
+  including `--mcp-config` and `--allowedTools`; after the first input the program's `init` message must show the server `lico`
+  as `connected` and `mcp__lico__sessions` among its tools. Auto and default mode. No sign-in and no model call (a dead proxy;
+  the loopback is in `NO_PROXY`, otherwise the program sends its connection to the dead proxy and reports `failed`: the first run
+  of this row did exactly that).
+- Claude live (`--live`, needs `--lico`): model turns with the sign-in of the home the script runs under, model `haiku`, one
+  `sessions` call each: 3 tries in auto, 1 in default. A row passes when the turn completes, the record shows the call and the
+  result names the other session, and the host raised no approval. About 5 short turns of the subscription.
 
 **Tested versions.** `claude` 2.1.310, `codex-cli` 0.164.0 (the script prints both on its first lines). The answer is only as
 good as these versions: both programs change their loading rules between releases. Re-run when either one updates.
@@ -37,5 +45,9 @@ host canary 0 and trust 0. Mutation 1: with `thread/start` and `thread/resume` m
 rows fail (canary ran 4 times, trust entries 2) and the other 10 rows still pass. Mutation 2: with a name the folder does not have added
 to the list of names the Claude control must see, the control row fails with "the method is blind" and the two `user` rows still pass.
 
-**Run.** `python3 -I real_program_canary.py all --lico PATH_TO_LICO_BINARY` (Python 3.11 or newer, as the project asks; `claude` and `codex` on
+**Observed result, tool connection (2026-10-26, host built from S02).** `claude` 2.1.310: both lico-path rows passed (`lico` connected,
+tools `['mcp__lico__sessions']`); the first run failed both rows with `lico: failed` because of the proxy (see above). Live: 4 of 4 passed
+(3 in auto, 1 in default; completed, called, result delivered, no approval). Not tried: other models, a second sign-in, a resumed session.
+
+**Run.** `python3 -I real_program_canary.py all --lico PATH_TO_LICO_BINARY [--live]` (Python 3.11 or newer, as the project asks; `claude` and `codex` on
 `PATH`). Exit 0 all rows held, 1 a row did not, 2 a program or the given binary is missing.

@@ -195,16 +195,32 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             stop.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     };
+    // The tool connection: a key of its own for this process, in a config file that only the program reads (the key is in no argument, environment or log).
+    // Every tool of it is allowed without a question: the connection is the host's own, and only this session's key opens it.
+    let (id, generation) = {
+        let s = session.lock().unwrap();
+        (s.id.clone(), s.generation)
+    };
+    let grant = match crate::tools::issue(shared, &id, generation) {
+        Ok(grant) => grant,
+        Err(code) => {
+            stop_broker(&broker);
+            return Err(code);
+        }
+    };
+    command.arg("--mcp-config").arg(&grant.path).args(["--allowedTools", "mcp__lico__*"]);
     let mut child = match core::spawn_provider_process(command) {
         Ok(child) => child,
         Err(_) => {
             stop_broker(&broker);
+            crate::tools::release(&grant.key);
             return Err("busy");
         }
     };
     let pid = child.id();
     let (Some(stdout), Some(mut stdin)) = (child.stdout.take(), child.stdin.take()) else {
         stop_broker(&broker);
+        crate::tools::release(&grant.key);
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
         return Err("busy");
@@ -216,6 +232,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             // the session was purged while this process started: it is stopped, never attached
             drop(s);
             stop_broker(&broker);
+            crate::tools::release(&grant.key);
             unsafe { kill(-(pid as i32), 9) };
             let _ = child.wait();
             return Err("busy");
@@ -242,6 +259,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
     });
     let reader_session = session.clone();
+    let key = grant.key;
     thread::spawn(move || {
         for line in core::bounded_lines(stdout, MAX_LINE) {
             if let Ok(message) = serde_json::from_str::<Value>(&line) {
@@ -250,6 +268,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
         let _ = child.wait();
+        crate::tools::release(&key); // only its own key: what a resume made after it stays
         let mut s = reader_session.lock().unwrap();
         let mine = s.agent_pid == pid; // a close or a purge zeroed it, and a resume may have put its own process there
         if mine {

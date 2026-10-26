@@ -12,6 +12,8 @@ user message:
   "linger:N:inject"  the helper instead waits (at most N tenths) for the file `<received>.go`, writes a forged answer and a forged permission request into the
               output it inherited, and then creates `<received>.injected`: a test closes the session first, lets the helper go, and waits for that file
   "stall"     says "stalling", then nothing at all until the file `<received>.end` exists, then one line and the result (a turn a test decides to end)
+  "tools"     does what the real program does with `--mcp-config`: connects to the server of the file, lists its tools and calls
+              `sessions`, and says the answers as they came (never the token)
   "env"       reports the names (never the values) of its environment
   "keyenv"    reports CLAUDE_CONFIG_DIR and HOME, runs the apiKeyHelper command of --settings the way
               the provider would and reports the key's length and a short hash (never the key)
@@ -32,6 +34,8 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import uuid
 
 # the options the host reads from `claude --help`, as Claude Code 2.1.310 prints them (wrapped the same way)
@@ -133,6 +137,17 @@ held = []
 
 def say(text):
     out(assistant(text))
+
+
+def mcp(server, method, params=None, number=None):
+    """One JSON-RPC message to the tool server named in the --mcp-config file, the way the program sends it; (status, body)."""
+    message = {"jsonrpc": "2.0", "method": method, **({"params": params} if params is not None else {}), **({"id": number} if number else {})}
+    request = urllib.request.Request(server["url"], json.dumps(message).encode(), {"Content-Type": "application/json", **server["headers"]})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as reply:
+            return reply.status, reply.read().decode()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode()
 
 
 def turn(message):
@@ -243,6 +258,13 @@ def turn(message):
         sys.stdout.write("x" * 3_000_000 + "\n")
         sys.stdout.flush()
         say("still alive")
+        out(result())
+    elif text == "tools":
+        server = json.load(open(sys.argv[sys.argv.index("--mcp-config") + 1]))["mcpServers"]["lico"]
+        say("initialize %s %s" % mcp(server, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "simulator", "version": "0"}}, 1))
+        say("initialized %s %r" % mcp(server, "notifications/initialized"))
+        say("list %s %s" % mcp(server, "tools/list", {}, 2))
+        say("call %s %s" % mcp(server, "tools/call", {"name": "sessions", "arguments": {}}, 3))
         out(result())
     elif text.startswith("linger:"):
         count, _, inject = text[len("linger:"):].partition(":")

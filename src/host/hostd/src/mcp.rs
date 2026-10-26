@@ -1,0 +1,186 @@
+//! JSON-RPC for the tool connection: the messages a program sends to the host over HTTP and what the host answers.
+//! Plain request and answer, nothing is held open: every method answers at once, and the methods the host does not
+//! have answer with the JSON-RPC error `-32601` at HTTP status 200 (the program probes with `server/discover`).
+//! The tool names are the table `TOOLS`, the one place that says which tools exist and what they cost in tokens.
+
+use serde_json::{json, Map, Value};
+
+/// The protocol versions this server knows, newest first: `initialize` echoes the one the program asks for, else the newest.
+const VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
+
+/// The size of the whole `tools/list` result, in bytes: every session pays for these definitions in tokens.
+#[cfg(test)]
+const LIST_BUDGET: usize = 2048;
+
+pub struct Tool {
+    pub name: &'static str,
+    pub description: &'static str,
+}
+
+/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `send`, `create`, `history` and `read_handoff` join later.
+pub const TOOLS: [Tool; 1] = [Tool {
+    name: "sessions",
+    description: "List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to.",
+}];
+
+/// What to do with one HTTP request body.
+#[derive(Debug, PartialEq)]
+pub enum Outcome {
+    /// A notification: HTTP 202, no body.
+    Accepted,
+    /// A JSON-RPC answer (a result or an error): HTTP 200.
+    Reply(String),
+    /// Not JSON at all: HTTP 400 with a parse error.
+    Malformed(String),
+}
+
+fn answer(id: Value, body: Value) -> String {
+    let mut message = Map::new();
+    message.insert("jsonrpc".into(), json!("2.0"));
+    message.insert("id".into(), id);
+    if let Value::Object(fields) = body {
+        message.extend(fields);
+    }
+    Value::Object(message).to_string()
+}
+
+fn result(id: Value, value: Value) -> Outcome {
+    Outcome::Reply(answer(id, json!({"result": value})))
+}
+
+fn error(id: Value, code: i64, message: &str) -> Outcome {
+    Outcome::Reply(failure(id, code, message))
+}
+
+/// A JSON-RPC error body (also the body of the HTTP errors, with a null id).
+pub fn failure(id: Value, code: i64, message: &str) -> String {
+    answer(id, json!({"error": {"code": code, "message": message}}))
+}
+
+fn list() -> Value {
+    let tools: Vec<Value> = TOOLS.iter().map(|t| json!({"name": t.name, "description": t.description, "inputSchema": {"type": "object", "properties": {}}})).collect();
+    json!({"tools": tools})
+}
+
+/// Handle one message. `run` performs a tool: its Ok text is the result, its Err text an error result that the model sees (`isError`).
+pub fn handle(body: &[u8], run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<String, String>) -> Outcome {
+    let Ok(parsed) = serde_json::from_slice::<Value>(body) else {
+        return Outcome::Malformed(failure(Value::Null, -32700, "parse error"));
+    };
+    let Value::Object(message) = parsed else {
+        return error(Value::Null, -32600, "one request object is expected, not a batch");
+    };
+    let id = message.get("id").cloned();
+    if !matches!(id, None | Some(Value::Number(_)) | Some(Value::String(_))) {
+        return error(Value::Null, -32600, "the id is a number or a string");
+    }
+    if message.get("jsonrpc") != Some(&json!("2.0")) {
+        return error(id.unwrap_or(Value::Null), -32600, "jsonrpc must be 2.0");
+    }
+    let Some(method) = message.get("method").and_then(Value::as_str) else {
+        // an answer from the program to a request of the server (there is none) is taken and ignored
+        return if id.is_some() && (message.contains_key("result") || message.contains_key("error")) { Outcome::Accepted } else { error(id.unwrap_or(Value::Null), -32600, "method missing") };
+    };
+    let Some(id) = id else { return Outcome::Accepted }; // a notification: nothing is answered, whatever it is
+    let params = message.get("params").and_then(Value::as_object);
+    match method {
+        "initialize" => {
+            let asked = params.and_then(|p| p.get("protocolVersion")).and_then(Value::as_str).unwrap_or("");
+            let version = VERSIONS.iter().find(|v| **v == asked).unwrap_or(&VERSIONS[0]);
+            result(id, json!({"protocolVersion": version, "capabilities": {"tools": {}}, "serverInfo": {"name": "lico", "version": env!("CARGO_PKG_VERSION")}}))
+        }
+        "ping" => result(id, json!({})),
+        "tools/list" => result(id, list()),
+        "tools/call" => {
+            let name = params.and_then(|p| p.get("name")).and_then(Value::as_str);
+            let arguments = match params.and_then(|p| p.get("arguments")) {
+                None => Some(Map::new()),
+                Some(Value::Object(map)) => Some(map.clone()),
+                Some(_) => None,
+            };
+            let (Some(name), Some(arguments)) = (name, arguments) else { return error(id, -32602, "tools/call needs a name and arguments as an object") };
+            if !TOOLS.iter().any(|t| t.name == name) {
+                return error(id, -32602, "unknown tool");
+            }
+            let (text, failed) = match run(name, &arguments) {
+                Ok(text) => (text, false),
+                Err(text) => (text, true),
+            };
+            result(id, json!({"content": [{"type": "text", "text": text}], "isError": failed}))
+        }
+        _ => error(id, -32601, "method not found"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ask(message: Value) -> Outcome {
+        handle(message.to_string().as_bytes(), &mut |name, _| Ok(format!("ran {name}")))
+    }
+
+    fn reply(outcome: Outcome) -> Value {
+        match outcome {
+            Outcome::Reply(text) => serde_json::from_str(&text).unwrap(),
+            other => panic!("not an answer: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn initialize_echoes_a_version_it_knows_and_otherwise_the_newest() {
+        for (asked, answered) in [("2025-11-25", "2025-11-25"), ("2025-06-18", "2025-06-18"), ("2025-03-26", "2025-03-26"), ("2024-01-01", "2025-11-25"), ("", "2025-11-25")] {
+            let got = reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": asked}})));
+            assert_eq!(got["result"]["protocolVersion"], answered);
+            assert_eq!(got["id"], 1);
+        }
+        let got = reply(ask(json!({"jsonrpc": "2.0", "id": "a", "method": "initialize"})));
+        assert_eq!((got["result"]["protocolVersion"].clone(), got["id"].clone()), (json!("2025-11-25"), json!("a")), "no params at all is still an initialize");
+    }
+
+    #[test]
+    fn a_notification_is_accepted_whatever_it_is_and_the_probe_and_unknown_methods_are_errors_with_the_id() {
+        for method in ["notifications/initialized", "notifications/cancelled", "anything/else"] {
+            assert_eq!(ask(json!({"jsonrpc": "2.0", "method": method})), Outcome::Accepted);
+        }
+        assert_eq!(ask(json!({"jsonrpc": "2.0", "id": 4, "result": {}})), Outcome::Accepted, "an answer to nothing is taken and dropped");
+        for method in ["server/discover", "resources/list", "prompts/list", ""] {
+            let got = reply(ask(json!({"jsonrpc": "2.0", "id": 7, "method": method})));
+            assert_eq!((got["id"].clone(), got["error"]["code"].clone()), (json!(7), json!(-32601)), "{method}");
+        }
+    }
+
+    #[test]
+    fn what_is_not_a_request_is_an_error_and_what_is_not_json_is_malformed() {
+        for message in [json!([{"jsonrpc": "2.0", "id": 1, "method": "ping"}]), json!({"id": 1, "method": "ping"}), json!({"jsonrpc": "2.0", "id": 1}), json!({"jsonrpc": "2.0", "id": null, "method": "ping"}),
+                        json!({"jsonrpc": "2.0", "id": 1, "method": 5}), json!({"jsonrpc": "2.0", "id": [1], "method": "ping"}), json!("text"), json!(7)] {
+            assert_eq!(reply(ask(message.clone()))["error"]["code"], -32600, "{message}");
+        }
+        for body in [&b"{not json"[..], b"", b"\xff\xfe", &[b'['; 5000]] {
+            assert!(matches!(handle(body, &mut |_, _| Ok(String::new())), Outcome::Malformed(text) if text.contains("-32700")));
+        }
+    }
+
+    #[test]
+    fn the_tool_list_stays_within_its_budget_and_every_name_is_unique_and_plain() {
+        let got = reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})));
+        let size = got["result"].to_string().len();
+        assert!(size <= LIST_BUDGET, "the list is {size} bytes, over {LIST_BUDGET}");
+        let names: Vec<&str> = TOOLS.iter().map(|t| t.name).collect();
+        assert_eq!(names, got["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>());
+        assert!(names.iter().all(|n| n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')), "no second prefix, no capitals: {names:?}");
+        assert!(names.iter().enumerate().all(|(i, n)| !names[..i].contains(n)));
+    }
+
+    #[test]
+    fn a_call_runs_a_known_tool_and_refuses_an_unknown_one_or_arguments_that_are_not_an_object() {
+        let got = reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "sessions", "arguments": {}}})));
+        assert_eq!(got["result"], json!({"content": [{"type": "text", "text": "ran sessions"}], "isError": false}));
+        assert_eq!(reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "sessions"}})))["result"]["isError"], false, "arguments may be left out");
+        for params in [json!({"name": "nothing"}), json!({"name": 5}), json!({"arguments": {}}), json!({"name": "sessions", "arguments": [1]}), json!([]), json!(null)] {
+            assert_eq!(reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params})))["error"]["code"], -32602, "{params}");
+        }
+        let refused = handle(json!({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "sessions"}}).to_string().as_bytes(), &mut |_, _| Err("no".into()));
+        assert_eq!(reply(refused)["result"], json!({"content": [{"type": "text", "text": "no"}], "isError": true}), "a refusal of the tool is a result the model reads");
+    }
+}

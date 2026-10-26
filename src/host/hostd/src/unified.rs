@@ -22,10 +22,12 @@ mod keyring;
 mod leads;
 mod lifecycle;
 mod login;
+mod mcp;
 mod memory;
 mod payload;
 mod registry;
 mod session;
+mod tools;
 
 const LICENSE: &str = include_str!("../../../../LICENSE");
 const NOTICES: &str = include_str!("../NOTICES.txt");

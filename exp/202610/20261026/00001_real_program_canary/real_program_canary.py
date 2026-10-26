@@ -13,11 +13,13 @@ about them. NOT checked here: whether the program reads the folder's CLAUDE.md o
 The result is only as good as the versions printed on the first lines: the programs change their loading rules between releases.
 Re-run this script whenever either program updates.
 
-Usage: python3 -I real_program_canary.py [claude|codex|all] [--lico PATH_TO_LICO_BINARY]
+Usage: python3 -I real_program_canary.py [claude|codex|all] [--lico PATH_TO_LICO_BINARY] [--live]
 Exit: 0 every expectation held, 1 one did not, 2 a program (or the given lico binary) is missing. Takes about 5 minutes (295 s measured, load average about 4).
+`--live` (needs --lico) adds the rows that make a few short model turns with the sign-in of the home this script runs under (`run_lico_tools_live`).
 Rows: claude (a) real flags `--setting-sources user`, auto and default permission mode, canary must not run; (b) positive control
 `user,project,local`, canary MUST run (otherwise the method is blind); codex per folder kind (plain, repo): `old-auto` positive control, `new-auto` `new-default`
-`resume-auto` `resume-default` must not load; codex through the Lico host (needs --lico): no trust entry, canary 0.
+`resume-auto` `resume-default` must not load; codex through the Lico host (needs --lico): no trust entry, canary 0; claude through the Lico host (needs
+--lico): the program connects to the host's tool listener and lists `mcp__lico__sessions` (no sign-in, no model call); with --live a model turn calls it.
 """
 import json
 import os
@@ -374,6 +376,123 @@ def run_lico(lico: str) -> None:
             drop(sock_dir)
 
 
+# ------------------------------------------------------------------ claude through the Lico host: the tool connection
+
+WRAPPER = '#!/bin/sh\nexport HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 NO_PROXY=127.0.0.1,localhost DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 DISABLE_TELEMETRY=1\nclaude "$@" | tee -a "{out}"\n'
+TOOL = "[tool] mcp__lico__sessions"
+
+
+def stream_messages(path: Path) -> list[dict]:
+    out = []
+    for line in lines_of(path):
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
+    return out
+
+
+def wait_for(check, seconds: float):
+    until = time.monotonic() + seconds
+    while time.monotonic() < until:
+        got = check()
+        if got:
+            return got
+        time.sleep(0.3)
+    return None
+
+
+def with_host(lico: str, work: Path, env: dict, claude: str | None, body) -> None:
+    """A private host on a private socket; `body(conn)` runs against it; the host is stopped by its own command and, failing that, killed by pid."""
+    sock_dir = temp("lc-s")
+    host = None
+    try:
+        sock = str(sock_dir / "s")
+        argv = [lico, "host", "--socket", sock, "--state-dir", str(work / "state"), "--sessions", "0", "--producing", "0"] + (["--claude", claude] if claude else [])
+        host = subprocess.Popen(argv, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=work)
+        wait_for(lambda: os.path.exists(sock), 10)
+        try:
+            body(Conn(sock))
+        finally:
+            subprocess.run([lico, "--socket", sock, "host", "stop", "--force"], env=env, capture_output=True, timeout=30)
+            try:
+                host.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                host.kill()
+                host.wait()
+    finally:
+        if host is not None and host.poll() is None:
+            host.kill()
+            host.wait()
+        drop(sock_dir)
+
+
+def run_lico_tools(lico: str) -> None:
+    """The real program, started by the real host with its real flags, connects to the host's listener and lists the tool. A dead proxy: no model call."""
+    for mode in ("auto", "default"):
+        work = temp("lc-t")
+        try:
+            (work / "home").mkdir()
+            out = work / "stream.txt"
+            wrapper = work / "claude-wrapper"
+            write_exec(wrapper, WRAPPER.format(out=out))
+            env = {"PATH": os.environ["PATH"], "LANG": os.environ.get("LANG", "C.UTF-8"), "HOME": str(work / "home")}
+            seen = {}
+
+            def body(conn):
+                made = conn.call(op="session.create", kind="claude", mode=mode, name=f"canary-{mode}")
+                if made.get("ok") != 1:
+                    seen["problem"] = f"create failed {json.dumps(made)[:100]}"
+                    return
+                conn.call(op="input", session=made["session"], generation=made["generation"], request_id="t-1", text="hi")
+                seen["init"] = wait_for(lambda: next((m for m in stream_messages(out) if m.get("type") == "system" and m.get("subtype") == "init"), None), 60)
+            with_host(lico, work, env, str(wrapper), body)
+            init = seen.get("init") or {}
+            servers = {s.get("name"): s.get("status") for s in init.get("mcp_servers", [])}
+            tools = [x for x in init.get("tools", []) if x.startswith("mcp__")]
+            report(servers.get("lico") == "connected" and "mcp__lico__sessions" in tools, f"lico path claude {mode} (the program connects to the host's tool listener)",
+                   f"mcp_servers {servers or 'none'}, mcp tools {tools or 'none'}" + (f", {seen['problem']}" if "problem" in seen else "") + ("" if init else ", no init message in 60 s"))
+        finally:
+            drop(work)
+
+
+def run_lico_tools_live(lico: str) -> None:
+    """Model turns (the sign-in of the home this script runs under, the haiku model): the program is asked to call `sessions` and the record must show the
+    call and a result that names the other session. 3 tries in auto and 1 in default, where everything but this tool is asked about: a question fails the row."""
+    for mode, tries in (("auto", 3), ("default", 1)):
+        for attempt in range(1, tries + 1):
+            work = temp("lc-t")
+            try:
+                env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "HOME", "CLAUDE_CONFIG_DIR")}
+                seen = {"asked": False}
+
+                def body(conn):
+                    target = conn.call(op="session.create", kind="claude", mode=mode, name="canary-target")
+                    caller = conn.call(op="session.create", kind="claude", mode=mode, model="haiku", name="canary-caller")
+                    if target.get("ok") != 1 or caller.get("ok") != 1:
+                        seen["problem"] = "create failed"
+                        return
+                    sid, gen = caller["session"], caller["generation"]
+                    conn.call(op="input", session=sid, generation=gen, request_id="l-1",
+                              text="Call the tool mcp__lico__sessions once. Reply with only the id of the session named canary-target, nothing else.")
+
+                    def done():
+                        entry = next(s for s in conn.call(op="status")["sessions"] if s["session"] == sid)
+                        seen["asked"] = seen["asked"] or bool(entry.get("approvals"))
+                        text = json.dumps(conn.call(op="snapshot", session=sid, generation=gen))
+                        return text if "[turn completed]" in text or "[turn failed]" in text else None
+                    seen["text"] = wait_for(done, 120) or ""
+                    seen["target"] = target["session"]
+                with_host(lico, work, env, None, body)
+                text, target = seen.get("text", ""), seen.get("target", "?")
+                completed, called, delivered = "[turn completed]" in text, TOOL in text, target in text.split(TOOL, 1)[-1]
+                report(completed and called and delivered and not seen["asked"], f"lico path claude {mode} live try {attempt} (calls sessions, asks nothing)",
+                       f"turn {'completed' if completed else 'did not complete'}, tool called {called}, result names the other session {delivered}, approvals asked {seen['asked']}"
+                       + (f", {seen['problem']}" if "problem" in seen else ""))
+            finally:
+                drop(work)
+
+
 def trust_lines_codexhome(work: Path) -> list[str]:
     try:
         return [l.strip() for l in (work / "codexhome" / "config.toml").read_text().splitlines() if "trust_level" in l or l.startswith("[projects")]
@@ -392,16 +511,19 @@ def version(program: str) -> str | None:
 
 def main(argv: list[str]) -> int:
     args, lico = list(argv), None
+    live = "--live" in args
+    if live:
+        args.remove("--live")
     if "--lico" in args:
         i = args.index("--lico")
         if i + 1 >= len(args):
-            print("usage: real_program_canary.py [claude|codex|all] [--lico PATH]")
+            print("usage: real_program_canary.py [claude|codex|all] [--lico PATH] [--live]")
             return 2
         lico = args[i + 1]
         del args[i:i + 2]
     target = args[0] if args else "all"
-    if target not in ("claude", "codex", "all") or len(args) > 1:
-        print("usage: real_program_canary.py [claude|codex|all] [--lico PATH]")
+    if target not in ("claude", "codex", "all") or len(args) > 1 or (live and lico is None):
+        print("usage: real_program_canary.py [claude|codex|all] [--lico PATH] [--live]   (--live needs --lico)")
         return 2
     cv, xv = version("claude"), version("codex")
     print(f"claude --version: {cv or 'MISSING'}")
@@ -417,6 +539,12 @@ def main(argv: list[str]) -> int:
     try:
         if target in ("claude", "all"):
             run_claude()
+            if lico is None:
+                print("SKIP claude through the lico host: no --lico", flush=True)
+            else:
+                run_lico_tools(os.path.abspath(lico))
+                if live:
+                    run_lico_tools_live(os.path.abspath(lico))
         if target in ("codex", "all"):
             run_codex()
             if lico is None:

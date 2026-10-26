@@ -125,6 +125,7 @@ pub fn run(args: Vec<String>) {
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.registry_dir).expect("registry dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.workspace_root).expect("workspace root");
+        crate::tools::reset(base.join("tools")).expect("tools dir");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }
     raise_descriptor_limit();

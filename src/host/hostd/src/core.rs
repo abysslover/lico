@@ -421,6 +421,7 @@ pub fn host_stop(shared: &Arc<Shared>, force: bool, build: Option<&str>) -> Repl
             }
         };
         end_providers(&sessions, STOP_DEADLINE / 2);
+        crate::tools::clear();
         std::process::exit(0);
     });
     // Whatever the work above waits for (a session lock held for seconds, a lock that a panic poisoned), the process ends after at most this long
@@ -689,7 +690,7 @@ fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result
 /// another session is touched, and nothing of this one can be written again.
 pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let (id, pid, subs, scratch) = {
+    let (id, subs, scratch) = {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
         s.purged = true;
@@ -698,13 +699,12 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         s.codex = None;
         s.claude = None;
         s.approvals.clear();
-        let pid = s.agent_pid;
         s.stop_process();
         s.purge_log();
         let subs: Vec<Arc<Sub>> = s.subs.drain(..).collect();
-        (s.id.clone(), pid, subs, s.settings.cwd.is_none())
+        (s.id.clone(), subs, s.settings.cwd.is_none())
     };
-    let _ = pid;
+    crate::tools::forget(&id); // its tool connection ends with it
     for sub in subs {
         // viewers are told to resynchronise; their next request finds no such session
         sub.push(crate::session::encode(obj(json!({"ev": "overflow", "session": id}))));
