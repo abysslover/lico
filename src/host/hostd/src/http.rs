@@ -89,9 +89,16 @@ fn error(stream: &mut TcpStream, status: u16, code: &str) {
     respond(stream, status, obj(json!({"error": code})), "");
 }
 
-/// Read the request head and a bounded body; Err carries the status to answer with.
-fn read_request(stream: &mut TcpStream) -> Result<Request, u16> {
-    let started = Instant::now(); // one deadline for the whole request, not one per read
+/// A request whose head has been read: the body is not, and is only read once the head has passed (`read_body`).
+struct Head {
+    request: Request,
+    length: usize,   // the declared length of the body
+    started: Instant, // one deadline for the whole request, not one per read
+}
+
+/// Read the request head. Err carries the status to answer with.
+fn read_head(stream: &mut TcpStream) -> Result<Head, u16> {
+    let started = Instant::now();
     let mut data: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 2048];
     let head_end = loop {
@@ -126,21 +133,39 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, u16> {
         Some((_, v)) => v.parse().map_err(|_| 400u16)?,
         None => 0,
     };
+    let body = data[head_end + 4..].to_vec(); // what arrived with the head
+    Ok(Head { request: Request { method: method.to_string(), path: path.to_string(), query: query.to_string(), headers, body }, length, started })
+}
+
+/// Read the rest of a bounded body. Err carries the status to answer with.
+fn read_body(stream: &mut TcpStream, head: Head) -> Result<Request, u16> {
+    let Head { mut request, length, started } = head;
     if length > MAX_BODY {
         return Err(413);
     }
-    let mut body = data[head_end + 4..].to_vec();
-    while body.len() < length {
+    let mut chunk = [0u8; 2048];
+    while request.body.len() < length {
         if started.elapsed() > READ_DEADLINE {
             return Err(400);
         }
         match stream.read(&mut chunk) {
             Ok(0) | Err(_) => return Err(400),
-            Ok(n) => body.extend_from_slice(&chunk[..n]),
+            Ok(n) => request.body.extend_from_slice(&chunk[..n]),
         }
     }
-    body.truncate(length);
-    Ok(Request { method: method.to_string(), path: path.to_string(), query: query.to_string(), headers, body })
+    request.body.truncate(length);
+    Ok(request)
+}
+
+/// Read what the client still sends, so that it can see the answer before the connection closes (a close with unread data resets it).
+fn drain(stream: &mut TcpStream) {
+    let _ = stream.shutdown(Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    let mut sink = [0u8; 4096];
+    let mut drained = 0;
+    while drained < 65536 && stream.read(&mut sink).map_or(false, |n| n > 0) {
+        drained += 4096;
+    }
 }
 
 fn id_ok(text: &str) -> bool {
@@ -254,42 +279,46 @@ fn take(bucket: &Mutex<Bucket>, per_second: f64, burst: f64) -> bool {
 fn serve_one(mut stream: TcpStream, shared: Arc<Shared>, port: u16, token: Arc<String>, buckets: Arc<(Mutex<Bucket>, Mutex<Bucket>)>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-    let request = match read_request(&mut stream) {
-        Ok(request) => request,
+    let head = match read_head(&mut stream) {
+        Ok(head) => head,
         Err(status) => {
-            let code = if status == 413 { "too_large" } else { "bad_request" };
-            error(&mut stream, status, code);
-            // read what the client still sends so it can see the answer before the connection closes
-            let _ = stream.shutdown(Shutdown::Write);
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-            let mut sink = [0u8; 4096];
-            let mut drained = 0;
-            while drained < 65536 && stream.read(&mut sink).map_or(false, |n| n > 0) {
-                drained += 4096;
-            }
-            return;
+            error(&mut stream, status, "bad_request");
+            return drain(&mut stream);
         }
     };
-    // Host and Origin are checked first: they defeat DNS rebinding and cross-site requests
-    let host_ok = matches!(header(&request, "host"), Some(h) if h == format!("127.0.0.1:{port}") || h == format!("localhost:{port}"));
-    let origin_ok = match header(&request, "origin") {
+    // Host and Origin are checked first: they defeat DNS rebinding and cross-site requests. Then the credential. All of it on the head: the body (up to
+    // 256 KiB, and the client may never send it) is read only for a request that has passed, so a caller without the token cannot hold a connection with one.
+    let request = &head.request;
+    let host_ok = matches!(header(request, "host"), Some(h) if h == format!("127.0.0.1:{port}") || h == format!("localhost:{port}"));
+    let origin_ok = match header(request, "origin") {
         None => true,
         Some(o) => o == format!("http://127.0.0.1:{port}") || o == format!("http://localhost:{port}"),
     };
     if !host_ok || !origin_ok {
-        return error(&mut stream, 403, "bad_request");
+        error(&mut stream, 403, "bad_request");
+        return drain(&mut stream);
     }
-    let presented = header(&request, "authorization").and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
+    let presented = header(request, "authorization").and_then(|v| v.strip_prefix("Bearer ")).unwrap_or("");
     if !constant_time_eq(presented.as_bytes(), token.as_bytes()) {
         // failed attempts have their own small budget, so guessing is slow and cannot starve real callers
         if !take(&buckets.1, FAILED_AUTH_PER_SECOND, FAILED_AUTH_PER_SECOND) {
-            return respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
+            respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
+        } else {
+            respond(&mut stream, 401, obj(json!({"error": "bad_request"})), "WWW-Authenticate: Bearer\r\n");
         }
-        return respond(&mut stream, 401, obj(json!({"error": "bad_request"})), "WWW-Authenticate: Bearer\r\n");
+        return drain(&mut stream);
     }
     if !take(&buckets.0, RATE_PER_SECOND, BURST) {
-        return respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
+        respond(&mut stream, 429, obj(json!({"error": "busy"})), "Retry-After: 1\r\n");
+        return drain(&mut stream);
     }
+    let request = match read_body(&mut stream, head) {
+        Ok(request) => request,
+        Err(status) => {
+            error(&mut stream, status, if status == 413 { "too_large" } else { "bad_request" });
+            return drain(&mut stream);
+        }
+    };
     match route(&shared, &request) {
         Ok(body) => respond(&mut stream, 200, body, ""),
         Err((405, _)) => respond(&mut stream, 405, obj(json!({"error": "bad_request"})), ""),

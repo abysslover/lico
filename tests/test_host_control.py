@@ -183,3 +183,32 @@ def test_http_requires_credential_host_and_origin():
             assert len(shown_back()) == before                        # nothing delivered, nothing echoed
         finally:
             host.stop()
+def test_http_answers_401_and_403_from_the_head_alone_without_waiting_for_a_body():
+    """F6: a request that declares a body but never sends it, with no credential or a wrong Host or Origin, is answered at once; the body is read only after
+    the head has passed (it used to be read first, until the read timed out, so a caller without the token held a connection for five seconds and answered 400)."""
+    with private_dir() as directory:
+        token_file = os.path.join(directory, "http.token")
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+        host, log = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", str(port), "--http-token-file", token_file])
+        try:
+            sid = host.sessions[0]
+            wait_for(lambda: _http(port, "GET", "/v1/status")[0] == 401)
+            token = Path(token_file).read_text().strip()
+            auth = {"Authorization": f"Bearer {token}"}
+            declared = {"Content-Length": str(v1.MAX_REQUEST)}                     # the head of a request whose body never comes
+            for what, headers, want in [("no credential", declared, 401), ("a wrong credential", {**declared, "Authorization": "Bearer nope"}, 401),
+                                        ("a wrong Host", {**auth, **declared, "Host": "evil.example"}, 403), ("a wrong Origin", {**auth, **declared, "Origin": "http://evil.example"}, 403),
+                                        ("no credential, more than the limit declared", {"Content-Length": str(v1.MAX_REQUEST + 1)}, 401)]:
+                started = time.monotonic()
+                got = _http(port, "POST", f"/v1/sessions/{sid}/input", headers)[0]
+                took = time.monotonic() - started
+                assert got == want and took < 3, (what, got, round(took, 1))
+            status, body = _http(port, "POST", f"/v1/sessions/{sid}/input", auth, json.dumps({"generation": 1, "request_id": "h-after", "text": "fine"}).encode())
+            assert status == 200 and body["request_id"] == "h-after"               # the body of a request that passes is still read and used
+        finally:
+            host.stop()
+
+

@@ -33,6 +33,11 @@ def test_the_protocol_refuses_every_invalid_entry_of_the_table():
 
 def test_the_table_covers_the_groups_the_rule_names():
     names = {text for text, _ in entries("name", "invalid")}
-    for char in ("\x00", "\x7f", "\x85", "؜", "​", "‎", "‮", " ", "⁠", "⁤", "⁦", "⁩", "﻿", "\U000e0000", "\U000e007f"):
-        assert any(char in text for text in names), hex(ord(char))
-    assert {"‌", "‍"} <= {c for text, _ in entries("name", "valid") for c in text}
+    for char in ("\x00", "\x7f", "\x85", "\u061c", "\u200b", "\u200e", "\u202e", "\u2028", "\u2060", "\u2064", "\u2066", "\u2069", "\ufeff", "\U000e0000", "\U000e007f"):
+        assert len(char) == 1 and any(char in text for text in names), hex(ord(char))
+    assert {"\u200c", "\u200d"} <= {c for text, _ in entries("name", "valid") for c in text}
+
+
+def test_this_file_and_the_table_hold_no_raw_invisible_character():
+    for path in (Path(__file__), Path(__file__).parent / "fixtures" / "text_rules.json"):
+        assert [c for c in path.read_text(encoding="utf-8") if ord(c) > 127] == [], f"{path.name}: write them as \\u escapes"
