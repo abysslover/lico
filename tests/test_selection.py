@@ -379,6 +379,24 @@ def test_a_run_measures_with_one_tree_and_one_sampler_started_before_the_build(t
     print(f"one Tree, started before the build, {settled} samples, stopped with the run")
 
 
+def test_a_run_a_guard_refuses_leaves_no_receipt_so_the_next_run_runs_the_file_again_and_is_refused_again(tmp_path, monkeypatch, capsys):
+    # the receipt used to be written before the guards were judged: an exit 3 (budget, cold-run limit, memory bound) was followed by a run that skipped the file and passed
+    monkeypatch.setattr(suite, "ensure_build", lambda files: ("build: skipped (test)", 0.0))
+    monkeypatch.setattr(suite, "LOGS", tmp_path / "logs")
+    monkeypatch.setattr(receipts, "DIRECTORY", tmp_path / "receipts")
+    small = tmp_path / "test_small.py"
+    small.write_text("def test_small():\n    assert True\n")
+    asked = argparse.Namespace(changed=None, paths=[str(small)], receipts=True, cold=False, workers=1, ledger=None)
+    table = suite.budget()
+    monkeypatch.setattr(suite, "budget", lambda root=None: dict(table, peak_rss_mib=1))                   # every run is over a 1 MiB bound
+    skipping = lambda: [l for l in capsys.readouterr().out.splitlines() if l.startswith("skipped (receipt) ")]
+    assert suite.run(asked) == 3 and suite.run(asked) == 3
+    assert skipping() == [], "the second run skipped the file the first one left a receipt for"
+    monkeypatch.setattr(suite, "budget", lambda root=None: table)
+    assert suite.run(asked) == 0 and suite.run(asked) == 0
+    assert len(skipping()) == 1, "only the green run left a receipt"
+
+
 # --- budget ----------------------------------------------------------------------------------------------------
 
 def test_the_budget_names_the_tests_over_their_limit_by_the_longest_matching_entry():

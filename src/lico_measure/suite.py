@@ -9,7 +9,8 @@
 on up to 3 workers, a file at a time, the longest first. Each worker has its own client home; every test already has its own
 socket, run directory and display. The summary names the tests over their budget (tests/budget.toml); a run that goes over a
 budget, over the cold-run limit or over the memory bound exits 3, a run with a failing test exits 1.
-Exit: 0 all passed, 1 a test failed, 2 the run could not start, 3 a guard (budget, cold-run limit, memory) was broken."""
+Exit: 0 all passed, 1 a test failed, 2 the run could not start, 3 a guard (budget, cold-run limit, memory) was broken.
+A receipt is recorded for a passing file only when the guards were not broken: after an exit 3 the next run runs the file again."""
 import argparse
 import hashlib
 import json
@@ -256,16 +257,25 @@ def run(args):
     table = budget()
     slow = over_budget(rows, table)
     peak = round(tree.run_peak / 2 ** 20, 1)
+    broken = []                                              # judged before any receipt: a run the guards refuse (exit 3) leaves nothing the next run can skip
+    if slow:
+        broken.append(f"{len(slow)} test(s) over their budget")
+    if full and not skipped and wall > table["cold_run_s"]:
+        broken.append(f"the cold run took {wall:.0f} s, the limit is {table['cold_run_s']} s")
+    if peak > table["peak_rss_mib"]:
+        broken.append(f"the peak memory {peak} MiB is over the bound of {table['peak_rss_mib']} MiB")
     seen = {job.name: job.seconds for job in finished if job.ledger}
     for job in finished:
         if job.ledger and passed(job, acceptance_only):
-            receipts.record(job.name, keys[job.name], len(job.rows), job.seconds)
+            if not broken:
+                receipts.record(job.name, keys[job.name], len(job.rows), job.seconds)
         elif job.ledger:
             receipts.forget(job.name)
     if run_cargo and not cargo_skipped:
         cargo = next(j for j in finished if j.ledger is None)
         if passed(cargo, acceptance_only):
-            receipts.record("cargo", cargo_key, 0, cargo.seconds)
+            if not broken:
+                receipts.record("cargo", cargo_key, 0, cargo.seconds)
         else:
             receipts.forget("cargo")
     receipts.save_durations(seen)
@@ -284,13 +294,6 @@ def run(args):
           f"{len(skipped) + int(cargo_skipped)} skipped (receipt); {wall:.1f} s; peak {peak} MiB (all workers together) {tree.run_peak_at}; {build_line}")
     for seconds, nodeid, limit in slow:
         print(f"over budget: {seconds:.1f} s > {limit} s  {nodeid}")
-    broken = []
-    if slow:
-        broken.append(f"{len(slow)} test(s) over their budget")
-    if full and not skipped and wall > table["cold_run_s"]:
-        broken.append(f"the cold run took {wall:.0f} s, the limit is {table['cold_run_s']} s")
-    if peak > table["peak_rss_mib"]:
-        broken.append(f"the peak memory {peak} MiB is over the bound of {table['peak_rss_mib']} MiB")
     for line in broken:
         print("GUARD:", line)
     if failing:
