@@ -6,6 +6,7 @@ from pathlib import Path
 
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
+from lico_protocol import v1
 
 from tests.test_activity import begin
 from tests.test_claude_adapter import claude_host, new_claude, records, status_of
@@ -69,6 +70,7 @@ def test_closing_a_session_with_no_conversation_yet_is_refused_in_a_word_of_its_
             sid, generation = new_claude(conn)                                  # the program is started but has said nothing: no session id of its own yet
             refused = conn.call(op="session.close", session=sid, generation=generation)
             assert (refused["ok"], refused["error"]) == (0, "no_conversation_yet") and status_of(conn, sid)["state"] == "running"
+            assert v1.validate_error(refused) == [], refused                    # the protocol library knows the word (N8)
             said = subprocess.run([str(LICO), "--socket", host.socket, "session", "close", sid], capture_output=True, text=True, timeout=20)
             assert said.returncode != 0 and "no_conversation_yet" in said.stdout + said.stderr             # the command line prints the word as it is
             begin(conn, sid, generation, "hi")
