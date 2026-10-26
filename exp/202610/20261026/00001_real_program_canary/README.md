@@ -1,6 +1,6 @@
 # 00001 real_program_canary
 
-Version 1.1.1
+Version 1.1.2
 
 **Question.** When a person picks a folder for a Lico session, can that folder make the installed `claude` or `codex` program
 load or run its own configuration (settings hook, MCP server, notify hook, skills, agents, commands, model provider)? Lico
