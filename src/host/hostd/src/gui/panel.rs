@@ -1,5 +1,5 @@
-//! New session, accounts and sign-in inside the window. Each step is a short list that a key answers (the input line is the
-//! one text field: a label, or a code the provider asked for). Everything is a request to the host on a connection of its own;
+//! New session, accounts and sign-in inside the window. A step is the new-session form (newsession.rs) or a short list that a key answers
+//! (the input line is the one text field: a label, a code the provider asked for, or the folder of the form). Everything is a request to the host on a connection of its own;
 //! a pasted code goes to the host's login operation and is cleared from the window at once. Nothing here reads a provider's files.
 
 use std::io::{BufRead, BufReader, Write};
@@ -14,10 +14,8 @@ use super::App;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Step {
-    Provider,
-    Account,
+    NewSession,
     Label,
-    Ready,
     Login,
     Accounts,
     Actions,
@@ -37,6 +35,7 @@ pub struct Panel {
     pub mode: &'static str, // the mode a new session starts in: "auto" (permissions skipped) or "default" (asks for approval)
     pub opened: bool, // the browser was opened for this sign-in attempt
     pub stash: super::editor::Parked, // what was typed in the input line before the panel took it over
+    pub form: Option<newsession::Form>, // the new-session form: what it holds stays while the label or the sign-in is asked for
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -96,7 +95,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -117,7 +116,7 @@ impl App {
     }
 
     pub(crate) fn text_mode(&self) -> bool {
-        self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Label || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
+        self.ui.panel.as_ref().map_or(false, |p| p.step == Step::Label || p.text_field() || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
     }
 
     /// The sign-in code is being typed: it is drawn as stars and never put in the window's model.
@@ -148,25 +147,13 @@ impl App {
         };
         let mut body = Vec::new();
         let title = match p.step {
-            Step::Provider => {
-                body.extend(["1  codex".to_string(), "2  claude".to_string()]);
-                "New session: which provider?".to_string()
-            }
-            Step::Account => {
-                for (i, a) in p.accounts.iter().filter(|a| a.1 == p.provider).enumerate() {
-                    body.push(format!("{}  {}{}", i + 1, a.2, if a.3 { "  (default)" } else { "" }));
-                }
-                body.push("n  a new account".into());
-                format!("New {} session: which account?", p.provider)
+            Step::NewSession => {
+                body.extend(self.form_lines(p));
+                "New session".to_string()
             }
             Step::Label => {
                 body.push("Type a label for the account and press Enter.".into());
                 format!("New {} account", p.provider)
-            }
-            Step::Ready => {
-                body.extend(["Enter  start the session".to_string(), "L      sign in to this account first".to_string()]);
-                body.push(if p.mode == "default" { "M      mode: asks for approval (press M for auto: permissions skipped)".to_string() } else { "M      mode: auto, permissions skipped (press M to be asked for approval)".to_string() });
-                format!("New session: {}", Self::account_name(p))
             }
             Step::Login => {
                 let state = p.login["state"].as_str().unwrap_or("starting");
@@ -225,7 +212,7 @@ impl App {
 
     pub(crate) fn panel_json(&self) -> Value {
         match (self.panel_view(), self.ui.panel.as_ref()) {
-            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error}),
+            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error, "form": self.form_json()}),
             _ => Value::Null,
         }
     }
@@ -242,7 +229,7 @@ impl App {
         if let Some(p) = self.ui.panel.as_mut() {
             p.login = reply;
             if finished {
-                p.step = Step::Ready;
+                p.step = if p.form.is_some() { Step::NewSession } else { Step::Actions }; // back to where the sign-in was asked for
                 p.notice = "Signed in.".into();
             } else if p.login["url"].is_string() && !p.opened {
                 p.opened = true; // once per attempt, however often the state is polled
@@ -251,6 +238,9 @@ impl App {
         }
         if open_now && !auto_open_off() {
             self.login_address(false);
+        }
+        if finished && self.ui.panel.as_ref().map_or(false, |p| p.form.is_some()) {
+            self.form_signed_in();
         }
         self.dirty = true;
     }
@@ -280,7 +270,7 @@ impl App {
             if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
                 match c.to_ascii_lowercase().as_str() {
                     "n" => {
-                        self.panel_open(Step::Provider);
+                        self.form_open();
                         return true;
                     }
                     "a" => {
@@ -296,6 +286,9 @@ impl App {
             }
             return false;
         }
+        if self.form_key(event) {
+            return true;
+        }
         let text_mode = self.text_mode();
         if event.repeat && !text_mode {
             return true; // a held key is not a second, deliberate press (a confirmation needs two); typing in the input line repeats
@@ -310,11 +303,10 @@ impl App {
             self.dirty = true;
             return true;
         }
-        let step = self.ui.panel.as_ref().map(|p| p.step).unwrap_or(Step::Provider);
+        let step = self.ui.panel.as_ref().map(|p| p.step).unwrap_or(Step::NewSession);
         match &event.logical_key {
             Key::Named(NamedKey::Escape) => {
                 match step {
-                    Step::Actions | Step::Login | Step::Label | Step::Account | Step::Ready if step != Step::Actions => self.panel_close(),
                     Step::Actions => self.panel_open(Step::Accounts),
                     _ => self.panel_close(),
                 }
@@ -325,10 +317,6 @@ impl App {
                 self.preedit.clear();
                 self.submit_text(step, text.trim());
                 self.dirty = true;
-                true
-            }
-            Key::Named(NamedKey::Enter) if step == Step::Ready => {
-                self.create_session();
                 true
             }
             _ if text_mode => false, // typing (and the input method) go to the input line
@@ -351,14 +339,10 @@ impl App {
                 let provider = self.ui.panel.as_ref().map(|p| p.provider.clone()).unwrap_or_default();
                 let reply = self.host_call(json!({"op": "account.create", "provider": provider, "label": text}));
                 self.load_accounts();
-                if let Some(p) = self.ui.panel.as_mut() {
-                    if reply["ok"] == json!(1) {
-                        p.account = reply["account"].as_str().unwrap_or("").to_string();
-                        p.step = Step::Ready;
-                        p.notice.clear();
-                    } else {
-                        p.notice = format!("Could not create the account: {}", reply["error"].as_str().unwrap_or("unknown"));
-                    }
+                if reply["ok"] == json!(1) {
+                    self.form_account_added(reply["account"].as_str().unwrap_or("").to_string());
+                } else if let Some(p) = self.ui.panel.as_mut() {
+                    p.notice = format!("Could not create the account: {}", reply["error"].as_str().unwrap_or("unknown"));
                 }
             }
             Step::Login => {
@@ -378,55 +362,8 @@ impl App {
         }
     }
 
-    fn create_session(&mut self) {
-        let Some(p) = self.ui.panel.as_ref() else { return };
-        let reply = self.host_call(json!({"op": "session.create", "kind": p.provider, "account": p.account, "mode": p.mode}));
-        if reply["ok"] == json!(1) {
-            let id = reply["session"].as_str().unwrap_or("").to_string();
-            self.panel_close();
-            self.send("{\"op\":\"status\"}");
-            self.ui.scroll = 0;
-            self.show(&id, None);
-        } else if let Some(p) = self.ui.panel.as_mut() {
-            // a host that does not know a field of the request is an older build (the window normally replaces such a host itself)
-            p.notice = match reply["error"].as_str() {
-                Some("bad_request") => "The session was not created: the host does not understand this request: it is an older build.".to_string(),
-                other => format!("The session was not created: {}", other.unwrap_or("unknown")),
-            };
-        }
-    }
-
     fn panel_choice(&mut self, step: Step, key: char) {
         match step {
-            Step::Provider => {
-                let provider = match key {
-                    '1' => "codex",
-                    '2' => "claude",
-                    _ => return,
-                };
-                self.load_accounts_for(provider);
-            }
-            Step::Account => {
-                let Some(p) = self.ui.panel.as_ref() else { return };
-                let mine: Vec<String> = p.accounts.iter().filter(|a| a.1 == p.provider).map(|a| a.0.clone()).collect();
-                if key == 'n' {
-                    if let Some(p) = self.ui.panel.as_mut() {
-                        p.step = Step::Label;
-                    }
-                } else if let Some(id) = key.to_digit(10).and_then(|d| mine.get((d as usize).wrapping_sub(1))) {
-                    let id = id.clone();
-                    if let Some(p) = self.ui.panel.as_mut() {
-                        p.account = id;
-                        p.step = Step::Ready;
-                    }
-                }
-            }
-            Step::Ready if key == 'l' => self.start_login("browser"),
-            Step::Ready if key == 'm' => {
-                if let Some(p) = self.ui.panel.as_mut() {
-                    p.mode = if p.mode == "default" { "auto" } else { "default" };
-                }
-            }
             Step::Login => match key {
                 'c' => self.login_address(true),
                 'o' => self.login_address(false),
@@ -470,14 +407,6 @@ impl App {
             if let (false, Some(p)) = (started, self.ui.panel.as_mut()) {
                 p.notice = "xdg-open is not available: copy the address (Ctrl+Shift+C) and open it yourself.".into();
             }
-        }
-    }
-
-    fn load_accounts_for(&mut self, provider: &str) {
-        self.load_accounts();
-        if let Some(p) = self.ui.panel.as_mut() {
-            p.provider = provider.to_string();
-            p.step = Step::Account;
         }
     }
 
@@ -531,6 +460,9 @@ impl App {
         }
     }
 }
+
+#[path = "newsession.rs"]
+mod newsession;
 
 #[cfg(test)]
 #[path = "panel_tests.rs"]

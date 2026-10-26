@@ -9,8 +9,8 @@ def test_the_panels_text_is_on_the_screen_after_ctrl_n_and_ctrl_a_not_only_in_th
         assert w.ui()["panel"] is None and start >= 3, start                  # the first screen says what to do
         w.key("ctrl+n")
         panel = w.ui()["panel"]
-        assert panel["title"].startswith("New session: which provider")
-        assert w.text_rows() >= 4, w.text_rows()                              # title, two providers, the way out: drawn, not just known
+        assert panel["title"] == "New session"
+        assert w.text_rows() >= 4, w.text_rows()                              # title and the rows of the form: drawn, not just known
         assert w.bright(TEXT_X, 0, TEXT_X + 400, 120) > 300
         w.key("Escape")
         w.key("ctrl+a")
@@ -30,33 +30,31 @@ def test_closing_standard_input_does_not_close_the_window():
 
 
 def label_entry(w):
-    """The window's one text field, as the account label of a new codex account."""
+    """The window's one text field, as the folder row of the new-session screen (it has the focus when the screen opens)."""
     w.key("ctrl+n")
-    w.key("1")
-    w.key("n")
     assert w.ui()["panel"]["text_entry"]
 
 
 def test_backspace_removes_the_last_character_and_the_prompt_row_shows_it():
     with ProductWindow() as w:
         label_entry(w)
-        empty = w.bright_total()
+        empty = w.prompt_ink()
         w.type_text("a")
-        one = w.bright_total()
+        one = w.prompt_ink()
         w.type_text("b")
-        assert w.bright_total() > one > empty
+        assert w.prompt_ink() > one > empty
         w.key("BackSpace")
         assert w.ui()["panel"]["input"] == "a"
-        assert w.bright_total() == one                                       # the same pixels as when only "a" had been typed
+        assert w.prompt_ink() == one                                       # the same pixels as when only "a" had been typed
 
 
 def test_ctrl_u_clears_the_line_and_a_held_backspace_deletes_several_characters():
     with ProductWindow() as w:
         label_entry(w)
-        empty = w.bright_total()
+        empty = w.prompt_ink()
         w.type_text("abc")
         w.key("ctrl+u")
-        assert w.ui()["panel"]["input"] == "" and w.bright_total() == empty
+        assert w.ui()["panel"]["input"] == "" and w.prompt_ink() == empty
         w.type_text("abcdefgh")
         w.hold("BackSpace", 1.6)                                             # the key repeats
         assert len(w.ui()["panel"]["input"]) <= 5

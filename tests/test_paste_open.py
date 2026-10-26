@@ -94,9 +94,7 @@ def test_ctrl_v_pastes_a_sign_in_code_that_is_then_accepted_like_a_typed_one_and
 
 
 def label_entry(w):
-    w.key("ctrl+n")
-    w.key("1")
-    w.key("n")
+    w.key("ctrl+n")                                                           # the folder row of the new-session screen has the focus
     assert w.ui()["panel"]["text_entry"]
 
 

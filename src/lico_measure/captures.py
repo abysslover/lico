@@ -158,6 +158,16 @@ class ProductWindow:
         data, width, height = self.gray()
         return sum(1 for y in range(height) for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD)
 
+    def prompt_ink(self) -> int:
+        """Lit pixels of the last line of text in the main area (the input line), above the hint bar at the bottom of the window."""
+        data, width, height = self.gray()
+        lit = [sum(1 for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD) for y in range(22, height - 24)]
+        end = max((i for i, n in enumerate(lit) if n), default=-1)
+        start = end
+        while start > 0 and lit[start - 1]:
+            start -= 1
+        return sum(lit[start:end + 1]) if end >= 0 else 0
+
     def click(self, x: float, y: float, button: int = 1) -> None:
         wid = subprocess.run(["xdotool", "search", "--name", "^Lico$"], env=self.env, capture_output=True, text=True).stdout.split()[-1]
         since = self.frames()
@@ -256,11 +266,10 @@ def capture_three(out: Path) -> dict:
 
 
 def capture_backspace(out: Path) -> dict:
-    """The account label line with `ab` typed, and after one Backspace."""
+    """The folder line of the new-session screen with `ab` typed, and after one Backspace."""
     out.mkdir(parents=True, exist_ok=True)
     with ProductWindow() as w:
-        for keys in (("ctrl+n",), ("1",), ("n",)):
-            w.key(*keys)
+        w.key("ctrl+n")
         w.type_text("ab")
         w.png(out / "4_typed_ab.png")
         before = w.ui()["panel"]["input"]
@@ -271,11 +280,10 @@ def capture_backspace(out: Path) -> dict:
 
 
 def capture_paste(out: Path) -> dict:
-    """The account label line after a paste from the clipboard."""
+    """The folder line of the new-session screen after a paste from the clipboard."""
     out.mkdir(parents=True, exist_ok=True)
     with ProductWindow() as w:
-        for keys in (("ctrl+n",), ("1",), ("n",)):
-            w.key(*keys)
+        w.key("ctrl+n")
         subprocess.run(["xclip", "-selection", "clipboard", "-i"], input=b"Work account", env={"DISPLAY": w.xvfb.display, "PATH": "/usr/bin:/bin"},
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
         time.sleep(0.3)

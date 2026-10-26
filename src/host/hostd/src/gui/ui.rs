@@ -18,6 +18,9 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::Window;
 
 use super::controls::{self, Action, Controls};
+#[path = "row.rs"]
+mod row;
+pub(crate) use row::{ago, clock_compact, clock_text, Row};
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, jstr, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
@@ -27,24 +30,6 @@ const LIST_TOP: usize = 40;
 const HISTORY_PAGE: i64 = 100;
 const SCROLLBACK_CAP: usize = 2000; // lines kept while reading older history; beyond it the newest are let go
 const COPY_LIMIT: usize = 60 * 1024; // one X11 property transfer, no INCR
-
-#[derive(Clone, Default)]
-pub struct Row {
-    pub session: String,
-    pub provider: String,
-    pub account: String,
-    pub model: String,
-    pub state: String,
-    pub state_at: u64,
-    pub activity: String,
-    pub generation: i64,
-    pub approvals: Vec<(i64, String)>,
-    pub issue: String,
-    pub mode: String,
-    pub busy_since: u64,    // the host's start of the open turn (unix seconds), 0 when none
-    pub last_event_at: u64, // when the provider last said anything
-    pub stalled: bool,      // the host's own judgement: working, nothing to answer, and silent for its stall time
-}
 
 #[derive(Clone)]
 pub enum ListItem {
@@ -116,15 +101,6 @@ fn display_cols(text: &str) -> usize {
     text.chars().map(|c| if super::editor::wide(c) { 2 } else { 1 }).sum()
 }
 
-fn ago(now: u64, then: u64) -> String {
-    let d = now.saturating_sub(then);
-    match d {
-        0..=59 => "<1m".to_string(), // coarse on purpose: a list that redraws every second would never let the client idle
-        60..=3599 => format!("{}m", d / 60),
-        _ => format!("{}h", d / 3600),
-    }
-}
-
 impl App {
     /// The second that the clocks count from (the wall clock; a test may fix it so that two windows read the same one).
     pub(crate) fn clock_now(&self) -> u64 {
@@ -136,102 +112,11 @@ fn now_secs() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
-/// The clock of an open turn, as a sentence part: "37 s", "2 m 05 s", "1 h 02 m".
-pub fn clock_text(secs: u64) -> String {
-    match secs {
-        0..=59 => format!("{secs} s"),
-        60..=3599 => format!("{} m {:02} s", secs / 60, secs % 60),
-        _ => format!("{} h {:02} m", secs / 3600, secs % 3600 / 60),
-    }
-}
-
-/// The same for the narrow list: "37s", "2m05s", "1h02m".
-pub fn clock_compact(secs: u64) -> String {
-    match secs {
-        0..=59 => format!("{secs}s"),
-        60..=3599 => format!("{}m{:02}s", secs / 60, secs % 60),
-        _ => format!("{}h{:02}m", secs / 3600, secs % 3600 / 60),
-    }
-}
-
-impl Row {
-    /// The short form for the narrow list: the full wording is in the header of the selected session.
-    pub fn list_state_text(&self) -> String {
-        match self.state_text().as_str() {
-            "waiting for approval" => "approval".into(),
-            other => other.to_string(),
-        }
-    }
-
-    /// Seconds the open turn has been running: only while the host says the session works and nothing waits for a person.
-    pub fn working_for(&self, now: u64) -> Option<u64> {
-        (self.state == "running" && self.activity == "working" && self.approvals.is_empty() && self.busy_since > 0).then(|| now.saturating_sub(self.busy_since))
-    }
-
-    /// Seconds without anything from the provider, once the host calls the working session stalled.
-    pub fn silent_for(&self, now: u64) -> Option<u64> {
-        self.working_for(now).filter(|_| self.stalled).map(|_| now.saturating_sub(self.last_event_at))
-    }
-
-    /// The state with the clock of an open turn, for the header.
-    pub fn state_with_clock(&self, now: u64) -> String {
-        match (self.working_for(now), self.silent_for(now)) {
-            (Some(w), Some(q)) => format!("working {}, no output for {}", clock_text(w), clock_text(q)),
-            (Some(w), None) => format!("working {}", clock_text(w)),
-            _ => self.state_text(),
-        }
-    }
-
-    /// The state and the age for the narrow list: the clock of an open turn in place of the coarse age.
-    pub fn list_parts(&self, now: u64) -> (String, String) {
-        match (self.working_for(now), self.silent_for(now)) {
-            (_, Some(q)) => ("silent".into(), clock_compact(q)),
-            (Some(w), None) => ("working".into(), clock_compact(w)),
-            _ => (self.list_state_text(), ago(now, self.state_at)),
-        }
-    }
-
-    /// What a person reads: the host's state, never a guess (waiting for approval beats working).
-    pub fn state_text(&self) -> String {
-        if self.state == "running" && !self.approvals.is_empty() {
-            return "waiting for approval".into();
-        }
-        match (self.state.as_str(), self.activity.as_str()) {
-            ("running", "working") => "working".into(),
-            ("running", "idle") => "idle".into(),
-            ("running", _) => "running".into(),
-            (other, _) => other.to_string(),
-        }
-    }
-}
-
 impl App {
     // ------------------------------------------------------------------ what the host says
     pub(crate) fn ui_status(&mut self, line: &str) {
         let Ok(value) = serde_json::from_str::<Value>(line) else { return };
-        let mut rows = Vec::new();
-        for entry in value["sessions"].as_array().into_iter().flatten() {
-            if entry["provider"].as_str().is_none() {
-                continue; // synthetic sessions are not shown in this view
-            }
-            let approvals = entry["approvals"].as_array().into_iter().flatten().filter_map(|a| Some((a["approval_id"].as_i64()?, clean(a["prompt"].as_str()?)))).collect();
-            rows.push(Row {
-                session: entry["session"].as_str().unwrap_or("").into(),
-                provider: entry["provider"].as_str().unwrap_or("").into(),
-                account: entry["account"].as_str().unwrap_or("").into(),
-                model: clean(entry["model"].as_str().unwrap_or("")),
-                state: entry["state"].as_str().unwrap_or("").into(),
-                state_at: entry["state_at"].as_u64().unwrap_or(0),
-                activity: entry["activity"].as_str().unwrap_or("").into(),
-                generation: entry["generation"].as_i64().unwrap_or(1),
-                approvals,
-                issue: entry["account_issue"].as_str().unwrap_or("").into(),
-                mode: entry["mode"].as_str().unwrap_or("").into(),
-                busy_since: entry["busy_since"].as_u64().unwrap_or(0),
-                last_event_at: entry["last_event_at"].as_u64().unwrap_or(0),
-                stalled: entry["stalled"].as_bool().unwrap_or(false),
-            });
-        }
+        let rows = value["sessions"].as_array().into_iter().flatten().filter_map(Row::of_status).collect(); // synthetic sessions are not shown in this view
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
         self.ui.rows = rows;
         if let Some(row) = self.ui.rows.iter().find(|r| r.session == self.session) {
@@ -353,7 +238,7 @@ impl App {
             for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
                 let marker = if row.session == self.session { ">" } else if !row.approvals.is_empty() { "!" } else { " " };
                 let approvals = if row.approvals.is_empty() { String::new() } else { format!(" x{}", row.approvals.len()) };
-                let short: String = row.session.chars().take(7).collect();
+                let short = row.title(9);
                 number += 1;
                 self.ui.numbered.push(row.session.clone());
                 let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
@@ -564,14 +449,14 @@ impl App {
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::Item(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
-                            None => {
-                                if let Some(idx) = self.line_at(y) {
+                            None => match self.line_at(y) {
+                                Some(idx) if self.form_click(idx) => {} // a row of the new-session form
+                                Some(idx) => {
                                     self.ui.sel = Some((idx, idx));
                                     self.ui.dragging = true;
-                                } else {
-                                    self.ui.sel = None;
                                 }
-                            }
+                                None => self.ui.sel = None,
+                            },
                         }
                     }
                     self.dirty = true;
@@ -1442,7 +1327,7 @@ mod tests {
     fn working(busy_since: u64, last_event_at: u64, stalled: bool) -> Row {
         Row {
             session: "s".into(), provider: "claude".into(), account: String::new(), model: "m".into(), state: "running".into(), state_at: 100, activity: "working".into(),
-            generation: 1, approvals: Vec::new(), issue: String::new(), mode: String::new(), busy_since, last_event_at, stalled,
+            generation: 1, approvals: Vec::new(), issue: String::new(), mode: String::new(), busy_since, last_event_at, stalled, ..Default::default()
         }
     }
 

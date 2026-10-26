@@ -37,7 +37,7 @@ def test_ctrl_n_and_ctrl_a_work_inside_a_session_view_and_a_permanent_hint_line_
             assert "Ctrl+N new session" in state["hint"] and "Ctrl+A accounts" in state["hint"] and "Ctrl+Tab next session" in state["hint"]      # in every view
             assert bottom_ink(xvfb.display) > 150                                  # and drawn: the hint is on the screen, not only in the model
             xdo(xvfb.display, "key", "ctrl+n")
-            assert ui(client, lambda u: u["panel"] is not None)["panel"]["title"].startswith("New session: which provider")
+            assert ui(client, lambda u: u["panel"] is not None)["panel"]["title"] == "New session"
             xdo(xvfb.display, "key", "Escape")
             ui(client, lambda u: u["panel"] is None)
             xdo(xvfb.display, "key", "ctrl+a")

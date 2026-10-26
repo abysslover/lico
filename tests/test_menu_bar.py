@@ -49,7 +49,7 @@ def test_f10_and_alt_letters_open_menus_arrows_and_enter_run_and_greyed_entries_
         w.key("Up")
         w.key("Return")                                                                  # runs the entry that was selected: New session
         panel = w.ui()["panel"]
-        assert panel and panel["title"].startswith("New session: which provider") and menu(w)["open"] is None
+        assert panel and panel["title"] == "New session" and menu(w)["open"] is None
         w.key("Escape")
         w.key("alt+s")
         m = menu(w)

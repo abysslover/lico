@@ -336,12 +336,10 @@ def test_a_bad_request_to_session_create_says_the_host_is_an_older_build():
     with private_dir() as directory:
         env = {"FAKE_HOST_BUILD": fnv(LICO), "FAKE_HOST_ERROR": "bad_request"}                                  # the same build, so the window leaves it alone
         with ProductWindow(host_binary=fake_host(directory), env_extra=env) as w:
-            w.key("ctrl+n")
-            w.key("1")
-            w.key("1")
-            w.key("Return")
+            w.key("ctrl+n")                                                                                    # the one account of the stand-in host is chosen
+            w.key("Return")                                                                                    # Enter on the folder row starts
             panel = w.ui()["panel"]
-            assert any("the host does not understand this request: it is an older build" in line for line in panel["body"]), panel
+            assert any("The session was not started. The host does not understand this request: it is an older build." in line for line in panel["body"]), panel
             assert not any("bad_request" in line for line in panel["body"])
 
 

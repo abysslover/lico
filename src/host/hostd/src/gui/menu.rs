@@ -117,7 +117,7 @@ impl App {
 
     pub(crate) fn run_cmd(&mut self, cmd: Cmd) {
         match cmd {
-            Cmd::NewSession => self.panel_open(Step::Provider),
+            Cmd::NewSession => self.form_open(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
             Cmd::Next => self.step_session(1),

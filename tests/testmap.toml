@@ -37,6 +37,7 @@
 "tests/test_login.py" = ["cli", "host"]
 "tests/test_login_real_shape.py" = ["gui", "host"]
 "tests/test_login_window.py" = ["gui", "host"]
+"tests/test_new_session_screen.py" = ["gui", "host"]
 "tests/test_mask_code_line.py" = ["gui", "host"]
 "tests/test_menu_bar.py" = ["gui", "host"]
 "tests/test_model_names.py" = []

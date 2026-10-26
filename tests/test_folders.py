@@ -65,7 +65,7 @@ def test_a_session_runs_in_the_folder_the_person_picked_keeps_it_across_a_restar
         try:
             conn = Conn(host.socket)
             options = conn.call(op="session.options")            # what the new-session screen offers, from the installed program's own help
-            assert (options["models"], options["issue"], options["recent"]) == (["fable", "opus", "sonnet"], None, [])
+            assert (options["models"], options["issue"], options["recent"], options["last"]) == (["fable", "opus", "sonnet"], None, [], {})
             assert options["efforts"] == ["low", "medium", "high", "xhigh", "max"]
             sid, generation = new_claude(conn, cwd=str(project), name=" api 서버 ", model="opus", effort="high")
             entry = status_of(conn, sid)
@@ -73,13 +73,16 @@ def test_a_session_runs_in_the_folder_the_person_picked_keeps_it_across_a_restar
             wait_for(lambda: f"CWD {project}" in lines_of(received))
             argv = argv_of(received)[-1]
             assert argv[argv.index("--model") + 1] == "opus" and argv[argv.index("--effort") + 1] == "high"
-            assert conn.call(op="session.options")["recent"] == [str(project)]
+            again = conn.call(op="session.options")
+            assert again["recent"] == [str(project)] and again["last"] == {"kind": "claude", "mode": "auto", "cwd": str(project), "model": "opus", "effort": "high"}
             # a session without a folder runs in a scratch workspace of its own and says so
             scratch_sid, scratch_generation = new_claude(conn)
             scratch = base / "workspaces" / scratch_sid
             assert status_of(conn, scratch_sid)["scratch"] is True and "cwd" not in status_of(conn, scratch_sid) and scratch.is_dir()
             wait_for(lambda: f"CWD {scratch}" in lines_of(received))
             assert "--model" not in argv_of(received)[-1]
+            after = conn.call(op="session.options")           # the last session chose no folder, model or effort: the screen offers none, and the list keeps the folder
+            assert after["last"] == {"kind": "claude", "mode": "auto"} and after["recent"] == [str(project)]
             # a name can be given, changed and taken away; nothing the agent sees changes
             assert conn.call(op="session.rename", session=sid, name="renamed")["name"] == "renamed"
             assert status_of(conn, sid)["name"] == "renamed"

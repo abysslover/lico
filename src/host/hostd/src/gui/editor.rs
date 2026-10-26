@@ -182,6 +182,11 @@ impl Parked {
     pub(crate) fn text(self) -> String {
         self.text
     }
+
+    /// A text for the box to take up, with the cursor after it (the field of a form).
+    pub(crate) fn typed(text: &str) -> Parked {
+        Parked { text: text.to_string(), cursor: text.len(), recall: None }
+    }
 }
 
 #[derive(Default)]

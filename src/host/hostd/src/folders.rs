@@ -199,10 +199,11 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
     }
     shared.sessions.write().unwrap().push(session.clone());
     crate::registry::save(shared);
-    let folder = session.lock().unwrap().settings.cwd.clone();
-    if let Some(folder) = folder {
-        remember(shared, &folder);
-    }
+    let last = {
+        let s = session.lock().unwrap();
+        last_of(s.provider, s.account.as_deref(), s.mode, &s.settings)
+    };
+    remember(shared, last);
     Ok(session)
 }
 
@@ -237,33 +238,57 @@ fn recent_path(shared: &Shared) -> PathBuf {
     shared.cfg.registry_dir.join("recent_folders.json")
 }
 
-/// The list as stored, newest first. A file that cannot be read or is not valid is an empty list: it is a convenience, not a record.
-fn recent_stored(shared: &Shared) -> Vec<String> {
-    let parsed: Option<Value> = std::fs::read_to_string(recent_path(shared)).ok().and_then(|t| serde_json::from_str(&t).ok());
-    let list = parsed.as_ref().and_then(|v| v["folders"].as_array()).cloned().unwrap_or_default();
-    list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f)).take(RECENT).map(str::to_string).collect()
+/// What the last session was started with, for the new-session screen to offer again: only what was chosen.
+fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> Map<String, Value> {
+    let mut last = obj(json!({"kind": kind, "mode": mode}));
+    for (key, value) in [("account", account), ("cwd", chosen.cwd.as_deref()), ("model", chosen.model.as_deref()), ("effort", chosen.effort.as_deref())] {
+        if let Some(value) = value {
+            last.insert(key.to_string(), json!(value));
+        }
+    }
+    last
 }
 
-/// Put a folder first in the list (the list holds ten, each once), replaced atomically with mode 0600.
-pub fn remember(shared: &Shared, folder: &str) {
+/// The record as stored: the folders, newest first, and what the last session was started with. A file that cannot be read
+/// or is not valid is an empty record, and a field of the wrong shape is dropped: it is a convenience, not a record of sessions.
+fn stored(shared: &Shared) -> (Vec<String>, Map<String, Value>) {
+    parse_record(&std::fs::read_to_string(recent_path(shared)).unwrap_or_default())
+}
+
+fn parse_record(text: &str) -> (Vec<String>, Map<String, Value>) {
+    let parsed: Value = serde_json::from_str(text).unwrap_or_default();
+    let list = parsed["folders"].as_array().cloned().unwrap_or_default();
+    let folders = list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f)).take(RECENT).map(str::to_string).collect();
+    let checks: [(&str, fn(&str) -> bool); 6] = [
+        ("kind", |s| matches!(s, "claude" | "codex")),
+        ("account", |s| !s.is_empty() && s.chars().count() <= 64 && !s.chars().any(char::is_control)),
+        ("mode", |s| matches!(s, "auto" | "default")),
+        ("cwd", |s| valid_path_shape(s) && Path::new(s).is_absolute()),
+        ("model", valid_model),
+        ("effort", valid_effort),
+    ];
+    let last = checks.iter().filter_map(|(key, ok)| parsed["last"][key].as_str().filter(|s| ok(s)).map(|s| (key.to_string(), json!(s)))).collect();
+    (folders, last)
+}
+
+/// Keep what a session was started with, and its folder first in the list (the list holds ten, each once). The record is
+/// replaced atomically with mode 0600.
+pub fn remember(shared: &Shared, last: Map<String, Value>) {
     static WRITING: Mutex<()> = Mutex::new(());
     let _one = WRITING.lock().unwrap_or_else(|e| e.into_inner());
-    let mut list = recent_stored(shared);
-    list.retain(|f| f != folder);
-    list.insert(0, folder.to_string());
-    list.truncate(RECENT);
+    let mut list = stored(shared).0;
+    if let Some(folder) = last.get("cwd").and_then(Value::as_str) {
+        list.retain(|f| f != folder);
+        list.insert(0, folder.to_string());
+        list.truncate(RECENT);
+    }
     let dir = &shared.cfg.registry_dir;
     let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
     let temporary = dir.join(format!(".recent.{}.tmp", std::process::id()));
     let _ = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&temporary).and_then(|mut out| {
-        out.write_all(json!({"folders": list}).to_string().as_bytes())?;
+        out.write_all(json!({"folders": list, "last": last}).to_string().as_bytes())?;
         out.sync_all()
     }).and_then(|_| std::fs::rename(&temporary, recent_path(shared)));
-}
-
-/// The recent folders that are still directories.
-pub fn recent(shared: &Shared) -> Vec<String> {
-    recent_stored(shared).into_iter().filter(|f| Path::new(f).is_dir()).collect()
 }
 
 // ----------------------------------------------------------------- what the program offers
@@ -386,10 +411,16 @@ pub fn claude_help(shared: &Shared) -> Help {
     help
 }
 
-/// `session.options`: what the new-session screen offers.
+/// `session.options`: what the new-session screen offers, and what the last session was started with. Folders that are
+/// no longer directories are left out of both.
 pub fn options(shared: &Shared) -> Reply {
     let help = claude_help(shared);
-    Ok(obj(json!({"models": help.models, "efforts": help.efforts, "issue": help.issue, "recent": recent(shared)})))
+    let (folders, mut last) = stored(shared);
+    let recent: Vec<String> = folders.into_iter().filter(|f| Path::new(f).is_dir()).collect();
+    if last.get("cwd").and_then(Value::as_str).map_or(false, |f| !Path::new(f).is_dir()) {
+        last.remove("cwd");
+    }
+    Ok(obj(json!({"models": help.models, "efforts": help.efforts, "issue": help.issue, "recent": recent, "last": last})))
 }
 
 #[cfg(test)]
@@ -412,6 +443,27 @@ mod tests {
         let wrong = |kind: &str, want: bool| names(kind).into_iter().filter(|(text, _)| valid_model(text) != want).map(|(_, why)| why).collect::<Vec<_>>();
         assert_eq!(wrong("valid", true), Vec::<String>::new(), "refused, but valid in the table");
         assert_eq!(wrong("invalid", false), Vec::<String>::new(), "accepted, but invalid in the table");
+    }
+
+    #[test]
+    fn a_stored_record_gives_back_only_fields_of_the_right_shape() {
+        let text = |last: Value| json!({"folders": ["/a", "relative/ok-as-a-list-entry?", 7, "/b\0c"], "last": last}).to_string();
+        let good = json!({"kind": "claude", "account": "acc-1", "mode": "default", "cwd": "/work/p", "model": "opus", "effort": "high"});
+        assert_eq!(parse_record(&text(good.clone())).1, obj(good.clone()));
+        assert_eq!(parse_record(&text(good)).0, ["/a", "relative/ok-as-a-list-entry?"]);          // the list keeps what has the shape of a path; it is checked again when used
+        let bad = json!({"kind": "synthetic", "account": "", "mode": "ask", "cwd": "work", "model": "-x", "effort": "High"});
+        assert_eq!(parse_record(&text(bad)).1, Map::new());
+        assert_eq!(parse_record(&text(json!({"kind": 1, "model": ["opus"], "effort": null}))).1, Map::new());
+        assert_eq!(parse_record("not json"), (Vec::new(), Map::new()));
+        assert_eq!(parse_record(&json!({"folders": (0..30).map(|n| format!("/f{n}")).collect::<Vec<_>>()}).to_string()).0.len(), RECENT);
+    }
+
+    #[test]
+    fn what_the_last_session_chose_is_kept_and_what_it_left_out_is_not() {
+        let chosen = Settings { cwd: None, name: Some("n".into()), model: Some("opus".into()), effort: None };
+        assert_eq!(last_of("codex", None, "auto", &chosen), obj(json!({"kind": "codex", "mode": "auto", "model": "opus"})));
+        let all = Settings { cwd: Some("/w".into()), name: None, model: Some("sonnet".into()), effort: Some("low".into()) };
+        assert_eq!(last_of("claude", Some("a1"), "default", &all), obj(json!({"kind": "claude", "mode": "default", "account": "a1", "cwd": "/w", "model": "sonnet", "effort": "low"})));
     }
 
     #[test]

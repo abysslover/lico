@@ -93,7 +93,11 @@ REPLIES = {
                            COMMON_REPLY_OPTIONAL),
     "session.rename": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "name": {"type": [STR, "null"], "max_length": MAX_NAME}}, COMMON_REPLY_OPTIONAL),
     "session.options": _obj({"v": _V, "ok": _OK, "models": {"type": "array", "items": {"type": STR}}, "efforts": {"type": "array", "items": {"type": STR}},
-                             "issue": {"type": [STR, "null"]}, "recent": {"type": "array", "items": {"type": STR, "max_length": MAX_PATH}}}, COMMON_REPLY_OPTIONAL),
+                             "issue": {"type": [STR, "null"]}, "recent": {"type": "array", "items": {"type": STR, "max_length": MAX_PATH}}},
+                            {**COMMON_REPLY_OPTIONAL, "last": {"type": "object", "required": {}, "optional": {   # how the last session was started; an older host has none
+                                "kind": {"type": STR, "enum": ["codex", "claude"]}, "account": {"type": STR, "max_length": 64},
+                                "mode": {"type": STR, "enum": ["auto", "default"]}, "cwd": {"type": STR, "max_length": MAX_PATH},
+                                "model": {"type": STR, "max_length": 60}, "effort": {"type": STR, "max_length": 16}}}}),
     "input": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "request_id": {"type": STR},
                    "state": {"type": STR, "enum": ["accepted", "submitted", "observed", "failed"]}, "duplicate": {"type": BOOL}},
                   COMMON_REPLY_OPTIONAL),
