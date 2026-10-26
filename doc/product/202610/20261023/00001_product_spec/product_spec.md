@@ -1,6 +1,6 @@
 # Lico — a lightweight workbench for agentic workflows
 
-Product specification v0.1 · 2026-10-23 · Draft for owner review. These are requirements and proposed acceptance budgets, not claims about an implemented product. Product name: Lico. License: MIT, selected by the owner.
+Product specification 0.1.0 · 2026-10-23 · Draft for owner review. These are requirements and proposed acceptance budgets, not claims about an implemented product. Product name: Lico. License: MIT, selected by the owner.
 
 ## 1. Purpose
 
