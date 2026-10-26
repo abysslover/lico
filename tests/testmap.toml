@@ -50,6 +50,7 @@
 "tests/test_permission_mode.py" = ["gui", "host"]
 "tests/test_protocol_conformance.py" = ["host", "synth"]
 "tests/test_provider_isolation.py" = ["host", "synth"]
+"tests/test_python_requirement.py" = []
 "tests/test_recovery.py" = ["host"]
 "tests/test_reference_mapping.py" = []
 "tests/test_report.py" = []
