@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.3.4
-> Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 FINAL tip 8a0f0e9, 2026-10-26)
+> Version: 1.3.5
+> Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 tip b3b8edb, report 0.3.0, which carries the second reviewer's fix round; it stood on 8a0f0e9 until 2026-10-26, see "How this branch follows P02")
 > Approval: work on phases M02-P02 to M02-P07 is authorized by the owner's answer of 2026-10-26; Deviations 1 to 5 are marked accepted below. G3 and G4 are pending.
 
-**Version 1.3.4** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", and 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1).
+**Version 1.3.5** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1), and 1.3.5 adds the policy sentence of the section "How this branch follows P02".
 
 This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2 when it moved. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
 
@@ -162,6 +162,11 @@ A second reviewer went through the P02 fix round (findings V1 to V8, in the P02 
 - **A token is revoked for the process it was made for (extends the F10 bullet of 1.3.3).** The key table is keyed by the process the key was made for; the end of a process revokes that process's key and nothing else, so the reader of a closed process cannot revoke the key a resume made for the new one, and the config file of the new process is not removed by the old one. The test is the same pair: close, immediate resume, the old reader ends late, the new key still answers 200 and the old one 401.
 - **A test that reads a file a simulator is still writing** reads bytes and keeps the finished lines (`finished_lines`, V5), and a test that compares a log size waits first for the provider's last record (V5b); a wait says what it waits for.
 
+## How this branch follows P02 (1.3.5)
+A phase branch that stands on an earlier, not yet merged phase branch is brought up to that branch by replaying its own unreviewed commits onto the new tip (`git rebase --onto NEW OLD`), checked by `git range-diff` and by the tree of the first replayed commit; the reviewed commits of the earlier phase are never rewritten; a merge commit exists only on `main` and only with the owner's G4 for its exact tree.
+
+Done once so far: after the second reviewer's fix round, the three docs-only commits of this branch (the plan note and its index row) were replayed from `8a0f0e9` onto `b3b8edb`. The six reviewed commits of P02 keep their hashes; `git range-diff` showed the three commits as equal, the change against `b3b8edb` is the plan note and `doc/index_3.md` only, and the tree of the second replayed commit is the tree a merge of `b3b8edb` into the old tip would have given. If the reviewer finds more on P02, the fix goes on the P02 branch and reaches this one by cherry-picks of the fix commits or by repeating the replay (and then the full suite is green at the new tip).
+
 ## Tests, the test rules and file sizes
 Every new module (`tools`, `mcp`, `transfer`, `handoff`, `pending`, `provider_record`, `gui::sendto`) gets a map line; new files follow the checklist of `tests/README.md`: one main-path test per feature, smaller unit first. Estimated additions: about 38 tests, +35 s on top of today's 112 s from scratch (P02's own steps add more first; the S08 report gives the measured number against the 180 s limit). A host module that `core` calls selects the same 32 files, so a changed run is about 113 s while such a module is in the diff; only `gui/*` and `cli`-like modules are cheap. Eight steps at one or two runs each: 10 to 14 runs, about 25 minutes of runs for the phase. Files stay under 800 lines; `core.rs`, `gui/ui.rs` and `gui/mod.rs` do not grow.
 
@@ -199,3 +204,6 @@ Screen capture and clipboard (P04), computer use and the real screen (P05), sear
 
 ## Changes since 1.3.3 (1.3.4, after the second review of P02)
 - The section "What the second reviewer of P02 teaches this phase" is new: the V4 gate before S03a (the class behind U+2800, in the corrected Unicode 15 numbers) and the two things S02 inherits from V1. The order of the steps names the gate between S02 and S03a. No step, test count or stop line changed.
+
+## Changes since 1.3.4 (1.3.5, the branch follows P02)
+- The section "How this branch follows P02" is new (the policy for a phase branch that stands on an earlier one); the branch line names the tip it now stands on. No step, test count or stop line changed.
