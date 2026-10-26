@@ -114,8 +114,13 @@ impl Faces {
         Faces { plain, ..Default::default() }
     }
 
-    /// The attributes of a line: the face of the first monospace font by name, and spans for the characters that it lacks.
+    /// The attributes of a line: the face of the first monospace font by name, and spans for the characters that it lacks; the header of another session's text in its look.
     pub fn line(&mut self, fs: &mut FontSystem, text: &str) -> AttrsList {
+        let list = self.faces_of(fs, text);
+        super::panel::sendto::tint(list, text)
+    }
+
+    fn faces_of(&mut self, fs: &mut FontSystem, text: &str) -> AttrsList {
         self.lines += 1;
         if self.plain {
             return AttrsList::new(&Attrs::new().family(Family::Monospace));
@@ -319,6 +324,7 @@ mod tests {
         "℃ ℉ № ℮ Ⅰ Ⅱ Ⅲ ⅰ ⅱ ⅓ ⅔ ⌘ ⌥ ⇧ ⌫ ⏎ ⏩ ☀ ☁ ☂ ☃ ★ ☎ ☑ ♠ ♣ ♥ ♦ ⚠ ⚡ ✂ ✅ ✈ ✉ ✔ ✖ ❄ ❌ ❓ ➕ ➖ ➡ ⤴ ⤵ ⬅ ⬆ ⬇ ⬛ ⬜",
         "a가b나c다 한A글B 漢a字b かA な 가漢 나か 다ㅋ 한→글 ✓완료 🙂파일 Привет파일 α한",
         "  leading and trailing spaces  ",
+    ">> [from session 'api-server' (s012345) | 14:02 | message | 27 B]", ">> [from session '한글-api' (s012345) | 14:02 | selection | 3.1 KiB, 24 lines]", // the header of another session's text: dimmed, the name lit
         "tab-free text with Ünïcödé and 한국어 and 日本語 and emoji 🙂 in one line that is long enough to wrap around the edge of the window and go on",
     ];
 

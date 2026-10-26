@@ -1,0 +1,327 @@
+//! Sending text to another session from the window: the panel (what, to whom, how it is delivered) and the look of the header that the receiving
+//! window shows. The host does the work (`transfer.send`, on the connection of the window's other requests); this asks it and says what came of it.
+//! The text of both sources is taken when the panel opens, and the draft is cleared only when the host says it was delivered.
+
+use std::ops::Range;
+
+use cosmic_text::{AttrsList, AttrsOwned, Color};
+use serde_json::json;
+
+use super::super::editor::MAX_TEXT;
+use super::super::ui::Row;
+use super::super::App;
+use super::{Panel, Step};
+use crate::transfer::{line_count, lines_word, size_text, INLINE_MAX};
+
+const _: () = assert!(MAX_TEXT == 64 * 1024, "the words below say 64 KiB");
+
+/// The colours of the header of another session's text in the history: the record dimmed, the sender's name lit.
+pub const DIM: Color = Color::rgb(0x6A, 0x72, 0x7E);
+pub const NAME: Color = Color::rgb(0x8C, 0xC8, 0xFF);
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Source {
+    Draft,
+    Lines,
+}
+
+/// What the panel holds: the text of both sources as they were when it opened, and what is chosen.
+pub struct Outgoing {
+    pub from: String,
+    pub draft: String,
+    pub lines: String,
+    pub source: Source,
+    pub to: Option<String>,
+}
+
+/// What a line of the panel does when it is clicked.
+enum Pick {
+    Nothing,
+    Source(Source),
+    To(usize),
+    Go,
+}
+
+/// The words for what the host answered to a send that it did not carry out.
+pub fn failure(error: &str) -> String {
+    match error {
+        "unknown_session" => "the host does not know that session any more".into(),
+        "session_disconnected" => "that session is closed (Ctrl+R in it brings it back)".into(),
+        "session_exited" => "that session has ended".into(),
+        "busy" => "the host could not take it just now".into(),
+        "too_large" => "the text is too large for the host".into(),
+        "bad_request" => "the host does not accept that text".into(),
+        "host_unreachable" => "the host did not answer".into(),
+        "host_timeout" => "the host did not answer in time; the text may have been delivered, so look at the other session before sending it again".into(),
+        other => format!("the host answered {other}"),
+    }
+}
+
+/// How a source is described on its line: its lines (always for the selection, only when there are several for the draft) and its size.
+fn describe(text: &str, lines_always: bool, empty: &str) -> String {
+    if text.is_empty() {
+        return format!("({empty})");
+    }
+    let (count, size) = (line_count(text), size_text(text.len()));
+    let shape = if lines_always || count > 1 { format!("{}, {size}", lines_word(count)) } else { size };
+    if text.len() > MAX_TEXT {
+        format!("({shape}: over the limit of {} KiB)", MAX_TEXT / 1024)
+    } else {
+        format!("({shape})")
+    }
+}
+
+impl App {
+    /// The sessions a text can be sent to, with their numbers (the Alt+digit ones): all but the open one, among the first nine.
+    fn others(&self, from: &str) -> Vec<(usize, &Row)> {
+        self.ui.numbered.iter().take(9).enumerate().filter(|(_, id)| id.as_str() != from).filter_map(|(i, id)| self.ui.rows.iter().find(|r| &r.session == id).map(|r| (i + 1, r))).collect()
+    }
+
+    /// The size of the selected lines as they would be sent, without building them.
+    fn selected_size(&self) -> usize {
+        let (Some((a, b)), Some(view)) = (self.ui.sel, self.view.as_ref()) else { return 0 };
+        (a.min(b)..=a.max(b)).filter_map(|i| view.lines.get(i)).map(|l| l.1.len() + 1).sum::<usize>().saturating_sub(1)
+    }
+
+    /// Why a text cannot be sent now (the menu greys the entry with this), if it cannot.
+    pub(crate) fn send_reason(&self) -> Option<&'static str> {
+        if self.selected_row().is_none() {
+            return Some("no session is open");
+        }
+        if self.ui.numbered.len() < 2 {
+            return Some("needs two sessions");
+        }
+        if !self.others(&self.session).iter().any(|(_, r)| r.state == "running") {
+            return Some("no other session is running");
+        }
+        if !self.ed.text().is_empty() {
+            return None;
+        }
+        match self.selected_size() {
+            0 => Some("nothing to send: type in the input box or select lines"),
+            n if n > MAX_TEXT => Some("the selected lines are over 64 KiB: select fewer"),
+            _ => None,
+        }
+    }
+
+    /// The menu entry and Ctrl+Shift+S: the panel opens, or the first row says why not.
+    pub(crate) fn send_ask(&mut self) {
+        if let Some(reason) = self.send_reason() {
+            self.ui.flash = Some(format!("Send to session: {reason}"));
+            self.dirty = true;
+            return;
+        }
+        let from = self.session.clone();
+        let (draft, lines) = (self.ed.text().to_string(), self.selection_text().unwrap_or_default());
+        let source = if !lines.is_empty() && lines.len() <= MAX_TEXT { Source::Lines } else { Source::Draft };
+        let to = match self.others(&from).as_slice() {
+            [(_, only)] if only.state == "running" => Some(only.session.clone()), // with one other session there is nothing to choose
+            _ => None,
+        };
+        self.panel_open(Step::Send); // the box is the panel's now; the draft is given back when it closes
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.send = Some(Outgoing { from, draft, lines, source, to });
+        }
+    }
+
+    fn send_name(&self, id: &str) -> String {
+        self.ui.rows.iter().find(|r| r.session == id).map_or_else(|| id.chars().take(7).collect(), Row::name)
+    }
+
+    /// The lines of the panel, each with what a click on it does.
+    fn send_rows(&self, s: &Outgoing) -> Vec<(String, Pick)> {
+        let mark = |on: bool| if on { "[x]" } else { "[ ]" };
+        let mut rows = vec![
+            ("What to send".to_string(), Pick::Nothing),
+            (format!("  {} D  Draft text {}", mark(s.source == Source::Draft), describe(&s.draft, false, "the input box is empty")), Pick::Source(Source::Draft)),
+            (format!("  {} L  Selected lines {}", mark(s.source == Source::Lines), describe(&s.lines, true, "none selected")), Pick::Source(Source::Lines)),
+            ("To".to_string(), Pick::Nothing),
+        ];
+        for (number, row) in self.others(&s.from) {
+            let state = if row.state == "disconnected" { "closed".to_string() } else { row.state_text() };
+            rows.push((format!("  {} {}  {}  {}  {}", mark(s.to.as_deref() == Some(row.session.as_str())), number, row.title(24).trim_end(), row.provider, state), Pick::To(number)));
+        }
+        let text = if s.source == Source::Draft { &s.draft } else { &s.lines };
+        let how = if text.len() <= INLINE_MAX {
+            format!("inline ({} is at most {} KiB)", size_text(text.len()), INLINE_MAX / 1024)
+        } else {
+            format!("as a file ({} is more than {} KiB). Nothing is cut.", size_text(text.len()), INLINE_MAX / 1024)
+        };
+        rows.push((String::new(), Pick::Nothing));
+        rows.push((format!("Delivery  {how}"), Pick::Nothing));
+        let to = s.to.as_ref().map(|id| self.send_name(id));
+        rows.push((
+            match (&to, text.len() <= INLINE_MAX) {
+                (None, _) => "          Pick a session to see where it goes.".to_string(),
+                (Some(to), true) => format!("          The text goes into '{to}' as a {} that says it came from '{}'.", if s.source == Source::Draft { "message" } else { "selection" }, self.send_name(&s.from)),
+                (Some(to), false) => format!("          Saved in the handoff folder of '{to}'; it gets the path and the first lines."),
+            },
+            Pick::Nothing,
+        ));
+        rows.push((String::new(), Pick::Nothing));
+        rows.push((to.map_or("Enter  Send (pick a session first)".to_string(), |to| format!("Enter  Send to '{to}'")), Pick::Go));
+        rows
+    }
+
+    pub(crate) fn send_view(&self, p: &Panel) -> (String, Vec<String>) {
+        let Some(s) = p.send.as_ref() else { return (String::new(), Vec::new()) };
+        ("Send to session".into(), self.send_rows(s).into_iter().map(|r| r.0).collect())
+    }
+
+    fn send_notice(&mut self, text: String) {
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.notice = text;
+        }
+        self.dirty = true;
+    }
+
+    /// D and L choose the source, a digit the receiver; each says what is wrong with a choice it refuses.
+    pub(crate) fn send_key(&mut self, key: char) {
+        match key {
+            'd' => self.send_source(Source::Draft),
+            'l' => self.send_source(Source::Lines),
+            '1'..='9' => self.send_pick(key as usize - '0' as usize),
+            _ => {}
+        }
+    }
+
+    fn send_source(&mut self, source: Source) {
+        let Some(s) = self.ui.panel.as_ref().and_then(|p| p.send.as_ref()) else { return };
+        let refusal = match source {
+            Source::Draft if s.draft.is_empty() => Some("The input box was empty when this opened: there is no draft to send.".to_string()),
+            Source::Lines if s.lines.is_empty() => Some("No lines were selected when this opened.".to_string()),
+            Source::Lines if s.lines.len() > MAX_TEXT => Some(format!("The selected lines are {}: one input holds at most {} KiB.", size_text(s.lines.len()), MAX_TEXT / 1024)),
+            _ => None,
+        };
+        match refusal {
+            Some(why) => self.send_notice(why),
+            None => {
+                if let Some(s) = self.ui.panel.as_mut().and_then(|p| p.send.as_mut()) {
+                    s.source = source;
+                }
+                self.send_notice(String::new());
+            }
+        }
+    }
+
+    fn send_pick(&mut self, number: usize) {
+        let Some(from) = self.ui.panel.as_ref().and_then(|p| p.send.as_ref()).map(|s| s.from.clone()) else { return };
+        let picked = match self.ui.numbered.get(number - 1).map(String::as_str) {
+            None => Err(format!("There is no session {number} in the list.")),
+            Some(id) if id == from => Err("That is the open session: pick another.".to_string()),
+            Some(id) => match self.ui.rows.iter().find(|r| r.session == id) {
+                None => Err(format!("There is no session {number} in the list.")),
+                Some(r) if r.state == "disconnected" => Err(format!("'{}' is closed: Ctrl+R there brings it back.", r.name())),
+                Some(r) if r.state != "running" => Err(format!("'{}' has ended.", r.name())),
+                Some(r) => Ok(r.session.clone()),
+            },
+        };
+        match picked {
+            Ok(id) => {
+                if let Some(s) = self.ui.panel.as_mut().and_then(|p| p.send.as_mut()) {
+                    s.to = Some(id);
+                }
+                self.send_notice(String::new());
+            }
+            Err(why) => self.send_notice(why),
+        }
+    }
+
+    /// A click on a line of the panel: what its key does. False for a line that is only a word.
+    pub(crate) fn send_click(&mut self, line: usize) -> bool {
+        let Some(s) = self.ui.panel.as_ref().and_then(|p| p.send.as_ref()) else { return false };
+        match self.send_rows(s).into_iter().nth(line).map(|r| r.1) {
+            Some(Pick::Source(Source::Draft)) => self.send_key('d'),
+            Some(Pick::Source(Source::Lines)) => self.send_key('l'),
+            Some(Pick::To(number)) => self.send_pick(number),
+            Some(Pick::Go) => self.send_go(),
+            Some(Pick::Nothing) | None => return false,
+        }
+        true
+    }
+
+    /// Enter: the host is asked. The draft goes only when it is delivered; otherwise the panel stays with the choices, the text and the reason.
+    pub(crate) fn send_go(&mut self) {
+        let Some(s) = self.ui.panel.as_ref().and_then(|p| p.send.as_ref()) else { return };
+        let Some(to) = s.to.clone() else { return self.send_notice("Pick the session to send to: its number, or a click on its line.".into()) };
+        let (kind, text) = if s.source == Source::Draft { ("text", s.draft.clone()) } else { ("lines", s.lines.clone()) };
+        let (source, from) = (s.source, s.from.clone());
+        let reply = self.host_call(json!({"op": "transfer.send", "from": from, "to": to, "kind": kind, "text": text}));
+        if reply["ok"] != json!(1) {
+            return self.send_notice(format!("Not sent: {}. The text is kept.", failure(reply["error"].as_str().unwrap_or("unknown"))));
+        }
+        let how = if reply["delivery"] == json!("file") { "as a file" } else { "inline" };
+        let state = reply["receiver"].as_str().unwrap_or("idle").replace('_', " ");
+        let said = format!("Sent to '{}' ({how}, {}); it was {state}.", self.send_name(&to), size_text(reply["size"].as_u64().unwrap_or(text.len() as u64) as usize));
+        self.panel_close(); // gives the draft back to the box ...
+        if source == Source::Draft {
+            self.ed.clear(); // ... and a draft that was delivered is not a draft any more
+        }
+        self.ui.flash = Some(said);
+    }
+}
+
+/// Is `text` the header the host writes in front of another session's text, as the history records it (`>> [from session 'NAME' (ID) | 14:02 | message | 5 B]`),
+/// and nothing else on the line? The look is styling of a record's text: an agent line that imitates it is recorded behind `[agent] ` and does not match, but
+/// nothing that matters relies on this; the boundary is the header the receiving agent sees, which the host writes.
+#[derive(PartialEq, Debug)]
+pub enum Look {
+    Person,
+    Session(Range<usize>), // where the name stands
+}
+
+const SESSION: &str = ">> [from session '";
+const PERSON: &str = ">> [from the person | ";
+
+pub fn header_look(text: &str) -> Option<Look> {
+    if let Some(rest) = text.strip_prefix(SESSION) {
+        let len = rest.find('\'').filter(|&n| n > 0)?;
+        if rest[..len].contains(['[', ']', '|', '(', ')']) {
+            return None; // the host turns these into `_` in a name
+        }
+        let (id, tail) = rest[len..].strip_prefix("' (")?.split_once(") | ")?;
+        let id_ok = id.len() == 7 && id.starts_with('s') && id[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+        (id_ok && fields(tail)).then(|| Look::Session(SESSION.len()..SESSION.len() + len))
+    } else {
+        text.strip_prefix(PERSON).filter(|tail| fields(tail)).map(|_| Look::Person)
+    }
+}
+
+/// `14:02 | message | 5 B]` or `... | selection | 3.1 KiB, 24 lines]`, and the line ends there.
+fn fields(tail: &str) -> bool {
+    let Some(body) = tail.strip_suffix(']') else { return false };
+    let parts: Vec<&str> = body.split(" | ").collect();
+    let [clock, kind, size] = parts.as_slice() else { return false };
+    let c = clock.as_bytes();
+    c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && matches!(*kind, "message" | "selection") && size_shape(size)
+}
+
+/// What `size_text` and `lines_word` write: `27 B`, `3.1 KiB`, `1.0 MiB`, each with `, 24 lines` (or `, 1 line`) after it for a selection.
+fn size_shape(size: &str) -> bool {
+    let (bytes, lines) = size.split_once(", ").map_or((size, None), |(b, l)| (b, Some(l)));
+    let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
+    let Some((number, unit)) = bytes.split_once(' ') else { return false };
+    let number_ok = number.split_once('.').map_or_else(|| digits(number), |(whole, tenth)| digits(whole) && digits(tenth));
+    number_ok && matches!(unit, "B" | "KiB" | "MiB" | "GiB") && lines.is_none_or(|l| l.strip_suffix(" lines").or_else(|| l.strip_suffix(" line")).is_some_and(digits))
+}
+
+/// The attributes of a line, in the look of a header when it is one: every character dimmed, the name lit, the font of each character kept.
+pub fn tint(list: AttrsList, text: &str) -> AttrsList {
+    let Some(look) = header_look(text) else { return list };
+    let mut out = AttrsList::new(&list.defaults().color(DIM));
+    for (range, attrs) in list.spans_iter() {
+        out.add_span(range.clone(), &attrs.as_attrs().color(DIM));
+    }
+    if let Look::Session(name) = look {
+        for (i, c) in text[name.clone()].char_indices() {
+            let at = name.start + i;
+            let kept = AttrsOwned::new(&out.get_span(at));
+            out.add_span(at..at + c.len_utf8(), &kept.as_attrs().color(NAME));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+#[path = "sendto_tests.rs"]
+mod tests;

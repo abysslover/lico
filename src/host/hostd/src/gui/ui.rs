@@ -366,7 +366,7 @@ impl App {
         true
     }
 
-    fn selection_text(&self) -> Option<String> {
+    pub(crate) fn selection_text(&self) -> Option<String> {
         let (a, b) = self.ui.sel?;
         let view = self.view.as_ref()?;
         let (lo, hi) = (a.min(b), a.max(b));
@@ -450,7 +450,7 @@ impl App {
                             Some(Action::Item(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
                             None => match self.line_at(y) {
-                                Some(idx) if self.form_click(idx) || self.confirm_click(idx) => {} // a row of the new-session form, the Y or N of a question
+                                Some(idx) if self.form_click(idx) || self.panel_click(idx) => {} // a row of the new-session form, the Y or N of a question
                                 Some(idx) => {
                                     self.ui.sel = Some((idx, idx));
                                     self.ui.dragging = true;

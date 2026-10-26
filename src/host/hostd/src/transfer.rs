@@ -136,11 +136,11 @@ fn defused(text: &str) -> String {
     text.split_inclusive('\n').map(|piece| piece.strip_suffix('\n').map_or_else(|| defuse(piece), |line| defuse(line) + "\n")).collect()
 }
 
-fn line_count(text: &str) -> usize {
+pub(crate) fn line_count(text: &str) -> usize {
     text.split_inclusive('\n').count()
 }
 
-fn lines_word(count: usize) -> String {
+pub(crate) fn lines_word(count: usize) -> String {
     format!("{count} line{}", if count == 1 { "" } else { "s" })
 }
 

@@ -23,6 +23,7 @@ pub enum Step {
     About,
     Rename,  // the new name of a session, on the input line
     Confirm, // a question about a session that Y answers
+    Send,    // text of the box or lines of the screen, for another session (sendto.rs)
 }
 
 pub struct Panel {
@@ -39,6 +40,7 @@ pub struct Panel {
     pub stash: super::editor::Parked, // what was typed in the input line before the panel took it over
     pub form: Option<newsession::Form>, // the new-session form: what it holds stays while the label or the sign-in is asked for
     pub ask: Option<confirm::Ask>, // the session that a rename or a confirmation is about
+    pub send: Option<sendto::Outgoing>, // what the send-to-session panel holds
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -98,7 +100,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -182,6 +184,11 @@ impl App {
                 }
                 "Accounts".to_string()
             }
+            Step::Send => {
+                let (heading, lines) = self.send_view(p);
+                body.extend(lines);
+                heading
+            }
             Step::Rename | Step::Confirm => {
                 let (heading, lines) = self.ask_view(p);
                 body.extend(lines);
@@ -192,6 +199,7 @@ impl App {
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
                     "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty)", "Ctrl+V or Shift+Insert paste   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
                     "Page Up, Page Down, End  scroll the output", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
+                    "Ctrl+Shift+S  send the input box, or the selected lines, to another session",
                 ].map(String::from));
                 "Keys".to_string()
             }
@@ -292,6 +300,12 @@ impl App {
                         self.resume_session();
                         return true;
                     }
+                    "s" if self.ui.mods.shift_key() => {
+                        if !event.repeat {
+                            self.send_ask();
+                        }
+                        return true;
+                    }
                     _ => {}
                 }
             }
@@ -323,6 +337,10 @@ impl App {
                 }
                 true
             }
+            Key::Named(NamedKey::Enter) if step == Step::Send => {
+                self.send_go();
+                true
+            }
             Key::Named(NamedKey::Enter) if text_mode => {
                 let text = self.ed.take().text();
                 self.preedit.clear();
@@ -339,6 +357,11 @@ impl App {
             }
             _ => true,
         }
+    }
+
+    /// A click on a line of a panel: the Y or N of a question, a choice of the send panel; false when the line is neither.
+    pub(crate) fn panel_click(&mut self, line: usize) -> bool {
+        self.confirm_click(line) || self.send_click(line)
     }
 
     fn submit_text(&mut self, step: Step, text: &str) {
@@ -398,6 +421,7 @@ impl App {
             }
             Step::Actions => self.action_key(key),
             Step::Confirm => self.confirm_key(key),
+            Step::Send => self.send_key(key),
             _ => {}
         }
     }
@@ -478,6 +502,8 @@ impl App {
 pub(super) mod confirm;
 #[path = "newsession.rs"]
 mod newsession;
+#[path = "sendto.rs"]
+pub(super) mod sendto;
 
 #[cfg(test)]
 #[path = "panel_tests.rs"]
