@@ -16,6 +16,7 @@ from lico_protocol import v1
 from tests.test_claude_adapter import lines_of, records, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_tool_connection import World, rpc
+from tests.test_transfer import check_lookalikes, lookalike_text
 from tests.test_tool_send import CLEAN, DIRTY, HEADER, NOTICE, PLAIN_HEADER, decide, host_of, notices, received_with
 
 STARTS = "starts at once on the account's allowance"
@@ -201,6 +202,15 @@ def test_the_prompt_is_cleaned_once_so_the_card_the_pages_the_program_and_the_hi
     [new] = running_made(world)
     wait_for(lambda: ">> second line" in records(world.log, new["session"]))
     assert not any(c in r for r in records(world.log, new["session"]) for c in "\x1b\u202e\u200b\r")
+
+
+def test_header_look_alikes_in_the_first_prompt_of_a_new_session_are_defused_in_what_its_program_is_handed(world):
+    caller, generation = world.session(name="writer")
+    tag = f"d{caller}"
+    made(world, caller, generation, prompt=lookalike_text(tag))
+    head, body = wait_for(lambda: received_with(world, tag))[0].split("\n", 1)
+    assert re.fullmatch(PLAIN_HEADER.format(size=len(lookalike_text(tag).encode())), head), head
+    check_lookalikes(body, tag)
 
 
 def test_a_long_prompt_is_stored_whole_in_the_folder_of_the_new_session_and_the_card_shows_the_size_and_the_start(world):

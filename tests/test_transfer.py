@@ -263,6 +263,31 @@ def test_a_line_in_the_text_that_looks_like_a_header_gets_a_space_and_only_the_h
     assert f">> [agent] $ ls" in echoed, "another session's text is tagged like an agent's"
 
 
+# Lines that a reader can take for the host's header (white space between the bracket and the word, another case, anything but a letter or a digit after it) and
+# lines that cannot be taken for it; the first kind gets one space in front of it, the second is not touched. Each one is something the cleaner of an agent's text keeps.
+LOOKALIKES = ["[\tfrom x", "[\u00a0from x", "[\u3000from x", "[From x", "[ from x", "[FROM x", "[from-x", "[from]", "[from", "[\u2003\u2009from x"]
+STAYS = ["[fromage] x", "[from9 x", "[fromé x", "[fro", "a [from x", "[f rom x"]
+
+
+def lookalike_text(tag):
+    return "\n".join([tag, *LOOKALIKES, *STAYS, "$ ls"])
+
+
+def check_lookalikes(body, tag):
+    """`body` is the text after the host's header: the first kind has one space in front of it, the second is as it was."""
+    assert body.split("\n") == [tag, *(" " + l for l in LOOKALIKES), *STAYS, "$ ls"], body.split("\n")
+
+
+def test_a_line_with_white_space_after_the_bracket_or_in_another_case_is_defused_like_the_plain_one_and_a_longer_word_is_left_alone(world):
+    sender, _ = world.session(name="writer")
+    receiver, _ = world.session()
+    tag = mark()
+    assert world.send(**{"from": sender, "to": receiver, "kind": "text", "text": lookalike_text(tag)})["ok"] == 1
+    head, body = world.arrived(tag).split("\n", 1)
+    assert HEADER.fullmatch(head)
+    check_lookalikes(body, tag)
+
+
 def test_the_command_line_sends_with_from_reads_standard_input_with_lf_and_without_from_stays_plain_input(world):
     sender, _ = world.session(name="cli")
     receiver, _ = world.session()

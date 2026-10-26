@@ -22,6 +22,7 @@ from lico_protocol import v1
 from tests.test_claude_adapter import FIXTURE, SIM, records, sent_users, status_of, user_text
 from tests.test_codex_adapter import wait_for
 from tests.test_tool_connection import World, raw, rpc
+from tests.test_transfer import check_lookalikes, lookalike_text
 
 HEADER = r">> \[from session '{name}' \({id7}\) \| \d\d:\d\d \| message \| {size}\]"
 NOTICE = r">> \[from lico \| \d\d:\d\d \| approval {number}\]"
@@ -168,6 +169,16 @@ def test_the_text_of_an_agent_is_cleaned_and_tagged_and_cannot_pose_as_the_host_
     assert len(heads(world.log, target)) == 1 and not notices(world.log, target), "one record of the host's, and the text could not make a second"
     assert not any("\x1b" in r for r in records(world.log, target)) and any(r.startswith(f">> {tag} ") and "red" in r for r in shown), shown
     assert f">>  {forged}" in shown and f">>  {forged_notice}" in shown, "the look-alike lines have a space in front of them"
+
+
+def test_header_look_alikes_with_white_space_or_in_another_case_are_defused_in_what_the_program_is_handed(world):
+    caller, generation = world.session(name="writer")
+    target, _ = world.session()
+    tag = f"d{caller}"
+    approved(world, caller, generation, target, lookalike_text(tag))
+    head, body = wait_for(lambda: received_with(world, tag))[0].split("\n", 1)
+    assert re.fullmatch(PLAIN_HEADER.format(size=len(lookalike_text(tag).encode())), head), head
+    check_lookalikes(body, tag)
 
 
 DIRTY = "\x1b[31mred\x1b[0m\u202eevil\u200b\r\nsecond\U000e0041 line"                                              # 9 characters of colour, 3 that draw nothing, and a CR LF

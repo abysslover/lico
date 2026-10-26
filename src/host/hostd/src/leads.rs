@@ -64,10 +64,18 @@ pub fn agent_line(line: &str) -> String {
     }
 }
 
-/// A line of text from another session that begins like the header the host writes in front of it (`[from `) gets one leading space, so that no line but the host's own
-/// begins that way (S03a). Judged on the skeleton, like `reserved`: white space or a character that draws nothing in front does not hide it. The text is kept as it is.
+/// Whether a skeleton begins like the header the host writes in front of a text from another session: a bracket, then any white space or controls, then `from` in
+/// any case, and then anything but a letter or a digit (or nothing). A reader takes `[ from x` and `[FROM` for it as it takes `[from x`.
+fn header_like(skeleton: &str) -> bool {
+    let rest = skeleton.strip_prefix('[').map(|rest| rest.trim_start_matches(|c: char| c.is_whitespace() || c.is_control()));
+    rest.and_then(|rest| Some((rest.get(..4)?, &rest[4..]))).is_some_and(|(word, after)| word.eq_ignore_ascii_case("from") && after.chars().next().is_none_or(|c| !c.is_alphanumeric()))
+}
+
+/// A line of text from another session that begins like the header the host writes in front of it (`header_like`) gets one leading space, so that no line but the
+/// host's own begins that way (S03a). Judged on the skeleton, like `reserved`: white space or a character that draws nothing in front does not hide it. The text is
+/// kept as it is. A look-alike with a letter of another script inside `from` (a Cyrillic o) is not caught: the skeleton does not fold scripts.
 pub fn defuse(line: &str) -> String {
-    if skeleton(line).starts_with("[from ") {
+    if header_like(&skeleton(line)) {
         format!(" {line}")
     } else {
         line.to_string()
@@ -205,7 +213,25 @@ mod tests {
         ] {
             assert_eq!(defuse(line), format!(" {line}"), "{line:?}");
         }
-        for line in ["", "plain", "[from", "[fromage] x", "a [from x", "from x", " from [from x", "[turn completed]", "$ ls", "[ from x", "[FROM x", "[agent] [from x"] {
+        for line in ["", "plain", "[", "[ ]", "from x", " from [from x", "[turn completed]", "$ ls", "[agent] [from x", "[f rom x", "[ fro", "[ x from"] {
+            assert_eq!(defuse(line), line, "{line:?}");
+        }
+    }
+
+    /// The line may have white space between the bracket and the word, any case of the word, and anything but a letter or a digit after it, or nothing: each is a
+    /// line that a reader can take for the host's header. A word that goes on, or another word, is not.
+    #[test]
+    fn a_line_that_has_white_space_between_the_bracket_and_from_or_another_case_of_it_is_defused_too_and_a_longer_word_is_not() {
+        for line in [
+            "[ from x", "[FROM x", "[From x", "[fRoM x", "[\tfrom x", "[\u{a0}from x", "[\u{3000}from x", "[\u{2003}\u{2009}from x", "[\u{b}from x", "[\u{c}from x",
+            "[\u{85}from x", "[\u{1}from x", "[\u{200b} from x", "[ \u{200d}from x", "[from-", "[from]", "[from", "[ from", "[FROM", "[from:", "[from_x", "[from\u{a0}x", "[from\tx",
+            "\u{3000}[ \u{200b}From|x", "  [\u{3000}\u{3000}from",
+        ] {
+            assert_eq!(defuse(line), format!(" {line}"), "{line:?}");
+        }
+        for line in [
+            "[fromage] x", "[from9 x", "[FROM9", "[fromé x", "[from한 x", "[ fromage", "[\tfromage", "[fro", "[ fr om x", "[f\tr\to\tm x", "[the from x", "[fromx x",
+        ] {
             assert_eq!(defuse(line), line, "{line:?}");
         }
     }
