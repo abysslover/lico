@@ -48,6 +48,7 @@
 "tests/test_protocol_conformance.py" = ["host", "synth"]
 "tests/test_provider_isolation.py" = ["host", "synth"]
 "tests/test_recovery.py" = ["host"]
+"tests/test_reference_mapping.py" = []
 "tests/test_report.py" = []
 "tests/test_resource_scope.py" = []
 "tests/test_rig_teardown.py" = ["gui", "host"]
@@ -150,6 +151,12 @@ glob = "tests/fixtures/text_rules.json"
 tests = ["tests/test_text_rules.py"]
 cargo = ["folders::"]
 reason = "what a name, a folder path and an input text may hold: the protocol rule reads it in the Python test, the host rules in a unit test of folders.rs (include_str!)"
+
+[[sources]]
+glob = "tests/fixtures/provider_text.json"
+tests = ["tests/test_reference_mapping.py", "tests/test_forged_leads.py"]
+cargo = ["leads::"]
+reason = "a line of agent text and the record it becomes: the reference mapping reads it in its Python test, the built program in test_forged_leads, the host rule in a unit test of leads.rs (include_str!)"
 
 [[sources]]
 glob = "src/host/adapters/codex/**"

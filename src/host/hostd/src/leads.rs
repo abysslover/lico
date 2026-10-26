@@ -113,6 +113,21 @@ mod tests {
         }
     }
 
+    /// The table of lines of provider text and the records they become, that the reference mapping (`lico_protocol/codex_mapping.py`) and the built program
+    /// (`tests/test_forged_leads.py`) are tested against as well.
+    #[test]
+    fn the_shared_table_of_provider_text_gives_the_records_it_lists() {
+        let table: serde_json::Value = serde_json::from_str(include_str!("../../../../tests/fixtures/provider_text.json")).unwrap();
+        let text = |v: &serde_json::Value| match v.as_str() {
+            Some(s) => s.to_string(),
+            None => v["prefix"].as_str().unwrap().to_string() + &v["unit"].as_str().unwrap().repeat(v["times"].as_u64().unwrap() as usize),
+        };
+        let rows: Vec<_> = table["rows"].as_array().unwrap().iter().chain(table["long"].as_array().unwrap()).collect();
+        assert!(rows.len() > 90);
+        let wrong: Vec<&str> = rows.into_iter().filter(|row| agent_record(&text(&row["line"]), 4096) != text(&row["record"])).map(|row| row["why"].as_str().unwrap()).collect();
+        assert_eq!(wrong, Vec::<&str>::new());
+    }
+
     #[test]
     fn the_record_bound_is_applied_after_the_tag() {
         let record = agent_record(&format!("$ {}", "a".repeat(5000)), 4096);

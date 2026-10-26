@@ -17,6 +17,10 @@ removed, an approval answer bound to exactly one provider request). The fixtures
 `tests/fixtures/codex_app_server/` are recorded sequences validated against the provider's own
 schema; the owned host's adapter is tested against the same fixtures.
 
+What the reference does with a line of text from the agent (what it says, what a command prints) is in `tests/fixtures/provider_text.json`: the line, and the
+record it becomes (cleaned of escapes, controls and characters that draw nothing; `[agent] ` in front when it begins like a record of the host). The same
+file is read by the reference's test, by a unit test of `hostd/src/leads.rs` and by `tests/test_forged_leads.py`, which runs both adapters of the built program.
+
 ## Claude Code (second adapter)
 
 `claude/capabilities.json` pins Claude Code 2.1.310 (the version the owner reported) and lists what is

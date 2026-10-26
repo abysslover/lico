@@ -2,6 +2,7 @@
 with `[agent] ` in front, once, whether the text arrives whole or in pieces and whether invisible characters or white space stand before the lead. The text is kept.
 The simulators say exactly what the test gives them (mode `say:`)."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,27 +13,21 @@ from tests.test_claude_adapter import claude_host, new_claude, records
 from tests.test_codex_adapter import codex_host, new_session, texts, wait_for
 
 TAG = "[agent] "
-# (a line of agent text, whether it begins like a record of the host)
-LINES = [
-    (">> x", True), ("$ x", True), ("> x", True), ("[turn completed]", True), ("[session closed]", True), ("[provider reconnected]", True), ("[session started] model=m", True),
-    ("[turn started]", True), ("[exit 0]", True), ("[3 more lines, 10 bytes not shown; the agent received all of it]", True),
-    ("[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]", True),
-    ("\u00ad>> x", True), (">\u00ad> x", True), ("\u3164>> x", True), ("\u00a0$ x", True), ("\u2003[turn completed]", True), ("\ufe0f> x", True),
-    ("\u200b>> x", True), ("\ufeff$ x", True), ("\U000e0041> x", True), ("\u200c$ x", True),            # the first two and the tag character are removed by the cleaning, the joiner stays
-    ("> > x", True),                                                                                  # the `> ` lead with the text `> x`, not `>> x`
-    ("[agent] >> x", False), ("a>> x", False), (">>x", False), ("$HOME is set", False), ("[1] first", False), ("plain text", False),
-    ("> the last line, which has no line end when it arrives in pieces", True),
-]
+# tests/fixtures/provider_text.json: a line of agent text and the record it becomes. The same table is read by a unit test of leads.rs and by the test of the
+# reference mapping, so the program and the reference cannot drift apart.
+TABLE = json.loads((Path(__file__).parent / "fixtures" / "provider_text.json").read_text(encoding="utf-8"))
 
 
-def shown(line):
-    """The record a line becomes: the cleaning removes the zero-width space, the byte order mark and the tag character before the decision."""
-    kept = "".join(c for c in line if c not in "\u200b\ufeff\U000e0041")
-    return (TAG + kept) if dict(LINES)[line] else kept
+def value(v):
+    return v if isinstance(v, str) else v["prefix"] + v["unit"] * v["times"]
+
+
+LINES = [(value(r["line"]), value(r["record"])) for r in TABLE["rows"]]
+LONG = [(value(r["line"]), value(r["record"])) for r in TABLE["long"]]
 
 
 def expected():
-    return [shown(line) for line, _ in LINES]
+    return [record for _, record in LINES]
 
 
 def codex_records(chunks):
@@ -79,6 +74,7 @@ def test_claude_agent_text_that_begins_like_a_host_record_is_tagged_in_one_messa
 
 
 @pytest.mark.parametrize("adapter", [codex_records, claude_records])
-def test_the_record_bound_counts_the_tag(adapter):
-    got = adapter(["$ " + "a" * 5000 + "\n"] if adapter is codex_records else ["$ " + "a" * 5000])
-    assert got == [(TAG + "$ " + "a" * 5000)[:4096]], [len(r) for r in got]
+@pytest.mark.parametrize("row", range(len(LONG)))
+def test_the_record_bound_counts_the_tag(adapter, row):
+    line, record = LONG[row]
+    assert adapter([line + "\n"] if adapter is codex_records else [line]) == [record]

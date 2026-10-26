@@ -11,7 +11,7 @@ import json
 from collections import Counter
 from dataclasses import dataclass, field
 
-from .codex_mapping import MAX_PROMPT, MAX_RECORD, sanitize
+from .codex_mapping import MAX_PROMPT, MAX_RECORD, agent_record, sanitize
 
 MAX_RESULT_LINES = 20
 ACCOUNT_ISSUES = ("authentication_failed", "oauth_org_not_allowed", "account_on_hold", "billing_error", "rate_limit")   # the api_retry error categories the documentation lists that concern the account
@@ -28,6 +28,10 @@ class Mapped:
 
 def _emit(out: Mapped, line: str) -> None:
     out.records.append(sanitize(line).encode()[:MAX_RECORD].decode(errors="ignore"))
+
+
+def _emit_agent(out: Mapped, line: str) -> None:
+    out.records.append(agent_record(line))
 
 
 def approval_prompt(tool: str, tool_input: dict) -> str:
@@ -57,7 +61,7 @@ def map_stream(messages: list[dict]) -> Mapped:
             for block in message.get("message", {}).get("content", []):
                 if block.get("type") == "text":
                     for line in block.get("text", "").split("\n"):
-                        _emit(out, line.rstrip("\r"))
+                        _emit_agent(out, line.rstrip("\r"))
                 elif block.get("type") == "tool_use":
                     tool_input = block.get("input", {})
                     if block.get("name") == "Bash" and isinstance(tool_input.get("command"), str):
