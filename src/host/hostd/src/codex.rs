@@ -46,6 +46,16 @@ extern "C" {
 }
 
 // ------------------------------------------------------------------ sanitizing
+/// Characters that are removed from provider text: controls, and those that draw nothing or reorder what is drawn, so that a line cannot look like another
+/// one (a forged lead behind a zero-width space, a tag or a bidi override). U+200C and U+200D are kept on purpose: Persian and Indic scripts need the
+/// non-joiner and the joiner, and an emoji sequence (family, flag, skin tone) is joined by U+200D; they draw nothing alone but never hide a lead.
+fn dropped(code: u32) -> bool {
+    code <= 8 || code == 0x0b || code == 0x0c || (0x0e..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
+        || code == 0x061c || code == 0x200b || code == 0x200e || code == 0x200f || code == 0x2028 || code == 0x2029
+        || (0x202a..=0x202e).contains(&code) || (0x2060..=0x2064).contains(&code) || (0x2066..=0x2069).contains(&code)
+        || code == 0xfeff || (0xe0000..=0xe007f).contains(&code)
+}
+
 /// Remove terminal escape sequences and control characters from untrusted provider text.
 pub fn sanitize(text: &str) -> String {
     // 1. OSC sequences: ESC ] ... (BEL | ESC \)
@@ -111,9 +121,7 @@ pub fn sanitize(text: &str) -> String {
         let code = c as u32;
         if c == '\t' || c == '\n' || c == '\r' {
             result.push(' '); // a record is one line: a line break inside it would forge a second record
-        } else if !(code <= 8 || code == 0x0b || code == 0x0c || (0x0e..=0x1f).contains(&code) || (0x7f..=0x9f).contains(&code)
-            || code == 0x061c || code == 0x200e || code == 0x200f || code == 0x2028 || code == 0x2029
-            || (0x202a..=0x202e).contains(&code) || (0x2066..=0x2069).contains(&code)) {
+        } else if !dropped(code) {
             result.push(c);
         }
         i += 1;
@@ -525,5 +533,21 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
             }
         }
         _ => {} // thread state and everything else is not shown
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize;
+
+    #[test]
+    fn invisible_and_reordering_characters_are_removed_but_the_joiners_stay() {
+        // zero-width space, word joiner and the invisible operators, the byte order mark, tag characters, and the bidi controls
+        let hidden = "\u{200b}\u{2060}\u{2061}\u{2062}\u{2063}\u{2064}\u{feff}\u{e0000}\u{e0041}\u{e007f}\u{061c}\u{200e}\u{200f}\u{202a}\u{202e}\u{2066}\u{2069}\u{2028}\u{2029}";
+        assert_eq!(sanitize(&format!("a{hidden}b")), "ab");
+        // a lead made visible only by what was removed from before it is a lead once cleaned
+        assert_eq!(sanitize("\u{200b}\u{e0041}>> x"), ">> x");
+        // U+200C and U+200D are kept: Persian and Indic scripts need the non-joiner and the joiner, and an emoji sequence (family, flag, skin tone) is joined by U+200D
+        assert_eq!(sanitize("می\u{200c}خواهم 👨\u{200d}👩\u{200d}👧"), "می\u{200c}خواهم 👨\u{200d}👩\u{200d}👧");
     }
 }
