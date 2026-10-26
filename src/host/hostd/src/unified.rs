@@ -30,6 +30,7 @@ mod mcp;
 mod memory;
 mod payload;
 mod pending;
+mod provider_record;
 mod registry;
 mod session;
 mod tools;

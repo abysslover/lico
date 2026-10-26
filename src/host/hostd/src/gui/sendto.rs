@@ -1,6 +1,7 @@
 //! Sending text to another session from the window: the panel (what, to whom, how it is delivered) and the look of the header that the receiving
 //! window shows. The host does the work (`transfer.send`, asked over the host socket like the window's other requests, one connection for the call); this asks it and says what came of it.
-//! The text of both sources is taken when the panel opens, and the draft is cleared only when the host says it was delivered.
+//! The text of the draft and of the selection is taken when the panel opens, and the draft is cleared only when the host says it was delivered. The third source, the whole conversation
+//! of the open session, is not taken here at all: the host reads the program's own record when the person presses Enter, and the window says what that carries before it does.
 
 use std::ops::Range;
 
@@ -15,6 +16,9 @@ use crate::transfer::{line_count, lines_word, size_text, INLINE_MAX};
 
 const _: () = assert!(MAX_TEXT == 64 * 1024, "the words below say 64 KiB");
 
+/// How long the window waits for the host to read a program's record and hand it over (a record of up to 1 GiB; the window stands still meanwhile).
+const RECORD_WAIT: u64 = 30;
+
 /// The colours of the header of another session's text in the history: the record dimmed, the sender's name lit.
 pub const DIM: Color = Color::rgb(0x6A, 0x72, 0x7E);
 pub const NAME: Color = Color::rgb(0x8C, 0xC8, 0xFF);
@@ -23,6 +27,7 @@ pub const NAME: Color = Color::rgb(0x8C, 0xC8, 0xFF);
 pub enum Source {
     Draft,
     Lines,
+    Conversation,
 }
 
 /// What the panel holds: the text of both sources as they were when it opened, and what is chosen.
@@ -52,6 +57,10 @@ pub fn failure(error: &str) -> String {
         "queue_full" => "that session's input queue is full; try again in a moment".into(),
         "chain_depth" => "the chain of agents is too long; a person has to start it again".into(),
         "too_large" => "the text is too large for the host".into(),
+        "no_conversation_yet" => "this session has no conversation yet: its program has not answered once".into(),
+        "record_not_found" => "the host did not find the program's record of this session; select the lines you want and send them with Ctrl+Shift+S".into(),
+        "record_ambiguous" => "more than one record has the id of this session; select the lines you want and send them with Ctrl+Shift+S".into(),
+        "record_format" => "the record is not in the layout this Lico reads (Claude Code 2.1.310); select the lines you want and send them with Ctrl+Shift+S".into(),
         "bad_request" => "the host does not accept that text".into(),
         "send_limit" => "too many sessions that agents made are running; one has to be closed first".into(),
         "unknown_account" => "the account of the session is not there any more".into(),
@@ -60,6 +69,15 @@ pub fn failure(error: &str) -> String {
         "host_unreachable" => "the host did not answer".into(),
         "host_timeout" => "the host did not answer in time; the text may have been delivered, so look at the other session before sending it again".into(),
         other => format!("the host answered {other}"),
+    }
+}
+
+/// The same for a whole conversation, where a word differs.
+pub fn failure_whole(error: &str) -> String {
+    match error {
+        "too_large" => "the conversation is over 32 MiB; select the lines you want and send them with Ctrl+Shift+S".into(),
+        "bad_request" => "the host cannot read the record of this session".into(),
+        other => failure(other),
     }
 }
 
@@ -110,6 +128,28 @@ impl App {
         }
     }
 
+    /// Whether the host has a record to read for the session: only a Claude session has one of the layout it knows.
+    fn has_record(&self, id: &str) -> bool {
+        self.ui.rows.iter().find(|r| r.session == id).is_some_and(|r| r.provider == "claude")
+    }
+
+    /// Why a conversation cannot be handed over now (the menu greys the entry with this), if it cannot.
+    pub(crate) fn hand_reason(&self) -> Option<&'static str> {
+        if self.selected_row().is_none() {
+            return Some("no session is open");
+        }
+        if !self.has_record(&self.session) {
+            return Some("only a Claude session has a record to hand over");
+        }
+        if self.ui.numbered.len() < 2 {
+            return Some("needs two sessions");
+        }
+        if !self.others(&self.session).iter().any(|(_, r)| r.state == "running") {
+            return Some("no other session is running");
+        }
+        None
+    }
+
     /// The menu entry and Ctrl+Shift+S: the panel opens, or the first row says why not.
     pub(crate) fn send_ask(&mut self) {
         if let Some(reason) = self.send_reason() {
@@ -117,9 +157,23 @@ impl App {
             self.dirty = true;
             return;
         }
+        self.send_open(None);
+    }
+
+    /// The menu entry "Hand over conversation...": the same panel, with the whole conversation chosen.
+    pub(crate) fn hand_ask(&mut self) {
+        if let Some(reason) = self.hand_reason() {
+            self.ui.flash = Some(format!("Hand over conversation: {reason}"));
+            self.dirty = true;
+            return;
+        }
+        self.send_open(Some(Source::Conversation));
+    }
+
+    fn send_open(&mut self, chosen: Option<Source>) {
         let from = self.session.clone();
         let (draft, lines) = (self.ed.text().to_string(), self.selection_text().unwrap_or_default());
-        let source = if !lines.is_empty() && lines.len() <= MAX_TEXT { Source::Lines } else { Source::Draft };
+        let source = chosen.unwrap_or(if !lines.is_empty() && lines.len() <= MAX_TEXT { Source::Lines } else { Source::Draft });
         let to = match self.others(&from).as_slice() {
             [(_, only)] if only.state == "running" => Some(only.session.clone()), // with one other session there is nothing to choose
             _ => None,
@@ -141,23 +195,30 @@ impl App {
             ("What to send".to_string(), Pick::Nothing),
             (format!("  {} D  Draft text {}", mark(s.source == Source::Draft), describe(&s.draft, false, "the input box is empty")), Pick::Source(Source::Draft)),
             (format!("  {} L  Selected lines {}", mark(s.source == Source::Lines), describe(&s.lines, true, "none selected")), Pick::Source(Source::Lines)),
+            (format!("  {} C  Whole conversation {}", mark(s.source == Source::Conversation), if self.has_record(&s.from) { "(the host reads the program's record)" } else { "(only a Claude session has a record)" }), Pick::Source(Source::Conversation)),
             ("To".to_string(), Pick::Nothing),
         ];
         for (number, row) in self.others(&s.from) {
             let state = if row.state == "disconnected" { "closed".to_string() } else { row.state_text() };
             rows.push((format!("  {} {}  {}  {}  {}", mark(s.to.as_deref() == Some(row.session.as_str())), number, row.title(24).trim_end(), row.provider, state), Pick::To(number)));
         }
-        let text = if s.source == Source::Draft { &s.draft } else { &s.lines };
-        let how = if text.len() <= INLINE_MAX {
+        let (whole, text) = (s.source == Source::Conversation, if s.source == Source::Draft { &s.draft } else { &s.lines });
+        let how = if whole {
+            "as a file. The host reads the program's record when you press Enter. Nothing is cut up to 32 MiB.".to_string()
+        } else if text.len() <= INLINE_MAX {
             format!("inline ({} is at most {} KiB)", size_text(text.len()), INLINE_MAX / 1024)
         } else {
             format!("as a file ({} is more than {} KiB). Nothing is cut.", size_text(text.len()), INLINE_MAX / 1024)
         };
         rows.push((String::new(), Pick::Nothing));
         rows.push((format!("Delivery  {how}"), Pick::Nothing));
+        if whole {
+            rows.push(("Careful   The whole conversation goes to another session. It may hold what you or a tool typed:".to_string(), Pick::Nothing));
+            rows.push(("          keys, passwords, other people's data. To send only part of it, choose L.".to_string(), Pick::Nothing));
+        }
         let to = s.to.as_ref().map(|id| self.send_name(id));
         rows.push((
-            match (&to, text.len() <= INLINE_MAX) {
+            match (&to, text.len() <= INLINE_MAX && !whole) {
                 (None, _) => "          Pick a session to see where it goes.".to_string(),
                 (Some(to), true) => format!("          The text goes into '{to}' as a {} that says it came from '{}'.", if s.source == Source::Draft { "message" } else { "selection" }, self.send_name(&s.from)),
                 (Some(to), false) => format!("          Saved in the handoff folder of '{to}'; it gets the path and the first lines."),
@@ -165,7 +226,8 @@ impl App {
             Pick::Nothing,
         ));
         rows.push((String::new(), Pick::Nothing));
-        rows.push((to.map_or("Enter  Send (pick a session first)".to_string(), |to| format!("Enter  Send to '{to}'")), Pick::Go));
+        let verb = if whole { "Hand over" } else { "Send" };
+        rows.push((to.map_or(format!("Enter  {verb} (pick a session first)"), |to| format!("Enter  {verb} to '{to}'")), Pick::Go));
         rows
     }
 
@@ -186,6 +248,7 @@ impl App {
         match key {
             'd' => self.send_source(Source::Draft),
             'l' => self.send_source(Source::Lines),
+            'c' => self.send_source(Source::Conversation),
             '1'..='9' => self.send_pick(key as usize - '0' as usize),
             _ => {}
         }
@@ -197,6 +260,7 @@ impl App {
             Source::Draft if s.draft.is_empty() => Some("The input box was empty when this opened: there is no draft to send.".to_string()),
             Source::Lines if s.lines.is_empty() => Some("No lines were selected when this opened.".to_string()),
             Source::Lines if s.lines.len() > MAX_TEXT => Some(format!("The selected lines are {}: one input holds at most {} KiB.", size_text(s.lines.len()), MAX_TEXT / 1024)),
+            Source::Conversation if !self.has_record(&s.from) => Some("Only a Claude session has a record the host can read: send the draft or selected lines instead.".to_string()),
             _ => None,
         };
         match refusal {
@@ -239,6 +303,7 @@ impl App {
         match self.send_rows(s).into_iter().nth(line).map(|r| r.1) {
             Some(Pick::Source(Source::Draft)) => self.send_key('d'),
             Some(Pick::Source(Source::Lines)) => self.send_key('l'),
+            Some(Pick::Source(Source::Conversation)) => self.send_key('c'),
             Some(Pick::To(number)) => self.send_pick(number),
             Some(Pick::Go) => self.send_go(),
             Some(Pick::Nothing) | None => return false,
@@ -250,15 +315,26 @@ impl App {
     pub(crate) fn send_go(&mut self) {
         let Some(s) = self.ui.panel.as_ref().and_then(|p| p.send.as_ref()) else { return };
         let Some(to) = s.to.clone() else { return self.send_notice("Pick the session to send to: its number, or a click on its line.".into()) };
-        let (kind, text) = if s.source == Source::Draft { ("text", s.draft.clone()) } else { ("lines", s.lines.clone()) };
         let (source, from) = (s.source, s.from.clone());
-        let reply = self.host_call(json!({"op": "transfer.send", "from": from, "to": to, "kind": kind, "text": text}));
+        let whole = source == Source::Conversation;
+        let (kind, text) = match source {
+            Source::Draft => ("text", s.draft.clone()),
+            Source::Lines => ("lines", s.lines.clone()),
+            Source::Conversation => ("conversation", String::new()),
+        };
+        let reply = if whole {
+            self.host_call_within(json!({"op": "transfer.send", "from": from, "to": to, "kind": kind}), RECORD_WAIT)
+        } else {
+            self.host_call(json!({"op": "transfer.send", "from": from, "to": to, "kind": kind, "text": text}))
+        };
         if reply["ok"] != json!(1) {
-            return self.send_notice(format!("Not sent: {}. The text is kept.", failure(reply["error"].as_str().unwrap_or("unknown"))));
+            let (why, kept) = (reply["error"].as_str().unwrap_or("unknown"), if whole { "Nothing was sent." } else { "The text is kept." });
+            return self.send_notice(format!("Not {}: {}. {kept}", if whole { "handed over" } else { "sent" }, if whole { failure_whole(why) } else { failure(why) }));
         }
         let how = if reply["delivery"] == json!("file") { "as a file" } else { "inline" };
         let state = reply["receiver"].as_str().unwrap_or("idle").replace('_', " ");
-        let said = format!("Sent to '{}' ({how}, {}); it was {state}.", self.send_name(&to), size_text(reply["size"].as_u64().unwrap_or(text.len() as u64) as usize));
+        let size = size_text(reply["size"].as_u64().unwrap_or(text.len() as u64) as usize);
+        let said = format!("{} '{}' ({how}, {size}); it was {state}.", if whole { "Handed over the conversation to" } else { "Sent to" }, self.send_name(&to));
         self.panel_close(); // gives the draft back to the box ...
         if source == Source::Draft {
             self.ed.clear(); // ... and a draft that was delivered is not a draft any more
@@ -293,13 +369,13 @@ pub fn header_look(text: &str) -> Option<Look> {
     }
 }
 
-/// `14:02 | message | 5 B]` or `... | selection | 3.1 KiB, 24 lines]`, and the line ends there.
+/// `14:02 | message | 5 B]` or `... | selection | 3.1 KiB, 24 lines]` (or `conversation`), and the line ends there.
 fn fields(tail: &str) -> bool {
     let Some(body) = tail.strip_suffix(']') else { return false };
     let parts: Vec<&str> = body.split(" | ").collect();
     let [clock, kind, size] = parts.as_slice() else { return false };
     let c = clock.as_bytes();
-    c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && matches!(*kind, "message" | "selection") && size_shape(size)
+    c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && matches!(*kind, "message" | "selection" | "conversation") && size_shape(size)
 }
 
 /// What `size_text` and `lines_word` write: `27 B`, `3.1 KiB`, `1.0 MiB`, each with `, 24 lines` (or `, 1 line`) after it for a selection.

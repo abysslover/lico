@@ -21,7 +21,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
           "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
-          "no_conversation_yet", "chain_depth", "expired")
+          "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -145,7 +145,7 @@ REPLIES = {
     "session.close": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}}, COMMON_REPLY_OPTIONAL),
     "session.rebind": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
-    "transfer.send": _obj({"v": _V, "ok": _OK, "to": {"type": STR}, "request_id": {"type": STR}, "kind": {"type": STR, "enum": ["text", "lines"]},
+    "transfer.send": _obj({"v": _V, "ok": _OK, "to": {"type": STR}, "request_id": {"type": STR}, "kind": {"type": STR, "enum": ["text", "lines", "conversation"]},
                            "delivery": {"type": STR, "enum": ["inline", "file"]}, "size": {"type": INT, "minimum": 1},
                            "receiver": {"type": STR, "enum": ["idle", "busy", "waiting_for_approval"]}, "hops": {"type": INT, "minimum": 0}},
                           COMMON_REPLY_OPTIONAL),
@@ -223,9 +223,10 @@ REQUESTS = {
     "account.credential": _obj({"account": {"type": STR, "max_length": 64}, "credential_ref": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "account.default": _obj({"account": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.list": _obj({}, _COMMON_REQ),
-    "transfer.send": _obj({"to": {"type": STR, "max_length": 64}, "kind": {"type": STR, "enum": ["text", "lines"]},
-                           "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}},
-                          {**_COMMON_REQ, "from": {"type": STR, "max_length": 64}}),
+    # `text` is required for text and lines and absent for a conversation, which takes `from` instead (the rule is `_transfer_shape`)
+    "transfer.send": _obj({"to": {"type": STR, "max_length": 64}, "kind": {"type": STR, "enum": ["text", "lines", "conversation"]}},
+                          {**_COMMON_REQ, "from": {"type": STR, "max_length": 64},
+                           "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}}),
     "input": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
                    "request_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
                    "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}}, _COMMON_REQ),
@@ -323,10 +324,19 @@ def validate_object(value: dict, spec: dict, path: str, errors: list[str]) -> No
             errors.append(f"{path}.{key}: unknown field")
 
 
+def _transfer_shape(body: dict) -> list[str]:
+    """A conversation is the whole conversation of the session `from`: no text. Text and lines are text."""
+    if body.get("kind") == "conversation":
+        return ["$.from: missing"] * ("from" not in body) + ["$.text: not allowed for a conversation"] * ("text" in body)
+    return ["$.text: missing"] * ("text" not in body)
+
+
 def validate_request(op: str, message: dict) -> list[str]:
     errors: list[str] = []
     body = {k: v for k, v in message.items() if k != "op"}
     validate_object(body, REQUESTS[op], "$", errors)
+    if op == "transfer.send":
+        errors += _transfer_shape(body)
     return errors
 
 

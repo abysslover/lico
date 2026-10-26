@@ -86,7 +86,7 @@ impl App {
                 v.push(Self::entry("Close session", "Ctrl+Shift+W", Cmd::Close, panel_reason.or(self.ask_reason(Act::Close))));
                 v.push(Self::entry("Delete session", "Ctrl+Delete", Cmd::Delete, panel_reason.or(self.ask_reason(Act::Delete))));
                 v.push(Self::entry("Send to session...", "Ctrl+Shift+S", Cmd::SendTo, panel_reason.or(self.send_reason())));
-                v.push(Self::entry("Hand over conversation...", "", Cmd::HandOver, Some("not available yet")));
+                v.push(Self::entry("Hand over conversation...", "", Cmd::HandOver, panel_reason.or(self.hand_reason())));
                 v.push(Self::entry("Allow approval", "Y", Cmd::Allow, pending));
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
                 v.push(Self::entry("Copy selected lines", "Ctrl+Shift+C", Cmd::Copy, if self.ui.sel.is_some() { None } else { Some("nothing is selected") }));
@@ -148,7 +148,7 @@ impl App {
             Cmd::Close => self.ask_open(Act::Close),
             Cmd::Delete => self.ask_open(Act::Delete),
             Cmd::SendTo => self.send_ask(),
-            Cmd::HandOver => {} // the conversation as a file comes with a later step
+            Cmd::HandOver => self.hand_ask(),
             Cmd::Copy => self.copy_selection(),
             Cmd::Paste => self.start_paste(b"CLIPBOARD"),
             Cmd::Older => self.scroll_by(20),

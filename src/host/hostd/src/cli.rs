@@ -28,6 +28,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   session show ID                one session
   session delete ID              delete a session: its process, log and workspace (a folder you chose is never touched; `purge` is the same)\n\
+  session send ID --conversation --from ID2   hand the whole conversation of Claude session ID2 to ID, as a file in its folder (the host reads the program's record)
   session send ID TEXT|- [--from ID2 | --request-id RID]
                                  send input (- reads it from standard input; at most 64 KiB, newlines and tabs allowed);
                                  the request id is printed first, so after a timeout the
@@ -277,6 +278,15 @@ pub fn run(args: Vec<String>) {
         }
         ["input", "status", id, rid] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "input.status", "session": id, "request_id": rid})));
+        }
+        ["session", "send", id, ..] if args.iter().any(|a| a == "--conversation") => {
+            // the whole conversation of the session named by --from, read by the host from the program's own record: no text, and a file in the receiver's folder
+            let from = flag(&args, "--from").unwrap_or_else(|| die(1, "--conversation needs --from ID2, the session whose conversation it is"));
+            let reply = call(&mut connect(&socket), json!({"op": "transfer.send", "from": from, "to": id, "kind": "conversation"}));
+            if reply["ok"] != json!(1) {
+                eprintln!("{}", reply["error"].as_str().unwrap_or("refused"));
+            }
+            expect_ok(reply);
         }
         ["session", "send", id, text, ..] if args.iter().any(|a| a == "--from") => {
             // one session's text to another: the host writes the header and decides inline or file; no generation, no request id to keep

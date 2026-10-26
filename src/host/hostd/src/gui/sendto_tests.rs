@@ -123,10 +123,100 @@ fn the_menu_offers_a_send_only_with_another_running_session_and_something_to_sen
     assert_eq!(entry(&app).unwrap().1, Some("needs two sessions"));
     app.session.clear();
     assert_eq!(entry(&app).unwrap().1, Some("no session is open"));
-    let hand = app.menu_entries(1).into_iter().find(|e| e.label == "Hand over conversation...").unwrap();
-    assert_eq!((hand.key, hand.reason), ("", Some("not available yet")));
+}
+
+#[test]
+fn the_hand_over_entry_is_offered_for_a_claude_session_with_another_running_one_whatever_the_box_holds_and_says_why_not_otherwise() {
+    let entry = |app: &App| app.menu_entries(1).into_iter().find(|e| e.label == "Hand over conversation...").map(|e| (e.key, e.reason));
+    let mut app = three();
+    app.ed.clear(); // the conversation is the source: no draft and no selection are needed
+    assert_eq!(entry(&app), Some(("", None)));
+    app.panel_open(Step::Keys);
+    assert_eq!(entry(&app).unwrap().1, Some("close the open panel first"));
+    app.panel_close();
+    app.ui.rows[1].state = "disconnected".into();
+    assert_eq!(entry(&app).unwrap().1, Some("no other session is running"));
+    app.ui.rows[1].state = "running".into();
+    app.ui.rows[0].provider = "codex".into();
+    assert_eq!(entry(&app).unwrap().1, Some("only a Claude session has a record to hand over"));
     app.run_cmd(Cmd::HandOver);
-    assert!(app.ui.panel.is_none(), "a dimmed entry opens nothing");
+    assert!(app.ui.panel.is_none() && app.ui.flash.as_deref() == Some("Hand over conversation: only a Claude session has a record to hand over"), "a dimmed entry opens nothing");
+    app.ui.rows[0].provider = "claude".into();
+    app.ui.rows.truncate(1);
+    app.ui.numbered.truncate(1);
+    assert_eq!(entry(&app).unwrap().1, Some("needs two sessions"));
+    app.session.clear();
+    assert_eq!(entry(&app).unwrap().1, Some("no session is open"));
+}
+
+#[test]
+fn the_hand_over_panel_has_the_conversation_chosen_says_how_it_goes_and_what_it_may_hold_and_the_other_sources_stay_there() {
+    let mut app = three();
+    app.run_cmd(Cmd::HandOver);
+    assert_eq!((step(&app), outgoing(&app).source), (Some(Step::Send), Source::Conversation));
+    let body = lines(&app);
+    let whole = &body[at(&body, "Whole conversation")];
+    assert!(whole.contains("[x]") && whole.contains(" C ") && whole.contains("the host reads the program's record"), "{whole}");
+    assert!(body[at(&body, "Draft text")].contains("[ ]") && body[at(&body, "Selected lines")].contains("[ ]"), "{body:?}");
+    let delivery = at(&body, "Delivery");
+    assert!(body[delivery].contains("as a file. The host reads the program's record when you press Enter. Nothing is cut up to 32 MiB."), "{body:?}");
+    assert!(body[delivery + 1].contains("may hold what you or a tool typed") && body[delivery + 2].contains("keys, passwords, other people's data"), "{body:?}");
+    let go = |app: &App| lines(app).into_iter().find(|l| l.starts_with("Enter  ")).unwrap();
+    assert_eq!(go(&app), "Enter  Hand over (pick a session first)");
+    app.send_key('2');
+    assert_eq!(go(&app), "Enter  Hand over to 'docs'");
+    assert!(lines(&app).iter().any(|l| l.contains("Saved in the handoff folder of 'docs'")), "{:?}", lines(&app));
+    app.send_key('d');
+    let body = lines(&app);
+    assert!(!body.iter().any(|l| l.contains("may hold what you or a tool typed")) && go(&app) == "Enter  Send to 'docs'", "{body:?}");
+    app.send_key('c');
+    assert_eq!(outgoing(&app).source, Source::Conversation);
+    let mut by_click = three();
+    by_click.run_cmd(Cmd::HandOver);
+    by_click.send_key('l');
+    let body = lines(&by_click);
+    assert!(by_click.send_click(at(&body, "Whole conversation")) && outgoing(&by_click).source == Source::Conversation, "a click on the line does what C does");
+    // the chord from a session that is not Claude: the line says so and the source cannot be chosen
+    let mut codex = three();
+    codex.ui.rows[0].provider = "codex".into();
+    codex.send_ask();
+    assert!(lines(&codex)[at(&lines(&codex), "Whole conversation")].contains("only a Claude session has a record"), "{:?}", lines(&codex));
+    codex.send_key('c');
+    assert!(outgoing(&codex).source == Source::Draft && notice(&codex).starts_with("Only a Claude session has a record"), "{}", notice(&codex));
+}
+
+#[test]
+fn a_conversation_the_host_hands_over_is_asked_for_without_text_leaves_the_draft_and_a_refusal_keeps_the_panel_and_points_to_selected_lines() {
+    let dir = Scratch::new("sendto");
+    let done = json!({"ok": 1, "to": "session-s1", "request_id": "x-2", "kind": "conversation", "delivery": "file", "size": 123_456, "receiver": "idle", "hops": 0});
+    let (path, host) = fake_host(&dir, vec![done]);
+    let mut app = two();
+    app.socket = path;
+    app.run_cmd(Cmd::HandOver);
+    app.send_go();
+    assert_eq!(host.join().unwrap(), [json!({"op": "transfer.send", "from": "session-s0", "to": "session-s1", "kind": "conversation"})], "no text, and the open session is the one whose conversation it is");
+    assert!(app.ui.panel.is_none() && app.ed.text() == DRAFT, "the draft was not what was handed over");
+    assert_eq!(app.ui.flash.as_deref(), Some("Handed over the conversation to 'docs' (as a file, 120.6 KiB); it was idle."));
+    for (error, said) in [
+        ("record_not_found", "the host did not find the program's record of this session; select the lines you want and send them with Ctrl+Shift+S"),
+        ("record_ambiguous", "more than one record has the id of this session; select the lines you want and send them with Ctrl+Shift+S"),
+        ("record_format", "the record is not in the layout this Lico reads (Claude Code 2.1.310); select the lines you want and send them with Ctrl+Shift+S"),
+        ("too_large", "the conversation is over 32 MiB; select the lines you want and send them with Ctrl+Shift+S"),
+        ("no_conversation_yet", "this session has no conversation yet: its program has not answered once"),
+        ("bad_request", "the host cannot read the record of this session"),
+        ("session_disconnected", "that session is closed (Ctrl+R in it brings it back)"),
+    ] {
+        let (path, host) = fake_host(&dir, vec![json!({"ok": 0, "error": error})]);
+        let mut app = two();
+        app.socket = path;
+        app.run_cmd(Cmd::HandOver);
+        app.send_go();
+        host.join().unwrap();
+        assert!(step(&app) == Some(Step::Send) && notice(&app) == format!("Not handed over: {said}. Nothing was sent."), "{error}: {}", notice(&app));
+        assert_eq!((outgoing(&app).to.as_deref(), outgoing(&app).source), (Some("session-s1"), Source::Conversation));
+        app.panel_close();
+        assert_eq!(app.ed.text(), DRAFT, "{error}");
+    }
 }
 
 #[test]
@@ -310,7 +400,10 @@ fn the_header_of_another_sessions_text_is_dimmed_with_the_name_lit_and_only_when
     assert_eq!(name(">> [from session 'My Docs 한글' (sabcdef) | 09:05 | selection | 3.1 KiB, 24 lines]").as_deref(), Some("My Docs 한글"));
     assert_eq!(name(">> [from session 'x' (s012345) | 23:59 | selection | 1.0 MiB, 1 line]").as_deref(), Some("x"));
     assert_eq!(header_look(">> [from the person | 14:02 | message | 5 B]"), Some(Look::Person));
+    assert_eq!(name(">> [from session 'api-server' (s012345) | 14:02 | conversation | 120.6 KiB, 2400 lines]").as_deref(), Some("api-server"), "the notice of a whole conversation has the look too");
     for not in [
+        ">> [from session 'api-server' (s012345) | 14:02 | conversation | 120.6 KiB, 2400 lines] x",
+        ">> [from session 'api-server' (s012345) | 14:02 | Conversation | 5 B]",
         "[agent] >> [from session 'api-server' (s012345) | 14:02 | message | 27 B]",  // how the host records an agent line that imitates it
         "[from session 'api-server' (s012345) | 14:02 | message | 27 B]",             // no `>> `: not a record of text that was sent in
         " >> [from session 'api-server' (s012345) | 14:02 | message | 27 B]",
@@ -368,4 +461,9 @@ fn the_look_changes_colours_only_and_keeps_the_font_of_every_character_of_a_name
     }
     let person = tint(AttrsList::new(&Attrs::new().family(Family::Monospace)), ">> [from the person | 14:02 | message | 5 B]");
     assert_eq!((person.get_span(4).color_opt, person.spans().len()), (Some(DIM), 0));
+}
+
+#[test]
+fn the_window_waits_for_a_record_to_be_read_longer_than_for_an_ordinary_reply() {
+    assert!(RECORD_WAIT > 3 * super::super::CALL_SECONDS, "a record of up to 1 GiB is read before the host answers: the window must not give up at the time of an ordinary call");
 }

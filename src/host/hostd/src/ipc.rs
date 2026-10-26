@@ -109,7 +109,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "subscribe" => &["session", "after"],
         "session.create" => &["kind"],
         "input" => &["session", "generation", "request_id", "text"],
-        "transfer.send" => &["to", "kind", "text"],
+        "transfer.send" => &["to", "kind"], // and `text`, or for a conversation `from` instead: see `transfer_shape`
         "input.status" => &["session", "request_id"],
         "approval.answer" => &["session", "generation", "approval_id", "answer"],
         "approval.text" => &["session", "generation", "approval_id"],
@@ -149,7 +149,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("input" | "input.status", "request_id") => valid_request_id(value),
             ("input" | "transfer.send", "text") => valid_text(value),
             ("transfer.send", "from" | "to") => valid_str(value, 64),
-            ("transfer.send", "kind") => matches!(value.as_str(), Some("text" | "lines")),
+            ("transfer.send", "kind") => matches!(value.as_str(), Some("text" | "lines" | "conversation")),
             ("approval.answer" | "approval.text", "approval_id") => in_range(value, 1, i64::MAX),
             ("approval.text", "offset") => in_range(value, 0, i64::MAX),
             ("approval.text", "limit") => in_range(value, 4, crate::pending::PAGE as i64),
@@ -163,7 +163,16 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             return false;
         }
     }
-    required.iter().all(|key| request.contains_key(*key))
+    required.iter().all(|key| request.contains_key(*key)) && (op != "transfer.send" || transfer_shape(request))
+}
+
+/// A conversation is the whole conversation of the session `from`: it has no text. Text and lines are text, and `from` is the person's choice.
+fn transfer_shape(request: &Map<String, Value>) -> bool {
+    if request.get("kind").and_then(Value::as_str) == Some("conversation") {
+        request.contains_key("from") && !request.contains_key("text")
+    } else {
+        request.contains_key("text")
+    }
 }
 
 fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
@@ -219,6 +228,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "account.credential" => core::account_credential(shared, text(&request, "account"), text(&request, "credential_ref")),
         "snapshot" => core::snapshot(shared, &session, generation),
         "input" => core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person),
+        "transfer.send" if text(&request, "kind") == "conversation" => crate::transfer::hand_over(shared, text(&request, "from"), text(&request, "to")),
         "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(&request, "to"), text(&request, "kind"), text(&request, "text"), crate::transfer::By::Person),
         "input.status" => core::input_status(shared, &session, text(&request, "request_id")),
         "approval.text" => crate::pending::text_page(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), int(&request, "offset").unwrap_or(0) as usize, int(&request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),

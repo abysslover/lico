@@ -5,9 +5,13 @@
 //! A line of the text that begins like a header gets a space (`leads::defuse`), so that no line but the host's own does, in what the program receives and in the history.
 //! The reply says how the text was delivered and what the receiver was doing, never where the file is. A chain of sessions that each forward the one before is cut after
 //! four steps unless a person is in it (`MAX_HOPS`). Each transfer is one line in the host's log: who, whom, how much, how; never the text.
+//!
+//! The whole conversation of a session (`hand_over`, S05) is a transfer too: the host reads the program's own record (`provider_record`), and the text is always a file in the receiver's folder.
+//! Only a person asks for it, and the session whose conversation it is must be named: nobody can have it read for them by saying so in a tool call.
 
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::codex::{clip, sanitize};
 use crate::core::{self, Reply, Shared};
@@ -117,10 +121,10 @@ fn clip_chars(text: &str, count: usize) -> &str {
 }
 
 fn kind_word(kind: &str) -> &'static str {
-    if kind == "lines" {
-        "selection"
-    } else {
-        "message"
+    match kind {
+        "lines" => "selection",
+        "conversation" => "conversation",
+        _ => "message",
     }
 }
 
@@ -216,9 +220,30 @@ fn party(shared: &Shared, id: &str) -> Result<Party, &'static str> {
     Ok(Party { id: s.id.clone(), label: label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), hops: s.incoming_hops })
 }
 
+/// The receiver as a transfer needs it: what it is doing, how it is called and its provider; refused when it cannot take an input.
+fn receiver_of(shared: &Shared, to: &str) -> Result<(&'static str, String, &'static str), &'static str> {
+    let found = core::find(shared, to).ok_or("unknown_session")?;
+    let s = found.lock().unwrap();
+    match s.state {
+        _ if s.purged => return Err("unknown_session"),
+        State::Disconnected => return Err("session_disconnected"),
+        State::Exited => return Err("session_exited"),
+        State::Running => {}
+    }
+    Ok((receiver_state(&s), label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.provider))
+}
+
 /// Send `text` from `from` (none: a person) to session `to`. `kind` is `text` or `lines`. Nothing is queued, stored or logged for a transfer that is refused.
 pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str, by: By) -> Reply {
-    if !matches!(kind, "text" | "lines") || text.is_empty() || from == Some(to) || (by == By::Session && from.is_none()) {
+    if !matches!(kind, "text" | "lines") {
+        return Err("bad_request"); // a conversation is not something a text can be called: only `hand_over` makes one
+    }
+    deliver(shared, from, to, kind, text, by, false)
+}
+
+/// `whole`: the text is a whole conversation, which is a file whatever its size.
+fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str, by: By, whole: bool) -> Reply {
+    if text.is_empty() || from == Some(to) || (by == By::Session && from.is_none()) {
         return Err("bad_request");
     }
     if text.len() > MAX_BODY {
@@ -232,23 +257,13 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
     if hops > MAX_HOPS {
         return Err("chain_depth");
     }
-    let (receiver, receiver_label, provider) = {
-        let found = core::find(shared, to).ok_or("unknown_session")?;
-        let s = found.lock().unwrap();
-        match s.state {
-            _ if s.purged => return Err("unknown_session"),
-            State::Disconnected => return Err("session_disconnected"),
-            State::Exited => return Err("session_exited"),
-            State::Running => {}
-        }
-        (receiver_state(&s), label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.provider)
-    };
+    let (receiver, receiver_label, provider) = receiver_of(shared, to)?;
     let now = crate::session::now_secs() as i64;
     let at = civil(now, utc_offset(now));
     let hhmm = format!("{:02}:{:02}", at.hour, at.minute);
     let who = sender.as_ref().map(|s| (s.label.as_str(), s.id.as_str()));
     let (body, plain) = (defused(text), size_text(text.len()));
-    let stored = if text.len() <= INLINE_MAX {
+    let stored = if text.len() <= INLINE_MAX && !whole {
         None
     } else {
         let size = format!("{plain}, {}", lines_word(line_count(text)));
@@ -278,6 +293,59 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
     let delivery = if stored.is_some() { "file" } else { "inline" };
     eprintln!("{}", log_line(from, to, kind, text.len(), delivery, hops));
     Ok(obj(json!({"to": to, "request_id": request_id, "kind": kind, "delivery": delivery, "size": text.len(), "receiver": receiver, "hops": hops})))
+}
+
+// ---------------------------------------------------------------------------------- the whole conversation
+const READERS: usize = 2; // records read at once: each read is one stream of up to 1 GiB and a text of up to 32 MiB in memory
+static READING: AtomicUsize = AtomicUsize::new(0);
+
+/// A place among the `most` reads that may run at once, given back when it is dropped.
+pub(crate) struct Reading<'a>(&'a AtomicUsize);
+
+pub(crate) fn take(gate: &AtomicUsize, most: usize) -> Option<Reading<'_>> {
+    gate.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < most).then_some(n + 1)).ok().map(|_| Reading(gate))
+}
+
+impl Drop for Reading<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Where the record of session `id` is to be looked for: the home the host gave its program and the id the program told the host. A session of another provider has no record of this layout;
+/// one whose program has not spoken has no id yet. Any state will do: the conversation of a closed session is still its own.
+fn recorded(shared: &Shared, id: &str) -> Result<(PathBuf, String), &'static str> {
+    let (account, thread) = {
+        let found = core::find(shared, id).ok_or("unknown_session")?;
+        let s = found.lock().unwrap();
+        if s.purged {
+            return Err("unknown_session");
+        }
+        if s.provider != "claude" {
+            return Err("bad_request");
+        }
+        (s.account.clone(), s.codex_thread.clone().ok_or("no_conversation_yet")?)
+    };
+    Ok((crate::provider_record::home_of(shared, account.as_deref()).ok_or("busy")?, thread))
+}
+
+/// The whole conversation of session `from`, read from its program's record and handed to session `to` as a file in `to`'s own folder. The receiver is looked at before the record is opened;
+/// no lock is held while it is read.
+pub fn hand_over(shared: &Shared, from: &str, to: &str) -> Reply {
+    hand_over_gated(shared, from, to, &READING)
+}
+
+/// `hand_over` with the gate of reads given, so that a test can fill it without every other test seeing it full.
+pub(crate) fn hand_over_gated(shared: &Shared, from: &str, to: &str, gate: &AtomicUsize) -> Reply {
+    if from == to {
+        return Err("bad_request");
+    }
+    let (home, id) = recorded(shared, from)?;
+    receiver_of(shared, to)?;
+    let reading = take(gate, READERS).ok_or("busy")?;
+    let text = crate::provider_record::read(&home, &id, MAX_BODY).map_err(crate::provider_record::Fault::code)?;
+    drop(reading);
+    deliver(shared, Some(from), to, "conversation", &text, By::Person, true)
 }
 
 #[cfg(test)]
@@ -504,9 +572,10 @@ pub(crate) mod tests {
         let w = world(&[ONE, TWO]);
         let gone = "s0000000000000000";
         let (big, huge) = (long(INLINE_MAX * 3), "x".repeat(MAX_BODY + 1));
-        let cases: [(Option<&str>, &str, &str, &str, &str); 7] = [
+        let cases: [(Option<&str>, &str, &str, &str, &str); 8] = [
             (Some(ONE), ONE, "text", "x", "bad_request"),
             (None, TWO, "other", "x", "bad_request"),
+            (None, TWO, "conversation", "x", "bad_request"),
             (None, TWO, "text", "", "bad_request"),
             (Some(gone), TWO, "text", "x", "unknown_session"),
             (None, gone, "text", "x", "unknown_session"),

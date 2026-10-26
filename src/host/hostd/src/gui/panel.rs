@@ -50,9 +50,12 @@ fn auto_open_off() -> bool {
     std::env::var_os("LICO_NO_AUTO_OPEN").is_some()
 }
 
+/// How long the window waits for an ordinary reply of the host.
+const CALL_SECONDS: u64 = 8;
+
 impl App {
     fn host_call(&self, request: Value) -> Value {
-        self.host_call_within(request, 8)
+        self.host_call_within(request, CALL_SECONDS)
     }
 
     /// One request on a connection of its own, waiting at most `seconds` for the reply (the window stands still meanwhile).
