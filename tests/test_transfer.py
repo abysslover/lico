@@ -17,8 +17,8 @@ from lico_protocol import v1
 from tests.test_claude_adapter import argv_of, claude_host, new_claude, records, sent_users, status_of, user_text
 from tests.test_codex_adapter import wait_for
 
-HEADER = re.compile(r"\[from session '([^']*)' \((s[0-9a-f]{6})\) \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines)?\]")
-PERSON = re.compile(r"\[from the person \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines)?\]")
+HEADER = re.compile(r"\[from session '([^']*)' \((s[0-9a-f]{6})\) \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines?)?\]")
+PERSON = re.compile(r"\[from the person \| (\d\d):(\d\d) \| (message|selection) \| (\d+ B|\d+\.\d (?:KiB|MiB))(?:, (\d+) lines?)?\]")
 SAVED = "Long content, saved as a file. Read it before you answer:"
 MODES = lambda path: oct(Path(path).stat().st_mode & 0o777)
 
@@ -149,7 +149,7 @@ def test_more_than_4096_bytes_go_to_a_file_in_the_receivers_own_folder_and_the_r
     assert path.is_absolute() and path.parent.parent == world.inbox(receiver) and re.fullmatch(r"\d{6}_" + sender[:7] + r"_selection(-\d+)?\.md", path.name), path
     assert notice[3] == "First lines:" and notice[4:7] == ["  " + l for l in text.split("\n")[:3]]
     assert notice[7] == f"{kib}, 120 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time."
-    assert notice[8] == "The file can be removed after 30 days." and len(notice) == 9
+    assert notice[8] == "The file can be removed after 30 days, or sooner when the folder is full." and len(notice) == 9
     stored = path.read_bytes()
     head, _, body = stored.decode().partition("\n\n")
     assert body.encode() == text.encode(), "the file holds the text exactly"

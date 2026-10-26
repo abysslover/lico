@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.3.7
+> Version: 1.3.8
 > Branch: `phase/M02-P03-agent-to-agent` (on the M02-P02 tip b3b8edb, report 0.3.0, which carries the second reviewer's fix round; it stood on 8a0f0e9 until 2026-10-26, see "How this branch follows P02")
 > Approval: work on phases M02-P02 to M02-P07 is authorized by the owner's answer of 2026-10-26; Deviations 1 to 5 are marked accepted below. G3 and G4 are pending.
 
-**Version 1.3.7** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1), and 1.3.5 adds the policy sentence of the section "How this branch follows P02", 1.3.6 records the V4 gate as closed, the lead's two small items on S02, the measurement S03b needs before it is committed, and the known-and-left lines for the report, and 1.3.7 records what S03a was built as.
+**Version 1.3.8** (major.minor.patch, the form the owner asked for on 2026-10-26; a small edit raises the patch number). Earlier labels: draft v1 is 1.1.0, v2 is 1.2.0, v3 is 1.3.0, v3.1 is 1.3.1, v3.2 is 1.3.2, 1.3.3 adds the section "What the P02 fix round teaches this phase", 1.3.4 adds "What the second reviewer of P02 teaches this phase" (the V4 gate before S03a and what S02 inherits from V1), and 1.3.5 adds the policy sentence of the section "How this branch follows P02", 1.3.6 records the V4 gate as closed, the lead's two small items on S02, the measurement S03b needs before it is committed, and the known-and-left lines for the report, 1.3.7 records what S03a was built as, and 1.3.8 the lead's three small notes on it.
 
 This note moved here on 2026-10-26 from the working draft (kept outside git), content unchanged at 1.3.2 when it moved. Requirements are SC-01..10, AC-01..07 and SF-01..08 (planning set 1.4.0) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from step S01 or from this repository; everything else is a design target.
 
@@ -222,4 +222,9 @@ Screen capture and clipboard (P04), computer use and the real screen (P05), sear
 - **Reply.** `{to, request_id, kind, delivery, size, receiver, hops}`; the receiver's state is read before the delivery; never a path. The host logs one line per transfer on its error stream (ids, kind, size, delivery, hops), never the text.
 - **Tests.** 10 in `tests/test_transfer.py` (1.5 s) and 21 unit tests (`transfer`, `handoff`, `leads`, `echo`). One older test (`test_session_actions_window`) looked for the scratch workspace by the session id anywhere under the run folder and now also found the inbox; it names the `workspaces` folder.
 - No step, test count (beyond the above) or stop line changed.
+
+## Changes since 1.3.7 (1.3.8, the lead's notes (a) to (c) on S03a)
+- **The notice** names the Read tool only for a Claude receiver (the other providers get "read it in parts, 400 lines at a time"), and says the file can be removed "after 30 days, or sooner when the folder is full" (the 256 MiB cap).
+- **A store that fails** is logged on the host's error stream with the kind of the io error (`lico-host: transfer failed to=<id> cause=<kind>`), never the path or the text; the reply stays `busy`.
+- **"1 line"** for a one-line text, in the header, the stored file and the notice. `chain_depth` is covered by unit tests only until S03b makes the `By::Session` path reachable (note (f); the P03 report says "not reachable on the wire before S03b"). No step, test count or stop line changed.
 

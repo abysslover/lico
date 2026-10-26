@@ -140,6 +140,10 @@ fn line_count(text: &str) -> usize {
     text.split_inclusive('\n').count()
 }
 
+fn lines_word(count: usize) -> String {
+    format!("{count} line{}", if count == 1 { "" } else { "s" })
+}
+
 /// The first lines of the text, cleaned, indented, within 400 bytes in all (a line that begins like a header is defused after the indent, which it does not hide behind).
 fn first_lines(text: &str) -> Vec<String> {
     let mut left = FIRST_BYTES;
@@ -155,13 +159,18 @@ fn first_lines(text: &str) -> Vec<String> {
     out
 }
 
-/// What the receiver is told when the text is a file.
-pub fn notice(header: &str, path: &Path, text: &str, size: &str) -> String {
+/// What the receiver is told when the text is a file. The sentence about the Read tool is for a Claude receiver, whose program has it; any other gets the advice without the name.
+pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str) -> String {
     let mut out = format!("{header}\nLong content, saved as a file. Read it before you answer:\n{}\nFirst lines:\n", path.display());
     for line in first_lines(text) {
         out += &format!("{line}\n");
     }
-    out + &format!("{size}, {} lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time.\nThe file can be removed after {} days.", line_count(text), crate::handoff::KEEP_DAYS)
+    let how = if provider == "claude" {
+        "the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time"
+    } else {
+        "read it in parts, 400 lines at a time"
+    };
+    out + &format!("{size}, {}; {how}.\nThe file can be removed after {} days, or sooner when the folder is full.", lines_word(line_count(text)), crate::handoff::KEEP_DAYS)
 }
 
 fn receiver_state(s: &Session) -> &'static str {
@@ -172,6 +181,11 @@ fn receiver_state(s: &Session) -> &'static str {
     } else {
         "idle"
     }
+}
+
+/// The one line the host logs for a transfer that failed because a file could not be stored: the kind of the error, never the path or the text.
+pub fn failure_line(to: &str, cause: std::io::ErrorKind) -> String {
+    format!("lico-host: transfer failed to={to} cause={cause:?}")
 }
 
 /// The one line the host logs for a transfer.
@@ -211,7 +225,7 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
     if hops > MAX_HOPS {
         return Err("chain_depth");
     }
-    let (receiver, receiver_label) = {
+    let (receiver, receiver_label, provider) = {
         let found = core::find(shared, to).ok_or("unknown_session")?;
         let s = found.lock().unwrap();
         match s.state {
@@ -220,7 +234,7 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
             State::Exited => return Err("session_exited"),
             State::Running => {}
         }
-        (receiver_state(&s), label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()))
+        (receiver_state(&s), label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.provider)
     };
     let now = crate::session::now_secs() as i64;
     let at = civil(now, utc_offset(now));
@@ -230,14 +244,17 @@ pub fn send(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &st
     let stored = if text.len() <= INLINE_MAX {
         None
     } else {
-        let size = format!("{plain}, {} lines", line_count(text));
+        let size = format!("{plain}, {}", lines_word(line_count(text)));
         let (head, from_text) = (header(who, &hhmm, kind, &size), who.map_or("the person".to_string(), |(label, id)| format!("session '{label}' ({})", id7(id))));
         let when = format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", at.year, at.month, at.day, at.hour, at.minute, at.second);
         let content = format!("# Handoff: {0}\nfrom: {from_text}\nto: session '{receiver_label}' ({1})\nwhen: {when}\nkind: {0}\nsize: {size}\n\n{body}", kind_word(kind), id7(to));
         let (date, time) = (format!("{:04}{:02}{:02}", at.year, at.month, at.day), format!("{:02}{:02}{:02}", at.hour, at.minute, at.second));
-        let path = crate::handoff::store(&shared.cfg.handoff_dir, to, &date, &time, who.map_or("person", |(_, id)| id7(id)), kind_word(kind), content.as_bytes()).map_err(|_| "busy")?;
+        let path = crate::handoff::store(&shared.cfg.handoff_dir, to, &date, &time, who.map_or("person", |(_, id)| id7(id)), kind_word(kind), content.as_bytes()).map_err(|e| {
+            eprintln!("{}", failure_line(to, e.kind()));
+            "busy"
+        })?;
         crate::handoff::sweep(&shared.cfg.handoff_dir, now as u64);
-        Some((notice(&head, &path, text, &plain), path))
+        Some((notice(&head, &path, text, &plain, provider), path))
     };
     let delivered = match &stored {
         Some((notice, _)) => notice.clone(),
@@ -331,20 +348,26 @@ mod tests {
     }
 
     #[test]
-    fn the_notice_names_the_file_shows_the_start_and_says_how_to_read_it() {
+    fn the_notice_names_the_file_shows_the_start_and_says_how_to_read_it_and_names_the_read_tool_for_a_claude_receiver_only() {
         let text = (1..=1000).map(|n| format!("line {n}\n")).collect::<String>();
         let head = header(Some(("w", ONE)), "10:00", "text", "8.8 KiB, 1000 lines");
-        let got = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB");
-        assert_eq!(
-            got,
-            format!(
-                "{head}\nLong content, saved as a file. Read it before you answer:\n/inbox/f.md\nFirst lines:\n  line 1\n  line 2\n  line 3\n\
-                 8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time.\n\
-                 The file can be removed after 30 days."
-            )
-        );
+        let top = format!("{head}\nLong content, saved as a file. Read it before you answer:\n/inbox/f.md\nFirst lines:\n  line 1\n  line 2\n  line 3\n");
+        let end = "The file can be removed after 30 days, or sooner when the folder is full.";
+        let claude = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude");
+        assert_eq!(claude, format!("{top}8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time.\n{end}"));
+        for other in ["codex", ""] {
+            let got = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", other);
+            assert_eq!(got, format!("{top}8.8 KiB, 1000 lines; read it in parts, 400 lines at a time.\n{end}"), "{other}");
+        }
         assert_eq!(line_count("a\nb"), 2);
         assert_eq!(line_count("a\nb\n"), 2, "a final newline does not make another line");
+        assert_eq!((lines_word(1).as_str(), lines_word(2).as_str(), lines_word(120).as_str()), ("1 line", "2 lines", "120 lines"));
+    }
+
+    #[test]
+    fn a_store_that_fails_is_logged_with_the_kind_of_the_error_and_neither_the_path_nor_the_text() {
+        assert_eq!(failure_line(TWO, std::io::ErrorKind::StorageFull), format!("lico-host: transfer failed to={TWO} cause=StorageFull"));
+        assert_eq!(failure_line(TWO, std::io::ErrorKind::PermissionDenied), format!("lico-host: transfer failed to={TWO} cause=PermissionDenied"));
     }
 
     #[test]
@@ -436,11 +459,11 @@ mod tests {
         let notice = w.delivered(TWO).unwrap();
         let files = w.files(TWO);
         assert_eq!(files.len(), 1);
-        assert!(notice.lines().next().unwrap().ends_with(" | selection | 4.0 KiB, 1 lines]"), "{notice}");
+        assert!(notice.lines().next().unwrap().ends_with(" | selection | 4.0 KiB, 1 line]"), "{notice}");
         assert!(notice.contains(files[0].to_str().unwrap()), "the input names the file");
         let stored = std::fs::read_to_string(&files[0]).unwrap();
         assert!(stored.starts_with("# Handoff: selection\nfrom: session 'writer' (s012345)\nto: session 's111111' (s111111)\nwhen: "), "{stored}");
-        assert!(stored.ends_with(&format!("kind: selection\nsize: 4.0 KiB, 1 lines\n\n{}", "x".repeat(INLINE_MAX + 1))), "{stored}");
+        assert!(stored.ends_with(&format!("kind: selection\nsize: 4.0 KiB, 1 line\n\n{}", "x".repeat(INLINE_MAX + 1))), "{stored}");
     }
 
     #[test]
@@ -494,6 +517,15 @@ mod tests {
         assert_eq!(send(&w.shared, Some(ONE), TWO, "text", &big, By::Person), Err("unknown_session"));
         assert!(w.delivered(TWO).is_none() && w.delivered(ONE).is_none());
         assert!(w.files(TWO).is_empty() && w.files(ONE).is_empty());
+    }
+
+    #[test]
+    fn a_text_that_cannot_be_stored_is_refused_busy_and_nothing_is_queued() {
+        let w = world(&[ONE, TWO]);
+        std::fs::write(w.dir.0.join("handoff"), b"a file where the folder should be").unwrap();
+        assert_eq!(send(&w.shared, Some(ONE), TWO, "text", &long(INLINE_MAX * 2), By::Person), Err("busy"));
+        assert!(w.delivered(TWO).is_none());
+        assert_eq!(send(&w.shared, Some(ONE), TWO, "text", "short", By::Person).unwrap()["delivery"], "inline", "an inline text needs no folder");
     }
 
     #[test]
