@@ -169,7 +169,7 @@ impl App {
 
     /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of
     /// them). A card of the host's own is answered only once it has been on screen for the dwell (before that the key is typing: the person was writing
-    /// when the card came up), and S needs the capital. The question of the program keeps the old rule: Y and N at once.
+    /// when the card came up), and S needs the capital and the Shift key held (with Caps Lock on, a sentence in capitals is not an answer). The question of the program keeps the old rule: Y and N at once.
     pub(crate) fn answer_key(&mut self, key: &str) -> bool {
         if self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
             return false;
@@ -181,7 +181,7 @@ impl App {
         match key {
             "y" | "Y" => self.answer_approval(true),
             "n" | "N" => self.answer_approval(false),
-            "S" if ours && !self.makes_card() => self.answer_card(true, true),
+            "S" if ours && !self.makes_card() && self.ui.mods.shift_key() => self.answer_card(true, true), // Caps Lock makes every letter a capital: Shift must be held as well
             "v" | "V" if ours => self.card_open(),
             _ => return false,
         }
@@ -336,7 +336,7 @@ impl App {
         match key {
             'y' | 'Y' => self.answer_id(id, true, false),
             'n' | 'N' => self.answer_id(id, false, false),
-            'S' if !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
+            'S' if self.ui.mods.shift_key() && !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
             _ => {}
         }
     }

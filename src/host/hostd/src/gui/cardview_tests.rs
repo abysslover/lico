@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use winit::keyboard::ModifiersState;
+
 use super::super::sendto::tests::fake_host;
 use super::super::Step;
 use super::*;
@@ -185,6 +187,9 @@ fn y_n_and_s_in_the_view_answer_with_the_text_that_was_read_and_say_what_came_of
         let mut app = with_card();
         app.socket = path;
         app.answer_key("v");
+        if key == 'S' {
+            app.ui.mods = ModifiersState::SHIFT;
+        }
         app.card_key(key);
         assert_eq!(host.join().unwrap(), [read(0), answer(what, keep)], "{key}");
         assert!(app.ui.panel.is_none() && app.ui.rows[0].approvals.is_empty() && app.ui.flash.as_deref() == Some(said), "{key}: {:?}", app.ui.flash);
@@ -197,6 +202,7 @@ fn a_card_answered_from_the_list_without_the_view_is_answered_the_same_way_with_
     let (path, host) = fake_host(&dir, vec![answered("done")]);
     let mut app = with_card();
     app.socket = path;
+    app.ui.mods = ModifiersState::SHIFT;
     assert!(app.answer_key("S"));
     assert_eq!(host.join().unwrap(), [answer("allow", true)]);
     assert!(app.ui.rows[0].approvals.is_empty() && app.ui.flash.as_deref().is_some_and(|f| f.starts_with("Allowed for the session: ")), "{:?}", app.ui.flash);
@@ -313,6 +319,7 @@ fn with_make_card() -> App {
 #[test]
 fn a_request_for_a_session_has_no_yes_for_the_session_in_the_hint_the_view_or_the_keys_and_the_view_shows_what_the_card_says_whole() {
     let mut app = with_make_card();
+    app.ui.mods = ModifiersState::SHIFT; // so that it is the card, not the missing Shift, that refuses
     let hint = app.hint_text(2000, 1.0);
     assert!(hint.starts_with("Y allow  N deny  V read it all   ") && !hint.contains("for the session"), "{hint}");
     assert!(!app.answer_key("s") && !app.answer_key("S") && app.ui.flash.is_none() && app.ui.panel.is_none(), "S is typing here, not an answer");
@@ -326,7 +333,7 @@ fn a_request_for_a_session_has_no_yes_for_the_session_in_the_hint_the_view_or_th
     app.card_key('s');
     app.card_key('S');
     assert_eq!(host.join().unwrap(), [read(0)], "nothing was asked of the host for S");
-    assert!(app.ui.panel.is_some() && app.ui.rows[0].approvals.len() == 1, "the request still waits");
+    assert!(app.ui.panel.as_ref().is_some_and(|p| p.notice.is_empty()) && app.ui.rows[0].approvals.len() == 1, "the request still waits, and a call that could not be made would have said so");
 }
 
 #[test]
@@ -395,6 +402,9 @@ fn a_bare_key_answers_a_card_of_the_host_only_after_the_card_has_been_on_screen_
         let (path, host) = fake_host(&dir, vec![reply]);
         let mut app = fresh_card();
         app.socket = path;
+        if key == "S" {
+            app.ui.mods = ModifiersState::SHIFT; // a capital S is the answer only with Shift held (see the test of Caps Lock)
+        }
         drawn_ms_ago(&mut app, 800);
         assert!(app.card_ready() && app.answer_key(key), "{key} at 800 ms");
         assert_eq!(host.join().unwrap(), [asked], "{key}");
@@ -462,9 +472,41 @@ fn only_a_capital_s_allows_for_the_session_and_a_small_one_is_typing_in_the_list
     assert!(app.answer_key("V"));
     app.card_key('s');
     assert!(app.ui.panel.is_some() && app.ui.rows[0].approvals.len() == 1, "a small s in the view keeps nothing");
+    app.ui.mods = ModifiersState::SHIFT;
     app.card_key('S');
     assert_eq!(host.join().unwrap(), [read(0), answer("allow", true)]);
     assert!(app.ui.rows[0].approvals.is_empty());
+}
+
+#[test]
+fn a_capital_s_that_comes_without_shift_is_typing_and_shift_s_answers_in_the_list_and_in_the_view() {
+    // with Caps Lock on every letter arrives as a capital and Shift is not held: a person writing a sentence in capitals must not answer with the first S
+    let held = [
+        (ModifiersState::empty(), "S", false),
+        (ModifiersState::SHIFT, "S", true),
+        (ModifiersState::SHIFT, "s", false),
+        (ModifiersState::empty(), "s", false),
+        (ModifiersState::empty(), "Y", true), // Y and N stay as they were: a capital Y is an answer whatever is held
+        (ModifiersState::empty(), "N", true),
+    ];
+    // no host answers: a key that was taken as an answer says so ("Not answered ..."), and one that was typing says nothing
+    for (mods, key, answers) in held {
+        let mut app = with_card();
+        app.ui.mods = mods;
+        assert_eq!(app.answer_key(key), answers, "{key} with {mods:?} in the list");
+        assert_eq!(app.ui.flash.as_deref().is_some_and(|f| f.starts_with("Not answered")), answers, "{key} with {mods:?} in the list: {:?}", app.ui.flash);
+        // and in the view, where the card is read first (the host answers that one read and then is gone)
+        let dir = Scratch::new("cardview");
+        let (path, host) = fake_host(&dir, vec![page("first line", 0, None, 10)]);
+        let mut app = with_card();
+        app.socket = path;
+        assert!(app.answer_key("V"));
+        host.join().unwrap();
+        app.ui.mods = mods;
+        app.card_key(key.chars().next().unwrap());
+        let said = app.ui.panel.as_ref().map(|p| p.notice.clone()).unwrap_or_default();
+        assert_eq!(said.starts_with("Not answered"), answers, "{key} with {mods:?} in the view: {said:?}");
+    }
 }
 
 #[test]
