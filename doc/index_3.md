@@ -16,6 +16,8 @@
 | [M01-P07 report](reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Panel text drawn again, no marker square, survives a closed input; menu bar judgement; the owner's look pending |
 | [M02-P01 plan](plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md) | A menu bar and the small shared control set for the hand-drawn window |
 | [M02-P01 report](reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md) | The menu bar and the shared controls; measurements at both scales; the owner's try pending |
+| [M02-P02 plan](plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | Sessions in a folder the person picks, a real input box, a host echo of each input, close/rename/delete, memory per session |
+| [M02-P02 report](reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | What was built, tests and mutations, memory and CPU numbers, folder trust, MI-07, try-it list; the owner's try and inspection pending |
 | [Daily run cost note](plans/202610/20261026/20261026_02_daily_run_cost_note.md) | What one changed line in the big Rust files costs the daily run, three options and a pick; for the owner at the P02 gate |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

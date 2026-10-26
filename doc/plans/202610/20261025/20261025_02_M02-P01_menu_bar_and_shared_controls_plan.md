@@ -1,6 +1,8 @@
 # M02-P01 — A menu bar and the small shared control set (2026-10-25)
 
 > Status: in_progress
+> Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
+> Version: 0.1.0 (first numbered; the note's content is unchanged)
 > Branch: `phase/M02-P01-menu-bar-and-controls` (from the M01-P07 tip)
 > Approval: the owner's decision of 2026-10-25 (UI toolkit option A: keep the hand-drawn client and build a small shared control set; the menu bar comes next). G3 and G4 are pending.
 
