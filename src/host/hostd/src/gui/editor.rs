@@ -783,7 +783,7 @@ impl App {
                 self.ed.give_back(&session, current, &text);
                 if current {
                     let reason = super::jstr(line, "error").unwrap_or("refused");
-                    self.ed.say(format!("Not sent: the host answered {reason}. The text is back in the box."));
+                    self.ed.say(super::panel::sendto::input_refusal(reason));
                 }
                 emit_ime("send_failed", &text);
                 self.dirty = true;

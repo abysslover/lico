@@ -538,3 +538,43 @@ fn every_code_that_failure_words_is_in_the_table_of_the_hand_over() {
         assert!(HAND_OVER_REFUSALS.iter().any(|(c, _)| c == code), "{code} has to say in HAND_OVER_REFUSALS whether the panel may call it 'Nothing was sent.'");
     }
 }
+
+#[test]
+fn a_refused_input_says_in_one_sentence_what_the_host_answered_and_always_that_the_text_is_back_in_the_box() {
+    let table = [
+        ("unknown_session", "does not know that session"),
+        ("session_disconnected", "Ctrl+R"),
+        ("session_exited", "has ended"),
+        ("stale_generation", "the session changed meanwhile; look at it and send again"),
+        ("busy", "could not take it just now"),
+        ("too_large", "too large"),
+        ("bad_request", "does not accept that text"),
+        ("version_unsupported", "restart the window"),
+        ("unknown_op", "restart the window"),
+    ];
+    for (code, contains) in table {
+        let said = input_refusal(code);
+        assert!(said.starts_with("Not sent: ") && said.ends_with(" The text is back in the box.") && said.contains(contains), "{code}: {said}");
+        assert!(!said.contains(code), "{code} is said in words, not as the word: {said}");
+        assert_eq!(said.matches("Not sent").count() + said.matches("back in the box").count(), 2, "{code}: one sentence: {said}");
+    }
+}
+
+#[test]
+fn a_code_the_table_does_not_know_is_shown_as_the_word_the_host_used() {
+    assert_eq!(input_refusal("some_new_code"), "Not sent: the host answered some_new_code. The text is back in the box.");
+}
+
+#[test]
+fn the_window_puts_the_sentence_of_the_table_under_the_box_and_the_text_back_when_the_host_refuses_an_input() {
+    for (code, contains) in [("stale_generation", "the session changed meanwhile"), ("busy", "could not take it just now"), ("some_new_code", "some_new_code")] {
+        let mut app = two();
+        app.session = "session-s0".into();
+        app.pending_inputs.insert("gui-1-1".into(), ("session-s0".into(), "the text".into()));
+        app.ed.clear();
+        assert!(app.on_input_reply(&format!("{{\"ok\":0,\"id\":\"gui-1-1\",\"error\":\"{code}\"}}")));
+        assert_eq!(app.ed.text(), "the text", "{code}");
+        let note = app.ed.dump("session-s0")["note"].as_str().unwrap().to_string();
+        assert!(note.starts_with("Not sent: ") && note.contains(contains) && note.ends_with(" The text is back in the box."), "{code}: {note}");
+    }
+}

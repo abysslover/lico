@@ -88,6 +88,18 @@ pub fn failure_whole(error: &str) -> String {
     }
 }
 
+/// What a refused input of the open session says under the box: one sentence for the code the host answered, and always that the text is back in the box.
+/// These are the codes an `input` can be answered with (`core::input`, the connection's checks of the request and of its size); the words of `failure` are reused.
+pub fn input_refusal(error: &str) -> String {
+    let sentence = match error {
+        "unknown_session" | "session_disconnected" | "session_exited" | "busy" | "too_large" | "bad_request" => failure(error),
+        "stale_generation" => "the session changed meanwhile; look at it and send again".into(),
+        "version_unsupported" | "unknown_op" => "this window and the host do not understand each other (they are not the same build); restart the window".into(),
+        other => format!("the host answered {other}"),
+    };
+    format!("Not sent: {sentence}. The text is back in the box.")
+}
+
 /// How a source is described on its line: its lines (always for the selection, only when there are several for the draft) and its size.
 fn describe(text: &str, lines_always: bool, empty: &str) -> String {
     if text.is_empty() {
