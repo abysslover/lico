@@ -11,7 +11,7 @@ from lico_measure.p02 import HOSTD, ProtoConn as Conn, read_log
 
 from lico_measure.rig import private_dir
 from tests.test_accounts import account, status_of as _unused  # noqa: F401  (account helper)
-from tests.test_codex_adapter import codex_host, texts, wait_for
+from tests.test_codex_adapter import codex_host, sent, texts, wait_for
 
 
 def sessions(conn):
@@ -177,7 +177,7 @@ def test_purge_during_a_resume_leaves_no_process_log_or_workspace():
             time.sleep(0.5)
             assert sid not in sessions(conn) and not list((Path(directory) / "log").glob(f"{sid}.*"))
             assert not (Path(directory) / "workspaces" / sid).exists()
-            assert any('"thread/resume"' in l for l in (Path(directory) / "received.jsonl").read_text().splitlines()), "the resume did start a provider"
+            assert any(m.get("method") == "thread/resume" for m in sent(Path(directory) / "received.jsonl")), "the resume did start a provider"
             time.sleep(0.5)
             alive = []
             for entry in os.listdir("/proc"):

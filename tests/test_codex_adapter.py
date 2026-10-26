@@ -30,11 +30,24 @@ def new_session(host):
     return conn, made["session"], made["generation"]
 
 
+def finished_lines(path):
+    """The lines a simulator has finished writing to a file it is still writing: a long one is half there for a moment and is not yet a line, and the half
+    can end inside a character, so the file is read as bytes and each finished line is decoded alone."""
+    return [line.decode() for line in path.read_bytes().split(b"\n")[:-1]] if path.exists() else []
+
+
 def sent(received):
     """Every message the provider received from the host, parsed."""
-    if not received.exists():
-        return []
-    return [json.loads(line) for line in received.read_text().split("\n")[:-1] if line.strip().startswith("{")]       # only finished lines: a long one is half there for a moment
+    return [json.loads(line) for line in finished_lines(received) if line.strip().startswith("{")]
+
+
+def test_a_file_that_is_being_written_is_read_up_to_its_last_finished_line_even_when_it_ends_inside_a_character(tmp_path):
+    """V5: the last two bytes are the first two of the three bytes of a Hangul syllable, as when a read comes between two writes of a long line."""
+    path = tmp_path / "received.jsonl"
+    path.write_bytes('{"a": "\ud55c"}\nsecond\n'.encode("utf-8") + "\ud55c".encode("utf-8")[:2])
+    assert finished_lines(path) == ['{"a": "\ud55c"}', "second"]
+    assert sent(path) == [{"a": "\ud55c"}]
+    assert finished_lines(tmp_path / "none") == [] and sent(tmp_path / "none") == []
 
 
 def texts(log, sid):

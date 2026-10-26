@@ -11,7 +11,7 @@ from lico_measure.p02 import HOSTD_DIR, ProtoConn as Conn, read_log, start
 from lico_measure.rig import REPO, private_dir
 from lico_protocol.claude_mapping import map_stream
 
-from tests.test_codex_adapter import wait_for
+from tests.test_codex_adapter import finished_lines, wait_for
 from tests.test_credential_store import cred
 
 SIM = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
@@ -28,8 +28,8 @@ def claude_host(directory, env_overrides=None):
 
 
 def lines_of(received):
-    """The lines the provider has finished writing: a long one is half there for a moment, and is not yet a line."""
-    return received.read_text().split("\n")[:-1] if received.exists() else []
+    """The lines the provider has finished writing: a long one is half there for a moment, and is not yet a line (and the half may end inside a character)."""
+    return finished_lines(received)
 
 
 def argv_of(received):
@@ -287,3 +287,11 @@ def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_r
             wait_for(lambda: "echo: after" in records(log, sid))
         finally:
             host.stop()
+
+
+def test_lines_of_a_file_that_is_being_written_stops_at_the_last_finished_line_even_when_it_ends_inside_a_character(tmp_path):
+    """V5: a read between two writes of a long line can end after the first two bytes of a three-byte character (seen in `test_folders` at random)."""
+    path = tmp_path / "claude_received.txt"
+    path.write_bytes('{"type": "user", "text": "한"}\n'.encode("utf-8") + '{"type": "user", "text": "한'.encode("utf-8")[:-1])
+    assert lines_of(path) == ['{"type": "user", "text": "한"}'] and sent_users(path) == [{"type": "user", "text": "한"}]
+    assert lines_of(tmp_path / "none") == []
