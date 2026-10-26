@@ -14,7 +14,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 
 from tests.test_claude_adapter import argv_of, claude_host, new_claude, records, status_of
-from tests.test_codex_adapter import wait_for
+from tests.test_codex_adapter import let_the_old_helper_write, wait_for
 
 VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"]
 
@@ -151,6 +151,7 @@ def test_the_program_is_told_at_every_start_and_resume_that_the_loopback_needs_n
 
 
 def test_the_head_is_judged_before_the_body_in_the_order_host_origin_credential_rate_and_only_then_the_body(world):
+    """Clock-bound on purpose: a refusal is called early when the answer comes in under 3 s although the body deadline is 5 s. On a machine too slow to answer in 3 s this fails, which is the thing it measures."""
     sid, _ = world.session()
     config = world.config(sid)
     port, auth = config["port"], {"Authorization": config["authorization"]}
@@ -186,6 +187,7 @@ def test_a_run_of_wrong_credentials_is_throttled_and_a_right_one_still_gets_thro
 
 
 def test_a_body_that_stops_short_is_given_up_at_the_deadline_of_five_seconds(world):
+    """Clock-bound on purpose: the host gives up a body at its 5 s deadline, so the answer comes after 4 s and before 9 s. The deadline is a constant of the host, not an argument the test can shorten."""
     sid, _ = world.session()
     config = world.config(sid)
     started = time.monotonic()
@@ -305,18 +307,19 @@ def test_a_provider_that_ends_by_itself_takes_its_token_and_its_file_with_it(wor
 
 
 def test_the_reader_of_a_closed_provider_cannot_revoke_or_delete_what_a_resume_made_after_it(world):
-    """F10 for the tool connection: `linger:10` keeps the closed provider's output open for a second, outside its process group, so its reader
-    ends after the resume, as it does when a close is followed at once by a resume. It is wall clock: in a run where the close and the resume
-    take longer than that second the old reader ends first and this test cannot fail."""
+    """F10 for the tool connection: `linger:300:inject` leaves a helper outside the process group that holds the closed provider's output open until the test lets it go,
+    so the old reader ends after the resume, as it does when a close is followed at once by a resume. The order is made by the test and not by a clock: close, resume,
+    then the helper is let go, and the test waits for the old process to be reaped, which its reader does only after it has read the output to its end."""
     sid, generation = world.session()
     first = world.config(sid)
-    assert world.conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:10")["ok"] == 1
-    wait_for(lambda: "echo: linger:10" in records(world.log, sid) and "[turn completed]" in records(world.log, sid))
+    assert world.conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+    wait_for(lambda: "echo: linger:300:inject" in records(world.log, sid) and "[turn completed]" in records(world.log, sid))
+    old = world.pid(sid)
     assert world.conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
     resumed = world.conn.call(op="session.resume", session=sid, generation=generation)                 # at once, no wait
     assert resumed["ok"] == 1, resumed
     second = world.config(sid)
-    time.sleep(1.6)                                                                                  # the helper has ended by now, and the old reader with it
+    let_the_old_helper_write(world.received, old)
     assert "[provider disconnected]" not in records(world.log, sid) and status_of(world.conn, sid)["state"] == "running"
     assert second["path"].exists() and rpc(second, "ping")[0] == 200 and rpc(first, "ping")[0] == 401
 

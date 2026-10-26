@@ -286,6 +286,7 @@ def test_a_chain_of_agents_runs_four_steps_and_stops_at_the_fifth_and_a_person_s
 
 
 def test_the_twenty_first_call_in_a_minute_is_refused_with_the_seconds_to_wait_and_the_refused_ones_count(world):
+    """Clock-bound on purpose: the limit is twenty calls in a minute, so all twenty must be made inside one minute; a run slower than that would see the twenty-first call allowed."""
     caller, generation = world.session(name="busy")
     target, _ = world.session(name="sink")
     other, _ = world.session(name="calm")

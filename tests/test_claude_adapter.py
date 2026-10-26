@@ -267,21 +267,21 @@ def test_runtime_reuse_never_merges_accounts_or_tool_contexts():
 
 
 def test_the_reader_of_a_closed_provider_cannot_tear_down_the_session_that_was_resumed_after_it():
-    """F10: `linger:10` leaves a helper outside the process group that holds the provider's output open for a second, so the
-    closed provider's reader ends after the resume, as it does when a close is followed at once by a resume. It is wall clock: the helper
-    lives a second from the start of the turn, so in a run where the close and the resume take longer than that the old reader ends first
-    and this test cannot fail."""
+    """F10: `linger:300:inject` leaves a helper outside the process group that holds the provider's output open until the test lets it go, so the closed
+    provider's reader ends after the resume, as it does when a close is followed at once by a resume. The order is made by the test and not by a clock: the
+    test waits for the old process to be reaped, which its reader does only after it has read the output to its end."""
     with private_dir() as directory:
         host, log, received = claude_host(directory)
         try:
             conn = Conn(host.socket)
             sid, generation = new_claude(conn)
-            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:10")["ok"] == 1
-            wait_for(lambda: "echo: linger:10" in records(log, sid) and "[turn completed]" in records(log, sid))
+            assert conn.call(op="input", session=sid, generation=generation, request_id="l-1", text="linger:300:inject")["ok"] == 1
+            wait_for(lambda: "echo: linger:300:inject" in records(log, sid) and "[turn completed]" in records(log, sid))
+            old = agent_pid(conn, sid)
             assert conn.call(op="session.close", session=sid, generation=generation)["ok"] == 1
             resumed = conn.call(op="session.resume", session=sid, generation=generation)        # at once, no wait
             assert resumed["ok"] == 1, resumed
-            time.sleep(1.6)                                                                      # the helper has ended by now, and the old reader with it
+            let_the_old_helper_write(received, old)
             assert status_of(conn, sid)["state"] == "running", status_of(conn, sid)["state"]
             assert "[provider disconnected]" not in records(log, sid)
             assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="l-2", text="after")["ok"] == 1
