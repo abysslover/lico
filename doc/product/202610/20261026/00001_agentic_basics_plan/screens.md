@@ -1,6 +1,6 @@
 # Screens: what the window shows
 
-Status: 1.6.0 (1.5.0 plus the sentence on the new-session screen about a folder's own settings written for the chosen provider, SF-09), 1.0.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
+Status: 1.6.1 (1.6.0 plus the SF-10 correction, the only change; 1.6.0 was 1.5.0 plus the sentence on the new-session screen about a folder's own settings written for the chosen provider, SF-09), 1.0.0 approved by the owner at G1 on 2026-10-26. The sketches below are **ASCII sketches of intent**, not final screens. When a phase ends, a capture of the real window is the reference. Labels inside the screens are in English, the language of the window. Shortcuts are proposals. Marks: `*` working · `-` idle · `!` your turn (approval wait) · `>` finished (unread).
 
 Related documents: [planning](planning.md) · [requirements](requirements.md) · [test plan](test_plan.md) · [changes](changes.md).
 

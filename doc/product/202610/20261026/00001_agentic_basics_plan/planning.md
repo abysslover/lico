@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: 1.6.0 (1.5.0 plus the result of the independent P02 review and the state of P01 and P02), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finished on its branch (test cleanup S05 included). P02 is built on its branch (steps S01 to S07 and the phase report); an independent review of it found nine items, one of them a blocker, and the worker found a tenth; they are fixed in one round before the owner's inspection (G3) and merge (G4) of P01 and P02. Numbers in this document are **design targets** unless they are marked *measured*.
+Status: 1.6.1 (1.6.0 plus the SF-10 correction, the only change; 1.6.0 was 1.5.0 plus the result of the independent P02 review and the state of P01 and P02), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 is finished on its branch (test cleanup S05 included). P02 is built on its branch (steps S01 to S07 and the phase report); an independent review of it found nine items, one of them a blocker, and the worker found a tenth; they are fixed in one round before the owner's inspection (G3) and merge (G4) of P01 and P02. Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
