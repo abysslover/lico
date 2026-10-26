@@ -91,7 +91,7 @@ impl App {
     }
 
     fn sync_quiet(&self) {
-        super::QUIET_INPUT.store(self.ui.panel.is_some(), std::sync::atomic::Ordering::Relaxed);
+        super::events::QUIET_INPUT.store(self.ui.panel.is_some(), std::sync::atomic::Ordering::Relaxed);
     }
 
     pub(crate) fn panel_open(&mut self, step: Step) {

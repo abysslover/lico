@@ -187,6 +187,8 @@ class Client:
                "DISPLAY": display, "HOME": str(home), "XDG_CONFIG_HOME": str(home / "config"),
                "XDG_CACHE_HOME": str(home / "cache"), "XDG_DATA_HOME": str(home / "data"),
                "XDG_RUNTIME_DIR": str(home / "run"), "GDK_BACKEND": "x11", "NO_AT_BRIDGE": "1",
+               # the one place a rig asks the window to print the text it is given (the `ime` events); the product window prints none
+               "LICO_GUI_EVENTS": "1",
                **CANDIDATE_ENV.get(name, {}), **(extra_env or {})}
         if DISPLAY_SCALE != 1:
             env["WINIT_X11_SCALE_FACTOR"] = str(DISPLAY_SCALE)

@@ -3,6 +3,7 @@
 
 mod controls;
 mod editor;
+mod events;
 mod fonts;
 mod menu;
 mod panel;
@@ -26,6 +27,8 @@ use winit::dpi::LogicalSize;
 use winit::event::{Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
+
+use events::emit_ime;
 
 const VISIBLE_LINES: usize = 40;
 const LINE_HEX: usize = 88;
@@ -114,17 +117,6 @@ fn clean(text: &str) -> String {
         .filter(|c| !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{2028}' | '\u{2029}' | '\u{200E}' | '\u{200F}' | '\u{061C}'))
         .take(LINE_CHARS)
         .collect()
-}
-
-/// While a panel is open the input line may hold a sign-in code: nothing typed is echoed to standard output then.
-static QUIET_INPUT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-fn emit_ime(kind: &str, text: &str) {
-    if QUIET_INPUT.load(std::sync::atomic::Ordering::Relaxed) {
-        return;
-    }
-    println!("{{\"ev\":\"ime\",\"kind\":\"{}\",\"text\":\"{}\"}}", kind, json_escape(text));
-    let _ = std::io::stdout().flush();
 }
 
 fn jint(s: &str, key: &str) -> Option<i64> {

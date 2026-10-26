@@ -59,7 +59,7 @@ def test_the_single_executable_runs_every_role_alone_in_an_empty_directory():
             client.stdin.write("ui\n")
             client.stdin.flush()
             view = {}
-            while view.get("ev") != "ui":                      # the client also reports input-method events
+            while view.get("ev") != "ui":                      # the window also prints `state` events
                 view = json.loads(client.stdout.readline())
             assert view["rows"] == [] and view["header"] == "select a session"
             socket = Path(env["XDG_RUNTIME_DIR"]) / "lico" / "host.sock"
