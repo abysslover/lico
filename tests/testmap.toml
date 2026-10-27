@@ -203,6 +203,11 @@ tests = ["tests/test_mark_table.py"]
 reason = "the Rust table of the marks, generated: the test reads it by path and compares it with its Python mirror and with the generator"
 
 [[sources]]
+glob = "src/host/hostd/src/marks/openers.rs"
+tests = ["tests/test_mark_table.py"]
+reason = "the Rust table of the opening brackets and quotes, generated: the test reads it by path and compares it with its Python mirror and with the generator"
+
+[[sources]]
 glob = "tests/fixtures/provider_text.json"
 tests = ["tests/test_reference_mapping.py", "tests/test_forged_leads.py"]
 cargo = ["leads::"]

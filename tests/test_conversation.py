@@ -92,9 +92,10 @@ def test_the_whole_conversation_lands_as_one_file_in_the_receivers_own_inbox_und
     stored = files[0].read_text()
     assert stored.startswith("# Handoff: conversation\nfrom: session 'api-server' (" + sender[:7] + ")\nto: session ")
     body = stored.partition("\n\n")[2]
-    assert reply["size"] == len(body.encode()) - 1, "the size is the text's own: the one space of the defused header is the file's"
+    assert reply["size"] == len(body.encode()) - 3, "the size is the text's own: the one space of each defused line is the file's (the forged header, the tool_use note and the tool_result note)"
     assert body.startswith("Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.310).\n")
     assert "\n## user | 2026-10-27 04:12:03 UTC\n  how many files?\n" in body and "[tool_use Bash]" in body and "    command: ls | wc -l" in body and "\n    12\n" in body
+    assert "\n   [tool_use Bash]\n" in body and "\n   [tool_result]\n" in body, "the record's own notes begin with a bracket, so they carry the one space of the defusing (the cost of the rule)"
     assert "\x1b" not in stored and "\u202e" not in stored and "Hidden characters removed from the text: 10." in body       # the same cleaner as an agent's text; the count is of characters, the two escape sequences (5 and 4) and the reversal mark among them
     left_edge = [line for line in stored.splitlines() if line.startswith("[from ")]
     assert left_edge == [], left_edge                                                                                # no line of the conversation passes for the host's own header
