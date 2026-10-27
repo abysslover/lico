@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: 1.6.1 (1.6.0 plus the SF-10 correction, the only change; 1.6.0 was 1.5.0 plus the result of the independent P02 review: SF-09 also covers Codex, SF-10 is new, SF-08, SC-10 and IN-08 carry one clause each), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: 1.6.2 (1.6.1 plus no change in this document, the set moved to 1.6.2 for the owner's rule of 2026-10-27 recorded in the planning document and the changes; 1.6.1 was 1.6.0 plus the SF-10 correction; 1.6.0 was 1.5.0 plus the result of the independent P02 review: SF-09 also covers Codex, SF-10 is new, SF-08, SC-10 and IN-08 carry one clause each), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 

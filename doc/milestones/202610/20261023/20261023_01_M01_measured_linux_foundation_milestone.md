@@ -5,7 +5,8 @@
 - Project: Lico
 - Updated: 2026-10-27
 - Implementation: M01-P01 to M01-P07 and the comparison M01-P07a have reports (all `in_review`, inspection verdicts pending); M01-P08 (acceptance pack) is not started
-- Next gate: G3 inspection of the M01 reports and bundles (G4 was given for two moves of `main`, on 2026-10-25 and 2026-10-27, each without G3; every other merge needs its own); the account owner's first real sign-in and end-to-end use are still to come
+- Next gate: G3 inspection of the M01 reports and bundles (G4 was given for two moves of `main`, on 2026-10-25 and 2026-10-27, each without G3; since 2026-10-27 G4 is asked for each finished phase on its own); the account owner's first real sign-in and end-to-end use are still to come
+- Milestone branch: `milestone/M01-measured-linux-foundation`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
 
@@ -70,7 +71,7 @@ is gated as unsupported, rather than advertised through simulated behavior.
 | G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
 | G2 phase plan approval | Approved 2026-10-23 for M01-P01, M01-P02 and M01-P03; approved 2026-10-24 for M01-P04 to M01-P06 as drafted; approved 2026-10-25 for M01-P07 and M01-P07a by the owner's decisions in chat; M01-P08 has no plan yet | Implementation and experiments of those phases as written |
 | G3 inspection acceptance | Pending | Reports and local bundles exist for the phases above; every inspection verdict is pending |
-| G4 merge approval | Approved for two moves of `main`, otherwise pending | `main` was moved by fast-forward on the owner's approval, without G3: on 2026-10-25 to pull request 1 and M01-P01 to M01-P05, on 2026-10-27 to the finished work up to M02-P02; no other milestone or phase merge is authorized |
+| G4 merge approval | Approved for two moves of `main`, otherwise pending | `main` was moved by fast-forward on the owner's approval, without G3: on 2026-10-25 to pull request 1 and M01-P01 to M01-P05, on 2026-10-27 to the finished work up to M02-P02; every other phase merge is asked for on its own when the phase is finished and verified (CONTRIBUTING.md) |
 
 G1 and G2 were approved together on 2026-10-23. Later phase plans need their own
 approval. Setup/publication permission is not phase or merge approval, and
@@ -80,7 +81,7 @@ inherited.
 ## Blocked on
 
 - G3: owner inspection of the reports and bundles of M01-P01 to M01-P07 and M01-P07a; every verdict is pending.
-- G4: explicit owner approval is required before any milestone or phase merge (given for two moves of `main`: 2026-10-25 and 2026-10-27).
+- G4: explicit owner approval is required before any phase merge and is asked for each finished phase (given for two moves of `main`: 2026-10-25 and 2026-10-27).
 - "Done when" item 3: an installed official provider path exercised with real sign-in evidence (the account owner's first real login).
 - "Done when" item 5: a clean public clone produces the reviewed Linux package (M01-P08), and the account owner has used it end to end.
 - M01-P08: its plan is not written; it needs its own approval (G2) before it starts.
@@ -95,4 +96,4 @@ real credentials are required for the architecture experiment.
 
 ## When done
 
-Not filled: M01-P01 to M01-P07 and M01-P07a have reports that wait for the owner's inspection (G3); M01-P08 (acceptance pack) is not started, and the account owner's first real sign-in and end-to-end use are still to come.
+Not filled: M01-P01 to M01-P07 and M01-P07a have reports that wait for the owner's inspection (G3); M01-P08 (acceptance pack) is not started, and the account owner's first real sign-in and end-to-end use are still to come. When the milestone is achieved, the branch `milestone/M01-measured-linux-foundation` is created at its closing commit and named here.

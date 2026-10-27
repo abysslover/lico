@@ -15,11 +15,13 @@ of those reports is pending.
 ## Current status
 
 This repository holds the [product requirements](doc/product/202610/20261023/00001_product_spec/product_spec.md), the milestones,
-the phase plans and reports, and the source of the finished phases. Implementation is written on reviewed phase branches and reaches
-`main` only after the owner's inspection (G3) and merge approval (G4). The owner made two exceptions, each a fast-forward of `main` on
-the merge approval (G4) alone: on 2026-10-25 to the first stack (M01-P01 to M01-P05) and on 2026-10-27 to the finished work up to
-M02-P02. The inspection acceptance (G3) of those phases is still pending, and later phases stay on phase branches. No release exists.
-Resource budgets are targets unless a report marks a number as measured.
+the phase plans and reports, and the source of the finished phases. Implementation is written on reviewed phase branches. Since
+2026-10-27 each finished phase reaches `main` on its own, on the owner's merge approval (G4) for that phase; the phase branches are
+kept, and a branch `milestone/Mxx-<name>` marks a milestone once it is achieved (see [CONTRIBUTING.md](CONTRIBUTING.md)). The
+inspection acceptance (G3) is never assumed: `main` was moved twice on the merge approval alone, on 2026-10-25 to the first stack
+(M01-P01 to M01-P05) and on 2026-10-27 to the finished work up to M02-P02, and the G3 of those phases is still pending. Later phases
+stay on phase branches until their merge is approved. No release exists. Resource budgets are targets unless a report marks a number
+as measured.
 
 The first milestone is the [measured Linux foundation](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md).
 The current work is the second, [M02 Agentic-coding basics](doc/milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md):

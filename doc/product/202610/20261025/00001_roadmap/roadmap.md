@@ -47,7 +47,7 @@ The order is: define the features, build them with one measured memory line per 
 POC-0, a throwaway proof of concept with no product code, runs in parallel to the test cleanup and replaces the working assumptions of the planning set with measured values.
 
 Each phase gets its own plan note (why, scope, steps, tests, budget) as its first step. A phase is sized so that its branch is reviewable in one sitting and
-its outcome can be inspected on screen. G3 and G4 are asked every two phases (end of M02-P02 together with M02-P01, then M02-P04, M02-P06 and M02-P07).
+its outcome can be inspected on screen. G3 is asked every two phases (end of M02-P02 together with M02-P01, then M02-P04, M02-P06 and M02-P07); since 2026-10-27 G4 is asked for each finished phase on its own.
 
 ### Candidates for the milestone after M02
 
@@ -68,4 +68,4 @@ release hygiene (public-clone build, package, documentation). The Windows backen
 ## Gates
 
 G1 milestone approval, G2 phase-plan approval, G3 inspection acceptance and G4 merge approval stay with the project owner. The owner approved G1 for M02, with the phase plans of G2 included, on 2026-10-26;
-G3 is pending; G4 was given for two moves of `main` (2026-10-25 and 2026-10-27), each without G3. Publication (push) needs the owner's explicit yes for the exact list. This document grants none of them.
+G3 is pending; G4 was given for two moves of `main` (2026-10-25 and 2026-10-27), each without G3. Since 2026-10-27 each finished phase has its own G4 request, the phase branches are kept, and a milestone gets a branch `milestone/Mxx-<name>` at its closing commit (CONTRIBUTING.md). Publication (push) needs the owner's explicit yes for the exact list. This document grants none of them.

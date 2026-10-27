@@ -5,7 +5,8 @@
 - Project: Lico
 - Updated: 2026-10-27
 - Implementation: M02-P01 is built and reported (menu bar, fonts, scroll speed, activity indicator and the test cleanup: the whole suite went from 596 s to 112 s). A throwaway proof of concept without product code (POC-0) is finished (D1 to D4); its figures are in the planning set. M02-P02 (sessions in a real folder) is built and reported after an independent review and its fix rounds. Both reports are `in_review` with the inspection verdict pending. M02-P03 (sending between sessions and the tool channel) is under way on its own branch
-- Next gate: G3 inspection for M02-P01 and M02-P02 together; both reports are written and the owner has not yet inspected them. Their G4 was given on 2026-10-27 for the move of `main`, without G3
+- Next gate: G3 inspection for M02-P01 and M02-P02 together; both reports are written and the owner has not yet inspected them. Their G4 was given on 2026-10-27 for the move of `main`, without G3; from now on G4 is asked for each finished phase on its own
+- Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
 
@@ -94,7 +95,7 @@ change.
 | G1 milestone approval | Approved 2026-10-26 | Scope, order, phases M02-P01 to M02-P07 and the approval rhythm, as written in the planning set |
 | G2 phase plan approval | Approved 2026-10-26 together with G1 for M02-P02 to M02-P07 (M02-P01 was approved on 2026-10-25) | One plan note per phase, written as the phase's first step; included in the milestone approval and not asked separately |
 | G3 inspection acceptance | Pending | The owner looks at the real window and the report at the end of M02-P02 (with M02-P01), M02-P04, M02-P06 and M02-P07 |
-| G4 merge approval | Approved 2026-10-27 for one move, otherwise pending | The move of `main` to the finished work up to M02-P02 (a fast-forward, G3 still pending); no other merge of this milestone is authorized yet |
+| G4 merge approval | Approved 2026-10-27 for one move, otherwise pending | The move of `main` to the finished work up to M02-P02 (a fast-forward, G3 still pending); every later phase is asked for on its own when it is finished and verified (CONTRIBUTING.md), with the state of its G3 stated on the request |
 
 Publication (push) of any branch needs the owner's explicit yes for the exact
 list of what is published. Approving this milestone is not a push approval, and
@@ -117,4 +118,4 @@ did, REST parity, accessibility, release hygiene) are M03 candidates.
 
 ## When done
 
-Not filled: M02-P01 and M02-P02 are reported and wait for inspection; M02-P03 is in progress and no later phase has started.
+Not filled: M02-P01 and M02-P02 are reported and wait for inspection; M02-P03 is in progress and no later phase has started. When the milestone is achieved, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.
