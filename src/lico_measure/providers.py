@@ -36,16 +36,33 @@ def _private_env(home: Path) -> dict:
     return {"PATH": "/usr/bin:/bin", "HOME": str(home / "home"), "CODEX_HOME": str(home / "codex"), "LANG": "C.UTF-8"}
 
 
+def _start(argv: list[str], home: Path, timeout: int) -> tuple[subprocess.CompletedProcess, int]:
+    """Run the provider with the private home, and run it once more when a signal ended it (a negative code).
+
+    What these starts print is a function of the binary alone, so a start that something on the machine stopped is started again; any other end is the answer.
+    """
+    for starts in (1, 2):
+        done = subprocess.run(argv, env=_private_env(home), capture_output=True, text=True, timeout=timeout)
+        if done.returncode >= 0:
+            break
+    return done, starts
+
+
+def _failed(what: str, done: subprocess.CompletedProcess, starts: int) -> RuntimeError:
+    return RuntimeError(f"{what} failed after {starts} start(s), code {done.returncode}, stderr ends: {done.stderr.strip()[-300:]!r}")
+
+
 def installed_version(home: Path) -> str:
-    out = subprocess.run([codex_binary(), "--version"], env=_private_env(home), capture_output=True, text=True, timeout=30)
-    return out.stdout.strip().split()[-1] if out.stdout.strip() else ""
+    done, starts = _start([codex_binary(), "--version"], home, 30)
+    if done.returncode != 0:
+        raise _failed("the version of codex", done, starts)
+    return done.stdout.strip().split()[-1] if done.stdout.strip() else ""
 
 
 def generate_schema(home: Path, out: Path) -> None:
-    done = subprocess.run([codex_binary(), "app-server", "generate-json-schema", "--out", str(out)],
-                          env=_private_env(home), capture_output=True, text=True, timeout=60)
+    done, starts = _start([codex_binary(), "app-server", "generate-json-schema", "--out", str(out)], home, 60)
     if done.returncode != 0:
-        raise RuntimeError("schema generation failed")
+        raise _failed("schema generation", done, starts)
 
 
 def _methods(path: Path) -> list[str]:

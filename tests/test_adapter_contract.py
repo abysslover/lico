@@ -1,8 +1,13 @@
+import contextlib
 import copy
 import json
+import signal
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from lico_measure import providers
 from lico_measure.providers import (
     CAPABILITIES, generate_schema, installed_version, message_errors, problems, schema_inventory,
 )
@@ -96,3 +101,67 @@ def test_fixture_events_map_to_host_records_in_order():
     except KeyError:
         pass
     assert mapper.out.responses == []
+
+
+
+@contextlib.contextmanager
+def sigint_not_ignored():
+    """A shell that starts a job in the background hands SIGINT on as ignored, and a child that ignores it cannot end itself by it, as the real provider was ended."""
+    before = signal.signal(signal.SIGINT, signal.SIG_DFL)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, before)
+
+
+def fake_codex(tmp_path, monkeypatch, name, body):
+    """A stand-in for the codex command that counts its starts and then does what body says (n is the number of this start). Returns the folder to use as the home and the count of starts."""
+    folder = tmp_path / name
+    folder.mkdir()
+    counts, script = folder / "starts", folder / "codex"
+    script.write_text(f'#!/bin/sh\necho x >> "{counts}"\nn=$(wc -l < "{counts}")\n{body}\n')
+    script.chmod(0o755)
+    monkeypatch.setattr(providers, "codex_binary", lambda: str(script))
+    return folder, lambda: len(counts.read_text().split())
+
+
+SCHEMA_JOB = 'mkdir -p "$4" && echo "{}" > "$4/ClientRequest.json"'      # codex app-server generate-json-schema --out DIR
+ENDED_BY_SIGINT_ON_THE_FIRST_START = 'if [ "$n" = 1 ]; then kill -INT $$; fi'
+
+
+def test_a_schema_start_that_a_signal_ended_is_made_once_more_and_any_other_failure_is_reported_at_once_with_its_code_and_the_end_of_stderr(tmp_path, monkeypatch):
+    with sigint_not_ignored():
+        folder, starts = fake_codex(tmp_path, monkeypatch, "stopped_once", f"{ENDED_BY_SIGINT_ON_THE_FIRST_START}\n{SCHEMA_JOB}")
+        generate_schema(folder / "home", folder / "schema")
+        assert starts() == 2 and (folder / "schema" / "ClientRequest.json").is_file()           # the second start did the job
+        folder, starts = fake_codex(tmp_path, monkeypatch, "failed", 'echo "no space left on device" >&2; exit 1')
+        with pytest.raises(RuntimeError) as failure:
+            generate_schema(folder / "home", folder / "schema")
+        assert starts() == 1                                                                    # a code of 1 is an answer, not a stop
+        assert "code 1" in str(failure.value) and "no space left on device" in str(failure.value)
+        folder, starts = fake_codex(tmp_path, monkeypatch, "stopped_twice", "kill -INT $$")
+        with pytest.raises(RuntimeError) as failure:
+            generate_schema(folder / "home", folder / "schema")
+        assert starts() == 2 and "code -2" in str(failure.value) and "2 start(s)" in str(failure.value)      # stopped twice: no third start
+
+
+def test_the_message_of_a_failed_start_keeps_the_last_300_characters_of_stderr_and_not_the_first_ones(tmp_path, monkeypatch):
+    folder, _ = fake_codex(tmp_path, monkeypatch, "long_stderr", f'echo "FIRST{"x" * 600}LAST" >&2; exit 3')
+    with pytest.raises(RuntimeError) as failure:
+        generate_schema(folder / "home", folder / "schema")
+    assert "code 3" in str(failure.value) and "LAST" in str(failure.value) and "FIRST" not in str(failure.value)
+    assert "x" * 296 in str(failure.value) and "x" * 297 not in str(failure.value)             # 300 characters of the tail: 296 x and LAST
+
+
+def test_the_version_start_follows_the_same_rule_as_the_schema_start(tmp_path, monkeypatch):
+    with sigint_not_ignored():
+        folder, starts = fake_codex(tmp_path, monkeypatch, "stopped_once", f'{ENDED_BY_SIGINT_ON_THE_FIRST_START}\necho "codex-cli 9.9.9"')
+        assert installed_version(folder / "home") == "9.9.9" and starts() == 2
+        folder, starts = fake_codex(tmp_path, monkeypatch, "failed", 'echo "bad config" >&2; exit 1')
+        with pytest.raises(RuntimeError) as failure:
+            installed_version(folder / "home")
+        assert starts() == 1 and "code 1" in str(failure.value) and "bad config" in str(failure.value)
+        folder, starts = fake_codex(tmp_path, monkeypatch, "stopped_twice", "kill -INT $$")
+        with pytest.raises(RuntimeError) as failure:
+            installed_version(folder / "home")
+        assert starts() == 2 and "code -2" in str(failure.value)
