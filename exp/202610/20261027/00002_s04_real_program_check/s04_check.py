@@ -182,7 +182,8 @@ def pending_index(records):
 
 
 def polled(records, cut):
-    """Did the model call a tool of Lico after the answer `pending` and before its turn ended? (A call before it, refused for its arguments, is not that.)"""
+    """Did the model call a tool of Lico after the answer `pending` and before its turn ended? (A call before it, refused for its arguments, is not that.)
+    It is false too when the answer `pending` is not in the records at all; a verdict that says "did not poll" asks for `pending_seen` as well."""
     answer = pending_index(records)
     return answer is not None and any(t in TOOLS for t in tools_in(records[answer + 1:cut]))
 
@@ -246,6 +247,7 @@ def try_send(ctx, n, long_answer=False, handover=False):
     cut = next((i for i, r in enumerate(first) if r in FINISHED), len(first))
     facts["tools_in_first_turn"] = tools_in(first[:cut])
     facts["polled"] = polled(first, cut)
+    facts["pending_seen"] = pending_index(first) is not None
     if not long_answer:
         said = allow(ctx, a, ga, card)
     facts["answer_op"] = {k: said.get(k) for k in ("ok", "state", "outcome", "error")}
@@ -270,9 +272,9 @@ def try_send(ctx, n, long_answer=False, handover=False):
         facts["words_before_notice"] = words(essay)
         facts["words_in_first_turn"] = words(agent_lines(after, (p or 0) + 1, first_done))
     if long_answer:
-        facts["verdict"] = ("held" if facts.get("second_turn_answers") and facts.get("words_in_first_turn", 0) >= 450 else "check the records")
+        facts["verdict"] = ("held" if facts.get("second_turn_answers") and facts.get("words_in_first_turn", 0) >= 450 and facts.get("notice_before_first_turn_end") else "check the records")
     else:
-        facts["verdict"] = "held" if (facts.get("turn_ended") and not facts["polled"] and facts["receiver_answered"] and facts.get("second_turn_answers")) else "did not hold"
+        facts["verdict"] = "held" if (facts.get("turn_ended") and facts["pending_seen"] and not facts["polled"] and facts["receiver_answered"] and facts.get("second_turn_answers")) else "did not hold"
     if handover:
         facts["handover"] = hand_over(ctx, a)
     ctx.close((a, ga), (b, gb))
@@ -311,7 +313,7 @@ def row_create(ctx):
     ended = ctx.wait(lambda: finished(ctx.records(a)) >= 1, 90)
     first = ctx.records(a)
     cut = next((i for i, r in enumerate(first) if r in FINISHED), len(first))
-    facts.update(turn_ended=bool(ended), tools_in_first_turn=tools_in(first[:cut]), polled=polled(first, cut))
+    facts.update(turn_ended=bool(ended), tools_in_first_turn=tools_in(first[:cut]), polled=polled(first, cut), pending_seen=pending_index(first) is not None)
     said = allow(ctx, a, ga, card)
     facts["answer_op"] = {k: said.get(k) for k in ("ok", "state", "outcome", "error")}
     child = ctx.wait(lambda: next((s for s in ctx.conn.call(op="status")["sessions"] if s["session"] not in before), None), 60)
@@ -330,7 +332,7 @@ def row_create(ctx):
     facts["notice_record"] = after[n_at:n_at + 3] if n_at is not None else None
     facts["pending_record"] = after[pending_index(after)] if pending_index(after) is not None else None
     facts["second_turn_text"] = agent_lines(after, n_at)[:3] if n_at is not None else None
-    facts["verdict"] = "held" if (facts["turn_ended"] and not facts["polled"] and facts.get("child_first_prompt_seen") and n_at is not None and finished(after) >= 2) else "did not hold"
+    facts["verdict"] = "held" if (facts["turn_ended"] and facts["pending_seen"] and not facts["polled"] and facts.get("child_first_prompt_seen") and n_at is not None and finished(after) >= 2) else "did not hold"
     if child:
         ctx.close((child["session"], child["generation"]))
     ctx.close((a, ga))

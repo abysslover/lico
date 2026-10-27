@@ -141,7 +141,7 @@ def case_a(ctx, t, gt, c, gc):
     ended = ctx.wait(lambda: turns_of(ctx, c) >= 1, 90)
     first = ctx.records(c)
     cut = next((i for i, r in enumerate(first) if r in base.FINISHED), len(first))
-    facts.update(turn_ended=bool(ended), tools_in_first_turn=base.tools_in(first[:cut]), polled=base.polled(first, cut))
+    facts.update(turn_ended=bool(ended), tools_in_first_turn=base.tools_in(first[:cut]), polled=base.polled(first, cut), pending_seen=base.pending_index(first) is not None)
     facts["pending_record"] = first[base.pending_index(first)] if base.pending_index(first) is not None else None
     said = base.allow(ctx, c, gc, card)
     facts["answer_op"] = {k: said.get(k) for k in ("ok", "state", "outcome", "error")}
@@ -151,7 +151,7 @@ def case_a(ctx, t, gt, c, gc):
     facts["notice_record"] = after[n_at:n_at + 3] if n_at is not None else None
     facts["second_turn_text"] = base.agent_lines(after, n_at)[:4] if n_at is not None else None
     facts["names_the_code"] = bool(n_at is not None and any(nonce in line for line in base.agent_lines(after, n_at)))
-    facts["verdict"] = "held" if (facts["turn_ended"] and not facts["polled"] and n_at is not None and facts["names_the_code"]) else "did not hold"
+    facts["verdict"] = "held" if (facts["turn_ended"] and facts["pending_seen"] and not facts["polled"] and n_at is not None and facts["names_the_code"]) else "did not hold"
     return facts, nonce
 
 
