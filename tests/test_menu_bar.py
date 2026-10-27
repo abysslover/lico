@@ -24,6 +24,13 @@ def item(m, text):
     return next(i for i in m["items"] if text in i["label"])
 
 
+def drawn(u, which):
+    """Menu `which` is open and has been drawn once: every title and entry has its box. The model answers as soon as the key has been handled, before the draw that
+    gives the boxes, and a click is aimed at the box."""
+    m = u["menu"]
+    return m["open"] == which and bool(m["items"]) and all(b["rect"] for b in m["titles"] + m["items"])
+
+
 def test_a_closed_bar_with_four_titles_is_drawn_inside_the_window_and_not_clipped():
     with ProductWindow() as w:
         m = menu(w)
@@ -110,13 +117,13 @@ def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pend
             state = ui(client, lambda u: len(u["rows"]) == 3)
             order = [r[2] for r in state["layout"]["rows"]]
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: u["menu"]["open"] == 1)["menu"]
+            m = ui(client, lambda u: drawn(u, 1))["menu"]
             assert item(m, "Next session")["enabled"] and item(m, "Session 1")["key"] == "Alt+1" and item(m, "Allow")["enabled"] is False
             rect = item(m, "Session 2")["rect"]
             click_at(xvfb.display, *centre(rect))
             assert ui(client, lambda u: u["selected"] == order[1])["selected"] == order[1]
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: u["menu"]["open"] == 1)["menu"]
+            m = ui(client, lambda u: drawn(u, 1))["menu"]
             click_at(xvfb.display, *centre(item(m, "Next session")["rect"]))
             assert ui(client, lambda u: u["selected"] == order[2])["selected"] == order[2]
             xdo(xvfb.display, "key", "alt+s")
@@ -125,7 +132,7 @@ def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pend
             conn.call(op="input", session=order[2], generation=1, request_id="a", text="fixture")
             wait_for(lambda: status_of(conn, order[2]).get("approvals"))
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: u["menu"]["open"] == 1 and any(i["label"].startswith("Allow") and i["enabled"] for i in u["menu"]["items"]))["menu"]
+            m = ui(client, lambda u: drawn(u, 1) and any(i["label"].startswith("Allow") and i["enabled"] for i in u["menu"]["items"]))["menu"]
             click_at(xvfb.display, *centre(item(m, "Allow")["rect"]))
             wait_for(lambda: len(responses(received)) == 1)
             assert responses(received)[0]["response"]["behavior"] == "allow"
@@ -157,7 +164,7 @@ def test_at_scale_two_the_bar_and_the_open_menu_keep_inside_the_window_and_do_no
             host, log, received = claude_host(directory)
             client = menu_client(host, xvfb.display)
             xdo(xvfb.display, "key", "F10")
-            m = ui(client, lambda u: u["menu"]["open"] == 0)["menu"]
+            m = ui(client, lambda u: drawn(u, 0))["menu"]
             titles = [t["rect"] for t in m["titles"]]
             assert all(a[2] <= b[0] for a, b in zip(titles, titles[1:])) and titles[0][0] >= 8 and titles[-1][2] <= 1200 - 8
             for entry in m["items"]:
