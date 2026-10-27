@@ -204,12 +204,13 @@ def test_a_credential_that_is_refused_leaves_a_line_in_the_log_with_the_reason_a
                                  ("a key the host does not have", f"Bearer {'0' * 32}.{secret}", "reason=unknown_key"),
                                  ("the right key and another secret", f"Bearer {key}.{'0' * 64}", f"reason=wrong_secret session={sid}")]:
         line = f"lico-host: tool refused 401 {wanted}"
+        had = refusal_lines(world).count(line)                     # an earlier test may have made the same line (a malformed credential is common): this try has to add one
 
         def written():
             status = raw(port, headers={"Authorization": header})[0]
             assert status in (401, 429), (what, status)            # 429: the test before this one spent the host's budget for wrong credentials, which fills up again at 20 a second
             time.sleep(0.25)                                       # the log has a budget of its own (a burst of 20 and 5 a second): a try is made a few times a second until one has room
-            return status == 401 and line in refusal_lines(world)
+            return status == 401 and refusal_lines(world).count(line) > had
         wait_for(written)
     for line in refusal_lines(world):
         assert key not in line and secret not in line and "Bearer" not in line, line
