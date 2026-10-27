@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from lico_measure.p02 import ProtoConn as Conn
-from lico_measure.rig import private_dir
+from lico_measure.rig import files_under, private_dir
 
 from tests.test_claude_adapter import argv_of, claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import let_the_old_helper_write, wait_for
@@ -124,7 +124,7 @@ def test_a_session_is_given_a_private_config_file_the_allowed_tools_and_a_token_
         for name in ("cmdline", "environ"):
             assert token.encode() not in Path(f"/proc/{pid}/{name}").read_bytes(), (pid, name)
     assert token not in world.received.read_text()
-    assert not any(token.encode() in path.read_bytes() for path in Path(world.directory).rglob("*") if path.is_file() and path != config["path"] and path.stat().st_size < 1 << 24 and not path.is_socket())
+    assert not any(token.encode() in data for path, data in files_under(world.directory) if path != config["path"])
     assert token not in json.dumps(conn.call(op="snapshot", session=sid, generation=generation))
 
 

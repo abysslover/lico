@@ -9,7 +9,7 @@ from pathlib import Path
 from lico_measure.keyring_rig import PrivateKeyring
 from lico_measure.p04 import _received_lines
 from lico_measure.p02 import HOSTD_DIR, ProtoConn as Conn, read_log, start
-from lico_measure.rig import REPO, private_dir
+from lico_measure.rig import REPO, files_under, private_dir
 from lico_protocol.claude_mapping import map_stream
 
 from tests.test_codex_adapter import agent_pid, finished_lines, let_the_old_helper_write, wait_for
@@ -170,8 +170,8 @@ def test_claude_input_and_approval_reach_the_provider_exactly_once_and_a_stale_t
             provider_env = dict(item.split("=", 1) for item in Path(f"/proc/{pid}/environ").read_bytes().decode().split("\0") if "=" in item)
             assert "DBUS_SESSION_BUS_ADDRESS" not in provider_env and "XDG_RUNTIME_DIR" not in provider_env
             assert " broker --name lico-broker-" in Path(f"/proc/{pid}/cmdline").read_text().replace("\0", " ")
-            for path in [p for root in (directory, keyring.root) for p in Path(root).rglob("*") if p.is_file()]:
-                assert secret.encode() not in path.read_bytes(), path
+            for path, data in files_under(directory, keyring.root):
+                assert secret.encode() not in data, path
         finally:
             host.stop()
 
@@ -216,7 +216,7 @@ def test_claude_adapter_survives_malformed_oversize_and_hostile_provider_message
             # memory grew by a small constant, not with what the provider sent
             assert _hwm_kb(host.pid) - base < 24 * 1024, (base, _hwm_kb(host.pid))
             # the canary reached the session log and the provider only
-            holders = sorted(f.suffix for f in Path(directory).rglob("*") if f.is_file() and canary.encode() in f.read_bytes())
+            holders = sorted(path.suffix for path, data in files_under(directory) if canary.encode() in data)
             assert holders == [".seg", ".txt"], holders
         finally:
             host.stop()

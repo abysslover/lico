@@ -5,10 +5,12 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 from lico_measure.p02 import ProtoConn as Conn, read_log, start
 from lico_measure.p03 import _provider_messages
 from lico_measure.providers import generate_schema, message_errors
-from lico_measure.rig import REPO, finished_lines, private_dir
+from lico_measure.rig import REPO, files_under, finished_lines, private_dir
 
 SIM = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
 FIXTURE = REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json"
@@ -43,6 +45,26 @@ def test_a_file_that_is_being_written_is_read_up_to_its_last_finished_line_even_
     assert finished_lines(path) == ['{"a": "\ud55c"}', "second"]
     assert sent(path) == [{"a": "\ud55c"}]
     assert finished_lines(tmp_path / "none") == [] and sent(tmp_path / "none") == []
+
+
+def test_a_folder_the_host_is_writing_into_is_read_file_by_file_and_a_file_that_is_gone_at_the_read_is_not_there_to_read(tmp_path, monkeypatch):
+    """R5e: the host writes its registry through a temporary file and renames it, so a walk of its folder can list a file that is gone before it is read."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a").write_bytes(b"aaa")
+    (tmp_path / "sub" / "b").write_bytes(b"bbb")
+    assert sorted((path.name, data) for path, data in files_under(tmp_path)) == [("a", b"aaa"), ("b", b"bbb")]                          # the folders below are walked
+    assert [(path.name, data) for path, data in files_under(tmp_path / "sub", tmp_path / "a", tmp_path / "none")] == [("b", b"bbb"), ("a", b"aaa")]      # each root in its order; a root that is a file is read itself; one that is not there has no files
+    read = Path.read_bytes
+
+    def read_after_the_file_is_gone(self):
+        self.unlink()
+        return read(self)
+    monkeypatch.setattr(Path, "read_bytes", read_after_the_file_is_gone)
+    with pytest.raises(FileNotFoundError):                                                    # the walk written out in the test would stop here
+        [path.read_bytes() for path in tmp_path.rglob("*") if path.is_file()]
+    (tmp_path / "a").write_bytes(b"aaa")
+    (tmp_path / "sub" / "b").write_bytes(b"bbb")
+    assert files_under(tmp_path) == []
 
 
 def texts(log, sid):
@@ -291,7 +313,7 @@ def test_adapter_survives_malformed_oversize_and_hostile_provider_messages():
             # the canary reached the session log and the provider only: not argv, not stderr, not any other file
             for pid in [host.pid] + [int(p) for p in os.listdir("/proc") if p.isdigit() and _parent(int(p)) == host.pid]:
                 assert canary.encode() not in open(f"/proc/{pid}/cmdline", "rb").read()
-            holders = sorted(f.suffix for f in Path(directory).rglob("*") if f.is_file() and canary.encode() in f.read_bytes())
+            holders = sorted(path.suffix for path, data in files_under(directory) if canary.encode() in data)
             assert holders == [".jsonl", ".seg"], holders      # the provider's own received log and the session log
         finally:
             host.stop()

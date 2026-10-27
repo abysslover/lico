@@ -2,7 +2,7 @@
 import json
 
 from lico_measure.p02 import ProtoConn as Conn, cli, read_log, start
-from lico_measure.rig import private_dir
+from lico_measure.rig import files_under, private_dir
 from lico_protocol import v1
 
 from tests.test_claude_adapter import claude_host, new_claude, sent_users, status_of, user_text
@@ -151,7 +151,7 @@ def test_the_text_of_an_input_is_in_the_host_log_only_as_the_echo_and_a_purge_re
                 text = "\n".join(f"line {n} {canary}" for n in range(FOLD_LINES + 8))
                 assert conn.call(op="input", session=sid, generation=generation, request_id="r-1", text=text)["ok"] == 1
                 wait_for(lambda: "more lines" in (echoes_of(log, sid) or [(0, "")])[-1][1])
-                copies = lambda: sum(path.read_bytes().count(canary.encode()) for path in log.rglob("*") if path.is_file())
+                copies = lambda: sum(data.count(canary.encode()) for _, data in files_under(log))
                 assert copies() >= FOLD_LINES, name                      # the check is not vacuous: the echo is in the log while the session lives
                 assert conn.call(op="session.purge", session=sid, generation=generation)["ok"] == 1
                 assert copies() == 0, name

@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from lico_measure.p02 import ProtoConn as Conn, start
-from lico_measure.rig import REPO, private_dir
+from lico_measure.rig import REPO, files_under, private_dir
 
 from tests.account_helpers import account
 from tests.test_codex_adapter import wait_for
@@ -50,9 +50,7 @@ def test_login_runs_in_the_accounts_directory_and_nothing_of_it_reaches_log_regi
             assert set(seen["env"]) <= {"HOME", "CODEX_HOME", "NO_COLOR", "BROWSER", "PATH", "LANG", "PWD", "SHLVL", "_", "LC_CTYPE"}, seen["env"]   # no display, no bus, none of the host's variables
             assert seen["cwd"] == str(account_dir / "home") and seen["words"] == ["login"]
             # the code and the URL's state are in no sink of the host: log, registry, standard error, its command line
-            files = [p for d in ("log", "registry") for p in (Path(directory) / d).rglob("*") if p.is_file()] + [Path(directory) / "host.err"]
-            for path in files:
-                data = path.read_bytes()
+            for path, data in files_under(Path(directory) / "log", Path(directory) / "registry", Path(directory) / "host.err"):
                 assert b"CANARYCODE9" not in data and b"CANARYURLSTATE7" not in data, path
             assert b"CANARY" not in Path(f"/proc/{host.pid}/cmdline").read_bytes() and b"CANARY" not in Path(f"/proc/{host.pid}/environ").read_bytes()
             assert b"CANARYCODE9" not in json.dumps(conn.call(op="status")).encode()

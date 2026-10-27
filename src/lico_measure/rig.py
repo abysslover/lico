@@ -251,3 +251,17 @@ def finished_lines(path: Path) -> list[str]:
     """The lines a simulator has finished writing to a file it is still writing: a long one is half there for a moment and is not yet a line, and the half
     can end inside a character, so the file is read as bytes and each finished line is decoded alone."""
     return [line.decode() for line in path.read_bytes().split(b"\n")[:-1]] if path.exists() else []
+
+
+def files_under(*roots: Path) -> list[tuple[Path, bytes]]:
+    """Every regular file below the roots (a root that is a file is read itself) with what it holds, for a folder a host is still writing into: the host writes its
+    registry through a temporary file and renames it, so a file the walk lists can be gone at the read, and a file that is gone is not there to be read."""
+    found = []
+    for root in roots:
+        for path in [Path(root), *Path(root).rglob("*")]:
+            try:
+                if path.is_file():
+                    found.append((path, path.read_bytes()))
+            except FileNotFoundError:
+                pass
+    return found
