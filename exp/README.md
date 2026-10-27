@@ -10,3 +10,7 @@ resource result or a real provider acceptance.
 - `202610/20261026/00002_s02_listener_memory` - memory of the tool listener of the host with sessions open (tested: S02 build).
 - `202610/20261027/00001_config_file_after_connect` - opt-in check that the real `claude` does not read its
   `--mcp-config` file again after the first `initialize`, and where its token string is found (tested: 2.1.310).
+- `202610/20261027/00002_s04_real_program_check` - opt-in check with the real `claude` that the tool connection answers `send` and `create` with `pending` and the decision comes later as an
+  input, what the hand-over of a real conversation stores, and what the program does when a session's conversation is gone (tested: 2.1.310, 2.1.311).
+- `202610/20261027/00003_record_layout_2_1_311` - opt-in check of the layout of the program's own conversation record across two versions, and the scrubber that makes the fixtures
+  of the conversation reader (tested: 2.1.310, 2.1.311).

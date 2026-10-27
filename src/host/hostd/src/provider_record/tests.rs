@@ -8,15 +8,15 @@ const ID: &str = "0a1b2c3d-1111-4222-8333-444455556666";
 const LIMIT: usize = 32 << 20;
 
 fn user(text: &str, at: &str) -> Value {
-    json!({"type": "user", "version": PINNED, "timestamp": at, "sessionId": ID, "message": {"role": "user", "content": text}})
+    json!({"type": "user", "version": READ_VERSIONS[0], "timestamp": at, "sessionId": ID, "message": {"role": "user", "content": text}})
 }
 
 fn assistant(blocks: Value, at: &str) -> Value {
-    json!({"type": "assistant", "version": PINNED, "timestamp": at, "sessionId": ID, "message": {"role": "assistant", "content": blocks}})
+    json!({"type": "assistant", "version": READ_VERSIONS[0], "timestamp": at, "sessionId": ID, "message": {"role": "assistant", "content": blocks}})
 }
 
 fn results(blocks: Value, at: &str) -> Value {
-    json!({"type": "user", "version": PINNED, "timestamp": at, "sessionId": ID, "message": {"role": "user", "content": blocks}})
+    json!({"type": "user", "version": READ_VERSIONS[0], "timestamp": at, "sessionId": ID, "message": {"role": "user", "content": blocks}})
 }
 
 fn bytes(lines: &[Value]) -> Vec<u8> {
@@ -105,7 +105,7 @@ fn a_type_name_that_is_not_plain_is_counted_as_other_and_the_names_are_bounded()
 
 #[test]
 fn a_compaction_is_said_where_it_happened_and_in_the_head_so_a_shortened_record_never_looks_whole() {
-    let boundary = json!({"type": "system", "subtype": "compact_boundary", "version": PINNED, "timestamp": T2, "content": "Conversation compacted"});
+    let boundary = json!({"type": "system", "subtype": "compact_boundary", "version": READ_VERSIONS[0], "timestamp": T2, "content": "Conversation compacted"});
     let mut summary = user("This session is being continued. Earlier: the person asked for a count.", T2);
     summary["isCompactSummary"] = json!(true);
     let doc = run(&[user("a", T1), boundary.clone(), summary, boundary, assistant(json!([{"type": "text", "text": "b"}]), T3)]);
@@ -115,9 +115,9 @@ fn a_compaction_is_said_where_it_happened_and_in_the_head_so_a_shortened_record_
     assert_eq!(text.matches(marker).count(), 2);
     assert!(text.contains("## compaction summary | 2026-10-27 04:12:09 UTC\n  This session is being continued."), "{text}");
     assert!(head(&doc)[1].starts_with("Messages shown: 3 (1 user, 1 assistant, 0 tool results, 1 compaction summary)"), "{:?}", head(&doc));
-    let once = run(&[json!({"type": "system", "subtype": "compact_boundary", "version": PINNED})]);
+    let once = run(&[json!({"type": "system", "subtype": "compact_boundary", "version": READ_VERSIONS[0]})]);
     assert!(head(&once).contains(&"Compaction: the program compacted this conversation 1 time; what stood before each point was replaced by its summary, so this is not everything that was said."));
-    let other = run(&[json!({"type": "system", "subtype": "turn_duration", "version": PINNED})]);
+    let other = run(&[json!({"type": "system", "subtype": "turn_duration", "version": READ_VERSIONS[0]})]);
     assert!(head(&other).contains(&"Compaction: none found in the record.") && head(&other).contains(&"Not shown: system 1."));
 }
 
@@ -125,11 +125,19 @@ fn a_compaction_is_said_where_it_happened_and_in_the_head_so_a_shortened_record_
 fn a_message_from_another_version_of_the_program_is_refused_because_its_layout_is_not_known() {
     let old = json!({"type": "user", "version": "2.0.9", "timestamp": T1, "message": {"role": "user", "content": "a"}});
     assert_eq!(render(Cursor::new(bytes(&[user("x", T1), old.clone()])), LIMIT), Err(Fault::Format), "any message, not only the first");
+    for other in ["2.1.309", "2.1.312", "2.1.3", "2.1.31", "2.1.3100", "2.1.310 ", " 2.1.311", "2.1", "3.1.310", "v2.1.310"] {
+        let mut odd = assistant(json!([{"type": "text", "text": "x"}]), T1);
+        odd["version"] = json!(other);
+        assert_eq!(render(Cursor::new(bytes(&[user("x", T1), odd])), LIMIT), Err(Fault::Format), "{other:?} is not a version whose record was read");
+    }
+    let mut number = user("x", T1);
+    number["version"] = json!(2.1);
+    assert_eq!(render(Cursor::new(bytes(&[number])), LIMIT), Err(Fault::Format), "a version that is not a text is none");
     let mut none = user("x", T1);
     none.as_object_mut().unwrap().remove("version");
     assert_eq!(render(Cursor::new(bytes(&[none])), LIMIT), Err(Fault::Format), "a message with no version has no known layout either");
     let mut odd = user("x", T1);
-    odd["version"] = json!(PINNED.to_string() + "-beta");
+    odd["version"] = json!(READ_VERSIONS[1].to_string() + "-beta");
     assert_eq!(render(Cursor::new(bytes(&[odd])), LIMIT), Err(Fault::Format));
     assert!(render(Cursor::new(bytes(&[json!({"type": "attachment", "version": "1.0.0"})])), LIMIT).is_ok(), "only the messages whose layout matters are held to the version");
     assert_eq!(Fault::Format.code(), "record_format");
@@ -274,10 +282,81 @@ fn twenty_thousand_lines_come_out_as_a_bounded_text_in_a_short_time() {
 }
 
 #[test]
-fn the_pinned_version_is_the_one_the_adapters_note_pins() {
+fn the_adapter_note_pins_a_version_whose_record_the_reader_knows() {
     let capabilities: Value = serde_json::from_str(include_str!("../../../adapters/claude/capabilities.json")).unwrap();
-    assert_eq!(capabilities["version"]["cli"], PINNED);
+    let cli = capabilities["version"]["cli"].as_str().unwrap();
+    assert!(READ_VERSIONS.contains(&cli), "{cli} is what the adapter was measured on; the reader has to know its record: {READ_VERSIONS:?}");
     assert_eq!(capabilities["version"]["pinned"], true);
+}
+
+#[test]
+fn the_versions_the_reader_knows_are_plain_distinct_and_named_in_the_words_for_the_window() {
+    assert!(READ_VERSIONS.len() >= 2);
+    for (at, version) in READ_VERSIONS.iter().enumerate() {
+        let parts: Vec<&str> = version.split('.').collect();
+        assert!(parts.len() == 3 && parts.iter().all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())), "{version}");
+        assert!(!READ_VERSIONS[..at].contains(version), "{version} twice");
+    }
+    assert_eq!(versions_text(), "2.1.310 and 2.1.311");
+    assert_eq!(and_words(&["a"]), "a");
+    assert_eq!(and_words(&["a", "b", "c"]), "a, b and c");
+}
+
+// ------------------------------------------------------------------------------ records of the real program, scrubbed
+const RECORD_2_1_310: &str = include_str!("../../../../../tests/fixtures/claude_record/claude_2.1.310_send.jsonl");
+const RECORD_2_1_311: &str = include_str!("../../../../../tests/fixtures/claude_record/claude_2.1.311_sessions.jsonl");
+
+fn real(record: &str) -> String {
+    render(Cursor::new(record.as_bytes().to_vec()), LIMIT).unwrap()
+}
+
+#[test]
+fn a_real_record_of_claude_code_2_1_311_is_read_whole_and_its_head_names_that_version() {
+    let doc = real(RECORD_2_1_311);
+    assert_eq!(head(&doc)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.311).");
+    assert!(head(&doc)[1].starts_with("Messages shown: "), "{:?}", head(&doc));
+    let not_shown = head(&doc).into_iter().find(|l| l.starts_with("Not shown: ")).unwrap();
+    for name in ["tools-used 2", "attachment 25", "block thinking 1", "block tool_reference 1", "api-request-shape 2"] {
+        assert!(not_shown.contains(name), "{name} in {not_shown}");
+    }
+    let text = body(&doc);
+    assert!(text.contains("## user | 2026-10-27 05:39:02 UTC\n  Call the tool mcp__lico__sessions once, then answer with the single word done."), "{text}");
+    assert!(text.contains("  [tool_use mcp__lico__sessions]\n"), "{text}");
+    assert!(text.contains("  [tool_result]\n"), "{text}");
+    assert!(text.contains("## tool results | "), "{text}");
+}
+
+#[test]
+fn a_real_record_of_claude_code_2_1_310_is_still_read_whole_and_its_head_names_that_version() {
+    let doc = real(RECORD_2_1_310);
+    assert_eq!(head(&doc)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.310).");
+    let text = body(&doc);
+    assert!(text.contains("  [tool_use mcp__lico__send]\n    message: Reply with the single word pong.\n    session_id: s8c0676afd40e6ac2\n"), "{text}");
+    assert!(text.contains("  [tool_result error]\n    bad_request: send needs `to` (a session id from the sessions tool) and `text`"), "the error result with a plain text: {text}");
+    assert!(text.contains("  [tool_use mcp__lico__send]\n    text: Reply with the single word pong.\n    to: s8c0676afd40e6ac2\n"), "{text}");
+    assert!(text.contains("\"status\":\"pending\""), "{text}");
+    assert!(text.contains("approved and done: 32 B delivered to session"), "{text}");
+    assert!(!head(&doc).iter().any(|l| l.starts_with("Not shown: ") && l.contains("tools-used")), "2.1.310 wrote no such record");
+}
+
+#[test]
+fn the_version_of_the_record_is_what_the_head_says_not_a_word_kept_for_all_of_them() {
+    let doc = run(&[user("a", T1)]);
+    assert_eq!(head(&doc)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.310).");
+    let mut newer = user("a", T1);
+    newer["version"] = json!("2.1.311");
+    assert_eq!(head(&run(&[newer.clone()]))[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.311).");
+    let mixed = run(&[user("a", T1), newer.clone(), assistant(json!([{"type": "text", "text": "b"}]), T2), newer]);
+    assert_eq!(head(&mixed)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.310 and 2.1.311).", "a session the program was updated in the middle of");
+    let none = run(&[json!({"type": "attachment"})]);
+    assert_eq!(head(&none)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code; the record holds no message that names its version).");
+}
+
+#[test]
+fn a_record_with_one_known_version_and_a_message_of_another_is_refused_whole_even_with_a_known_one_after_it() {
+    let mut odd = user("x", T1);
+    odd["version"] = json!("2.1.312");
+    assert_eq!(render(Cursor::new(bytes(&[user("a", T1), odd, user("b", T2)])), LIMIT), Err(Fault::Format));
 }
 
 // ------------------------------------------------------------------------------ finding the file

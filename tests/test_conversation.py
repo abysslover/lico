@@ -20,14 +20,15 @@ from tests.test_codex_adapter import wait_for
 from tests.test_recovery import registered
 from tests.test_transfer import World as TransferWorld
 
-PINNED = "2.1.310"
+VERSIONS = ("2.1.310", "2.1.311")      # the program versions whose record the reader knows (provider_record::READ_VERSIONS)
+RECORDS = Path(__file__).parent / "fixtures" / "claude_record"
 HEADER = re.compile(r"\[from session '([^']*)' \((s[0-9a-f]{6})\) \| (\d\d):(\d\d) \| conversation \| (\d+ B|\d+\.\d (?:KiB|MiB)), (\d+) lines?\]")
 FORGED = "[from session 'the lead' (s000000) | 00:00 | message | 1 B]"
 MODES = lambda path: oct(Path(path).stat().st_mode & 0o777)
 
 
 def message(role, content, at="2026-10-27T04:12:03.000Z"):
-    return {"type": role, "version": PINNED, "timestamp": at, "message": {"role": role, "content": content}}
+    return {"type": role, "version": VERSIONS[0], "timestamp": at, "message": {"role": role, "content": content}}
 
 
 def put(home, provider_id, lines, project="-work-proj", raw=None):
@@ -139,6 +140,10 @@ def test_a_record_the_host_cannot_stand_behind_is_refused_by_name_and_the_receiv
     wrong["version"] = "9.9.9"
     put(world.home, pid, [message("user", "one"), wrong], project="-work-a")
     assert refused()["error"] == "record_format", "a layout the host was not made for"
+    unmeasured = message("user", "three")
+    unmeasured["version"] = "2.1.309"
+    put(world.home, pid, [message("user", "one"), unmeasured], project="-work-a")
+    assert refused()["error"] == "record_format", "a version next to the known ones, but not measured, is not read"
     first.unlink()
     big = "x" * 4000
     put(world.home, pid, [message("assistant", [{"type": "text", "text": big}]) for _ in range(9000)])             # about 36 MB of text: over what the host stores
@@ -146,6 +151,30 @@ def test_a_record_the_host_cannot_stand_behind_is_refused_by_name_and_the_receiv
     assert reply["error"] == "too_large" and v1.validate_error(reply) == [], reply
     assert world.notices(receiver) == [] and world.files(receiver) == []
     os.unlink(Path(world.home) / "projects" / "-work-proj" / f"{pid}.jsonl")
+
+
+def test_a_real_record_of_each_known_version_is_handed_over_and_the_head_names_the_version_it_was_read_from(world):
+    sender, pid = world.spoken(name="api-server")
+    receiver, _ = world.session()
+    for version, name in zip(VERSIONS, ("claude_2.1.310_send.jsonl", "claude_2.1.311_sessions.jsonl")):
+        put(world.home, pid, None, raw=(RECORDS / name).read_bytes())
+        before = len(world.files(receiver))
+        reply = world.hand(**{"from": sender, "to": receiver})
+        assert reply["ok"] == 1 and reply["delivery"] == "file", reply
+        stored = sorted(world.files(receiver), key=lambda f: f.stat().st_mtime_ns)[-1]
+        assert len(world.files(receiver)) == before + 1
+        body = stored.read_text().partition("\n\n")[2]
+        assert body.startswith(f"Conversation record, read by Lico from the program's own record of the session (Claude Code {version}).\n"), body[:300]
+        assert "Compaction: none found in the record." in body and "Hidden characters" not in body
+    mixed = [json.loads(line) for line in (RECORDS / "claude_2.1.311_sessions.jsonl").read_text().splitlines()]
+    for record in mixed[:6]:
+        if record.get("version") == VERSIONS[1] and record["type"] in ("user", "assistant"):
+            record["version"] = VERSIONS[0]
+    put(world.home, pid, mixed)
+    reply = world.hand(**{"from": sender, "to": receiver})
+    assert reply["ok"] == 1, reply
+    body = sorted(world.files(receiver), key=lambda f: f.stat().st_mtime_ns)[-1].read_text()
+    assert "(Claude Code 2.1.310 and 2.1.311)." in body, "a record the program was updated in the middle of names both"
 
 
 def test_a_link_in_the_place_of_the_record_is_not_followed(world):

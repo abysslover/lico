@@ -60,7 +60,7 @@ pub fn failure(error: &str) -> String {
         "no_conversation_yet" => "this session has no conversation yet: its program has not answered once".into(),
         "record_not_found" => "the host did not find the program's record of this session; select the lines you want and send them with Ctrl+Shift+S".into(),
         "record_ambiguous" => "more than one record has the id of this session; select the lines you want and send them with Ctrl+Shift+S".into(),
-        "record_format" => "the record is not in the layout this Lico reads (Claude Code 2.1.310); select the lines you want and send them with Ctrl+Shift+S".into(),
+        "record_format" => format!("the record is not in the layout this Lico reads (Claude Code {}); select the lines you want and send them with Ctrl+Shift+S", crate::provider_record::versions_text()),
         "bad_request" => "the host does not accept that text".into(),
         "send_limit" => "too many sessions that agents made are running; one has to be closed first".into(),
         "unknown_account" => "the account of the session is not there any more".into(),

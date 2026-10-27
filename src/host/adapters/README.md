@@ -23,7 +23,8 @@ file is read by the reference's test, by a unit test of `hostd/src/leads.rs` and
 
 ## Claude Code (second adapter)
 
-`claude/capabilities.json` pins Claude Code 2.1.310 (the version the owner reported) and lists what is
+`claude/capabilities.json` pins Claude Code 2.1.310 (the version the owner reported; the conversation reader of the host
+also reads the records of 2.1.311, see `exp/202610/20261027/00003_record_layout_2_1_311/`) and lists what is
 mapped, refused, unsupported and **unverified**. The message shapes come from the provider's
 documentation, not from a recording; `tests/fixtures/claude_stream/` says so, and the permission
 request subtype it uses (`can_use_tool`) is an assumption the documentation does not confirm.

@@ -18,8 +18,23 @@ use serde_json::Value;
 use crate::leads::agent_text;
 use crate::transfer::size_text;
 
-/// The program version whose record layout this reader knows (`version.cli` of `capabilities.json`).
-pub const PINNED: &str = "2.1.310";
+/// The program versions whose record layout this reader knows: each one's record was compared with the reader's keys (`version.cli` of `capabilities.json`, the one the adapter was measured on, is among them).
+/// A message of any other version refuses the whole read.
+pub const READ_VERSIONS: [&str; 2] = ["2.1.310", "2.1.311"];
+
+/// `a`, `a and b`, `a, b and c`.
+fn and_words<S: AsRef<str>>(list: &[S]) -> String {
+    match list {
+        [] => String::new(),
+        [one] => one.as_ref().to_string(),
+        [init @ .., last] => format!("{} and {}", init.iter().map(AsRef::as_ref).collect::<Vec<_>>().join(", "), last.as_ref()),
+    }
+}
+
+/// The versions the reader knows, for the words of a refusal.
+pub fn versions_text() -> String {
+    and_words(&READ_VERSIONS)
+}
 /// A line longer than this is not held: it is read past and counted.
 pub const MAX_LINE: usize = 4 << 20;
 /// A record file longer than this is not read.
@@ -181,10 +196,17 @@ struct Tally {
     unparsed: u64,
     long: u64,
     cut: bool,
+    versions: Vec<String>, // those of the messages read, in the order they first appear
     left_out: BTreeMap<String, u64>,
 }
 
 impl Tally {
+    fn saw(&mut self, version: &str) {
+        if !self.versions.iter().any(|seen| seen == version) {
+            self.versions.push(version.to_string());
+        }
+    }
+
     /// Count something that is not shown, under a name that is plain (`other` when it is not, or when there are too many).
     fn skip(&mut self, name: &str, prefix: &str) {
         let plain = !name.is_empty() && name.len() <= 40 && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
@@ -347,8 +369,11 @@ fn message(record: &Value, kind: &str, out: &mut Out, tally: &mut Tally) -> Resu
 
 fn record(value: &Value, out: &mut Out, tally: &mut Tally) -> Result<(), Fault> {
     let kind = value.get("type").and_then(Value::as_str).unwrap_or("");
-    if matches!(kind, "user" | "assistant") && value.get("version").and_then(Value::as_str) != Some(PINNED) {
-        return Err(Fault::Format);
+    if matches!(kind, "user" | "assistant") {
+        match value.get("version").and_then(Value::as_str) {
+            Some(version) if READ_VERSIONS.contains(&version) => tally.saw(version),
+            _ => return Err(Fault::Format),
+        }
     }
     match kind {
         "user" | "assistant" => message(value, kind, out, tally)?,
@@ -375,7 +400,8 @@ fn lines_word(n: u64, rest: &str) -> String {
 
 fn head(tally: &Tally) -> String {
     let shown = tally.user + tally.assistant + tally.results + tally.summaries;
-    let mut out = format!("Conversation record, read by Lico from the program's own record of the session (Claude Code {PINNED}).\n");
+    let program = if tally.versions.is_empty() { "Claude Code; the record holds no message that names its version".to_string() } else { format!("Claude Code {}", and_words(&tally.versions)) };
+    let mut out = format!("Conversation record, read by Lico from the program's own record of the session ({program}).\n");
     out += &if shown == 0 {
         "Messages shown: 0.\n".to_string()
     } else {

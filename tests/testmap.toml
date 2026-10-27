@@ -189,6 +189,12 @@ cargo = ["folders::"]
 reason = "what a name, a folder path and an input text may hold: the protocol rule reads it in the Python test, the host rules in a unit test of folders.rs (include_str!)"
 
 [[sources]]
+glob = "tests/fixtures/claude_record/*.jsonl"
+tests = ["tests/test_conversation.py"]
+cargo = ["provider_record::"]
+reason = "records of the real program, scrubbed: the Rust reader takes them in a unit test (include_str!), the hand-over through the protocol library in test_conversation"
+
+[[sources]]
 glob = "src/host/hostd/src/marks/table.rs"
 tests = ["tests/test_mark_table.py"]
 reason = "the Rust table of the marks, generated: the test reads it by path and compares it with its Python mirror and with the generator"

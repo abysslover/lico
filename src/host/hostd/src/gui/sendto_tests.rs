@@ -200,7 +200,7 @@ fn a_conversation_the_host_hands_over_is_asked_for_without_text_leaves_the_draft
     for (error, said) in [
         ("record_not_found", "the host did not find the program's record of this session; select the lines you want and send them with Ctrl+Shift+S"),
         ("record_ambiguous", "more than one record has the id of this session; select the lines you want and send them with Ctrl+Shift+S"),
-        ("record_format", "the record is not in the layout this Lico reads (Claude Code 2.1.310); select the lines you want and send them with Ctrl+Shift+S"),
+        ("record_format", "the record is not in the layout this Lico reads (Claude Code 2.1.310 and 2.1.311); select the lines you want and send them with Ctrl+Shift+S"),
         ("too_large", "the conversation is over 32 MiB; select the lines you want and send them with Ctrl+Shift+S"),
         ("no_conversation_yet", "this session has no conversation yet: its program has not answered once"),
         ("bad_request", "the host cannot read the record of this session"),
