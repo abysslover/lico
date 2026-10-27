@@ -1,6 +1,6 @@
 # 00005 s08_ten_minutes_of_traffic
 
-Version 1.0.1
+Version 1.0.2
 
 **Question.** The stop line of the phase is a leak of 10 MiB in 10 minutes with the views hidden. Do the host and the window stay within it while three Claude sessions (the
 simulator) use all five tools of the tool connection all the time, the person answers every card, and the window only shows the list of sessions?
@@ -55,7 +55,7 @@ list. The descriptors and the threads end where they began, so nothing is left o
 | after the first `status` (the reply is 1,026 characters) | 5,764 to 6,264 resident, **peak 12,480 to 13,056** | 5,856 to 6,148 resident, **peak 12,864 to 13,056** |
 | after a second `status` | 5,956 to 6,264, the peak the same | 6,048 to 6,148, the peak the same |
 
-In 6 of 6 runs the peak stands at the size of the resident memory until the first `status` and is 12 to 13 MiB right after it, with the resident memory moving by at most a few hundred KiB: a transient of about 7 MiB that one call makes and gives back. A second call does not raise it again. It is on the build from before the listener as well, so it is not new in P03, and at the same points the two builds are within 0.3 MiB of each other, which is the spread between runs of one build. (The first version of this paragraph said "before and after the call" for a peak of 12,288 KiB; a peak that is the same before and after a call was not made by it, and these five points are what shows that the call is where it appears.) Where inside `status` the 7 MiB goes (the 1,026-character reply is far too small for it) is not found here. The stop line is about growth and the runs above are flat, so nothing is changed; the figure is here so that nobody reads the 13 MiB of `VmHWM` as the cost of the tool connection.
+In 6 of 6 runs the peak stands at the size of the resident memory until the first `status` and is 12 to 13 MiB right after it, with the resident memory moving by at most a few hundred KiB: a transient of about 7 MiB that one call makes and gives back. A second call does not raise it again. It is on the build from before the listener as well, so it is not new in P03, and at the same points the ranges of the two builds overlap (after the first `status` the lowest peaks are 12,480 and 12,864 KiB, 0.4 MiB apart, and the three runs of the build from before the listener alone spread 12,480 to 13,056 KiB). (The first version of this paragraph said "before and after the call" for a peak of 12,288 KiB; a peak that is the same before and after a call was not made by it, and these five points are what shows that the call is where it appears.) Where inside `status` the 7 MiB goes (the 1,026-character reply is far too small for it) is not found here. The stop line is about growth and the runs above are flat, so nothing is changed; the figure is here so that nobody reads the 13 MiB of `VmHWM` as the cost of the tool connection.
 
 **Not measured.** More than three sessions in the traffic (the memory with 10 sessions before and after the listener is `../20261026/00002_s02_listener_memory`); a window with a
 session open and its history drawn (the window idle figures of the phase report are those of the first view); a traffic of the real program; more than ten minutes.
