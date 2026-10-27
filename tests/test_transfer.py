@@ -150,7 +150,7 @@ def test_more_than_4096_bytes_go_to_a_file_in_the_receivers_own_folder_and_the_r
     assert path.is_absolute() and path.parent.parent == world.inbox(receiver) and re.fullmatch(r"\d{6}_" + sender[:7] + r"_selection(-\d+)?\.md", path.name), path
     assert notice[3] == "First lines:" and notice[4:7] == ["  " + l for l in text.split("\n")[:3]]
     assert notice[7] == f"{kib}, 120 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time."
-    assert notice[8] == "The file can be removed after 30 days, or sooner when the folder is full." and len(notice) == 9
+    assert notice[8] == "The file can be removed after 30 days, or sooner: the handoff folders of all sessions together keep 256 MiB, and the oldest files go first." and len(notice) == 9
     stored = path.read_bytes()
     head, _, body = stored.decode().partition("\n\n")
     assert body.encode() == text.encode(), "the file holds the text exactly"

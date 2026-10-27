@@ -178,7 +178,7 @@ pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str,
     } else {
         "read it in parts, 400 lines at a time"
     };
-    out + &format!("{size}, {}; {how}.\nThe file can be removed after {} days, or sooner when the folder is full.", lines_word(line_count(text)), crate::handoff::KEEP_DAYS)
+    out + &format!("{size}, {}; {how}.\nThe file can be removed after {} days, or sooner: the handoff folders of all sessions together keep {} MiB, and the oldest files go first.", lines_word(line_count(text)), crate::handoff::KEEP_DAYS, crate::handoff::KEEP_BYTES >> 20)
 }
 
 /// The local time of day as `HH:MM`, the form the headers carry.
@@ -444,7 +444,7 @@ pub(crate) mod tests {
         let text = (1..=1000).map(|n| format!("line {n}\n")).collect::<String>();
         let head = header(Some(("w", ONE)), "10:00", "text", "8.8 KiB, 1000 lines");
         let top = format!("{head}\nLong content, saved as a file. Read it before you answer:\n/inbox/f.md\nFirst lines:\n  line 1\n  line 2\n  line 3\n");
-        let end = "The file can be removed after 30 days, or sooner when the folder is full.";
+        let end = "The file can be removed after 30 days, or sooner: the handoff folders of all sessions together keep 256 MiB, and the oldest files go first.";
         let claude = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude", false);
         assert_eq!(claude, format!("{top}8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time.\n{end}"));
         for other in ["codex", ""] {
