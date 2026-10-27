@@ -140,12 +140,28 @@ pub fn sweep(root: &Path, now: u64) {
 }
 
 #[cfg(test)]
+extern "C" {
+    fn umask(mask: u32) -> u32;
+}
+
+/// The test binary runs with the umask most people have, whatever the shell it was started from: under 077 a folder or file made with a mode that is too wide would
+/// come out private all the same, and a test of its mode could not fail.
+#[cfg(test)]
+pub(crate) fn usual_umask() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        unsafe { umask(0o022) };
+    });
+}
+
+#[cfg(test)]
 pub(crate) struct Scratch(pub PathBuf);
 
 #[cfg(test)]
 impl Scratch {
     /// A folder under the temporary directory that goes with the test.
     pub(crate) fn new(tag: &str) -> Scratch {
+        usual_umask();
         static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!("lico-handoff-{tag}-{}-{}", std::process::id(), COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
         std::fs::create_dir_all(&path).unwrap();
@@ -205,18 +221,19 @@ mod tests {
 
     #[test]
     fn a_stored_file_is_private_whole_and_never_replaces_another() {
-        let root = Scratch::new("store");
-        let first = store(&root.0, A, "20261027", "101500", "s111111", "message", b"one").unwrap();
-        let second = store(&root.0, A, "20261027", "101500", "s111111", "message", b"two").unwrap();
-        let third = store(&root.0, A, "20261027", "101500", "s111111", "message", b"three").unwrap();
-        assert_eq!(first, root.0.join(A).join("20261027").join("101500_s111111_message.md"));
+        let scratch = Scratch::new("store");
+        let root = scratch.0.join("handoff"); // not made yet: the first folder asserted on is the one `store` makes
+        let first = store(&root, A, "20261027", "101500", "s111111", "message", b"one").unwrap();
+        let second = store(&root, A, "20261027", "101500", "s111111", "message", b"two").unwrap();
+        let third = store(&root, A, "20261027", "101500", "s111111", "message", b"three").unwrap();
+        assert_eq!(first, root.join(A).join("20261027").join("101500_s111111_message.md"));
         assert_eq!(second.file_name().unwrap(), "101500_s111111_message-2.md");
         assert_eq!(third.file_name().unwrap(), "101500_s111111_message-3.md");
         assert_eq!([&first, &second, &third].map(|p| std::fs::read(p).unwrap()), [b"one".to_vec(), b"two".to_vec(), b"three".to_vec()]);
-        assert_eq!([mode(&root.0), mode(&root.0.join(A)), mode(&root.0.join(A).join("20261027")), mode(&first)], [0o700, 0o700, 0o700, 0o600]);
+        assert_eq!([mode(&root), mode(&root.join(A)), mode(&root.join(A).join("20261027")), mode(&first)], [0o700, 0o700, 0o700, 0o600]);
         let left: Vec<String> = std::fs::read_dir(first.parent().unwrap()).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
         assert_eq!(left.len(), 3, "no temporary file stays: {left:?}");
-        assert!(!root.0.join(B).exists(), "another receiver's folder is not made");
+        assert!(!root.join(B).exists(), "another receiver's folder is not made");
     }
 
     #[test]

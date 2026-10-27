@@ -12,7 +12,7 @@ from lico_measure.p02 import HOSTD_DIR, ProtoConn as Conn, read_log, start
 from lico_measure.rig import REPO, files_under, private_dir
 from lico_protocol.claude_mapping import map_stream
 
-from tests.test_codex_adapter import agent_pid, finished_lines, let_the_old_helper_write, wait_for
+from tests.test_codex_adapter import agent_pid, finished_lines, let_the_old_helper_write, usual_umask, wait_for
 from tests.test_credential_store import cred
 
 SIM = REPO / "src" / "host" / "adapters" / "claude" / "simulator.py"
@@ -24,7 +24,8 @@ def claude_host(directory, env_overrides=None):
     received = Path(directory) / "claude_received.txt"
     extra = ["--claude", sys.executable, "--claude-arg", "-I", "--claude-arg", str(SIM), "--claude-arg", "--received", "--claude-arg", str(received),
              "--claude-arg", "--fixture", "--claude-arg", str(FIXTURE), "--cred-bin", str(HOSTD_DIR / "lico-cred"), "--cred-dir", str(Path(directory) / "credentials")]
-    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000, env_overrides=env_overrides)
+    with usual_umask():
+        host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000, env_overrides=env_overrides)
     return host, log, received
 
 

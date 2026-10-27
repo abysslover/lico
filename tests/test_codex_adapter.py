@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import random
@@ -16,13 +17,25 @@ SIM = REPO / "src" / "host" / "adapters" / "codex" / "simulator.py"
 FIXTURE = REPO / "tests" / "fixtures" / "codex_app_server" / "turn_with_approval.json"
 
 
+@contextlib.contextmanager
+def usual_umask():
+    """The host is started with the umask most people have, whatever the shell the tests run from: under 077 a folder or file the host made with a mode that is too
+    wide would come out private all the same, and a test of its mode could not fail."""
+    before = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(before)
+
+
 def codex_host(directory, sim_args=()):
     received = os.path.join(directory, "received.jsonl")
     extra = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", str(SIM), "--codex-arg", "--received",
              "--codex-arg", received, "--codex-arg", "--fixture", "--codex-arg", str(FIXTURE)]
     for arg in sim_args:
         extra += ["--codex-arg", str(arg)]
-    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0)
+    with usual_umask():
+        host, log = start(directory, extra=extra, sessions=0, producing=0, history=0)
     return host, log, Path(received)
 
 

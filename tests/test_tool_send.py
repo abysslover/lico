@@ -20,7 +20,7 @@ from lico_measure.p02 import ProtoConn
 from lico_protocol import v1
 
 from tests.test_claude_adapter import FIXTURE, SIM, records, sent_users, status_of, user_text
-from tests.test_codex_adapter import wait_for
+from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_tool_connection import World, another_secret, raw, rpc
 from tests.test_transfer import check_lookalikes, lookalike_text
 
@@ -33,7 +33,8 @@ def host_of(directory, *more):
     received = Path(directory) / "claude_received.txt"
     extra = ["--claude", sys.executable, "--claude-arg", "-I", "--claude-arg", str(SIM), "--claude-arg", "--received", "--claude-arg", str(received),
              "--claude-arg", "--fixture", "--claude-arg", str(FIXTURE), "--cred-bin", str(HOSTD_DIR / "lico-cred"), "--cred-dir", str(Path(directory) / "credentials"), *more]
-    host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000)
+    with usual_umask():
+        host, log = start(directory, extra=extra, sessions=0, producing=0, history=0, retain=100000)
     return host, log, received
 
 

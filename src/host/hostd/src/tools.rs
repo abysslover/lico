@@ -395,6 +395,7 @@ mod tests {
 
     impl Folder {
         fn new() -> Folder {
+            crate::handoff::usual_umask();
             let path = std::env::temp_dir().join(format!("lico-tools-test-{}", core::random_hex(6)));
             std::fs::DirBuilder::new().mode(0o700).create(&path).unwrap();
             Folder(path)
