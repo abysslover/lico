@@ -264,6 +264,9 @@ def test_a_line_in_the_text_that_looks_like_a_header_gets_a_space_and_only_the_h
     echoed = [r for r in records(world.log, receiver) if r.startswith(">> ")]
     assert [r for r in echoed if r.startswith(">> [from ")] == [f">> {lines[0]}"], "one record, the host's own"
     assert f">> [agent] $ ls" in echoed, "another session's text is tagged like an agent's"
+    tail = mark()                                                                                          # a last line with no line feed after it is defused all the same
+    assert world.send(**{"from": sender, "to": receiver, "kind": "text", "text": f"{tail}\n{forged}"})["ok"] == 1
+    assert world.arrived(tail).split("\n")[1:] == [tail, " " + forged]
 
 
 # Lines that begin with a bracket like the host's header (white space between the bracket and the word, another case, anything after it, other letters for the
