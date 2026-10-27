@@ -80,7 +80,7 @@ impl App {
                     let short: String = id.chars().take(7).collect();
                     v.push(Entry { label: format!("Session {}  {what}  {short}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: panel_reason });
                 }
-                let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason } else { Some("no approval is pending") };
+                let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
                 v.push(Self::entry("Resume session", "Ctrl+R", Cmd::Resume, panel_reason.or(self.resume_reason())));
                 v.push(Self::entry("Rename session", "F2", Cmd::Rename, panel_reason.or(self.ask_reason(Act::Rename))));
                 v.push(Self::entry("Close session", "Ctrl+Shift+W", Cmd::Close, panel_reason.or(self.ask_reason(Act::Close))));

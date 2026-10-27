@@ -151,6 +151,10 @@ def clock(w, *words):
     w.proc.stdin.flush()
 
 
+def centre(box):
+    return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+
+
 def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_is_the_answer():
     with private_dir() as directory:
         args, _ = claude_args(directory)
@@ -171,6 +175,9 @@ def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_i
             assert ask(w.directory, writer, docs, "the first")["status"] == "pending"
             wait_for(lambda: w.ui()["approval_bar"] and w.ui()["card_seen"])                           # a frame has drawn the card: the count starts there
             assert not w.ui()["card_ready"]
+            assert w.ui()["layout"]["dim"], "the buttons are drawn dimmed while the card may not be answered"
+            w.click(*centre(w.ui()["layout"]["allow"]))                                                # a click is no answer before the dwell, as a key is none
+            assert w.ui()["approval_bar"] and not w.ui()["card_ready"], w.ui()["header"]
             w.key("y")                                                                                 # typed at once: the person was writing, the card came up under the key
             state = w.ui()
             assert state["input"] == "y" and state["approval_bar"] and not state["card_ready"], state["input"]
@@ -203,6 +210,18 @@ def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_i
             assert wait_for(lambda: w.ui()["card_ready"])
             w.key("n")
             assert "Declined: nothing was sent." in w.ui()["header"], w.ui()["header"]
+
+            assert ask(w.directory, writer, docs, "the third")["status"] == "pending"                   # the buttons wake with the keys: a click is the answer once the dwell is over
+            wait_for(lambda: w.ui()["approval_bar"] and w.ui()["card_seen"])
+            clock(w, "advance", "799")
+            assert wait_for(lambda: w.ui()["layout"]["dim"])
+            w.click(*centre(w.ui()["layout"]["deny"]))
+            assert w.ui()["approval_bar"] and not w.ui()["card_ready"], w.ui()["header"]
+            clock(w, "advance", "1")
+            assert wait_for(lambda: w.ui()["card_ready"] and not w.ui()["layout"]["dim"])
+            w.click(*centre(w.ui()["layout"]["allow"]))
+            assert wait_for(lambda: not w.ui()["approval_bar"] and "Allowed: the text was sent." in w.ui()["header"])
+            wait_for(lambda: ">> the third" in records(log, docs))
 
 
 def lit(w):

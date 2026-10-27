@@ -176,6 +176,18 @@ impl App {
         self.ui.card_seen.as_ref().is_some_and(|(session, seen, at)| *session == self.session && *seen == id && self.card_now().saturating_duration_since(*at) >= DWELL)
     }
 
+    /// Whether the first request may be answered now: the question of the program at once, a card of the host's own once it has been on screen for the dwell.
+    pub(crate) fn answers_live(&self) -> bool {
+        self.lico_card().is_none() || self.card_ready()
+    }
+
+    /// After a second (the tick that is there anyway; no timer of its own): buttons that were drawn dimmed are drawn again once the dwell is over.
+    pub(crate) fn card_tick(&mut self) {
+        if self.ui.controls.dimmed && self.answers_live() {
+            self.dirty = true;
+        }
+    }
+
     /// The keys offered beside the input line for the first request.
     pub(crate) fn approval_hint(&self) -> &'static str {
         if self.lico_card().is_some() {
@@ -201,7 +213,7 @@ impl App {
 
     /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of
     /// them). A card of the host's own is answered only once it has been on screen for the dwell (before that the key is typing: the person was writing
-    /// when the card came up), and S needs the capital and the Shift key held (with Caps Lock on, a sentence in capitals is not an answer). The question of the program keeps the old rule: Y and N at once.
+    /// when the card came up; a click or the menu waits the same dwell, in `answer_approval`), and S needs the capital and the Shift key held (with Caps Lock on, a sentence in capitals is not an answer). The question of the program keeps the old rule: Y and N at once.
     pub(crate) fn answer_key(&mut self, key: &str) -> bool {
         if self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
             return false;
@@ -223,7 +235,13 @@ impl App {
     pub(crate) fn answer_approval(&mut self, allow: bool) {
         let Some(row) = self.selected_row() else { return };
         let Some((id, _)) = row.approvals.first().cloned() else { return };
-        if self.lico_card() == Some(id) { return self.answer_card(allow, false) } // the host's own: answered on a call that says what came of it
+        if self.lico_card() == Some(id) {
+            // the host's own: answered on a call that says what came of it, and only once the card has been on screen for the dwell, whether the answer is a key, a click or the menu
+            if self.card_ready() {
+                self.answer_card(allow, false);
+            }
+            return;
+        }
         let msg = format!(
             "{{\"op\":\"approval.answer\",\"session\":\"{}\",\"generation\":{},\"approval_id\":{},\"answer\":\"{}\"}}",
             self.session, row.generation, id, if allow { "allow" } else { "deny" }

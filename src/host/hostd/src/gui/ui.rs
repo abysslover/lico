@@ -165,6 +165,7 @@ impl App {
     pub(crate) fn ui_tick(&mut self) {
         self.ui.ticks += 1;
         self.panel_tick();
+        self.card_tick();
         self.send("{\"op\":\"status\"}");
         if self.ui.ticks % 5 == 1 {
             self.send("{\"op\":\"account.list\"}");
@@ -665,7 +666,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
-                "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect), "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
+                "dim": self.ui.controls.dimmed, "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect), "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
                 "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
             },
         });
@@ -723,6 +724,7 @@ impl App {
         // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
         let row = self.selected_row().cloned();
         let hint = self.hint_text(width, s);
+        let live = self.answers_live();
         let panel_view = self.panel_view();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
         if panel_view.is_some() {
@@ -937,11 +939,8 @@ impl App {
                 }
             }
         }
-        // the Allow and Deny buttons of the first pending approval
-        if let Some(y) = approval_y {
-            controls.button(fs, swash, &mut buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", 0xFF2E_6B3A, ink, Action::Allow);
-            controls.button(fs, swash, &mut buf, width, height, [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh], "Deny", 0xFF7A_2E2E, ink, Action::Deny);
-        }
+        // the Allow and Deny buttons of the first pending approval, dimmed while a card of the host's own is not to be answered yet
+        if let Some(y) = approval_y { controls.answer_buttons(fs, swash, &mut buf, width, height, y, ink, live) }
         let modes: Vec<Mode> = (0..frame.lines.len())
             .map(|i| match &plan {
                 Ok(shift) if shift.kept.contains(&i) => {

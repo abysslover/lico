@@ -32,12 +32,15 @@ pub struct Controls {
     pub scale: f32,
     /// How many labels were shaped since the start (a label whose text and scale are unchanged is shaped once and reused).
     pub shapes: u64,
+    /// The Allow and Deny buttons of the last frame were drawn dimmed (a card that may not be answered yet).
+    pub dimmed: bool,
 }
 
 impl Controls {
     /// Start a frame: the boxes of the last one are forgotten, and shaped labels are dropped when the scale changed or too many piled up.
     pub fn begin(&mut self, scale: f32) {
         self.hits.clear();
+        self.dimmed = false;
         if (self.scale - scale).abs() > f32::EPSILON || self.labels.len() > 600 {
             self.labels.clear();
         }
@@ -80,6 +83,17 @@ impl Controls {
         let pad = 6.0 * self.scale;
         self.text(fs, swash, buf, width, height, r[0] + pad, r[1], r[2] as i32, label, ink);
         self.hits.push(Hit { rect: r, action });
+    }
+
+    /// The Allow and Deny buttons of the first pending approval, at the right edge of its row: drawn dimmed while `live` is false (a card of the host's own that
+    /// has not been on screen for the dwell yet; a click on them answers nothing then).
+    #[allow(clippy::too_many_arguments)]
+    pub fn answer_buttons(&mut self, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, y: f32, ink: Color, live: bool) {
+        let (s, lh) = (self.scale, LINE_HEIGHT as f32 * self.scale);
+        let (allow, deny, ink) = if live { (0xFF2E_6B3A, 0xFF7A_2E2E, ink) } else { (0xFF26_3A2C, 0xFF3A_2828, Color::rgb(0x9A, 0xA4, 0xB0)) };
+        self.dimmed = !live;
+        self.button(fs, swash, buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", allow, ink, Action::Allow);
+        self.button(fs, swash, buf, width, height, [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh], "Deny", deny, ink, Action::Deny);
     }
 
     /// A row of a list: highlighted when selected, its text cut at the row's right edge.

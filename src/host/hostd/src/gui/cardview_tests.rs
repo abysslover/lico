@@ -625,3 +625,75 @@ fn an_answer_the_host_did_not_confirm_is_not_called_unanswered_and_the_list_is_a
     let n = peer.read(&mut asked).unwrap();
     assert_eq!(&asked[..n], b"{\"op\":\"status\"}\n");
 }
+
+#[test]
+fn a_click_on_a_button_or_the_menu_entry_answers_a_card_of_the_host_only_after_the_dwell_as_the_keys_do() {
+    for allow in [true, false] {
+        let (word, outcome) = if allow { ("allow", "done") } else { ("deny", "declined") };
+        let mut never_drawn = fresh_card(); // no host at all: an answer that was sent would say that the host did not answer
+        never_drawn.answer_approval(allow);
+        assert!(never_drawn.ui.rows[0].approvals.len() == 1 && never_drawn.ui.flash.is_none(), "{word} on a card that no frame drew: {:?}", never_drawn.ui.flash);
+        for ms in [0, 1, 400, 799] {
+            let mut app = fresh_card();
+            drawn_ms_ago(&mut app, ms);
+            app.answer_approval(allow); // what a click on the button and the menu entry run
+            assert!(app.ui.rows[0].approvals.len() == 1 && app.ui.flash.is_none() && app.ui.panel.is_none(), "{word} at {ms} ms: {:?}", app.ui.flash);
+        }
+        let dir = Scratch::new("cardview");
+        let (path, host) = fake_host(&dir, vec![answered(outcome)]);
+        let mut app = fresh_card();
+        app.socket = path;
+        drawn_ms_ago(&mut app, 800);
+        app.answer_approval(allow);
+        assert_eq!(host.join().unwrap(), [answer(word, false)], "{word} at 800 ms");
+        assert!(app.ui.rows[0].approvals.is_empty());
+    }
+}
+
+#[test]
+fn the_menu_entries_of_the_answers_say_why_they_wait_until_the_dwell_is_over_and_the_question_of_the_program_has_none() {
+    let entry = |app: &App, label: &str| app.menu_entries(1).into_iter().find(|e| e.label == label).map(|e| e.reason).unwrap();
+    for ms in [0, 799] {
+        let mut app = fresh_card();
+        drawn_ms_ago(&mut app, ms);
+        for label in ["Allow approval", "Deny approval"] {
+            assert_eq!(entry(&app, label), Some("the card has just come up"), "{label} at {ms} ms");
+        }
+        let index = app.menu_entries(1).iter().position(|e| e.label == "Allow approval").unwrap();
+        app.menu_run(1, index); // an entry that cannot act says why on the first row, and asks nothing of the host
+        assert_eq!(app.ui.flash.as_deref(), Some("Allow approval: the card has just come up"));
+        assert_eq!(app.ui.rows[0].approvals.len(), 1);
+    }
+    let app = with_card();
+    assert_eq!((entry(&app, "Allow approval"), entry(&app, "Deny approval")), (None, None), "the dwell is over");
+    let app = with_program_card(); // never drawn: there is no dwell for a question that is not ours
+    assert_eq!((entry(&app, "Allow approval"), entry(&app, "Deny approval")), (None, None));
+    let mut app = fresh_card();
+    app.ui.rows[0].approvals.clear();
+    assert_eq!(entry(&app, "Allow approval"), Some("no approval is pending"));
+    let mut app = with_program_card();
+    app.answer_approval(true); // the question of the program keeps the old rule: the button answers at once
+    assert!(app.ui.rows[0].approvals.is_empty());
+}
+
+#[test]
+fn the_tick_draws_dimmed_buttons_again_once_the_dwell_is_over_and_an_idle_tick_draws_nothing() {
+    let mut app = fresh_card();
+    drawn_ms_ago(&mut app, 799);
+    app.ui.controls.dimmed = true; // the last frame drew the buttons dimmed
+    app.dirty = false;
+    app.ui_tick();
+    assert!(!app.dirty, "the dwell is not over: nothing to draw again");
+    app.ui.clock = app.ui.clock.map(|t| t + Duration::from_millis(1));
+    app.ui_tick();
+    assert!(app.dirty, "the dwell is over: the buttons are drawn as they are");
+    app.dirty = false;
+    app.ui.controls.dimmed = false; // and the buttons that were drawn as they are are not drawn again for nothing
+    app.ui_tick();
+    assert!(!app.dirty, "an idle tick makes no frame");
+    let mut program = with_program_card();
+    program.ui.controls.dimmed = true;
+    program.dirty = false;
+    program.ui_tick();
+    assert!(program.dirty, "buttons that cannot be dimmed any more (the card is gone or is the program's) are drawn as they are");
+}
