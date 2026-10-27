@@ -26,6 +26,7 @@ pub const IN_ALL: usize = 8;
 pub const NAME_CHARS: usize = 36;
 const MADE_BY_CHARS: usize = 12;
 const FOLDER_CHARS: usize = 40;
+const FOLDER_LEAST: usize = 16; // what the card shows of a folder at the least, when it has to give way
 const DEFAULT: &str = "the program's default";
 const STARTS: &str = "starts at once on the account's allowance";
 
@@ -85,7 +86,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     };
     let named = if name.is_empty() { String::new() } else { format!(" '{name}'") };
     let who = format!("creation of a new session{named} {shown}");
-    let card = calls::card_line(&format!("create session{named} {shown} | mode: asks for approval | {chosen} | {STARTS}"), prompt, removed);
+    let card = card_of(&name, cwd.as_deref(), &chosen, prompt, removed);
     let (id, again) = match pending::ask(shared, caller, &Request { tool: "create", target: &name, who: &who, card: &card, text: prompt }, pending::now(), held)? {
         Asked::New(id) => (id, false),
         Asked::Again(id) => (id, true),
@@ -107,6 +108,42 @@ fn chosen_words(settings: &Settings) -> String {
         (None, None) => "model: the program's default".to_string(),
         (model, effort) => format!("model: {}, effort: {}", model.as_deref().unwrap_or(DEFAULT), effort.as_deref().unwrap_or(DEFAULT)),
     }
+}
+
+/// The card of a `create`: `create session 'NAME' in 'FOLDER' | mode: asks for approval | model: X, effort: Y | starts at once on the account's allowance | SIZE | "START OF THE PROMPT"`,
+/// one line of at most `CARD_CHARS`. The name and the prompt are the agent's, the folder, the model and the effort are the person's and have no fixed length, so the line can be too
+/// long, and what gives way is, first to last: the start of the prompt, the size, the name (cut to what is left, with an ellipsis; dropped when nothing is left), the folder (cut
+/// from its start, to `FOLDER_LEAST` characters at least). The host's own words (mode, model and effort, starts at once) are never cut before that: they fit whole with any name up to
+/// `NAME_CHARS`, any folder, a model of 40 characters and an effort of 8; beyond that (the host accepts a model of 60 and an effort of 16) the end of the line is cut by `Session::add_card`.
+/// A card that fits whole is what it always was.
+fn card_of(name: &str, cwd: Option<&str>, chosen: &str, prompt: &str, removed: usize) -> String {
+    let length = |text: &str| text.chars().count();
+    let words = format!(" | mode: asks for approval | {chosen} | {STARTS}");
+    let head = |name: &str, folder: usize| {
+        let named = if name.is_empty() { String::new() } else { format!(" '{name}'") };
+        let shown = match cwd {
+            Some(folder_path) => format!("in '{}'", cut_start(folder_path, folder)),
+            None => "in a scratch folder".to_string(),
+        };
+        format!("create session{named} {shown}{words}")
+    };
+    let whole = head(name, FOLDER_CHARS);
+    if length(&whole) + length(&calls::card_tail(prompt, removed)) + 2 <= calls::CARD_CHARS {
+        return calls::card_line(&whole, prompt, removed);
+    }
+    if length(&whole) <= calls::CARD_CHARS {
+        return whole; // the size and the start of the prompt gave way
+    }
+    let bare = head("", FOLDER_CHARS);
+    let room = calls::CARD_CHARS.saturating_sub(length(&bare) + 3); // ` '` and `'` stand round the name
+    if room >= 2 {
+        let kept: String = name.chars().take(room - 1).collect();
+        return head(&format!("{}\u{2026}", kept.trim_end()), FOLDER_CHARS);
+    }
+    if length(&bare) <= calls::CARD_CHARS {
+        return bare; // the name gave way
+    }
+    (FOLDER_LEAST..FOLDER_CHARS).rev().map(|count| head("", count)).find(|card| length(card) <= calls::CARD_CHARS).unwrap_or_else(|| head("", FOLDER_LEAST))
 }
 
 /// A name as the card shows it and the session gets it: the characters that would end the card's quote or split its fields (and a header) become `_`, the way a label does.
@@ -326,10 +363,85 @@ mod tests {
         let w = room();
         let folder = format!("/{}/project", "d".repeat(100));
         w.with(ONE, |s| s.settings.cwd = Some(folder.clone()));
-        waits(&w, ONE, json!({"prompt": "x".repeat(500), "name": "n".repeat(12)}));
+        waits(&w, ONE, json!({"prompt": "x".repeat(500), "name": "n".repeat(NAME_CHARS)}));
         let card = cards(&w, ONE)[0]["prompt"].as_str().unwrap().to_string();
         assert!(card.chars().count() <= calls::CARD_CHARS, "{}", card.chars().count());
-        assert!(card.contains("in '\u{2026}ddd") && card.contains(&format!("/project' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 500 B | \"")), "{card}");
+        assert!(card.contains(&format!("'{}' in '\u{2026}ddd", "n".repeat(NAME_CHARS))) && card.ends_with(&format!("/project' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS}")), "the size and the prompt gave way, the host's words did not: {card}");
+    }
+
+    /// The caller's choices and the agent's name and prompt, as a `create` card is made of them.
+    fn card_for(name: &str, folder: Option<&str>, model: Option<&str>, effort: Option<&str>, prompt: &str, removed: usize) -> String {
+        let settings = Settings { cwd: folder.map(String::from), name: None, model: model.map(String::from), effort: effort.map(String::from) };
+        card_of(name, folder, &chosen_words(&settings), prompt, removed)
+    }
+
+    #[test]
+    fn the_host_words_of_the_card_stay_whole_and_in_order_whatever_the_agent_names_the_session_and_whatever_the_person_chose_within_the_bounds() {
+        let long_folder = format!("/{}/project", "d".repeat(100));
+        let (id26, id40) = ("claude-sonnet-4-5-20250929", "m".repeat(40));
+        let mut cards = 0;
+        for name in ["".to_string(), "n".repeat(12), "n".repeat(NAME_CHARS)] {
+            for folder in [None, Some("/w/api"), Some(long_folder.as_str())] {
+                for model in [None, Some("opus"), Some(id26), Some(id40.as_str())] {
+                    for effort in [None, Some("high"), Some("medium"), Some("xhigh"), Some("12345678")] {
+                        for prompt in ["p".to_string(), "x".repeat(500)] {
+                            let settings = Settings { cwd: None, name: None, model: model.map(String::from), effort: effort.map(String::from) };
+                            let words = format!("mode: asks for approval | {} | {STARTS}", chosen_words(&settings));
+                            let card = card_for(&name, folder, model, effort, &prompt, 0);
+                            assert!(card.chars().count() <= calls::CARD_CHARS && card.starts_with("create session") && card.contains(&words), "{name:?} {folder:?} {model:?} {effort:?}: {card}");
+                            cards += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(cards, 3 * 3 * 4 * 5 * 2);
+    }
+
+    #[test]
+    fn the_card_of_a_call_is_made_of_the_name_the_folder_and_the_choices_of_the_caller_as_they_are_when_it_asks() {
+        let w = room();
+        w.with(ONE, |s| (s.settings.model, s.settings.effort, s.settings.cwd) = (Some("claude-sonnet-4-5-20250929".into()), Some("high".into()), Some(format!("/{}/project", "d".repeat(100)))));
+        waits(&w, ONE, json!({"prompt": "p", "name": "n".repeat(NAME_CHARS)}));
+        let wanted = card_for(&"n".repeat(NAME_CHARS), Some(&format!("/{}/project", "d".repeat(100))), Some("claude-sonnet-4-5-20250929"), Some("high"), "p", 0);
+        assert_eq!(cards(&w, ONE)[0]["prompt"], wanted);
+        assert!(wanted.contains("\u{2026}' in '") && wanted.ends_with(STARTS), "{wanted}");
+    }
+
+    #[test]
+    fn what_gives_way_on_a_card_that_is_too_long_is_the_start_of_the_prompt_then_the_size_then_the_name_then_the_folder() {
+        let long_folder = format!("/{}/project", "d".repeat(100));
+        let (id26, id40, name) = ("claude-sonnet-4-5-20250929", "m".repeat(40), "n".repeat(NAME_CHARS));
+        // it fits whole: byte for byte what the card always was
+        let fits = card_for("writer", Some("/w/api"), Some("opus"), Some("high"), "fix the tests", 0);
+        assert_eq!(fits, format!("create session 'writer' in '/w/api' | mode: asks for approval | model: opus, effort: high | {STARTS} | 13 B | \"fix the tests\""));
+        // the start of the prompt is cut first, and says so
+        let cut = card_for(&"n".repeat(12), Some("/w/api"), Some(id26), Some("high"), &"x".repeat(500), 0);
+        assert!(cut.contains(" | 500 B | \"x") && cut.ends_with("\u{2026}\"") && cut.chars().count() <= calls::CARD_CHARS, "{cut}");
+        // then the size: the card ends with the host's words (also where what the cleaning took out makes the size words long)
+        let hidden = card_for(&"n".repeat(12), Some("/w/api"), Some(id26), Some("high"), &"x".repeat(500), 100);
+        assert!(hidden.ends_with(STARTS) && hidden.chars().count() < 170, "{hidden}");
+        let no_size = card_for(&name, Some(long_folder.as_str()), None, None, "p", 0);
+        assert!(no_size.contains(&format!("'{name}' in '\u{2026}")) && no_size.ends_with(STARTS) && !no_size.contains(" B"), "{no_size}");
+        // then the name, cut to what is left with an ellipsis, the folder whole (40 characters)
+        let cut_name = card_for(&name, Some(long_folder.as_str()), Some(id26), Some("high"), "p", 0);
+        let (named, rest) = cut_name.split_once("' in '").unwrap();
+        assert!(named.starts_with("create session 'nnnn") && named.ends_with('\u{2026}') && named.matches('n').count() < NAME_CHARS && rest.starts_with('\u{2026}') && cut_name.ends_with(STARTS), "{cut_name}");
+        assert_eq!(cut_name.chars().count(), calls::CARD_CHARS, "the name takes what is left");
+        // then the name is gone altogether
+        let gone = card_for(&name, Some(long_folder.as_str()), Some(id40.as_str()), Some("12345678"), "p", 0);
+        assert!(gone.starts_with("create session in '\u{2026}") && gone.ends_with(STARTS) && !gone.contains("nnn"), "{gone}");
+        // the name takes what is left down to one character and the ellipsis; with less room than that it is gone
+        let bare_len = |m: usize| format!("create session in a scratch folder | mode: asks for approval | model: {}, effort: high | {STARTS}", "m".repeat(m)).chars().count();
+        let m = 1 + 196 - bare_len(1);
+        let one_left = card_for(&name, None, Some(&"m".repeat(m - 1)), Some("high"), "p", 0);
+        assert!(one_left.starts_with("create session 'n\u{2026}' in a scratch folder | ") && one_left.chars().count() == calls::CARD_CHARS && one_left.ends_with(STARTS), "{one_left}");
+        let none_left = card_for(&name, None, Some(&"m".repeat(m)), Some("high"), "p", 0);
+        assert!(none_left.starts_with("create session in a scratch folder | ") && none_left.chars().count() == 196 && none_left.ends_with(STARTS), "{none_left}");
+        // and only beyond the bounds (a model of 60, an effort of 16) the folder gives way, to 16 characters
+        let beyond = card_for(&name, Some(long_folder.as_str()), Some(&"m".repeat(60)), Some(&"e".repeat(16)), "p", 0);
+        assert!(beyond.starts_with("create session in '\u{2026}") && !beyond.contains("nnn") && beyond.contains("project' | mode: asks for approval | model: "), "{beyond}");
+        assert_eq!(beyond.split('\'').nth(1).unwrap().chars().count(), 16, "{beyond}");
     }
 
     #[test]

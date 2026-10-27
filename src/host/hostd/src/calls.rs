@@ -134,8 +134,8 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
     card_line(&format!("send to '{label}' ({})", transfer::id7(to)), text, removed)
 }
 
-/// A card's line: `head`, how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the start of it, in one line of at most `CARD_CHARS`.
-pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
+/// What a card says after its head: how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the opening quote of the start of it.
+pub(crate) fn card_tail(text: &str, removed: usize) -> String {
     let lines = transfer::line_count(text);
     let size = if lines > 1 { format!("{}, {}", transfer::size_text(text.len()), transfer::lines_word(lines)) } else { transfer::size_text(text.len()) };
     let removed = match removed {
@@ -143,7 +143,12 @@ pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
         1 => " | 1 hidden character removed".to_string(),
         n => format!(" | {n} hidden characters removed"),
     };
-    let head = format!("{head} | {size}{removed} | \"");
+    format!(" | {size}{removed} | \"")
+}
+
+/// A card's line: `head`, the tail (`card_tail`) and the start of the text, in one line of at most `CARD_CHARS`.
+pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
+    let head = format!("{head}{}", card_tail(text, removed));
     let first = text.lines().find(|line| !line.trim().is_empty()).unwrap_or("");
     let first = sanitize(first).replace('"', "'");
     let room = CARD_CHARS.saturating_sub(head.chars().count() + 2);
