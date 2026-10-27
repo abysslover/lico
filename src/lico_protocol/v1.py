@@ -99,7 +99,7 @@ REPLIES = {
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {"tool": {"type": STR, "enum": ["send", "create", "history"]}}}},    # a question the host asks for an agent's request; the program's own has none
-                     "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
+                     "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),

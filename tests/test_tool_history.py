@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from lico_measure.rig import private_dir
+from lico_protocol import v1
 
 from tests.test_claude_adapter import records, status_of
 from tests.test_codex_adapter import wait_for
@@ -152,6 +153,8 @@ def test_a_yes_that_is_kept_answers_the_next_calls_for_that_session_at_once_with
     failed, text = call(world.config(caller), "history", session=target, last_n="2")
     assert not failed and text.startswith(f"[history of session 'docs' ({target[:7]}) | records ") and "second words" in text and "older records not shown" in text, text
     assert status_of(world.conn, caller).get("approvals") is None, "no card: the person said yes for as long as the session lives"
+    status = world.conn.call(op="status")
+    assert status_of(world.conn, caller)["allowed"] == [{"tool": "history", "to": target}] and v1.validate_response("status", status) == [], "the status says what was kept, in words the protocol library knows"
     elsewhere = wants(world, caller, other, last_n=3)                                       # another session is another question
     wants(world, other, target)                                                              # and so is another caller
     assert [a["tool"] for a in status_of(world.conn, caller)["approvals"]] == ["history"] and [a["tool"] for a in status_of(world.conn, other)["approvals"]] == ["history"]
