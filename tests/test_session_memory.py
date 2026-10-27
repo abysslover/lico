@@ -15,7 +15,7 @@ from tests.test_new_session_screen import claude_args
 OWN, CHILD, GRANDCHILD = 60, 40, 20                  # MiB the agent, its child and its grandchild touch and keep
 HELD_KB = (OWN + CHILD + GRANDCHILD) << 10
 SLACK_KB = 24 << 10                                  # three Python interpreters hold a few MiB of their own besides what they were told to hold
-FILE_KB = 8 << 10                                    # what an interpreter maps of files (itself, libc, its modules) and counts in RSS only: measured 40 MiB or more
+FILE_KB = 8 << 10                                    # what an interpreter maps of files (itself, libc, its modules) and counts in RSS only: about 6 MiB bare, 10 with its modules
 
 
 def idle_figure(conn, sid):
