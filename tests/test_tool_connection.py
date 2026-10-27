@@ -206,9 +206,10 @@ def test_a_credential_that_is_refused_leaves_a_line_in_the_log_with_the_reason_a
         line = f"lico-host: tool refused 401 {wanted}"
 
         def written():
-            assert raw(port, headers={"Authorization": header})[0] == 401, what
+            status = raw(port, headers={"Authorization": header})[0]
+            assert status in (401, 429), (what, status)            # 429: the test before this one spent the host's budget for wrong credentials, which fills up again at 20 a second
             time.sleep(0.25)                                       # the log has a budget of its own (a burst of 20 and 5 a second): a try is made a few times a second until one has room
-            return line in refusal_lines(world)
+            return status == 401 and line in refusal_lines(world)
         wait_for(written)
     for line in refusal_lines(world):
         assert key not in line and secret not in line and "Bearer" not in line, line
