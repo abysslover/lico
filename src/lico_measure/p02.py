@@ -88,7 +88,10 @@ def read_log(log_dir: Path, session_id: str) -> list[tuple[int, bytes]]:
     """Parse one session's durable log straight from disk: (sequence, payload) in file order."""
     out = []
     for path in sorted(log_dir.glob(f"{session_id}.*.seg")):
-        data = path.read_bytes()
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            continue                                                    # the host dropped its oldest segment after the listing: the same as reading a moment later
         at = 0
         while at + 12 <= len(data):
             length, seq = struct.unpack_from("<IQ", data, at)

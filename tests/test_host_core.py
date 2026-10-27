@@ -1,7 +1,11 @@
 import os
 import socket
 import stat
+import struct
 import time
+from pathlib import Path
+
+import pytest
 
 from lico_measure.rig import private_dir
 
@@ -157,3 +161,28 @@ def test_retention_boundary_reports_gap_and_snapshot():
             assert subscribe(last + 5)["gap"] is True       # a cursor from the future is not trusted
         finally:
             host.stop()
+
+
+def test_read_log_leaves_out_a_segment_the_host_dropped_between_the_listing_and_the_read():
+    """R5m: the host removes its oldest segment at its retention while a test reads; the listing and the read are two steps, so a file of the listing can be
+    gone. The read is then what it would have been a moment later: without that segment."""
+
+    class Pruned(type(Path())):
+        def glob(self, pattern):
+            found = sorted(super().glob(pattern))
+            found[0].unlink()                                         # the host prunes right after the listing
+            return iter(found)
+
+    def segment(path, first, count):
+        path.write_bytes(b"".join(struct.pack("<IQ", 2, seq) + b"%02d" % seq for seq in range(first, first + count)))
+
+    with private_dir() as directory:
+        for first in (0, 3):
+            segment(Path(directory) / f"s1.{first:020}.seg", first, 3)
+        assert read_log(Path(directory), "s1") == [(0, b"00"), (1, b"01"), (2, b"02"), (3, b"03"), (4, b"04"), (5, b"05")]
+        segment(Path(directory) / f"s1.{0:020}.seg", 0, 3)
+        assert read_log(Pruned(directory), "s1") == [(3, b"03"), (4, b"04"), (5, b"05")]
+        assert read_log(Path(directory), "s2") == []                       # a session with no segment reads as empty
+        (Path(directory) / f"s3.{0:020}.seg").mkdir()
+        with pytest.raises(IsADirectoryError):                            # only a segment that is gone is left out; any other trouble is said
+            read_log(Path(directory), "s3")
