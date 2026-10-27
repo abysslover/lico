@@ -13,7 +13,7 @@ import pytest
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 
-from tests.test_claude_adapter import argv_of, claude_host, new_claude, records, status_of
+from tests.test_claude_adapter import argv_of, claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import let_the_old_helper_write, wait_for
 
 VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"]
@@ -225,8 +225,9 @@ def test_a_body_that_stops_short_is_given_up_at_the_deadline_of_five_seconds(wor
 
 
 def test_json_rpc_answers_the_calls_the_program_makes_and_every_other_method_with_an_error_at_status_200(world):
-    sid, _ = world.session()
+    sid, generation = world.session()
     config = world.config(sid)
+    world.first_turn(sid, generation)                                    # the program has started, so it has read its file: the first `initialize` below takes the file, and a program that had not read it yet would end
     for asked, answered in [(VERSIONS[0], VERSIONS[0]), (VERSIONS[1], VERSIONS[1]), (VERSIONS[2], VERSIONS[2]), ("1999-01-01", VERSIONS[0]), (7, VERSIONS[0])]:
         status, body = rpc(config, "initialize", {"protocolVersion": asked, "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}})
         assert status == 200 and body["id"] == 1 and body["jsonrpc"] == "2.0" and body["result"]["protocolVersion"] == answered, (asked, body)
@@ -247,7 +248,8 @@ def test_json_rpc_answers_the_calls_the_program_makes_and_every_other_method_wit
     nested = b"[" * 20000 + b"]" * 20000                                                              # a hostile depth: refused by the parser, the listener stays up
     assert raw(config["port"], headers={"Authorization": config["authorization"]}, body=nested)[0] in (200, 400)
     status = rpc(config, "ping")[0]
-    assert status == 200, (status, "the host refused with:", refusal_lines(world)[-5:], status_of(world.conn, sid))      # a 401 here says why in the host's log
+    row = status_of(world.conn, sid)
+    assert status == 200, (status, "the host refused with:", refusal_lines(world)[-5:], {k: row[k] for k in ("state", "generation")}, records(world.log, sid)[-6:], lines_of(world.received)[-4:])      # a 401 here says why
 
 
 def test_the_list_of_tools_is_small_and_names_sessions_and_an_unknown_tool_or_a_wrong_argument_is_an_error(world):
