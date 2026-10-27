@@ -72,21 +72,34 @@ pub fn remove(dir: &Path, reference: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handoff::{mode_of, Scratch};
+    use std::os::unix::fs::PermissionsExt;
 
+    extern "C" {
+        fn umask(mask: u32) -> u32;
+    }
+
+    fn mode_of(path: &Path) -> u32 {
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    // Own folder and own umask rather than those of `handoff`: this module uses nothing else of the crate, and the test selection reads `crate::` to decide
+    // which tests a change needs, so a use of `handoff` here would send a change of `core.rs` to the credential tests.
     #[test]
     fn the_credentials_folder_is_private_whichever_of_its_two_creation_sites_makes_it_and_so_are_the_lock_and_the_list() {
-        let scratch = Scratch::new("creds");
-        let by_lock = scratch.0.join("by_lock").join("credentials");
+        unsafe { umask(0o022) };
+        let base = std::env::temp_dir().join(format!("lico-creds-modes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let by_lock = base.join("by_lock").join("credentials");
         drop(locked(&by_lock).unwrap());
-        let by_save = scratch.0.join("by_save").join("credentials");
+        let by_save = base.join("by_save").join("credentials");
         save(&by_save, &[]).unwrap();
-        let by_add = scratch.0.join("by_add").join("credentials");
+        let by_add = base.join("by_add").join("credentials");
         add(&by_add, "ref1", "claude", "a1", "api_key", "key ending 0001").unwrap();
         for dir in [&by_lock, &by_save, &by_add] {
             assert_eq!(mode_of(dir), 0o700, "{}", dir.display());
         }
         assert_eq!(mode_of(&by_add.join(".credentials.lock")), 0o600);
         assert_eq!(mode_of(&file(&by_add)), 0o600);
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }
