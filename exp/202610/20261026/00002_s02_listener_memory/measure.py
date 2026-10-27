@@ -50,13 +50,13 @@ def one_run(with_tools):
             time.sleep(3)
             out = {"idle": proc(host.pid)}
             if with_tools:
+                port = listener_port(directory)                                                  # a config file goes at the first initialize of its key: read the port before the tools turns
                 for number, (sid, generation) in enumerate(sessions):
                     assert conn.call(op="input", session=sid, generation=generation, request_id=f"t-{number}", text="tools")["ok"] == 1
                 for sid, _ in sessions:
                     wait_for(lambda: any(r.startswith("call 200") for r in records(log, sid)))
                 time.sleep(1)
                 out["after_tool_turns"] = proc(host.pid)
-                port = listener_port(directory)
                 held = []
                 for _ in range(32):
                     sock = socket.create_connection(("127.0.0.1", port))

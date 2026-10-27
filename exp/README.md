@@ -14,3 +14,5 @@ resource result or a real provider acceptance.
   input, what the hand-over of a real conversation stores, and what the program does when a session's conversation is gone (tested: 2.1.310, 2.1.311).
 - `202610/20261027/00003_record_layout_2_1_311` - opt-in check of the layout of the program's own conversation record across two versions, and the scrubber that makes the fixtures
   of the conversation reader (tested: 2.1.310, 2.1.311).
+- `202610/20261027/00004_s07c_real_program_history_check` - opt-in check with the real `claude` that a model calls `history`, ends its turn on `pending`, names what the notice brings, follows the notice of a long answer on to
+  `read_handoff` (one part of 32,445 bytes, stored whole by the program), and what it does with a planted line that tells a reader to call `send` (tested: 2.1.310, haiku, 7 turns).
