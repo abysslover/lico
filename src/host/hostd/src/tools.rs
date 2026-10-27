@@ -400,6 +400,23 @@ mod tests {
         format!("Bearer {}.{}", grant.key, key.secret)
     }
 
+    /// The same header with another secret, by construction: the last hex digit is changed (a secret that already ended in `0000` was a run of 1 in 65536).
+    fn another_secret(header: &str) -> String {
+        let (head, last) = header.split_at(header.len() - 1);
+        format!("{head}{}", if last == "0" { "1" } else { "0" })
+    }
+
+    #[test]
+    fn another_secret_differs_from_the_header_in_its_last_digit_and_in_nothing_else_for_every_digit() {
+        for digit in "0123456789abcdef".chars() {
+            let header = format!("Bearer {}.{}{digit}", "k".repeat(32), "5".repeat(63));
+            let other = another_secret(&header);
+            assert_ne!(other, header, "{digit}");
+            assert_eq!(other.len(), header.len(), "{digit}");
+            assert_eq!(other[..other.len() - 1], header[..header.len() - 1], "{digit}");
+        }
+    }
+
     fn config_of(grant: &Grant) -> Value {
         serde_json::from_str(&std::fs::read_to_string(&grant.path).unwrap()).unwrap()
     }
@@ -423,7 +440,7 @@ mod tests {
         let mut table = Table::default();
         let grant = table.issue(&folder.0, 1, "s1", 1).unwrap();
         let good = header_of(&grant, &table);
-        let wrong_secret = format!("{}{}", &good[..good.len() - 4], "0000");
+        let wrong_secret = another_secret(&good);
         let key = &grant.key;
         for bad in [String::new(), "Bearer".into(), good.replacen("Bearer", "bearer", 1), good[7..].to_string(), wrong_secret, format!("Bearer {key}"), format!("Bearer {key}."), format!("Bearer {key}.{}", "0".repeat(64)),
                     format!("Bearer {}.{}", "0".repeat(32), &good[7 + 33..]), format!("{good} "), format!("{good}0")] {
@@ -483,7 +500,7 @@ mod tests {
         let one = table.issue(&folder.0, 1, "s1", 1).unwrap();
         let two = table.issue(&folder.0, 1, "s2", 1).unwrap();
         let header = header_of(&one, &table);
-        for bad in [format!("{}0000", &header[..header.len() - 4]), "Bearer nope".to_string(), String::new(), format!("Bearer {}.{}", "0".repeat(32), "0".repeat(64))] {
+        for bad in [another_secret(&header), "Bearer nope".to_string(), String::new(), format!("Bearer {}.{}", "0".repeat(32), "0".repeat(64))] {
             table.begin(&folder.0, &bad);
             assert!(one.path.exists() && two.path.exists(), "{bad}: a credential that is not whole and exact takes nothing");
         }
@@ -540,7 +557,7 @@ mod tests {
         let old_header = header_of(&old, &table);
         let new = table.issue(&folder.0, 1, "s1", 2).unwrap();
         let good = header_of(&new, &table);
-        let wrong_secret = format!("{}0000", &good[..good.len() - 4]);
+        let wrong_secret = another_secret(&good);
         assert_eq!(table.check(&good), Ok(("s1".to_string(), 2)));
         assert_eq!(table.check("Bearer nope"), Err(Refusal::Malformed));
         assert_eq!(table.check(""), Err(Refusal::Malformed));
