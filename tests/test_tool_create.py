@@ -20,6 +20,7 @@ from tests.test_transfer import check_lookalikes, lookalike_text
 from tests.test_tool_send import CLEAN, DIRTY, HEADER, NOTICE, PLAIN_HEADER, decide, host_of, notices, received_with
 
 STARTS = "starts at once on the account's allowance"
+DEFAULT_MODEL = "model: the program's default"
 
 
 @pytest.fixture(scope="module")
@@ -112,10 +113,10 @@ def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_fold
     bystander, _ = world.session(name="bystander")
     folder = status_of(world.conn, caller)["cwd"]
     before = {r["session"] for r in rows(world)}
-    prompt = "review the login tests"
+    prompt = "fix the tests"      # the card has 200 characters; what the head leaves is the start of the prompt (the whole of it is a keypress away in the window)
     number = wants(world, caller, prompt=prompt, name="reviewer", cwd="/etc", mode="auto", kind="codex", account="other", model="m", effort="high", **{"from": bystander})
     card = status_of(world.conn, caller)["approvals"]
-    assert card == [{"approval_id": number, "tool": "create", "prompt": f"create session 'reviewer' in '{shown(folder)}' | mode: asks for approval | {STARTS} | {len(prompt)} B | \"{prompt}\""}], card
+    assert card == [{"approval_id": number, "tool": "create", "prompt": f"create session 'reviewer' in '{shown(folder)}' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | {len(prompt)} B | \"{prompt}\""}], card
     assert {r["session"] for r in rows(world)} == before, "nothing is made until the card is answered"
     assert status_of(world.conn, bystander).get("approvals") is None, "what the caller said about itself was not heard"
     assert v1.validate_response("status", world.conn.call(op="status")) == []
@@ -146,10 +147,27 @@ def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_fold
 def test_a_session_without_a_folder_makes_a_session_without_one_and_the_name_may_be_left_out(world):
     caller, generation = world.session(name="scratchy")
     number = wants(world, caller, prompt="hello")
-    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: asks for approval | {STARTS} | 5 B | \"hello\""
+    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
     [new] = running_made(world)
     assert new["name"] == "made by scratchy" and new.get("scratch") is True and "cwd" not in new, new
+
+
+def test_the_card_says_the_model_and_the_effort_of_the_caller_and_the_program_of_the_new_session_is_started_with_them(world):
+    caller, generation = world.session(name="chooser", model="opus", effort="high")
+    number = wants(world, caller, prompt="hello")
+    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: asks for approval | model: opus, effort: high | {STARTS} | 5 B | \"hello\""
+    assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
+    [new] = running_made(world, by="chooser")
+    argv, _ = wait_for(lambda: program_of(world, new["session"]))
+    assert argv[argv.index("--model") + 1] == "opus" and argv[argv.index("--effort") + 1] == "high", argv
+    other, other_generation = world.session(name="plain", effort="low")
+    number = wants(world, other, prompt="hello")
+    assert " | model: the program's default, effort: low | " in status_of(world.conn, other)["approvals"][0]["prompt"]
+    assert decide(world, other, other_generation, number, "allow")["outcome"] == "done"
+    [again] = running_made(world, by="plain")
+    argv, _ = wait_for(lambda: program_of(world, again["session"]))
+    assert "--model" not in argv and argv[argv.index("--effort") + 1] == "low", argv      # a choice left to the program stays left to it
 
 
 def test_a_no_makes_nothing_and_a_yes_for_the_session_cannot_be_given_to_a_create(world):
@@ -192,7 +210,8 @@ def test_the_prompt_is_cleaned_once_so_the_card_the_pages_the_program_and_the_hi
     clean = f"{tag} {CLEAN}"
     number = wants(world, caller, prompt=f"{tag} {DIRTY}")
     card = status_of(world.conn, caller)["approvals"][0]["prompt"]
-    assert card.endswith(f"| {len(clean)} B, 2 lines | 12 hidden characters removed | \"{tag} redevil\""), card
+    head, start = card.split(f"| {len(clean)} B, 2 lines | 12 hidden characters removed | \"")      # the head leaves the card room for the start of the line only
+    assert f"{tag} redevil".startswith(start.removesuffix("\"").removesuffix("\u2026")) and not any(c in card for c in "\x1b\u202e\u200b\r\n"), card
     page = world.conn.call(op="approval.text", session=caller, generation=generation, approval_id=number, offset=0)
     assert (page["text"], page["total"]) == (clean, len(clean)), page
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"

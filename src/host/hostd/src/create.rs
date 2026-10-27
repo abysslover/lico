@@ -26,6 +26,7 @@ pub const IN_ALL: usize = 8;
 pub const NAME_CHARS: usize = 36;
 const MADE_BY_CHARS: usize = 12;
 const FOLDER_CHARS: usize = 40;
+const DEFAULT: &str = "the program's default";
 const STARTS: &str = "starts at once on the account's allowance";
 
 /// What a new session is started with.
@@ -70,9 +71,9 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     }
     let name = plain(name);
     let found = core::find(shared, caller).ok_or("session_exited: this session has ended")?;
-    let (cwd, hops) = {
+    let (cwd, hops, chosen) = {
         let s = found.lock().unwrap();
-        (s.settings.cwd.clone(), s.incoming_hops)
+        (s.settings.cwd.clone(), s.incoming_hops, chosen_words(&s.settings))
     };
     if hops + 1 > MAX_HOPS {
         return Err(calls::refusal(shared, caller, "chain_depth"));
@@ -84,7 +85,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     };
     let named = if name.is_empty() { String::new() } else { format!(" '{name}'") };
     let who = format!("creation of a new session{named} {shown}");
-    let card = calls::card_line(&format!("create session{named} {shown} | mode: asks for approval | {STARTS}"), prompt, removed);
+    let card = calls::card_line(&format!("create session{named} {shown} | mode: asks for approval | {chosen} | {STARTS}"), prompt, removed);
     let (id, again) = match pending::ask(shared, caller, &Request { tool: "create", target: &name, who: &who, card: &card, text: prompt }, pending::now(), held)? {
         Asked::New(id) => (id, false),
         Asked::Again(id) => (id, true),
@@ -97,6 +98,15 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
         reply["already_pending"] = json!(true);
     }
     Ok(reply.to_string())
+}
+
+/// What the card says of the model and the effort of the new session, which are the caller's: what the person chose for it, or that the program decides. They are
+/// chosen when a session is started and do not change in its life, so the yes copies what the card showed.
+fn chosen_words(settings: &Settings) -> String {
+    match (&settings.model, &settings.effort) {
+        (None, None) => "model: the program's default".to_string(),
+        (model, effort) => format!("model: {}, effort: {}", model.as_deref().unwrap_or(DEFAULT), effort.as_deref().unwrap_or(DEFAULT)),
+    }
 }
 
 /// A name as the card shows it and the session gets it: the characters that would end the card's quote or split its fields (and a header) become `_`, the way a label does.
@@ -162,9 +172,9 @@ fn make(shared: &Arc<Shared>, caller: &str, name: &str, prompt: &str, start: &dy
         !s.purged && s.state == State::Running
     });
     let Some(found) = found else { return Err(calls::refusal(shared, caller, "session_exited")) };
-    let (cwd, account, hops, label) = {
+    let (cwd, account, hops, label, model, effort) = {
         let s = found.lock().unwrap();
-        (s.settings.cwd.clone(), s.account.clone(), s.incoming_hops, transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()))
+        (s.settings.cwd.clone(), s.account.clone(), s.incoming_hops, transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.settings.model.clone(), s.settings.effort.clone())
     };
     if hops + 1 > MAX_HOPS {
         return Err(calls::refusal(shared, caller, "chain_depth"));
@@ -172,8 +182,8 @@ fn make(shared: &Arc<Shared>, caller: &str, name: &str, prompt: &str, start: &dy
     within_caps(shared, caller)?;
     let made_by = label.chars().take(MADE_BY_CHARS).collect::<String>().trim_end().to_string(); // a cut at a space leaves no space at the end of the name
     let composed = if name.is_empty() { format!("made by {made_by}") } else { format!("{name} - made by {made_by}") };
-    // the folder and the account are the caller's, the mode is the one that asks the person; nothing here comes from the agent but the name and the prompt
-    let spec = Spec { settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model: None, effort: None }, account, mode: "default" };
+    // the folder, the account, the model and the effort are the caller's, the mode is the one that asks the person; nothing here comes from the agent but the name and the prompt
+    let spec = Spec { settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort }, account, mode: "default" };
     let id = start(&spec).map_err(start_words)?;
     let Some(new) = core::find(shared, &id) else { return Err(calls::refusal(shared, caller, "unknown_session")) };
     let generation = {
@@ -203,6 +213,7 @@ fn start_words(code: &str) -> String {
     let what = match code {
         "busy" => "the host could not start the session just now; try again in a moment",
         "unknown_account" => "the account of this session is not there any more",
+        "option_unavailable" => "the model or the effort of this session is not offered by the program any more",
         folder if folder.starts_with("folder_") => "the folder of this session is not usable any more",
         _ => "the host refused it",
     };
@@ -231,6 +242,7 @@ mod tests {
     const OTHER_NEW: &str = "s4000000000000001";
     const EXTRA: [&str; 8] = ["s3000000000000001", "s3000000000000002", "s3000000000000003", "s3000000000000004", "s3000000000000005", "s3000000000000006", "s3000000000000007", "s3000000000000008"];
     const FOLDER: &str = "/work/api";
+    const DEFAULT_MODEL: &str = "model: the program's default";
 
     /// Claude sessions: `writer` (ONE, in a folder), `reader` and `third` (scratch), and eight more that the caps count.
     fn room() -> World {
@@ -288,13 +300,13 @@ mod tests {
         assert_eq!(got["approval_id"], 1);
         assert!(got["message"].as_str().unwrap().starts_with("Nothing was made yet. The person has been asked to approve the creation of a new session 'reviewer' in '/work/api'."), "{got}");
         assert!(got.get("already_pending").is_none() && got.get("session").is_none());
-        let card = format!("create session 'reviewer' in '/work/api' | mode: asks for approval | {STARTS} | {} B, 2 lines | \"review the login tests\"", prompt.len());
+        let card = format!("create session 'reviewer' in '/work/api' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | {} B, 2 lines | \"review the login tests\"", prompt.len());
         assert_eq!(cards(&w, ONE), json!([{"approval_id": 1, "prompt": card, "tool": "create"}]));
         assert_eq!(count(&w), before, "no session was made");
         let again = waits(&w, ONE, json!({"prompt": prompt, "name": "reviewer"}));
         assert_eq!((again["approval_id"].clone(), again["already_pending"].clone()), (json!(1), json!(true)), "the same request is the same card");
         waits(&w, TWO, json!({"prompt": "hello"}));
-        assert_eq!(cards(&w, TWO), json!([{"approval_id": 1, "prompt": format!("create session in a scratch folder | mode: asks for approval | {STARTS} | 5 B | \"hello\""), "tool": "create"}]));
+        assert_eq!(cards(&w, TWO), json!([{"approval_id": 1, "prompt": format!("create session in a scratch folder | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""), "tool": "create"}]));
         waits(&w, THREE, json!({"prompt": "hello", "name": ""}));
         assert_eq!(cards(&w, THREE)[0]["prompt"], cards(&w, TWO)[0]["prompt"], "an empty name is none");
         waits(&w, EXTRA[0], json!({"prompt": "hello", "name": null}));
@@ -305,7 +317,7 @@ mod tests {
     fn a_folder_a_mode_a_kind_or_an_account_in_the_arguments_is_not_heard() {
         let w = room();
         waits(&w, ONE, json!({"prompt": "p", "cwd": "/etc", "mode": "auto", "kind": "codex", "account": "other", "model": "m", "effort": "high", "from": TWO}));
-        assert_eq!(cards(&w, ONE)[0]["prompt"], format!("create session in '/work/api' | mode: asks for approval | {STARTS} | 1 B | \"p\""));
+        assert_eq!(cards(&w, ONE)[0]["prompt"], format!("create session in '/work/api' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 1 B | \"p\""));
         assert_eq!(cards(&w, TWO), Value::Null, "what the caller said about itself was not heard");
     }
 
@@ -314,10 +326,10 @@ mod tests {
         let w = room();
         let folder = format!("/{}/project", "d".repeat(100));
         w.with(ONE, |s| s.settings.cwd = Some(folder.clone()));
-        waits(&w, ONE, json!({"prompt": "x".repeat(500), "name": "n".repeat(NAME_CHARS)}));
+        waits(&w, ONE, json!({"prompt": "x".repeat(500), "name": "n".repeat(12)}));
         let card = cards(&w, ONE)[0]["prompt"].as_str().unwrap().to_string();
         assert!(card.chars().count() <= calls::CARD_CHARS, "{}", card.chars().count());
-        assert!(card.contains("in '\u{2026}ddd") && card.contains(&format!("/project' | mode: asks for approval | {STARTS} | 500 B | \"")), "{card}");
+        assert!(card.contains("in '\u{2026}ddd") && card.contains(&format!("/project' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 500 B | \"")), "{card}");
     }
 
     #[test]
@@ -443,6 +455,37 @@ mod tests {
         assert!(make(&w, ONE, json!({"prompt": "p"})).is_ok(), "eleven sessions run, and a person made all of them");
     }
 
+    #[test]
+    fn the_card_says_the_model_and_the_effort_the_new_session_gets_which_are_the_callers_and_the_program_decides_where_the_caller_chose_nothing() {
+        let w = room();
+        let card = |from: &str| cards(&w, from)[0]["prompt"].as_str().unwrap().to_string();
+        w.with(ONE, |s| (s.settings.model, s.settings.effort) = (Some("haiku".into()), Some("low".into())));
+        waits(&w, ONE, json!({"prompt": "p"}));
+        assert_eq!(card(ONE), format!("create session in '/work/api' | mode: asks for approval | model: haiku, effort: low | {STARTS} | 1 B | \"p\""));
+        w.with(TWO, |s| s.settings.model = Some("claude-sonnet-4-5".into()));
+        waits(&w, TWO, json!({"prompt": "p"}));
+        assert!(card(TWO).starts_with("create session in a scratch folder | mode: asks for approval | model: claude-sonnet-4-5, effort: the program's default | "), "{}", card(TWO));
+        w.with(THREE, |s| s.settings.effort = Some("high".into()));
+        waits(&w, THREE, json!({"prompt": "p"}));
+        assert!(card(THREE).contains(" | model: the program's default, effort: high | "), "{}", card(THREE));
+        waits(&w, EXTRA[0], json!({"prompt": "p"}));
+        assert!(card(EXTRA[0]).contains(&format!(" | {DEFAULT_MODEL} | {STARTS} | ")) && !card(EXTRA[0]).contains("effort"), "a caller with nothing chosen: the program's default, said once: {}", card(EXTRA[0]));
+    }
+
+    #[test]
+    fn a_yes_gives_the_new_session_the_model_and_the_effort_the_caller_has_then_and_none_stays_none() {
+        let w = room();
+        let (seen, inbox) = (Mutex::default(), Mutex::default());
+        w.with(ONE, |s| (s.settings.model, s.settings.effort) = (Some("haiku".into()), Some("low".into())));
+        perform_with(&w.shared, ONE, "", "p", &starter(&w, NEW, &seen, &inbox)).unwrap();
+        w.with(TWO, |s| s.settings.effort = Some("high".into()));
+        perform_with(&w.shared, TWO, "", "p", &starter(&w, OTHER_NEW, &seen, &inbox)).unwrap();
+        perform_with(&w.shared, THREE, "", "p", &starter(&w, "s4000000000000002", &seen, &inbox)).unwrap();
+        let got: Vec<_> = seen.lock().unwrap().iter().map(|spec| (spec.settings.model.clone(), spec.settings.effort.clone())).collect();
+        assert_eq!(got, [(Some("haiku".into()), Some("low".into())), (None, Some("high".into())), (None, None)], "what the caller chose is copied as it is; a choice left to the program stays left to it");
+        assert_eq!(w.with(NEW, |s| (s.settings.model.clone(), s.settings.effort.clone())), (Some("haiku".into()), Some("low".into())), "and the session made has it");
+    }
+
     /// A start that makes a session in the room the way the host would: it takes what the spec says, and the receiver of its first prompt is read back from `inbox`.
     fn starter<'a>(w: &'a World, id: &'static str, seen: &'a Mutex<Vec<Spec>>, inbox: &'a Mutex<Option<Receiver<String>>>) -> impl Fn(&Spec) -> Result<String, &'static str> + 'a {
         move |spec| {
@@ -550,7 +593,7 @@ mod tests {
         let w = room();
         let before = count(&w);
         for (code, words) in [("busy", "busy: the host could not start the session just now"), ("folder_not_directory", "folder_not_directory: the folder of this session is not usable any more"),
-                              ("unknown_account", "unknown_account: the account of this session is not there any more"), ("option_unavailable", "option_unavailable: the host refused it")] {
+                              ("unknown_account", "unknown_account: the account of this session is not there any more"), ("option_unavailable", "option_unavailable: the model or the effort of this session is not offered by the program any more"), ("host_failed", "host_failed: the host refused it")] {
             let got = perform_with(&w.shared, ONE, "", "p", &|_| Err(code));
             assert!(got.as_ref().is_err_and(|e| e.starts_with(words)), "{code}: {got:?}");
         }

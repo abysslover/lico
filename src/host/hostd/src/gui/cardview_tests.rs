@@ -306,7 +306,7 @@ fn a_text_the_host_has_cleaned_is_wrapped_by_the_window_without_losing_or_adding
     }
 }
 
-const MAKE: &str = "create session 'reviewer' in '/work/api' | mode: asks for approval | starts at once on the account's allowance | 22 B, 2 lines | 3 hidden characters removed | \"first line\"";
+const MAKE: &str = "create session 'reviewer' in '/work/api' | mode: asks for approval | model: haiku, effort: low | starts at once on the account's allowance | 22 B, 2 lines | 3 hidden characters removed | \"first line\"";
 
 /// `api` is open with a request of its agent for a new session (7).
 fn with_make_card() -> App {
