@@ -767,8 +767,7 @@ impl App {
         }
         let mut text = header;
         if let Some(b) = &bar {
-            text.push('\n');
-            text.push_str(&clean(b));
+            text.push_str(&format!("\n{}{}", clean(b), "\u{a0}".repeat(24))); // the buttons stand over the end of its last row (190 logical pixels): 24 no-break spaces wrap with the last word and keep that room empty
         }
         let base = 1 + bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its

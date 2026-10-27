@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from lico_measure.captures import ProductWindow
+from lico_measure.captures import GRAY_THRESHOLD, ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 
@@ -203,3 +203,47 @@ def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_i
             assert wait_for(lambda: w.ui()["card_ready"])
             w.key("n")
             assert "Declined: nothing was sent." in w.ui()["header"], w.ui()["header"]
+
+
+def lit(w):
+    """The lit pixels inside the Allow and Deny buttons: their labels, and whatever of the card's text runs under them."""
+    layout, (data, width, _) = w.ui()["layout"], w.gray()
+    return [sum(1 for y in range(int(r[1]), int(r[3])) for x in range(int(r[0]), int(r[2])) if data[y * width + x] > GRAY_THRESHOLD) for r in (layout["allow"], layout["deny"])]
+
+
+def test_the_text_of_a_card_never_runs_under_the_allow_and_deny_buttons_whatever_its_length():
+    with private_dir() as directory:
+        args, _ = claude_args(directory)
+        made = {}
+
+        def sessions(w):
+            conn = Conn(w.socket)
+            made["writer"], made["generation"] = new_claude(conn, name="writer")
+            made["docs"], _ = new_claude(conn, name="docs")
+
+        with ProductWindow(host_binary=LICO, host_args=args, before_window=sessions) as w:
+            writer, docs, host = made["writer"], made["docs"], Conn(w.socket)
+            wait_for(lambda: len(w.ui()["rows"]) == 2)
+            w.click(*row_centre(w, writer))
+            assert w.ui()["selected"] == writer
+            w.move(700, 400)
+
+            def shown(call):
+                """The card is on screen: the pixels of the buttons, the length of the bar. The host declines it (no key, so no wait for the dwell)."""
+                assert call["status"] == "pending", call
+                wait_for(lambda: w.ui()["approval_bar"])
+                found, length = lit(w), len(w.ui()["approval_bar"])
+                assert host.call(op="approval.answer", session=writer, generation=made["generation"], approval_id=call["approval_id"], answer="deny")["ok"] == 1
+                wait_for(lambda: not w.ui()["approval_bar"])
+                return found, length
+
+            labels, _ = shown(ask(w.directory, writer, docs, "x"))                                    # a card of one row: the buttons hold their labels and nothing else
+            assert all(labels) and labels[0] != labels[1], labels
+            lengths = []
+            for size in (20, 40, 60, 80, 100, 120):                                                    # the last row of the card ends at every place along the line, one row and two
+                found, length = shown(ask(w.directory, writer, docs, "y" * size))
+                lengths.append(length)
+                assert found == labels, (size, length, found, labels)
+            found, length = shown(ask_create(w.directory, writer, "write the release notes", "release-notes"))   # the longest card of the host: its own words alone fill a row and a half
+            assert length > 180 and found == labels, (length, found, labels)
+            assert max(lengths) - min(lengths) > 90, lengths
