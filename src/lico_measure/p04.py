@@ -16,7 +16,7 @@ from pathlib import Path
 from .keyring_rig import PrivateKeyring
 from .p02 import HOSTD_DIR
 from .report import build_measurement
-from .rig import finished_lines, private_dir
+from .rig import files_under, finished_lines, private_dir
 
 CRED = HOSTD_DIR / "lico-cred"
 CANARY = "canary-key-measure-4d2e81b7"
@@ -258,7 +258,7 @@ def _scan(directory: str, keyring, host, extra: dict[str, list[bytes]], canary: 
     from .procscope import tree_pids
 
     sinks: dict[str, list[bytes]] = dict(extra)
-    sinks["files of the run and of the keyring"] = [p.read_bytes() for root in (directory, keyring.root) for p in Path(root).rglob("*") if p.is_file()]
+    sinks["files of the run and of the keyring"] = [data for _, data in files_under(directory, keyring.root)]
     sinks["host standard error"] = [(Path(directory) / "host.err").read_bytes()] if (Path(directory) / "host.err").exists() else []
     pids = set()
     for root in [host.pid, *keyring.pids()]:

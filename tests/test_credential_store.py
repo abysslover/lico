@@ -5,7 +5,7 @@ from pathlib import Path
 
 from lico_measure.keyring_rig import PrivateKeyring
 from lico_measure.p02 import HOSTD_DIR
-from lico_measure.rig import private_dir
+from lico_measure.rig import files_under, private_dir
 
 CRED = HOSTD_DIR / "lico-cred"
 CANARY = "canary-key-7f3e9a41c0d25b86"
@@ -16,7 +16,8 @@ def cred(env, data_dir, *args, stdin=None):
 
 
 def tree_files(*roots):
-    return [p for root in roots for p in Path(root).rglob("*") if p.is_file()]
+    """Every file below the roots with what it holds; a keyring daemon writes into one of them while it is looked at."""
+    return files_under(*roots)
 
 
 def test_secret_values_stay_in_the_keyring_and_every_other_sink_holds_none():
@@ -38,8 +39,8 @@ def test_secret_values_stay_in_the_keyring_and_every_other_sink_holds_none():
         assert len(meta) == 1 and set(meta[0]) == {"ref", "provider", "account", "kind", "masked_label", "created"}
         assert meta[0]["ref"] == reference and meta[0]["masked_label"] == "key ending c0d2" and meta[0]["ref"] != meta[0]["account"]
         assert oct((Path(data) / "credentials.json").stat().st_mode & 0o777) == "0o600"
-        for path in tree_files(data, keyring.root):
-            assert CANARY.encode() not in path.read_bytes(), path
+        for path, content in tree_files(data, keyring.root):
+            assert CANARY.encode() not in content, path
         for pid in keyring.pids():
             assert CANARY.encode() not in Path(f"/proc/{pid}/cmdline").read_bytes()
             assert CANARY.encode() not in Path(f"/proc/{pid}/environ").read_bytes()
@@ -58,8 +59,8 @@ def test_locked_or_missing_keyring_fails_closed_with_an_action():
         assert added.returncode == 3 and added.stdout == "" and expect_word in added.stderr, added
         # no plaintext fallback: no metadata, no file anywhere holds the secret
         assert not (Path(data) / "credentials.json").exists()
-        for path in tree_files(data, env["XDG_RUNTIME_DIR"].rsplit("/run", 1)[0]):
-            assert CANARY.encode() not in path.read_bytes(), path
+        for path, content in tree_files(data, env["XDG_RUNTIME_DIR"].rsplit("/run", 1)[0]):
+            assert CANARY.encode() not in content, path
 
     with private_dir() as data:
         # no session bus at all (the standard fallback path is pointed at an empty directory)

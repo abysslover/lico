@@ -48,7 +48,7 @@ def test_a_file_that_is_being_written_is_read_up_to_its_last_finished_line_even_
 
 
 def test_a_folder_the_host_is_writing_into_is_read_file_by_file_and_a_file_that_is_gone_at_the_read_is_not_there_to_read(tmp_path, monkeypatch):
-    """R5e: the host writes its registry through a temporary file and renames it, so a walk of its folder can list a file that is gone before it is read."""
+    """R5f: the host writes its registry through a temporary file and renames it, so a walk of its folder can list a file that is gone before it is read."""
     (tmp_path / "sub").mkdir()
     (tmp_path / "a").write_bytes(b"aaa")
     (tmp_path / "sub" / "b").write_bytes(b"bbb")
