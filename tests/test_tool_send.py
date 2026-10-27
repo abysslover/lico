@@ -5,7 +5,9 @@ operation the window uses (`approval.answer`); they read what arrived from the d
 card on the row of the caller, and the text goes when the card is answered."""
 import itertools
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
 import threading
@@ -519,6 +521,25 @@ def test_the_command_shows_the_pages_of_a_card_and_answers_it_with_or_without_th
     assert lico(world, "approval", "answer", caller, str(second), "deny", "--keep")[0] == 2, "a no cannot be kept: the host refuses"
     assert lico(world, "approval", "answer", caller, str(second), "deny", "--forever")[0] == 1
     assert lico(world, "approval", "answer", caller, str(second), "deny")[0] == 0
+
+
+def test_nothing_the_host_made_under_the_folders_it_was_given_is_open_to_a_group_or_to_others_when_it_started_under_the_usual_umask(world):
+    sender, _ = world.session(name="writer")
+    receiver, _ = world.session()
+    sent = world.conn.call(op="transfer.send", **{"from": sender, "to": receiver, "kind": "text", "text": "x" * 5000})
+    assert sent["ok"] == 1 and sent["delivery"] == "file", sent                                                    # a file in the receiver's folder of the handoff root
+    root = Path(world.directory)
+    tops = [root, root / "host.sock", root / "host.sock.lock", *(root / name for name in ("log", "registry", "handoff", "workspaces", "tools"))]
+    assert all(top.exists() for top in tops), "the folders and files the host makes at its start are there"
+    seen, open_to_others = 0, []
+    for top in tops:
+        paths = [top] if not top.is_dir() or top == root else [top, *(Path(at) / name for at, dirs, files in os.walk(top) for name in dirs + files)]
+        for path in paths:
+            mode = path.lstat().st_mode
+            seen += 1
+            if not stat.S_ISLNK(mode) and mode & 0o077:                                                            # a link has no mode of its own
+                open_to_others.append((str(path.relative_to(root)), oct(mode & 0o777)))
+    assert seen > 12 and not open_to_others, (seen, open_to_others)
 
 
 def test_the_flag_that_once_let_a_test_send_without_the_question_opens_nothing():
