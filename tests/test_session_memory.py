@@ -18,6 +18,25 @@ SLACK_KB = 24 << 10                                  # three Python interpreters
 FILE_KB = 8 << 10                                    # what an interpreter maps of files (itself, libc, its modules) and counts in RSS only: measured 40 MiB or more
 
 
+def idle_figure(conn, sid):
+    """The figure of the agent once it has started. The host looks at most every three seconds (reads of `status` in between give the same look, so two equal reads
+    do not show a settled figure), and a look can come while the program is still starting: a bare interpreter has about 6 MiB of mapped files in its RSS, the
+    program with its modules 10. The first look that has the files in it is the one; if none does within the limit the last figures are in the message."""
+    seen = []
+
+    def started():
+        figure = status_of(conn, sid).get("memory")
+        if figure:
+            seen.append(figure)
+        return bool(figure) and figure["rss_kb"] - figure["private_kb"] >= FILE_KB
+
+    try:
+        wait_for(started, timeout=12)
+    except AssertionError:
+        raise AssertionError(f"no look of the idle agent had the files of its interpreter in RSS and not in the figure: {seen[-3:]}") from None
+    return seen[-1]
+
+
 def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the_row_the_hint_and_the_total_line():
     with private_dir() as directory:
         args, _ = claude_args(directory)
@@ -28,7 +47,7 @@ def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
             conn, sid, generation = Conn(w.socket), made["sid"], made["generation"]
-            idle = wait_for(lambda: status_of(conn, sid).get("memory"))                 # the window asks every second; each ask names the agent for the next look
+            idle = idle_figure(conn, sid)                                                # the window asks every second; each ask names the agent for the next look
             assert idle["processes"] == 1 and 0 < idle["private_kb"] <= idle["rss_kb"] < HELD_KB, idle
             assert idle["rss_kb"] - idle["private_kb"] >= FILE_KB, idle                  # the interpreter's own libraries and files are in RSS and not in the figure: it is not VmRSS
             begin(conn, sid, generation, f"hold:{OWN}:{CHILD}:{GRANDCHILD}")

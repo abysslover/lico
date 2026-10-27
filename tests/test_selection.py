@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lico_measure import receipts, suite, testmap
+from lico_measure import receipts, rig, suite, testmap
 
 HOSTD = "src/host/hostd/src/"
 TMAP = {
@@ -273,7 +273,8 @@ def test_the_retired_prototype_clients_and_hosts_run_only_behind_the_legacy_mark
     assert set(ids(legacy)) <= retired
     assert not set(ids(daily)) & retired, ids(daily)                                                   # the daily run has none of them
     assert {"a2"} <= set(ids(daily)) and {"oracle", "hostd"} <= set(ids(daily))                        # the product under its old name, the reference host and the product host stay
-    assert {"a", "b", "c", "c2", "d", "rust_std", "rust_serde"} == set(ids(legacy))                    # nothing is deleted: the marker selects them
+    listed = {"a", "b", "c", "c2", "d"} | (set(rig.host_impls()) & {"rust_std", "rust_serde"})         # the two retired hosts are listed where their binaries are built
+    assert listed == set(ids(legacy))                                                                  # nothing is deleted: the marker selects them
     assert not any("[a2]" in row or "[oracle]" in row or "[hostd]" in row for row in legacy)
     print(f"daily rows of the five files: {len(daily)}; behind the marker: {len(legacy)} ({', '.join(sorted(set(ids(legacy))))})")
 
