@@ -148,3 +148,20 @@ pub fn recover(shared: &Arc<Shared>) -> Result<usize, String> {
     }
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handoff::mode_of;
+
+    /// A real start makes the folder at 0700 first (host.rs), so the save is the only maker of it here; this is what keeps its own `create` from being a wide folder if it is ever the first.
+    #[test]
+    fn the_registry_folder_and_file_are_private_when_the_save_makes_the_folder() {
+        let world = crate::transfer::tests::world(&[]);
+        let dir = world.shared.cfg.registry_dir.clone();
+        assert!(!dir.exists());
+        save(&world.shared);
+        assert_eq!(mode_of(&dir), 0o700);
+        assert_eq!(mode_of(&dir.join("sessions.json")), 0o600);
+    }
+}

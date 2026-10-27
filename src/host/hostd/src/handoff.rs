@@ -169,6 +169,13 @@ impl Scratch {
     }
 }
 
+/// The permission bits of a folder or a file, for the tests of the modes the host makes things with.
+#[cfg(test)]
+pub(crate) fn mode_of(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
 #[cfg(test)]
 impl Drop for Scratch {
     fn drop(&mut self) {

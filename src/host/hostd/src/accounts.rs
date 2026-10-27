@@ -174,3 +174,22 @@ impl Accounts {
         self.homes_of(id, &account.provider)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handoff::{mode_of, Scratch};
+
+    #[test]
+    fn the_accounts_folder_the_accounts_file_and_the_folders_of_an_account_are_private_when_the_host_makes_them() {
+        let scratch = Scratch::new("accounts");
+        let dir = scratch.0.join("fresh").join("accounts");
+        let mut accounts = Accounts::load(&dir).unwrap();
+        assert_eq!(mode_of(&dir), 0o700);
+        let made = accounts.create("claude", "Work").unwrap();
+        assert_eq!(mode_of(&dir.join("accounts.json")), 0o600);
+        assert_eq!(mode_of(&dir.join(&made.id)), 0o700);
+        let homes = accounts.homes(&made.id).unwrap();
+        assert_eq!((mode_of(&homes.home), mode_of(&homes.provider_home)), (0o700, 0o700));
+    }
+}

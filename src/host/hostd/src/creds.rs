@@ -68,3 +68,25 @@ pub fn remove(dir: &Path, reference: &str) -> std::io::Result<()> {
     let entries: Vec<Value> = list(dir)?.into_iter().filter(|e| e["ref"] != reference).collect();
     save(dir, &entries)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::handoff::{mode_of, Scratch};
+
+    #[test]
+    fn the_credentials_folder_is_private_whichever_of_its_two_creation_sites_makes_it_and_so_are_the_lock_and_the_list() {
+        let scratch = Scratch::new("creds");
+        let by_lock = scratch.0.join("by_lock").join("credentials");
+        drop(locked(&by_lock).unwrap());
+        let by_save = scratch.0.join("by_save").join("credentials");
+        save(&by_save, &[]).unwrap();
+        let by_add = scratch.0.join("by_add").join("credentials");
+        add(&by_add, "ref1", "claude", "a1", "api_key", "key ending 0001").unwrap();
+        for dir in [&by_lock, &by_save, &by_add] {
+            assert_eq!(mode_of(dir), 0o700, "{}", dir.display());
+        }
+        assert_eq!(mode_of(&by_add.join(".credentials.lock")), 0o600);
+        assert_eq!(mode_of(&file(&by_add)), 0o600);
+    }
+}
