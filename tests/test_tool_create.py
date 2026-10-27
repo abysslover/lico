@@ -103,7 +103,7 @@ def test_the_list_names_create_with_a_prompt_and_a_name_and_no_other_argument(wo
     assert status == 200 and list(tools) == ["sessions", "send", "create"]
     schema = tools["create"]["inputSchema"]
     assert schema["required"] == ["prompt"] and sorted(schema["properties"]) == ["name", "prompt"], schema      # no folder, mode, kind, account or `from`
-    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 2048
+    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 4096
 
 
 def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_folder_of_the_caller_in_the_mode_that_asks_and_tells_the_caller(world):

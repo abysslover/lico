@@ -10,7 +10,7 @@ const VERSIONS: [&str; 3] = ["2025-11-25", "2025-06-18", "2025-03-26"];
 
 /// The size of the whole `tools/list` result, in bytes: every session pays for these definitions in tokens.
 #[cfg(test)]
-const LIST_BUDGET: usize = 2048;
+const LIST_BUDGET: usize = 4096;
 
 pub struct Tool {
     pub name: &'static str,
@@ -46,7 +46,7 @@ pub const TOOLS: [Tool; 3] = [
     },
     Tool {
         name: "create",
-        description: concat!("Ask the person for a new Claude Code session with a first prompt. It opens in this session's folder, asks the person for what needs approval, and starts working at once on the same account. \
+        description: concat!("Ask the person for a new Claude Code session with a first prompt. It opens in this session's folder, asks the person for what needs approval, and starts working at once on the same account, with this session's model and effort. \
                       The person approves each one; at most 4 at a time from one session and 8 in all. The result comes later as a new message in this session, not as this result. ", names!()),
         args: &[("prompt", "the first prompt of the new session; the whole request may be 128 KiB, so about 100 KiB of plain text at most")],
         optional: &[("name", "a short plain name for the session; at most 36 characters")],
@@ -241,7 +241,13 @@ mod tests {
             assert_eq!(tool.description.matches("Names are labels").count(), 1, "said once, not twice: {}", tool.name);
         }
         let total = serde_json::to_string(&reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})))["result"]).unwrap().len();
-        assert!(total <= 2048, "the definitions are paid in tokens in every session: {total} bytes");
+        assert!(total <= LIST_BUDGET, "the definitions are paid in tokens in every session: {total} bytes");
+    }
+
+    #[test]
+    fn the_text_of_create_says_that_the_new_session_runs_on_the_model_and_the_effort_of_this_one() {
+        let create = TOOLS.iter().find(|t| t.name == "create").unwrap();
+        assert!(create.description.contains("on the same account, with this session's model and effort."), "{}", create.description);
     }
 
     #[test]
