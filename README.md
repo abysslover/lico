@@ -29,7 +29,8 @@ sessions that run in a real folder, sending between sessions, Lico tools that an
 and the memory of every session shown in the window, followed by a memory pass against the limit of an idle window under 50 MiB.
 Its [planning set](doc/product/202610/20261026/00001_agentic_basics_plan/planning.md) gives the scope and the order, and the
 [roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) shows where each milestone stands. Reports exist for M01-P01 to M01-P07, M01-P07a,
-M02-P01 and M02-P02, and each waits for the owner's inspection (G3); M02-P03 is in progress and M01-P08 is not started.
+M02-P01, M02-P02 and M02-P03, and each waits for the owner's inspection (G3); M02-P03 is on its phase branch and waits for
+the owner's merge approval (G4), and M01-P08 is not started.
 
 The program is one executable, `lico`; its build is described in [src/host/README.md](src/host/README.md). No release exists, and the
 acceptance pack that shows a clean public clone rebuilding it (M01-P08) is not started. The build must work from a public clone with

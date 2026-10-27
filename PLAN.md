@@ -1,13 +1,13 @@
 # Lico status
 
-Updated: 2026-10-27
+Updated: 2026-10-28
 
 | Item | Status | Evidence boundary |
 |---|---|---|
 | Product direction | Selected | Lico; MIT; Linux first, Windows later |
-| [Roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) | Updated 2026-10-27 | Shows where each milestone stands; grants no approval |
+| [Roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) | Updated 2026-10-28 | Shows where each milestone stands; grants no approval |
 | [M01 milestone](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) | In progress | G1 approved 2026-10-23; P01 to P07 and P07a have plans and reports (all `in_review`, inspection pending; the experiment and the report of P07a stay on its own branch); P08 (acceptance pack) is not started |
-| [M02 milestone](doc/milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md) | In progress | G1 approved 2026-10-26 with the phase plans of G2 included; M02-P01 and M02-P02 are reported (`in_review`, inspection pending); M02-P03 is in progress |
+| [M02 milestone](doc/milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md) | In progress | G1 approved 2026-10-26 with the phase plans of G2 included; M02-P01, M02-P02 and M02-P03 are reported (`in_review`, inspection pending); M02-P03 is on its phase branch only (checked in four rounds by an independent verifier, no blocker found) and waits for the owner's G4 |
 | [M02 planning set](doc/product/202610/20261026/00001_agentic_basics_plan/planning.md) | Approved 2026-10-26 | Scope, order, requirements, screens and test plan; numbers are design targets unless a report marks them measured |
 | Renderer and runtime | Selected from M01 measurements | Recorded in the M01 reports; the owner's inspection (G3) is pending |
 | Implementation | On `main` up to M02-P02; later phases on phase branches | Moved to `main` on the owner's merge approval (G4) alone, twice (see the gate table), with G3 pending for all of it; from 2026-10-27 each finished phase reaches `main` one at a time on the owner's G4 for that phase (see "How finished phases reach `main`" in [CONTRIBUTING.md](CONTRIBUTING.md)); nothing is published without the owner's explicit yes |

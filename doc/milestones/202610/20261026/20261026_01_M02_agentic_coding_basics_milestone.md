@@ -3,9 +3,9 @@
 - Status: in_progress
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
-- Updated: 2026-10-27
-- Implementation: M02-P01 is built and reported (menu bar, fonts, scroll speed, activity indicator and the test cleanup: the whole suite went from 596 s to 112 s). A throwaway proof of concept without product code (POC-0) is finished (D1 to D4); its figures are in the planning set. M02-P02 (sessions in a real folder) is built and reported after an independent review and its fix rounds. Both reports are `in_review` with the inspection verdict pending. M02-P03 (sending between sessions and the tool channel) is under way on its own branch
-- Next gate: G3 inspection for M02-P01 and M02-P02 together; both reports are written and the owner has not yet inspected them. Their G4 was given on 2026-10-27 for the move of `main`, without G3; from now on G4 is asked for each finished phase on its own
+- Updated: 2026-10-28
+- Implementation: M02-P01 is built and reported (menu bar, fonts, scroll speed, activity indicator and the test cleanup: the whole suite went from 596 s to 112 s). A throwaway proof of concept without product code (POC-0) is finished (D1 to D4); its figures are in the planning set. M02-P02 (sessions in a real folder) is built and reported after an independent review and its fix rounds. Both reports are `in_review` with the inspection verdict pending. M02-P03 (sending between sessions and the tool channel) is built and reported on its own branch after four rounds of an independent verifier and their fix rounds; its report is `in_review` too and `main` is not moved to it yet
+- Next gate: G3 inspection for M02-P01 and M02-P02 together; both reports are written and the owner has not yet inspected them. Their G4 was given on 2026-10-27 for the move of `main`, without G3; from now on G4 is asked for each finished phase on its own (G4 for M02-P03 is asked for its exact tip, with its G3 stated as due with M02-P04)
 - Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -76,7 +76,7 @@ items that are not part of this milestone are listed as M03 candidates in the
 |---|---|---|---|---|---|---|
 | M02-P01 | Menu bar and shared controls, font and scroll speed, activity indicator, and the test cleanup (S05) | [Plan](../../../plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md) | Local bundle, verdict pending (with M02-P02) | None | in_review |
 | M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | [Plan](../../../plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | [Report](../../../reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | Local bundle, verdict pending | None | in_review |
-| M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | `doc/plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md` on the phase branch | Not produced | Not produced | None | in_progress |
+| M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | [Plan](../../../plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | [Report](../../../reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | Local bundle, verdict pending (with M02-P04) | None | in_review |
 | M02-P04 | Screen capture, clipboard read and write, image paste | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | Written as the phase's first step | Not produced | Not produced | None | not_started |
@@ -104,6 +104,7 @@ approval of one gate does not carry to the next.
 ## Blocked on
 
 - G3 for M02-P01 and M02-P02 together: both reports are written; the owner's inspection is pending. Their G4 was given on 2026-10-27 for the move of `main`, without G3.
+- G4 for M02-P03: the phase is built, reported and checked in four rounds by an independent verifier; the owner's G4 for its exact tip is asked on its own after the owner has tried the build, and its G3 is due with M02-P04. Nothing is published.
 - Tests with a real provider sign-in need an account of the owner; they are run once at the end of a phase and the installed provider version is recorded.
 - POC-0 measurements may change a working assumption (inline size, how the agent calls Lico, how memory is counted); a changed value is written in the planning set with its date.
 
@@ -118,4 +119,4 @@ did, REST parity, accessibility, release hygiene) are M03 candidates.
 
 ## When done
 
-Not filled: M02-P01 and M02-P02 are reported and wait for inspection; M02-P03 is in progress and no later phase has started. When the milestone is achieved, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.
+Not filled: M02-P01, M02-P02 and M02-P03 are reported and wait for inspection (M02-P03 also waits for G4); no later phase has started. When the milestone is achieved, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.

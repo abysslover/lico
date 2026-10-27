@@ -1,6 +1,6 @@
 # Lico roadmap: from the measured foundation to the basics of agentic coding
 
-> Status: updated 2026-10-27 (the state of M01 and M02 in the table below; the plan itself is unchanged since 2026-10-26). The proposal of 2026-10-25 for M02 ("Usable Linux workbench") is replaced by the M02 "Agentic-coding basics" plan that the owner approved at G1 on 2026-10-26 (G2 included). This document grants no approval itself: every phase writes its plan note as its first step, and G3 inspection and G4 merge stay with the owner.
+> Status: updated 2026-10-28 (the state of M01 and M02 in the table below; the plan itself is unchanged since 2026-10-26). The proposal of 2026-10-25 for M02 ("Usable Linux workbench") is replaced by the M02 "Agentic-coding basics" plan that the owner approved at G1 on 2026-10-26 (G2 included). This document grants no approval itself: every phase writes its plan note as its first step, and G3 inspection and G4 merge stay with the owner.
 > Source of the goal: [README](../../../../../README.md) and the [product specification](../../20261023/00001_product_spec/product_spec.md) sections 1, 2, 7, 8 and 11. Detail of M02: the [planning set](../../20261026/00001_agentic_basics_plan/planning.md) and the [M02 milestone](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
 ## Goal
@@ -14,7 +14,7 @@ several accounts per provider, observable resource use. Budgets stay proposed ta
 | Milestone | Scope | State |
 |---|---|---|
 | M01 Measured Linux foundation | P01 to P07 and P07a have plans and reports (all `in_review`, inspection pending); P08 (acceptance pack) is not started | G3 pending for every phase; G4 given for two moves of `main` (2026-10-25 and 2026-10-27) |
-| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, memory per session, then a memory pass; P01 to P07 below | G1 approved 2026-10-26; P01 and P02 are reported (`in_review`, inspection pending); P03 in progress |
+| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, memory per session, then a memory pass; P01 to P07 below | G1 approved 2026-10-26; P01, P02 and P03 are reported (`in_review`, inspection pending); P03 is on its phase branch and waits for G4 |
 | M03 and later | Windows backend (own credential, windowing and measured acceptance) and the candidates pushed out of the earlier M02 proposal | not planned in detail |
 
 M01 "Done when" items still open: item 3 needs an installed official provider path exercised with real sign-in evidence (the account owner's first
