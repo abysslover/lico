@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn what_cannot_happen_any_more_when_the_person_says_yes_is_not_done_and_the_asker_is_told_why() {
         let r = room();
-        // the depth is read again at the decision: the count of the asker is whatever the last text it received made it
+        // the depth is read again at the decision: the count of the asker is whatever the texts it received made it (the deepest of the last ten minutes)
         r.w.with(ONE, |s| s.incoming_hops = 3);
         let deep = r.pend(ONE, TWO, "deep");
         r.w.with(ONE, |s| s.incoming_hops = 4);

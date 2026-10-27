@@ -4,7 +4,8 @@
 //! follows the header in the same input; more is stored as a file in the receiver's own folder (`handoff`) and the input names it, shows its first lines and says how to read it.
 //! A line of the text that begins like a header gets a space (`leads::defuse`), so that no line but the host's own does, in what the program receives and in the history.
 //! The reply says how the text was delivered and what the receiver was doing, never where the file is. A chain of sessions that each forward the one before is cut after
-//! four steps unless a person is in it (`MAX_HOPS`). Each transfer is one line in the host's log: who, whom, how much, how; never the text.
+//! four steps unless a person is in it (`MAX_HOPS`); a receiver keeps the deepest count it was given in the last ten minutes (`HOPS_MEMORY`), so a third session's short
+//! text does not start the count again. Each transfer is one line in the host's log: who, whom, how much, how; never the text.
 //!
 //! The whole conversation of a session (`hand_over`, S05) is a transfer too: the host reads the program's own record (`provider_record`), and the text is always a file in the receiver's folder.
 //! Only a person asks for it, and the session whose conversation it is must be named: nobody can have it read for them by saying so in a tool call.
@@ -367,6 +368,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::core::Config;
     use crate::handoff::Scratch;
+    use crate::session::HOPS_MEMORY;
     use serde_json::Value;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -582,6 +584,69 @@ pub(crate) mod tests {
         assert_eq!(by_person["hops"], 0);
         assert_eq!(w.with(ONE, |s| s.incoming_hops), 0);
         assert_eq!(send(&w.shared, None, ONE, "text", "plain", By::Session), Err("bad_request"), "a session's own call says who it is");
+    }
+
+    // ---- the count of steps in a row: a third session cannot lower it while it is young (F4 of the gate verifier)
+    const SET: u64 = 1_000_000;
+
+    /// The receiver `TWO` holds `hops`, set at `at`.
+    fn holds(w: &World, hops: u32, at: u64) {
+        w.with(TWO, |s| (s.incoming_hops, s.hops_set_at) = (hops, at));
+    }
+
+    /// A text arrives at `TWO` from `origin` at the instant `now`; what it holds afterwards: the count and when it was set.
+    fn arrives(w: &World, origin: Origin, now: u64) -> (u32, u64) {
+        w.with(TWO, |s| {
+            s.record_input("r", "x", origin, now);
+            (s.incoming_hops, s.hops_set_at)
+        })
+    }
+
+    #[test]
+    fn a_third_sessions_nudge_does_not_lower_the_count_of_a_chain_that_is_still_going() {
+        let w = world(&[ONE, TWO, THREE]);
+        holds(&w, 3, crate::session::now_secs());
+        assert_eq!(send(&w.shared, Some(THREE), TWO, "text", "a nudge of its own", By::Session).unwrap()["hops"], 1);
+        assert_eq!(w.with(TWO, |s| s.incoming_hops), 3, "the nudge carries 1 and the chain is 3 deep");
+        assert_eq!(send(&w.shared, Some(TWO), ONE, "text", "fourth", By::Session).unwrap()["hops"], 4);
+        assert_eq!(send(&w.shared, Some(ONE), TWO, "text", "fifth", By::Session), Err("chain_depth"), "the pair stops where it would have stopped without the nudge");
+    }
+
+    #[test]
+    fn a_shallower_text_takes_over_a_count_older_than_the_memory_and_not_before() {
+        let w = world(&[TWO]);
+        holds(&w, 3, SET);
+        assert_eq!(arrives(&w, Origin::Session(1), SET + HOPS_MEMORY), (3, SET), "at the edge the count is still young");
+        assert_eq!(arrives(&w, Origin::Session(1), SET + HOPS_MEMORY + 1), (1, SET + HOPS_MEMORY + 1), "older: the next text takes over, a shallower one too");
+        holds(&w, 3, 0);
+        assert_eq!(arrives(&w, Origin::Session(1), 5), (1, 5), "a count made by hand (set at 0) is ancient at any instant");
+    }
+
+    #[test]
+    fn a_shallower_text_that_changes_nothing_does_not_renew_the_age_of_the_count() {
+        let w = world(&[TWO]);
+        holds(&w, 3, SET);
+        assert_eq!(arrives(&w, Origin::Session(1), SET + 300), (3, SET));
+        assert_eq!(arrives(&w, Origin::Session(3), SET + 400), (3, SET), "the same depth changes nothing either");
+        assert_eq!(arrives(&w, Origin::Session(1), SET + 601), (1, SET + 601), "601 seconds after the SET, not after the nudge");
+    }
+
+    #[test]
+    fn a_deeper_text_raises_the_count_and_renews_its_age() {
+        let w = world(&[TWO]);
+        holds(&w, 2, SET);
+        assert_eq!(arrives(&w, Origin::Session(3), SET + 300), (3, SET + 300));
+        assert_eq!(arrives(&w, Origin::Session(1), SET + 900), (3, SET + 300), "900 seconds after the first set, 600 after the raise: still young");
+    }
+
+    #[test]
+    fn a_persons_text_sets_the_count_to_nothing_at_any_age_and_the_hosts_word_changes_nothing() {
+        let w = world(&[TWO]);
+        holds(&w, 3, SET);
+        assert_eq!(arrives(&w, Origin::Host, SET + 5000), (3, SET), "the host's own word is not a step and does not touch the count");
+        assert_eq!(arrives(&w, Origin::Person, SET + 10), (0, SET + 10));
+        holds(&w, 4, SET);
+        assert_eq!(arrives(&w, Origin::Person, SET + 100_000), (0, SET + 100_000));
     }
 
     #[test]

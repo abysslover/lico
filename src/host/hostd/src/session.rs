@@ -415,10 +415,15 @@ pub struct Session {
     pub approval_counter: i64, // approval ids are never reused within a session, across restarts too
     /// lines for the agent's standard input; a writer thread owns the pipe
     pub input_tx: Option<SyncSender<String>>,
-    pub incoming_hops: u32, // how many sessions in a row forwarded the text this session last received (0: a person's)
+    pub incoming_hops: u32, // how many sessions in a row forwarded the deepest text this session received in the last `HOPS_MEMORY` seconds (0: a person's); see `count_hops`
+    pub hops_set_at: u64, // when `incoming_hops` was last set or raised (unix seconds; 0: long ago, a count made by hand in a test)
     pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
     pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
 }
+
+/// How long the count of steps in a row (`incoming_hops`) is held against a shallower text from another session, so that a third session cannot reset a chain
+/// by sending a short text (F4 of the gate verifier); a count older than this is replaced by the next text from a session.
+pub const HOPS_MEMORY: u64 = 600;
 
 /// Where an accepted input came from: a person typing, another session's text (S03a) with the number of sessions in a row that forwarded it, or the host's own
 /// word to the session (S04: what became of a request). The last is not a step on a chain and does not change the count.
@@ -482,6 +487,7 @@ impl Session {
             approval_counter: 0,
             input_tx: None,
             incoming_hops: 0,
+            hops_set_at: 0,
             pending: Default::default(),
             made_by: None,
         }
@@ -624,12 +630,8 @@ impl Session {
         self.inputs.get(&self.key(request_id)).copied()
     }
 
-    pub fn record_input(&mut self, request_id: &str, text: &str, origin: Origin) {
-        self.incoming_hops = match origin {
-            Origin::Person => 0,
-            Origin::Session(hops) => hops,
-            Origin::Host => self.incoming_hops,
-        };
+    pub fn record_input(&mut self, request_id: &str, text: &str, origin: Origin, now: u64) {
+        self.count_hops(origin, now);
         crate::echo::append(self, text, origin != Origin::Person);
         let key = self.key(request_id);
         self.inputs.insert(key, InputState::Accepted);
@@ -638,6 +640,21 @@ impl Session {
             if let Some(old) = self.input_order.pop_front() {
                 self.inputs.remove(&old);
             }
+        }
+    }
+
+    /// The count of steps in a row (`incoming_hops`) after an input. A person's text starts it again. A text from a session raises it when it is deeper, and
+    /// replaces it when it is older than `HOPS_MEMORY` (counted from when it was set or raised), so a third session that sends a short text cannot lower a
+    /// chain that is still going, and a text that changes nothing does not renew the age. The host's own word changes nothing. Nothing decays when the count
+    /// is read: a chain whose turn takes a quarter of an hour is still as deep.
+    fn count_hops(&mut self, origin: Origin, now: u64) {
+        let (hops, taken) = match origin {
+            Origin::Person => (0, true),
+            Origin::Session(hops) => (hops, hops > self.incoming_hops || self.hops_set_at == 0 || now.saturating_sub(self.hops_set_at) > HOPS_MEMORY),
+            Origin::Host => return,
+        };
+        if taken {
+            (self.incoming_hops, self.hops_set_at) = (hops, now);
         }
     }
 
