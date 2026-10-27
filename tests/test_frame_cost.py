@@ -51,17 +51,24 @@ def test_an_unchanged_frame_shapes_no_line_and_probes_no_character():
             host, _ = start(directory, extra=["--text", "--payload", "110"], sessions=1, producing=0, history=60)
             client = client_on(host, xvfb.display)
             show(client, host.sessions[0], 35)
-            first = ui(client)["frame"]
+            state = ui(client)
+            first = state["frame"]
+            totals = [state["memory"]["total"]]               # the window's own memory in whole MiB can move while the test runs: a new figure is a new label, shaped once
             assert first["lines_shaped"] >= 30 and first["probes"] > 0 and first["frames"] > 0       # the first frame did the work
             assert 0 < first["layout_us"] <= first["total_us"] and first["paint_us"] > 0              # and the dump says what it cost
             for _ in range(3):
                 client.send("redraw")
                 time.sleep(0.4)
-            again = ui(client, until=lambda s: s["frame"]["frames"] >= first["frames"] + 3)["frame"]
+                totals.append(ui(client)["memory"]["total"])
+            state = ui(client, until=lambda s: s["frame"]["frames"] >= first["frames"] + 3)
+            again = state["frame"]
+            totals.append(state["memory"]["total"])
+            moved = sum(a != b for a, b in zip(totals, totals[1:]))
             assert again["frames"] >= first["frames"] + 3
             assert again["lines_shaped"] == first["lines_shaped"], "an unchanged line was shaped again"
             assert again["probes"] == first["probes"], "a character was looked up again"
-            assert again["label_shapes"] == first["label_shapes"], "an unchanged label was shaped again"
+            shaped = again["label_shapes"] - first["label_shapes"]
+            assert shaped <= moved, f"an unchanged label was shaped again: {shaped} labels shaped, the memory total changed {moved} times ({totals})"
         finally:
             if client and client.proc.poll() is None:
                 client.kill()
