@@ -16,3 +16,5 @@ resource result or a real provider acceptance.
   of the conversation reader (tested: 2.1.310, 2.1.311).
 - `202610/20261027/00004_s07c_real_program_history_check` - opt-in check with the real `claude` that a model calls `history`, ends its turn on `pending`, names what the notice brings, follows the notice of a long answer on to
   `read_handoff` (one part of 32,445 bytes, stored whole by the program), and what it does with a planted line that tells a reader to call `send` (tested: 2.1.310, haiku, 7 turns).
+- `202610/20261027/00005_s08_ten_minutes_of_traffic` - ten minutes of traffic on all five tools of the tool connection (simulator, 3 sessions, 150 cycles) with the host alone and with the window
+  showing the list: growth of the host and the window, threads, descriptors, a search for credentials and sent texts in the run folder, and the peak of the host's `status` operation.
