@@ -535,7 +535,10 @@ def test_nothing_the_host_made_under_the_folders_it_was_given_is_open_to_a_group
     for top in tops:
         paths = [top] if not top.is_dir() or top == root else [top, *(Path(at) / name for at, dirs, files in os.walk(top) for name in dirs + files)]
         for path in paths:
-            mode = path.lstat().st_mode
+            try:
+                mode = path.lstat().st_mode
+            except FileNotFoundError:                                                                              # listed, then renamed away: the host writes some files by a temporary name
+                continue
             seen += 1
             if not stat.S_ISLNK(mode) and mode & 0o077:                                                            # a link has no mode of its own
                 open_to_others.append((str(path.relative_to(root)), oct(mode & 0o777)))
