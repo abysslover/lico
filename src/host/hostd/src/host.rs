@@ -134,12 +134,15 @@ pub fn run(args: Vec<String>) {
     // the loopback port is taken here, before any session starts and before the ready line: `auto` asks the system for a free one, and a port that is taken
     // ends the host with a word instead of leaving one that said `ready` and has no listener
     let http_port = arg("--http-port", "0");
-    let http_listener = if http_port == "0" {
-        None
-    } else {
-        let wanted: u16 = if http_port == "auto" { 0 } else { http_port.parse().unwrap_or_else(|_| refuse("--http-port is a port number or `auto`")) };
-        Some(http::bind(wanted).unwrap_or_else(|why| refuse(&format!("cannot take the loopback port 127.0.0.1:{wanted}: {why}"))))
+    let wanted_port: Option<u16> = match http_port.as_str() {
+        "auto" => Some(0),
+        number => match number.parse::<u16>() {
+            Ok(0) => None, // any way to write zero: no listener
+            Ok(port) => Some(port),
+            Err(_) => refuse("--http-port is a port number or `auto`"),
+        },
     };
+    let http_listener = wanted_port.map(|wanted| http::bind(wanted).unwrap_or_else(|why| refuse(&format!("cannot take the loopback port 127.0.0.1:{wanted}: {why}"))));
     raise_descriptor_limit();
     core::init_spawner();
     let sessions: usize = arg("--sessions", "1").parse().expect("sessions");

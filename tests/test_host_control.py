@@ -2,10 +2,11 @@ import json
 import os
 import random
 import socket
+import subprocess
 import time
 from pathlib import Path
 
-from lico_measure.rig import private_dir
+from lico_measure.rig import _host_command, private_dir
 from lico_protocol import v1
 
 from lico_measure.p02 import AGENT, LICO, ProtoConn as Conn, cli, echoes, read_log, start  # noqa: F401
@@ -135,6 +136,28 @@ def test_a_host_that_cannot_take_its_loopback_port_says_so_and_does_not_report_r
             assert "lico-host: " in said and "loopback" in said and str(port) in said, said
         finally:
             held.close()
+
+
+def test_a_port_that_parses_to_zero_means_no_listener_as_the_plain_zero_does():
+    """N-R5c-a: the value is read as a number first, so `00` and `+0` are the same as `0`: no listener, no token file asked for, and a ready line without a port."""
+    for value in ("0", "00", "+0"):
+        with private_dir() as directory:
+            host, _ = start(directory, sessions=1, producing=0, history=3, extra=["--http-port", value])            # no --http-token-file: a listener would stop the host at once
+            try:
+                assert json.loads(host.ready_line).get("http_port") is None, (value, host.ready_line)
+                assert not os.path.exists(os.path.join(directory, "http.token")), value
+            finally:
+                host.stop()
+
+
+def test_a_value_that_is_neither_auto_nor_a_port_number_ends_the_host_with_exit_2_and_a_word_and_no_ready_line():
+    """N-R5c-b: the refusal of the unreadable value, pinned next to the refusal of a taken port."""
+    for value in ("abc", "65536", "-1", ""):
+        with private_dir() as directory:
+            done = subprocess.run([*_host_command("hostd"), "--socket", os.path.join(directory, "host.sock"), "--log-dir", os.path.join(directory, "log"), "--sessions", "1", "--producing", "0",
+                                   "--http-port", value, "--http-token-file", os.path.join(directory, "http.token")], capture_output=True, text=True, timeout=30, stdin=subprocess.DEVNULL)
+            assert done.returncode == 2 and done.stdout == "", (value, done.returncode, done.stdout)
+            assert done.stderr.startswith("lico-host: --http-port is a port number or `auto`"), (value, done.stderr)
 
 
 def test_the_loopback_listener_answers_in_the_moment_the_ready_line_is_read():
