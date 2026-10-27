@@ -426,7 +426,8 @@ pub struct Session {
 pub const HOPS_MEMORY: u64 = 600;
 
 /// Where an accepted input came from: a person typing, another session's text (S03a) with the number of sessions in a row that forwarded it, or the host's own
-/// word to the session (S04: what became of a request). The last is not a step on a chain and does not change the count.
+/// word to the session (S04: what became of a request). The last is not a step on a chain and does not change the count. `Session(0)` is a person's send that
+/// names a sending session (`transfer::deliver` is the only place that makes `Session(n)`; a session's own text carries 1 or more): it counts as a person's text.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Origin {
     Person,
@@ -643,13 +644,14 @@ impl Session {
         }
     }
 
-    /// The count of steps in a row (`incoming_hops`) after an input. A person's text starts it again. A text from a session raises it when it is deeper, and
+    /// The count of steps in a row (`incoming_hops`) after an input. A person's text starts it again, and so does a person's send that names a sending session
+    /// (the window's "Send to session", `--from`, a conversation handed over): it reaches here as `Session(0)`. A text from a session raises it when it is deeper, and
     /// replaces it when it is older than `HOPS_MEMORY` (counted from when it was set or raised), so a third session that sends a short text cannot lower a
     /// chain that is still going, and a text that changes nothing does not renew the age. The host's own word changes nothing. Nothing decays when the count
     /// is read: a chain whose turn takes a quarter of an hour is still as deep.
     fn count_hops(&mut self, origin: Origin, now: u64) {
         let (hops, taken) = match origin {
-            Origin::Person => (0, true),
+            Origin::Person | Origin::Session(0) => (0, true), // zero is made only by a person's act that names a session; a session's own text carries 1 or more
             Origin::Session(hops) => (hops, hops > self.incoming_hops || self.hops_set_at == 0 || now.saturating_sub(self.hops_set_at) > HOPS_MEMORY),
             Origin::Host => return,
         };

@@ -295,6 +295,13 @@ def test_a_chain_of_agents_runs_four_steps_and_stops_at_the_fifth_and_a_person_s
     assert world.conn.call(op="input", session=a, generation=a_generation, request_id="p-1", text="carry on")["ok"] == 1     # a person writes to alpha
     approved(world, a, a_generation, b, "after the person")
     wait_for(lambda: len(heads(world.log, b)) == 3)
+    # beta still holds 3 and that is young; a person's send that names a session (the window's, `--from`) is a person's act and starts the count again
+    sent = world.conn.call(op="transfer.send", **{"from": a, "to": b, "kind": "text", "text": "the person, in the name of alpha"})
+    assert sent["ok"] == 1 and sent["hops"] == 0, sent
+    approved(world, b, b_generation, a, "beta, after the person")
+    size = len("beta, after the person")
+    line = f"lico-host: transfer from={b} to={a} kind=text size={size} delivery=inline hops=1"
+    assert wait_for(lambda: line in (Path(world.directory) / "host.err").read_text().splitlines()), "1 step, not 4"
 
 
 def test_the_twenty_first_call_in_a_minute_is_refused_with_the_seconds_to_wait_and_the_refused_ones_count(world):

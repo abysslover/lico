@@ -574,7 +574,7 @@ pub(crate) mod tests {
     #[test]
     fn a_chain_of_sessions_is_cut_after_four_steps_and_a_person_in_it_starts_the_count_again() {
         let w = world(&[ONE, TWO]);
-        w.with(ONE, |s| s.incoming_hops = 3);
+        w.with(ONE, |s| (s.incoming_hops, s.hops_set_at) = (3, crate::session::now_secs()));
         let reply = send(&w.shared, Some(ONE), TWO, "text", "fourth", By::Session).unwrap();
         assert_eq!(reply["hops"], 4);
         assert_eq!(w.with(TWO, |s| s.incoming_hops), 4, "the receiver remembers how far the text came");
@@ -613,6 +613,29 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_persons_send_that_names_a_session_starts_a_young_count_again_and_a_sessions_own_text_does_not() {
+        let w = world(&[ONE, TWO, THREE]);
+        holds(&w, 3, crate::session::now_secs());
+        assert_eq!(send(&w.shared, Some(THREE), TWO, "text", "by a session", By::Session).unwrap()["hops"], 1);
+        assert_eq!(w.with(TWO, |s| s.incoming_hops), 3, "a session's own text is a step and does not lower a young count");
+        let reply = send(&w.shared, Some(THREE), TWO, "text", "by the person", By::Person).unwrap();
+        assert_eq!(reply["hops"], 0, "the window's send and `--from` name a session and are still a person's act");
+        assert_eq!(w.with(TWO, |s| (s.incoming_hops, s.hops_set_at != 0)), (0, true));
+        assert_eq!(send(&w.shared, Some(TWO), ONE, "text", "a step", By::Session).unwrap()["hops"], 1, "the chain is usable again: 1, not 4");
+    }
+
+    #[test]
+    fn a_conversation_handed_over_by_a_person_who_names_a_session_starts_a_young_count_again() {
+        // `hand_over` needs the record file of a program; the call it ends with is this one
+        let w = world(&[ONE, TWO, THREE]);
+        holds(&w, 3, crate::session::now_secs());
+        let reply = deliver(&w.shared, Some(THREE), TWO, "conversation", "the whole conversation", By::Person, true).unwrap();
+        assert_eq!((reply["delivery"].as_str(), reply["hops"].as_u64()), (Some("file"), Some(0)));
+        assert_eq!(w.with(TWO, |s| s.incoming_hops), 0);
+        assert_eq!(send(&w.shared, Some(TWO), ONE, "text", "a step", By::Session).unwrap()["hops"], 1);
+    }
+
+    #[test]
     fn a_shallower_text_takes_over_a_count_older_than_the_memory_and_not_before() {
         let w = world(&[TWO]);
         holds(&w, 3, SET);
@@ -647,6 +670,8 @@ pub(crate) mod tests {
         assert_eq!(arrives(&w, Origin::Person, SET + 10), (0, SET + 10));
         holds(&w, 4, SET);
         assert_eq!(arrives(&w, Origin::Person, SET + 100_000), (0, SET + 100_000));
+        holds(&w, 3, SET);
+        assert_eq!(arrives(&w, Origin::Session(0), SET + 10), (0, SET + 10), "a text that names a session and carries nothing is a person's act too");
     }
 
     #[test]
