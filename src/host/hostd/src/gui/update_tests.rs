@@ -120,3 +120,28 @@ fn a_host_of_another_pid_where_the_old_one_was_is_not_the_one_to_end_and_nobody_
     assert!(elapsed < Duration::from_secs(1), "it is seen at once: {elapsed:?}");
     host.join().unwrap();
 }
+
+#[test]
+fn a_host_that_answers_the_stop_with_an_error_and_has_been_replaced_by_another_signals_nobody() {
+    let path = socket_path("replaced_unknown");
+    let mut live = std::process::Command::new("sleep").arg("10").spawn().unwrap(); // the old pid is a live process: a reused number must not be signalled
+    let over = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stays = over.clone();
+    // the host at the place does not know `host.stop` (so the pid is the next thing the window tries), and its status names a pid that is not the old one
+    let host = old_host(&path, Some(json!({"v": 1, "ok": 1, "pid": ANOTHER_NO_PROCESS, "build": "bb"})), Some(json!({"v": 1, "ok": 0, "error": "unknown_op"})), move || !stays.load(Ordering::SeqCst));
+    let stopped = stop(path.to_str().unwrap(), &json!({"pid": u64::from(live.id()), "build": "aa"}));
+    // a signal ends `sleep` at once: a second is given for it to show, and that second is the whole cost of the test
+    let mut signalled = false;
+    for _ in 0..40 {
+        if live.try_wait().unwrap().is_some() {
+            signalled = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    over.store(true, Ordering::SeqCst);
+    let _ = live.kill(); // before the assertion: a failing test must not leave the process behind
+    let _ = live.wait();
+    assert!(!signalled, "the process of the old pid was signalled although another host answers there ({})", said(&stopped));
+    host.join().unwrap();
+}
