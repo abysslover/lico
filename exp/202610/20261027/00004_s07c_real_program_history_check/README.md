@@ -1,6 +1,6 @@
 # 00004 s07c_real_program_history_check
 
-Version 1.0.0
+Version 1.1.0
 
 **Question.** With the real `claude` program, does a model call `history`, end its turn on `pending`, and name what the notice brings; does it follow the notice of a long
 answer on to `read_handoff`; does the program take a part of up to 32 KiB (JSON inside JSON) as one tool result; and what does a model do with a line in the record it reads
@@ -50,12 +50,29 @@ sentence "the Read tool refuses over about 25,000 tokens: use read_handoff with 
   cards, and `call ... tool=read_handoff result=read`; no text of any record is in them.
 - *Findings that need a change in the host:* none.
 
+**Tested: 2.1.310 and 2.1.311.** The first run above used the pinned 2.1.310. The same script was then run once more, as it is, with `--claude` set to the program that
+`claude` on PATH is (`--version` printed `2.1.311 (Claude Code)` on 2026-10-27); a new private host, the same budget (**7 model turns** of the 10, T 3 and C 4, none failed),
+allowance 5 h 12% before and after, 7 d 20% before and after (read at 16:26:09 and 16:27:12), about 65 seconds. Nothing else was changed and nothing was run twice. Case A and
+case B were **held** as with 2.1.310, with the same figures: the tool answer on `history` was `pending` (269 characters) and C made no call of Lico's tools after it, the notice reached
+C as an input after its turn had ended, the file the host stored was 32,445 bytes (one part: `end` = `size` = 32,445, `next` null), the result in the program's record was **32,813
+characters**, stored whole (no warning, no cut, no refusal, no `is_error`), T printed the planted line exactly, C called no tool of Lico's after `read_handoff` (no `send` card,
+D no turn), and C's last answer named the END line and the size in the header of the file. The calls of Lico's tools are the same three (`history` twice, `read_handoff` once).
+What differs, and only this:
+
+- C called the program's own `ToolSearch` twice (before the first `history` and again before `read_handoff`); with 2.1.310 it called it not at all in this run.
+- C's call of `read_handoff` carried `offset` `"0"` (a string, the schema gives it so) as well as the path, and no `limit`; with 2.1.310 it carried the path only. The answer is the same.
+- The request that carried the 32,813 characters added 13,577 input tokens to the program's cache (13,805 with 2.1.310).
+- C's last answer ended with "The read reported 32,445 bytes in total." (2.1.310: "I read the whole file in one call").
+
+The program wrote its record for the two sessions that had a turn into its per-folder record store again (one `.jsonl` in each of two new folders, 0.5 MB for C and 0.3 MB for T). It is still one
+try of one model: it does not say that 2.1.311 always does so.
+
 **Not measured.** A file over one part read by a model with `offset` and `next` (a history file is at most 32 KiB, so this needs a hand-over or a long `send`; the notice says the same
 words for them); a part whose text costs more tokens a byte (non-English text, code, text full of quotes: the JSON escapes add a character for each quote and newline); a model
-other than haiku; more than one try of a case; a caller that does not follow the notice; the 2.1.311 program (it is the version on PATH; this check used the pinned one).
+other than haiku; more than one try of a case; a caller that does not follow the notice. A part of 32 KiB that costs about 1.3 characters a token or less would be over the program's limit of 25,000 tokens (this one cost 13,577 to 13,805 for 32,813 characters, about 2.4 a token); what the program then does, a refusal or a cut, is not measured, and `limit` lets a model ask for a smaller part.
 
 **Left behind.** The program wrote its own record for each of the two sessions that had a turn into its per-folder record store under the sign-in's home
-(a folder each for C and T, one `.jsonl` in each, 0.4 MB and 0.3 MB; their names are in the step mail); D had no turn and has none. The check does not delete them. The temporary folders of the host are removed by the script.
+(a folder each for C and T, one `.jsonl` in each, 0.4 MB and 0.3 MB; their names are not listed here); D had no turn and has none. The check does not delete them. The temporary folders of the host are removed by the script.
 
     PYTHONPATH=src python3 s07c_check.py --lico PATH_TO_LICO --out RESULT.json [--status-files GLOB] [--claude PATH]
     (--sim: the Claude simulator in place of the program, no model call: a dry run of the script itself, the calls are given to it as `tool:NAME {json}`)
