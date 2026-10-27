@@ -15,7 +15,7 @@ import pytest
 from lico_measure.rig import private_dir
 from lico_protocol import v1
 
-from tests.test_claude_adapter import records, status_of
+from tests.test_claude_adapter import argv_of, records, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_tool_connection import World, rpc
 from tests.test_tool_send import NOTICE, decide, host_of, notices, received_with
@@ -56,8 +56,10 @@ def inbox(world, sid):
 
 def join(world, sid):
     """What the program of `sid` does first: initialize, so that the host knows the tools are there (`read_handoff` is then named in a notice). The host takes the config
-    file of the session at that moment, so the config is read first and returned."""
+    file of the session at that moment, so the config is read first and returned, and not before the program has started: a real one has read its file by then, and an
+    initialize that comes first takes the file from under it (the key is refused from then on)."""
     config = world.config(sid)
+    wait_for(lambda: [a for a in argv_of(world.received) if str(config["path"]) in a])
     status, body = rpc(config, "initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}})
     assert status == 200 and "result" in body, (status, body)
     return config
