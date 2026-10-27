@@ -675,6 +675,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn the_entry_every_route_ends_in_stamps_the_count_with_the_real_instant_so_a_second_text_does_not_take_it_over() {
+        // `arrives` gives the instant by hand; this goes the way a transfer goes, where the instant is read from the clock at the call
+        let w = world(&[TWO]);
+        core::input(&w.shared, TWO, None, "r1", "a", Origin::Session(3)).unwrap();
+        assert_eq!(w.with(TWO, |s| (s.incoming_hops, s.hops_set_at != 0)), (3, true), "the count is set, and set at a real instant");
+        core::input(&w.shared, TWO, None, "r2", "b", Origin::Session(1)).unwrap();
+        assert_eq!(w.with(TWO, |s| s.incoming_hops), 3, "a shallower text a moment later does not take over a young count");
+    }
+
+    #[test]
     fn a_refused_transfer_makes_no_file_and_queues_nothing() {
         let w = world(&[ONE, TWO]);
         let gone = "s0000000000000000";
