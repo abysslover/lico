@@ -148,8 +148,11 @@ fn stop(socket: &str, status: &Value) -> Stopped {
         other => {
             // host.stop is not understood (a host older than that call), or the host does not answer: it is ended once by the pid it reported
             trace(&format!("host.stop was not accepted ({}); nothing listens: {}", other.as_ref().map_or("no answer".to_string(), |r| r.to_string()), UnixStream::connect(socket).is_err()));
-            if other.is_none() && UnixStream::connect(socket).is_err() {
-                return Stopped::Ended; // it is gone already
+            // No answer at all: the host died on the request, or is dying, or does not answer. The kernel closes its socket only when the process is gone, so
+            // for a moment after the request it can still be listening; that moment is waited for (this runs on the worker thread, the window is not held),
+            // and so is another host that already answers where this one was. What stays after the wait is ended by its pid.
+            if other.is_none() && gone(socket, pid, Duration::from_secs(3)) {
+                return Stopped::Ended;
             }
             match pid {
                 Some(pid) if end_by_pid(socket, pid) => {
@@ -415,3 +418,7 @@ fn bring_up(socket: &str, start_host: &dyn Fn() -> Result<String, String>) -> Re
         }
     }
 }
+
+#[cfg(test)]
+#[path = "update_tests.rs"]
+mod tests;

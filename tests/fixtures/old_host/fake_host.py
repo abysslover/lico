@@ -6,6 +6,8 @@ id at all, like the hosts before build ids). Every operation except status and a
 there. FAKE_HOST_PROVIDER names a file: the host then starts a provider the way the real old build did (its own session, the parent-death signal set, so the
 kernel ends it with the host) that starts a helper which stays in its group; both pids are written there ("child helper"). FAKE_HOST_STOP=exit makes
 host.stop answer ok and end the process at once (`os._exit`), as the real host does after its stop; FAKE_HOST_STOP=die ends it without any answer;
+FAKE_HOST_STOP=linger closes the connection of host.stop without an answer and ends the process one second later, and until then it listens and answers nothing (the moment between
+a host that has been told to end and the kernel closing its socket);
 FAKE_HOST_STOP=handover answers ok, starts a successor of the build named in FAKE_HOST_SUCCESSOR on the same socket, waits until it listens and only then exits, so nothing ever
 sees the socket without a listener (another window's new host coming up at once). FAKE_HOST_LIFETIME=N ends the process after N seconds. It prints one line with its pid when it listens,
 like the real host."""
@@ -47,11 +49,20 @@ def answer(request):
     return reply
 
 
+dying = threading.Event()
+
+
 def serve(conn):
     with conn, conn.makefile("rw") as stream:
         for line in stream:
             try:
+                if dying.is_set():
+                    continue                                                         # still listening, no longer answering
                 request = json.loads(line)
+                if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "linger":
+                    dying.set()
+                    threading.Timer(1.0, lambda: os._exit(1)).start()
+                    return                                                           # the caller sees the connection closed, not an answer
                 if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "die":
                     os._exit(1)                                                      # ends without an answer: from outside a crash looks the same
                 if request.get("op") == "host.stop" and os.environ.get("FAKE_HOST_STOP") == "exit":

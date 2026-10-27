@@ -319,6 +319,17 @@ def test_a_host_that_ends_without_an_answer_is_not_called_replaced_by_another_wi
             assert "another window" not in w.ui()["header"]                                                      # nobody else was seen to do it
 
 
+def test_a_host_that_still_listens_for_a_moment_after_it_was_told_to_end_is_waited_for_and_replaced():
+    """R5l: the host does not answer `host.stop`, but its socket takes connections for another second (the kernel has not closed it yet). Nothing can be asked of it by
+    then, so the window waits for the end of the process before it looks for a pid to end; it does not call the host gone-and-unreplaceable."""
+    with private_dir() as directory:
+        env = {"FAKE_HOST_BUILD": "00000000000000aa", "FAKE_HOST_STOP": "linger"}
+        with ProductWindow(host_binary=fake_host(directory), env_extra=env) as w:
+            wait_for(lambda: status(w).get("build") == fnv(LICO), timeout=30)
+            wait_for(lambda: header_has(w, "The host ended and a new one answers (new build)."), timeout=15)
+            assert "could not be ended" not in w.ui()["header"], w.ui()["header"]
+
+
 def test_a_host_that_another_window_replaced_at_once_is_still_a_host_this_window_ended():
     """The window that stopped the old host must not need to see the socket empty: a new host (another window's) can answer in the same instant."""
     with private_dir() as directory:
