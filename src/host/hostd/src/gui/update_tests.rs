@@ -10,6 +10,11 @@ use std::thread::JoinHandle;
 
 use super::*;
 
+/// Pids that no process has: above the host's `pid_max` (at most 4194304) and still below `i32::MAX`, which the signal call takes. A low number can belong to a
+/// stranger, and a test that signalled it by mistake would end someone else's process.
+const NO_PROCESS: u64 = 2_000_000_000;
+const ANOTHER_NO_PROCESS: u64 = 2_000_000_001;
+
 fn socket_path(tag: &str) -> PathBuf {
     static COUNT: AtomicU32 = AtomicU32::new(0);
     std::env::temp_dir().join(format!("lico-update-unit-{}-{tag}-{}.sock", std::process::id(), COUNT.fetch_add(1, Ordering::SeqCst)))
@@ -62,7 +67,7 @@ fn a_host_that_closes_the_stop_and_listens_for_a_moment_longer_is_waited_for_and
     let end = Instant::now() + Duration::from_millis(600);
     let host = old_host(&path, None, None, move || Instant::now() < end);
     let began = Instant::now();
-    let stopped = stop(path.to_str().unwrap(), &json!({"pid": 4242, "build": "aa"}));
+    let stopped = stop(path.to_str().unwrap(), &json!({"pid": NO_PROCESS, "build": "aa"}));
     assert!(matches!(stopped, Stopped::Ended), "{}", said(&stopped));
     assert!(began.elapsed() < Duration::from_secs(3), "the wait is for the moment the host needs, not for the whole of it: {:?}", began.elapsed());
     host.join().unwrap();
@@ -97,13 +102,21 @@ fn a_host_that_answers_the_stop_with_an_error_is_alive_and_is_ended_by_its_pid_w
 }
 
 #[test]
-fn a_host_of_another_pid_where_the_old_one_was_is_not_the_one_to_end() {
+fn a_host_of_another_pid_where_the_old_one_was_is_not_the_one_to_end_and_nobody_is_signalled() {
     let path = socket_path("replaced");
-    let end = Instant::now() + Duration::from_secs(2);
-    let host = old_host(&path, Some(json!({"v": 1, "ok": 1, "pid": 4243, "build": "bb"})), None, move || Instant::now() < end);
+    let mut live = std::process::Command::new("sleep").arg("10").spawn().unwrap(); // the old pid is a live process: a reused number must not be signalled
+    let over = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)); // the other host stays until the test has looked, longer than any wait of stop()
+    let stays = over.clone();
+    let host = old_host(&path, Some(json!({"v": 1, "ok": 1, "pid": ANOTHER_NO_PROCESS, "build": "bb"})), None, move || !stays.load(Ordering::SeqCst));
     let began = Instant::now();
-    let stopped = stop(path.to_str().unwrap(), &json!({"pid": 4242, "build": "aa"}));
+    let stopped = stop(path.to_str().unwrap(), &json!({"pid": u64::from(live.id()), "build": "aa"}));
+    let elapsed = began.elapsed();
+    over.store(true, Ordering::SeqCst);
+    let signalled = live.try_wait().unwrap().is_some();
+    let _ = live.kill();
+    let _ = live.wait();
+    assert!(!signalled, "the process of the old pid was signalled although another host answers there");
     assert!(matches!(stopped, Stopped::Ended), "{}", said(&stopped));
-    assert!(began.elapsed() < Duration::from_secs(1), "it is seen at once: {:?}", began.elapsed());
+    assert!(elapsed < Duration::from_secs(1), "it is seen at once: {elapsed:?}");
     host.join().unwrap();
 }
