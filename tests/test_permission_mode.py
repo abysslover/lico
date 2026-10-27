@@ -19,9 +19,9 @@ def test_a_new_session_skips_permissions_by_default_asks_the_window_for_the_rest
             auto, _ = new_claude(conn)
             ask, _ = new_claude(conn, mode="default")
             wait_for(lambda: len(argv_of(received)) >= 2)
-            first, second = argv_of(received)[:2]
-            assert first[first.index("--permission-mode") + 1] == "bypassPermissions" and second[second.index("--permission-mode") + 1] == "default"
-            for argv in (first, second):
+            by_mode = {argv[argv.index("--permission-mode") + 1]: argv for argv in argv_of(received)}      # the two provider processes start in no fixed order: told apart by their mode
+            assert set(by_mode) == {"bypassPermissions", "default"}
+            for argv in by_mode.values():
                 assert argv[argv.index("--permission-prompt-tool") + 1] == "stdio"                      # always: what still needs a person reaches the window
             assert status_of(conn, auto)["mode"] == "auto" and status_of(conn, ask)["mode"] == "default"
         finally:
@@ -32,9 +32,9 @@ def test_a_new_session_skips_permissions_by_default_asks_the_window_for_the_rest
             conn = Conn(host.socket)
             conn.call(op="session.create", kind="codex")
             conn.call(op="session.create", kind="codex", mode="default")
-            starts = [m["params"] for m in sent(received) if m.get("method") == "thread/start"]
-            assert (starts[0]["approvalPolicy"], starts[0]["sandbox"]) == ("never", "read-only")           # the sandbox of a thread is never writable; the turns carry the mode
-            assert (starts[1]["approvalPolicy"], starts[1]["sandbox"]) == ("untrusted", "read-only")
+            starts = lambda: [m["params"] for m in sent(received) if m.get("method") == "thread/start"]      # a thread starts after the reply of the call, and the two processes write in no fixed order
+            wait_for(lambda: len(starts()) >= 2)
+            assert sorted((m["approvalPolicy"], m["sandbox"]) for m in starts()) == [("never", "read-only"), ("untrusted", "read-only")]      # the sandbox of a thread is never writable; the turns carry the mode
         finally:
             host.stop()
 
