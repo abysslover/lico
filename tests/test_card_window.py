@@ -155,6 +155,24 @@ def centre(box):
     return (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
 
 
+def fill_of(w, name):
+    """The gray of one pixel inside a button, at its left edge half way down, where its label does not reach."""
+    box, (data, width, _) = w.ui()["layout"][name], w.gray()
+    return data[int((box[1] + box[3]) / 2) * width + int(box[0]) + 2]
+
+
+def steady_fill(w, name):
+    """The gray of a button's fill once two captures in a row agree: a capture can be of the frame before the one the flag speaks of."""
+    seen = [fill_of(w, name)]
+
+    def agreed():
+        seen.append(fill_of(w, name))
+        return seen[-1] == seen[-2]
+
+    wait_for(agreed)
+    return seen[-1]
+
+
 def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_is_the_answer():
     with private_dir() as directory:
         args, _ = claude_args(directory)
@@ -215,10 +233,12 @@ def test_a_key_typed_while_a_card_comes_up_is_typing_and_a_key_after_the_dwell_i
             wait_for(lambda: w.ui()["approval_bar"] and w.ui()["card_seen"])
             clock(w, "advance", "799")
             assert wait_for(lambda: w.ui()["layout"]["dim"])
+            dimmed = steady_fill(w, "allow")                                                            # the flag is not all: the buttons are drawn in the dimmed colour
             w.click(*centre(w.ui()["layout"]["deny"]))
             assert w.ui()["approval_bar"] and not w.ui()["card_ready"], w.ui()["header"]
             clock(w, "advance", "1")
             assert wait_for(lambda: w.ui()["card_ready"] and not w.ui()["layout"]["dim"])
+            assert wait_for(lambda: fill_of(w, "allow") >= dimmed + 20), (dimmed, fill_of(w, "allow"))     # and in the awake one, clearly lighter, once the dwell is over
             w.click(*centre(w.ui()["layout"]["allow"]))
             assert wait_for(lambda: not w.ui()["approval_bar"] and "Allowed: the text was sent." in w.ui()["header"])
             wait_for(lambda: ">> the third" in records(log, docs))
