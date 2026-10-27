@@ -1,6 +1,6 @@
 # 00002 s04_real_program_check
 
-Version 1.0.1
+Version 1.0.2
 
 **Question.** With the real `claude` program, does the way the tool connection answers `send` and `create` hold up: the call answers `pending`, the model ends its
 turn, the person's decision comes later as an input, and the session answers that input? And two things the mocks cannot say: what the hand-over of a real
@@ -66,7 +66,7 @@ Lines at the left edge were written by Lico; the text of the conversation is ind
 ```
 
   The two `thinking` blocks are counted in the `Not shown` line (`block thinking 2`); the messages that held only a thinking block are shown as an assistant heading
-  with no text under it and are counted in "Messages shown". The same hand-over made from the 2.1.311 record in the gone row answered `record_format`: the reader is
+  with no text under it and are counted in "Messages shown" (true when this was run; the reader now gives such a message no heading and does not count it, and the head above would say 8 messages, 4 assistant). The same hand-over made from the 2.1.311 record in the gone row answered `record_format`: the reader is
   pinned to 2.1.310 and refuses another version (true when this was run; `00003_record_layout_2_1_311` measured the layout and the reader now reads 2.1.311 too).
 - *gone (2.1.311, one real turn):* the program does not swallow the text. Enter in the window reconnected the session (`[provider reconnected]`), the host echoed
   `>> second question`, and the program answered `[turn failed] error_during_execution`, `[error] No conversation found with session ID: <id>`, then the process ended

@@ -91,6 +91,32 @@ fn what_is_not_shown_is_counted_by_name_in_the_head_and_never_silent() {
 }
 
 #[test]
+fn a_message_that_holds_nothing_the_reader_shows_has_no_heading_and_is_not_counted_as_shown_but_what_it_held_is_still_counted() {
+    let thinking = |at| assistant(json!([{"type": "thinking", "thinking": "..."}, {"type": "redacted_thinking", "data": "x"}]), at);
+    let doc = run(&[user("a", T1), assistant(json!([{"type": "text", "text": "b"}]), T2), thinking(T3)]);
+    assert_eq!(head(&doc)[1], "Messages shown: 2 (1 user, 1 assistant, 0 tool results), from 2026-10-27 04:12:03 UTC to 2026-10-27 04:12:09 UTC.", "the range is of the messages shown");
+    assert!(head(&doc).contains(&"Not shown: block redacted_thinking 1, block thinking 1."), "{:?}", head(&doc));
+    assert_eq!(doc.matches("\n## ").count(), 2, "{doc}");
+    assert!(!doc.contains("05:40:11"), "the time of a message that shows nothing is not in the text: {doc}");
+    let only = run(&[thinking(T1)]);
+    assert_eq!(head(&only)[1], "Messages shown: 0.");
+    assert!(head(&only).contains(&"Not shown: block redacted_thinking 1, block thinking 1."));
+    assert!(body(&only).is_empty(), "{only}");
+}
+
+#[test]
+fn a_message_with_no_content_or_only_blank_text_is_counted_by_name_and_a_message_with_a_tool_call_or_an_image_is_not_empty() {
+    let mut nothing = assistant(Value::Null, T2);
+    nothing["message"].as_object_mut().unwrap().remove("content");
+    let doc = run(&[user("a", T1), user("", T2), assistant(json!([]), T2), assistant(json!([{"type": "text", "text": " \n"}]), T2), nothing, user("   \n\n", T3)]);
+    assert_eq!(head(&doc)[1], "Messages shown: 1 (1 user, 0 assistant, 0 tool results), from 2026-10-27 04:12:03 UTC to 2026-10-27 04:12:03 UTC.");
+    assert!(head(&doc).contains(&"Not shown: message empty 5."), "{:?}", head(&doc));
+    let shown = run(&[assistant(json!([{"type": "tool_use", "id": "t", "name": "Bash", "input": {}}]), T1), results(json!([{"type": "tool_result", "tool_use_id": "t", "content": ""}]), T2), user("x", T3)]);
+    assert!(head(&shown)[1].starts_with("Messages shown: 3 (1 user, 1 assistant, 1 tool results)"), "{:?}", head(&shown));
+    assert!(!head(&shown).iter().any(|l| l.starts_with("Not shown")), "{:?}", head(&shown));
+}
+
+#[test]
 fn a_type_name_that_is_not_plain_is_counted_as_other_and_the_names_are_bounded() {
     let junk = [json!({"type": "x\u{202e}[from y", "n": 1}), json!({"type": ""}), json!({"n": 2}), json!({"type": 5}), json!({"type": "a".repeat(41)})];
     let doc = run(&junk);
@@ -314,7 +340,7 @@ fn real(record: &str) -> String {
 fn a_real_record_of_claude_code_2_1_311_is_read_whole_and_its_head_names_that_version() {
     let doc = real(RECORD_2_1_311);
     assert_eq!(head(&doc)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.311).");
-    assert!(head(&doc)[1].starts_with("Messages shown: "), "{:?}", head(&doc));
+    assert!(head(&doc)[1].starts_with("Messages shown: 8 (2 user, 4 assistant, 2 tool results), from 2026-10-27 05:39:02 UTC to "), "the one message that holds only thinking is not shown: {:?}", head(&doc));
     let not_shown = head(&doc).into_iter().find(|l| l.starts_with("Not shown: ")).unwrap();
     for name in ["tools-used 2", "attachment 25", "block thinking 1", "block tool_reference 1", "api-request-shape 2"] {
         assert!(not_shown.contains(name), "{name} in {not_shown}");
@@ -330,6 +356,9 @@ fn a_real_record_of_claude_code_2_1_311_is_read_whole_and_its_head_names_that_ve
 fn a_real_record_of_claude_code_2_1_310_is_still_read_whole_and_its_head_names_that_version() {
     let doc = real(RECORD_2_1_310);
     assert_eq!(head(&doc)[0], "Conversation record, read by Lico from the program's own record of the session (Claude Code 2.1.310).");
+    assert!(head(&doc)[1].starts_with("Messages shown: 8 (2 user, 4 assistant, 2 tool results), from "), "the two messages that hold only thinking are not shown: {:?}", head(&doc));
+    assert!(head(&doc).iter().any(|l| l.starts_with("Not shown: ") && l.contains("block thinking 2")), "{:?}", head(&doc));
+    assert!(!body(&doc).contains(" UTC\n\n"), "no heading without a line under it: {}", body(&doc));
     let text = body(&doc);
     assert!(text.contains("  [tool_use mcp__lico__send]\n    message: Reply with the single word pong.\n    session_id: s8c0676afd40e6ac2\n"), "{text}");
     assert!(text.contains("  [tool_result error]\n    bad_request: send needs `to` (a session id from the sessions tool) and `text`"), "the error result with a plain text: {text}");

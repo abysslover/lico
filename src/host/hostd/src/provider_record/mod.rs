@@ -313,7 +313,7 @@ fn message(record: &Value, kind: &str, out: &mut Out, tally: &mut Tally) -> Resu
     }
     let content = record.pointer("/message/content");
     let mut text = String::new();
-    let (mut results, mut others) = (0, 0);
+    let (mut results, mut others, mut counted) = (0, 0, 0);
     match content {
         Some(Value::String(plain)) => {
             others += 1;
@@ -340,11 +340,21 @@ fn message(record: &Value, kind: &str, out: &mut Out, tally: &mut Tally) -> Resu
                         text += &format!("{INDENT}[tool_result{}]\n", if block.get("is_error") == Some(&Value::Bool(true)) { " error" } else { "" });
                         text += &result_text(block.get("content").unwrap_or(&Value::Null), tally);
                     }
-                    other => tally.skip(other.unwrap_or(""), "block "),
+                    other => {
+                        tally.skip(other.unwrap_or(""), "block ");
+                        counted += 1;
+                    }
                 }
             }
         }
         _ => {}
+    }
+    if text.trim().is_empty() {
+        // nothing of it is shown: no heading, and it is not one of the messages shown; what it held is counted in "Not shown" (its blocks, or `message empty` when it held none)
+        if counted == 0 {
+            tally.skip("empty", "message ");
+        }
+        return Ok(());
     }
     let role = if kind == "assistant" {
         tally.assistant += 1;
