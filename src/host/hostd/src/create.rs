@@ -492,7 +492,7 @@ mod tests {
         let (seen, inbox) = (Mutex::default(), Mutex::default());
         perform_with(&w.shared, ONE, "", page["text"].as_str().unwrap(), &starter(&w, NEW, &seen, &inbox)).unwrap();
         assert_eq!(first_input(&inbox).split_once('\n').unwrap().1, "redevil\nsecond");
-        for prompt in ["\u{200b}\u{e0041}", "\u{2800}", "\u{0301}", " ", "\n"] {
+        for prompt in ["\u{200b}\u{e0041}", "\u{2800}", "\u{0301}", " ", "\n", "\u{1b}[31m\u{2800}", "\u{1b}]0;t\u{7}\u{200b}\u{2800}"] { // the last two: judged after they are cleaned
             let got = make(&w, ONE, json!({"prompt": prompt}));
             assert!(got.as_ref().is_err_and(|e| e.starts_with("bad_request: ") && e.contains("draw nothing")), "a prompt of nothing that draws is no prompt: {prompt:?} {got:?}");
         }

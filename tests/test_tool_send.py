@@ -229,7 +229,7 @@ def test_a_text_that_is_nothing_once_cleaned_is_refused_as_an_empty_one_and_leav
     caller, _ = world.session(name="writer")
     target, _ = world.session(name="docs")
     # empty once cleaned, and what is left of it shows nothing: a blank braille cell, a mark with nothing to sit on, a space, a line break
-    for text in ("\u200b", "\x1b[0m\U000e0041", "\x1b]0;title\x07", "\u2800", "\u0301", " ", "\n"):
+    for text in ("\u200b", "\x1b[0m\U000e0041", "\x1b]0;title\x07", "\u2800", "\u0301", " ", "\n", "\x1b[31m\u2800", "\x1b]0;t\x07\u200b\u2800"):     # the last two show something until they are cleaned
         failed, answer = call(world.config(caller), "send", to=target, text=text)
         assert failed and answer.startswith("bad_request: ") and "draw nothing" in answer, (text, answer)
     assert status_of(world.conn, caller).get("approvals") is None and not heads(world.log, target)

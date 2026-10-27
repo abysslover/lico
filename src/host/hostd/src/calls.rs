@@ -375,8 +375,9 @@ pub(crate) mod tests {
     fn a_text_of_nothing_that_draws_is_refused_as_an_empty_one_and_counts_as_a_call() {
         let w = pair();
         let window = Mutex::default();
-        // empty once cleaned, and what is left of it shows nothing: a blank braille cell, a mark with nothing to sit on, a space, a line break
-        let texts = ["\u{200b}", "\u{1b}[0m\u{e0041}\u{202e}", "\u{1b}]0;title\u{7}", "\u{2800}", "\u{0301}", " ", "\n"];
+        // empty once cleaned, and what is left of it shows nothing: a blank braille cell, a mark with nothing to sit on, a space, a line break; the last two
+        // show something until they are cleaned (the colour code, the title and the invisible space are taken out first), so the check is of the cleaned text
+        let texts = ["\u{200b}", "\u{1b}[0m\u{e0041}\u{202e}", "\u{1b}]0;title\u{7}", "\u{2800}", "\u{0301}", " ", "\n", "\u{1b}[31m\u{2800}", "\u{1b}]0;t\u{7}\u{200b}\u{2800}"];
         for text in texts {
             let text = call_in(&w, ONE, &ask(TWO, text), &window, Instant::now(), &Arc::default()).unwrap_err();
             assert!(text.starts_with("bad_request: ") && text.contains("draw nothing"), "{text}");
