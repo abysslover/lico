@@ -67,6 +67,18 @@ def listening_ports(pid):
     return ports
 
 
+def another_secret(header):
+    """The same header with another secret, by construction: the last hex digit is changed (a secret that already ended in `0000` was a run of 1 in 65536)."""
+    return header[:-1] + ("1" if header[-1] == "0" else "0")
+
+
+def test_another_secret_differs_from_the_header_in_its_last_digit_and_in_nothing_else_for_every_digit():
+    for digit in "0123456789abcdef":
+        header = f"Bearer {'k' * 32}.{'5' * 63}{digit}"
+        other = another_secret(header)
+        assert other != header and len(other) == len(header) and other[:-1] == header[:-1], digit
+
+
 def refusal_lines(world):
     """The lines the host wrote for the requests its tool listener refused: `lico-host: tool refused 401 reason=...`."""
     return [line for line in (Path(world.directory) / "host.err").read_text(errors="replace").splitlines() if "lico-host: tool refused " in line]
@@ -163,7 +175,7 @@ def test_the_head_is_judged_before_the_body_in_the_order_host_origin_credential_
     big = {"Content-Length": str(1 << 30)}                                          # the head of a request whose body never comes
     for what, headers, kwargs, want in [
         ("no credential", {}, {}, 401), ("a wrong credential", {"Authorization": "Bearer nope"}, {}, 401),
-        ("a credential of the right shape and the wrong secret", {"Authorization": config["authorization"][:-4] + "0000"}, {}, 401),
+        ("a credential of the right shape and the wrong secret", {"Authorization": another_secret(config["authorization"])}, {}, 401),
         ("a wrong Host with the credential", auth, {"host": "evil.example"}, 403), ("a wrong port in the Host", auth, {"host": "127.0.0.1:1"}, 403),
         ("an Origin, even a fitting one", {**auth, "Origin": f"http://127.0.0.1:{port}"}, {}, 403), ("a foreign Origin", {**auth, "Origin": "http://evil.example"}, {}, 403),
     ]:

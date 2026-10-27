@@ -21,7 +21,7 @@ from lico_protocol import v1
 
 from tests.test_claude_adapter import FIXTURE, SIM, records, sent_users, status_of, user_text
 from tests.test_codex_adapter import wait_for
-from tests.test_tool_connection import World, raw, rpc
+from tests.test_tool_connection import World, another_secret, raw, rpc
 from tests.test_transfer import check_lookalikes, lookalike_text
 
 HEADER = r">> \[from session '{name}' \({id7}\) \| \d\d:\d\d \| message \| {size}\]"
@@ -253,7 +253,7 @@ def test_the_config_file_goes_at_the_first_initialize_of_its_key_and_the_key_sta
     world.first_turn(sid, generation)                                                                              # the program has started, so it has read its file, before this test takes the file
     for method in ("ping", "tools/list"):
         assert rpc(config, method, {})[0] == 200 and config["path"].exists(), method                              # only an initialize takes it
-    wrong = {**config, "authorization": config["authorization"][:-4] + "0000"}
+    wrong = {**config, "authorization": another_secret(config["authorization"])}
     assert rpc(wrong, "initialize", {"protocolVersion": "2025-11-25"})[0] == 401 and config["path"].exists(), "a credential that is not whole takes nothing"
     assert rpc(config, "initialize", {"protocolVersion": "2025-11-25"})[0] == 200
     assert not config["path"].exists(), "the file is gone when the program has its answer"
