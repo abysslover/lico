@@ -118,6 +118,11 @@ impl Table {
         self.check(header).ok()
     }
 
+    /// Whether the program of `session` has said `initialize` with its key: its tools are there.
+    fn joined(&self, session: &str) -> bool {
+        self.keys.values().any(|k| k.session == session && k.begun)
+    }
+
     /// The first `initialize` of a key: the program has read its config file and keeps what it read (measured with the real program), so the file goes now. The key stays valid.
     fn begin(&mut self, dir: &Path, header: &str) {
         if self.lookup(header).is_none() {
@@ -200,6 +205,11 @@ pub fn issue(shared: &Arc<Shared>, session: &str, generation: u64) -> Result<Gra
     state.table.issue(&dir, port, session, generation).map_err(|_| "busy")
 }
 
+/// Whether the program of `session` is on the tool connection now, so that a notice can send it to `read_handoff`.
+pub fn works(session: &str) -> bool {
+    state().table.joined(session)
+}
+
 /// The program with this credential has sent `initialize` (see `Table::begin`).
 fn begin(header: &str) {
     let mut state = state();
@@ -280,6 +290,8 @@ fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, V
         "sessions" => Ok(sessions(shared, caller)),
         "send" => crate::calls::send(shared, caller, arguments),
         "create" => crate::create::create(shared, caller, arguments),
+        "history" => crate::history::history(shared, caller, arguments),
+        "read_handoff" => crate::inbox_read::read_handoff(shared, caller, arguments),
         _ => Err("unknown tool".into()),
     }
 }
@@ -510,6 +522,23 @@ mod tests {
         table.begin(&folder.0, &header); // again is nothing
         table.release(&folder.0, &one.key);
         assert!(table.keys.len() == 1 && two.path.exists());
+    }
+
+    #[test]
+    fn a_session_is_on_the_tool_connection_after_its_program_said_initialize_and_until_its_key_ends() {
+        let folder = Folder::new();
+        let mut table = Table::default();
+        let one = table.issue(&folder.0, 1, "s1", 1).unwrap();
+        table.issue(&folder.0, 1, "s2", 1).unwrap();
+        assert!(!table.joined("s1") && !table.joined("s2") && !table.joined("never-had-one"), "a key whose program has not spoken is not a connection");
+        table.begin(&folder.0, &header_of(&one, &table));
+        assert!(table.joined("s1") && !table.joined("s2"), "its own session only");
+        let again = table.issue(&folder.0, 1, "s1", 2).unwrap();
+        assert!(!table.joined("s1"), "a new process has not said initialize yet");
+        table.begin(&folder.0, &header_of(&again, &table));
+        assert!(table.joined("s1"));
+        table.release(&folder.0, &again.key);
+        assert!(!table.joined("s1"));
     }
 
     #[test]

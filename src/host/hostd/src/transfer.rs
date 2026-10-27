@@ -164,12 +164,15 @@ fn first_lines(text: &str) -> Vec<String> {
 }
 
 /// What the receiver is told when the text is a file. The sentence about the Read tool is for a Claude receiver, whose program has it; any other gets the advice without the name.
-pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str) -> String {
+/// `tool`: the receiver's program (a Claude one) has joined the tool connection, so `read_handoff` is there to read the file in parts.
+pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str, tool: bool) -> String {
     let mut out = format!("{header}\nLong content, saved as a file. Read it before you answer:\n{}\nFirst lines:\n", path.display());
     for line in first_lines(text) {
         out += &format!("{line}\n");
     }
-    let how = if provider == "claude" {
+    let how = if tool && provider == "claude" {
+        "the Read tool refuses over about 25,000 tokens: use read_handoff with this path, 32 KiB a call (the answer says where the next part starts)"
+    } else if provider == "claude" {
         "the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time"
     } else {
         "read it in parts, 400 lines at a time"
@@ -182,6 +185,17 @@ pub(crate) fn hhmm_now() -> String {
     let now = crate::session::now_secs() as i64;
     let at = civil(now, utc_offset(now));
     format!("{:02}:{:02}", at.hour, at.minute)
+}
+
+/// Now as the local `YYYYMMDD` and `HHMMSS` that the name of a stored file carries, and as `YYYY-MM-DD HH:MM:SS` for the line `when:` in it.
+pub(crate) fn stamp() -> (String, String, String) {
+    let now = crate::session::now_secs() as i64;
+    let at = civil(now, utc_offset(now));
+    (
+        format!("{:04}{:02}{:02}", at.year, at.month, at.day),
+        format!("{:02}{:02}{:02}", at.hour, at.minute, at.second),
+        format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", at.year, at.month, at.day, at.hour, at.minute, at.second),
+    )
 }
 
 fn receiver_state(s: &Session) -> &'static str {
@@ -276,7 +290,7 @@ fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str
             "busy"
         })?;
         crate::handoff::sweep(&shared.cfg.handoff_dir, now as u64);
-        Some((notice(&head, &path, text, &plain, provider), path))
+        Some((notice(&head, &path, text, &plain, provider, crate::tools::works(to)), path))
     };
     let delivered = match &stored {
         Some((notice, _)) => notice.clone(),
@@ -429,12 +443,15 @@ pub(crate) mod tests {
         let head = header(Some(("w", ONE)), "10:00", "text", "8.8 KiB, 1000 lines");
         let top = format!("{head}\nLong content, saved as a file. Read it before you answer:\n/inbox/f.md\nFirst lines:\n  line 1\n  line 2\n  line 3\n");
         let end = "The file can be removed after 30 days, or sooner when the folder is full.";
-        let claude = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude");
+        let claude = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude", false);
         assert_eq!(claude, format!("{top}8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time.\n{end}"));
         for other in ["codex", ""] {
-            let got = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", other);
+            let got = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", other, false);
             assert_eq!(got, format!("{top}8.8 KiB, 1000 lines; read it in parts, 400 lines at a time.\n{end}"), "{other}");
         }
+        let tool = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude", true);
+        assert_eq!(tool, format!("{top}8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: use read_handoff with this path, 32 KiB a call (the answer says where the next part starts).\n{end}"));
+        assert_eq!(notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "codex", true), format!("{top}8.8 KiB, 1000 lines; read it in parts, 400 lines at a time.\n{end}"), "a tool is named to the program that has it only");
         assert_eq!(line_count("a\nb"), 2);
         assert_eq!(line_count("a\nb\n"), 2, "a final newline does not make another line");
         assert_eq!((lines_word(1).as_str(), lines_word(2).as_str(), lines_word(120).as_str()), ("1 line", "2 lines", "120 lines"));

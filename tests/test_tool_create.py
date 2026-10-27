@@ -100,7 +100,7 @@ def test_the_list_names_create_with_a_prompt_and_a_name_and_no_other_argument(wo
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff"]
     schema = tools["create"]["inputSchema"]
     assert schema["required"] == ["prompt"] and sorted(schema["properties"]) == ["name", "prompt"], schema      # no folder, mode, kind, account or `from`
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 4096

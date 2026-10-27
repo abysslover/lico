@@ -1,4 +1,4 @@
-//! The calls of an agent that act, on the tool connection: `send` (S03b, with the person's approval from S04); `create` (S04c) is in `create`, `history` joins with S07. The caller is the
+//! The calls of an agent that act, on the tool connection: `send` (S03b, with the person's approval from S04); `create` (S04c) is in `create` and `history` (S07) in `history`. The caller is the
 //! session of the token and nobody else (no argument names it). The limits of AC-04 are kept here, in memory and nowhere else: calls per minute of one session, and (in
 //! `transfer`) the depth. What the agent asks for does not happen at the call: the call leaves a card on the agent's row (`pending`) and happens when the person says yes.
 
@@ -16,7 +16,7 @@ use crate::leads;
 use crate::pending::{self, Asked, Request};
 use crate::transfer::{self, By, MAX_HOPS};
 
-/// Calls per minute of one session. Every `send` and every `create` counts, a refused one too; `sessions` does not (`history` counts from S07).
+/// Calls per minute of one session. Every `send`, `create` and `history` counts, a refused one too; `sessions` and `read_handoff` do not.
 pub const PER_MINUTE: usize = 20;
 const MINUTE: Duration = Duration::from_secs(60);
 const KEPT: usize = 2 * PER_MINUTE; // a session that goes on asking does not make its list grow
@@ -63,7 +63,7 @@ pub fn send(shared: &Shared, caller: &str, arguments: &Map<String, Value>) -> Re
     send_with(shared, caller, arguments, window(), Instant::now(), pending::held_text())
 }
 
-/// Count a call of `caller` in the minute's window. Err: the refusal the model reads. `send` and `create` are counted together, one window for a session.
+/// Count a call of `caller` in the minute's window. Err: the refusal the model reads. `send`, `create` and `history` are counted together, one window for a session.
 pub(crate) fn counted(window: &Mutex<Window>, caller: &str, now: Instant) -> Result<(), String> {
     window.lock().unwrap_or_else(|e| e.into_inner()).take(caller, now).map_err(|wait| format!("send_limit: at most {PER_MINUTE} calls a minute from one session; wait {wait} seconds and try again"))
 }
@@ -161,6 +161,7 @@ pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
 pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
     match tool {
         "create" => crate::create::perform(shared, caller, target, text),
+        "history" => crate::history::perform(shared, caller, target, text),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
             Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
             Err(code) => Err(refusal(shared, caller, code)),

@@ -29,8 +29,8 @@ macro_rules! names {
     };
 }
 
-/// The tools of the connection (they show as `mcp__lico__<name>` in the program). `history` and `read_handoff` join later.
-pub const TOOLS: [Tool; 3] = [
+/// The tools of the connection (they show as `mcp__lico__<name>` in the program).
+pub const TOOLS: [Tool; 5] = [
     Tool {
         name: "sessions",
         description: concat!("List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to. ", names!()),
@@ -50,6 +50,20 @@ pub const TOOLS: [Tool; 3] = [
                       The person approves each one; at most 4 at a time from one session and 8 in all. The result comes later as a new message in this session, not as this result. ", names!()),
         args: &[("prompt", "the first prompt of the new session; the whole request may be 128 KiB, so about 100 KiB of plain text at most")],
         optional: &[("name", "a short plain name for the session; at most 36 characters")],
+    },
+    Tool {
+        name: "history",
+        description: concat!("Ask the person to let you read the latest records of another session's history, as the host kept it. The person approves each read. \
+                      The records come later as a new message in this session, not as this result. ", names!()),
+        args: &[("session", "id of the session, from `sessions`")],
+        optional: &[("last_n", "how many of the latest records; 100 when left out, 400 at most")],
+    },
+    Tool {
+        name: "read_handoff",
+        description: concat!("Read a file the host saved for you in your own handoff folder, 32 KiB at most a call; the answer says where the next part starts. \
+                      No approval is needed. ", names!()),
+        args: &[("path", "the path a message gave you")],
+        optional: &[("offset", "byte to start at; 0 when left out"), ("limit", "bytes to read; 32768 when left out and at most")],
     },
 ];
 
@@ -212,7 +226,7 @@ mod tests {
         assert_eq!(names, got["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect::<Vec<_>>());
         assert!(names.iter().all(|n| n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')), "no second prefix, no capitals: {names:?}");
         assert!(names.iter().enumerate().all(|(i, n)| !names[..i].contains(n)));
-        assert_eq!(names, ["sessions", "send", "create"]);
+        assert_eq!(names, ["sessions", "send", "create", "history", "read_handoff"]);
     }
 
     #[test]

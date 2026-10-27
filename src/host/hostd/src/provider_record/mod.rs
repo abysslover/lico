@@ -46,12 +46,12 @@ const INDENT: &str = "  ";
 
 // `open` flags of Linux; the value of O_NOFOLLOW differs between the two architectures this program is built for.
 #[cfg(target_arch = "x86_64")]
-const O_NOFOLLOW: i32 = 0o400000;
+pub(crate) const O_NOFOLLOW: i32 = 0o400000;
 #[cfg(target_arch = "aarch64")]
-const O_NOFOLLOW: i32 = 0o100000;
+pub(crate) const O_NOFOLLOW: i32 = 0o100000;
 #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 compile_error!("the value of O_NOFOLLOW is not known for this architecture");
-const O_NONBLOCK: i32 = 0o4000; // a pipe that was put in place of the file is not waited for
+pub(crate) const O_NONBLOCK: i32 = 0o4000; // a pipe that was put in place of the file is not waited for
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Fault {

@@ -80,12 +80,35 @@ fn wrapped(text: &str) -> Vec<String> {
     out
 }
 
-/// What the person is told of an answer that the host took; `makes`: the request was for a new session, not for a send.
-fn answered_words(reply: &Value, keep: bool, makes: bool) -> String {
+/// What a request of the host's own asks for: a text sent, a session made, or the history of a session read.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum Asks {
+    Send,
+    Make,
+    Read,
+}
+
+impl Asks {
+    /// The word for what did not happen when the request ran out of time.
+    fn undone(self) -> &'static str {
+        match self {
+            Asks::Send => "sent",
+            Asks::Make => "made",
+            Asks::Read => "read",
+        }
+    }
+}
+
+/// What the person is told of an answer that the host took.
+fn answered_words(reply: &Value, keep: bool, asks: Asks) -> String {
     match (reply["outcome"].as_str(), reply["reason"].as_str()) {
-        (Some("done"), _) if makes => "Allowed: the session was made and is working on its first prompt.".into(),
-        (Some("declined"), _) if makes => "Declined: no session was made.".into(),
-        (Some("not_done"), reason) if makes => format!("Allowed, but no session was made: {}.", failure(reason.unwrap_or("bad_request"))),
+        (Some("done"), _) if asks == Asks::Make => "Allowed: the session was made and is working on its first prompt.".into(),
+        (Some("declined"), _) if asks == Asks::Make => "Declined: no session was made.".into(),
+        (Some("not_done"), reason) if asks == Asks::Make => format!("Allowed, but no session was made: {}.", failure(reason.unwrap_or("bad_request"))),
+        (Some("done"), _) if asks == Asks::Read && keep => "Allowed for the session: the records were handed over, and later reads of that history are not asked.".into(),
+        (Some("done"), _) if asks == Asks::Read => "Allowed: the records were handed over.".into(),
+        (Some("declined"), _) if asks == Asks::Read => "Declined: nothing was read.".into(),
+        (Some("not_done"), reason) if asks == Asks::Read => format!("{}: {}.", if keep { "Allowed for the session, but nothing was read" } else { "Allowed, but nothing was read" }, failure(reason.unwrap_or("bad_request"))),
         (Some("done"), _) if keep => "Allowed for the session: the text was sent, and later sends to that session are not asked.".into(),
         (Some("done"), _) => "Allowed: the text was sent.".into(),
         (Some("declined"), _) => "Declined: nothing was sent.".into(),
@@ -164,7 +187,16 @@ impl App {
 
     /// Whether the first request of the open session asks for a session to be made.
     fn makes_card(&self) -> bool {
-        self.lico_card().is_some_and(|id| self.selected_row().is_some_and(|r| r.makes.contains(&id)))
+        self.lico_card().is_some_and(|id| self.card_asks(id) == Asks::Make)
+    }
+
+    /// What request `id` of the open session asks for.
+    fn card_asks(&self, id: i64) -> Asks {
+        match self.selected_row() {
+            Some(r) if r.makes.contains(&id) => Asks::Make,
+            Some(r) if r.reads.contains(&id) => Asks::Read,
+            _ => Asks::Send,
+        }
     }
 
     /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of
@@ -231,18 +263,18 @@ impl App {
     /// the row only when the host took the answer (or says it is gone), so that one that was not answered is asked again.
     fn answer_id(&mut self, id: i64, allow: bool, keep: bool) {
         let generation = self.selected_row().map_or(1, |r| r.generation);
-        let makes = self.selected_row().is_some_and(|r| r.makes.contains(&id));
+        let asks = self.card_asks(id);
         let mut request = json!({"op": "approval.answer", "session": self.session, "generation": generation, "approval_id": id, "answer": if allow { "allow" } else { "deny" }});
-        if keep && !makes {
+        if keep && asks != Asks::Make {
             request["keep"] = json!(true);
         }
         let reply = self.host_call(request);
         if reply["ok"] == json!(1) {
-            return self.card_gone(id, answered_words(&reply, keep, makes));
+            return self.card_gone(id, answered_words(&reply, keep, asks));
         }
         match reply["error"].as_str().unwrap_or("bad_request") {
             "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-            "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", if makes { "made" } else { "sent" })),
+            "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
             "host_timeout" => {
                 // the answer was written and nothing came back: it may have been taken, so the request is not called unanswered and the list is asked at once
                 self.card_say("The host has not said yet whether it took your answer; the list shows it when it has.".into());
@@ -267,6 +299,7 @@ impl App {
             row.approvals.retain(|a| a.0 != id);
             row.asks.retain(|a| *a != id);
             row.makes.retain(|a| *a != id);
+            row.reads.retain(|a| *a != id);
         }
         if self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Card) {
             self.panel_close();
@@ -289,12 +322,12 @@ impl App {
     /// One page of the text, asked from `offset`; what the host refuses is said and nothing changes.
     fn card_fetch(&mut self, id: i64, offset: usize) -> Option<Page> {
         let generation = self.selected_row()?.generation;
-        let makes = self.selected_row().is_some_and(|r| r.makes.contains(&id));
+        let asks = self.card_asks(id);
         let reply = self.host_call(json!({"op": "approval.text", "session": self.session, "generation": generation, "approval_id": id, "offset": offset}));
         let (Some(text), Some(total), true) = (reply["text"].as_str(), reply["total"].as_u64(), reply["ok"] == json!(1)) else {
             match reply["error"].as_str().unwrap_or("bad_request") {
                 "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-                "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", if makes { "made" } else { "sent" })),
+                "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
                 other => self.card_say(format!("Not shown: {}.", failure(other))),
             }
             return None;
@@ -325,7 +358,7 @@ impl App {
         let mut lines = vec![v.card.clone(), format!("bytes {} to {} of {} (page {} of {})", v.start, v.end, v.total, v.earlier.len() + 1, Self::pages(v)), String::new()];
         lines.extend(v.lines.iter().skip(v.top).take(SHOWN).cloned());
         lines.push(String::new());
-        let keys = if self.selected_row().is_some_and(|r| r.makes.contains(&v.id)) { KEYS_MAKE } else { KEYS };
+        let keys = if self.card_asks(v.id) == Asks::Make { KEYS_MAKE } else { KEYS };
         lines.push(format!("{keys}   Up Down PgUp PgDn Home End  move"));
         (format!("Request {}", v.id), lines)
     }
@@ -336,7 +369,7 @@ impl App {
         match key {
             'y' | 'Y' => self.answer_id(id, true, false),
             'n' | 'N' => self.answer_id(id, false, false),
-            'S' if self.ui.mods.shift_key() && !self.selected_row().is_some_and(|r| r.makes.contains(&id)) => self.answer_id(id, true, true),
+            'S' if self.ui.mods.shift_key() && self.card_asks(id) != Asks::Make => self.answer_id(id, true, true),
             _ => {}
         }
     }

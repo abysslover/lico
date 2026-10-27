@@ -373,6 +373,70 @@ fn a_yes_for_the_session_is_never_sent_with_a_request_for_a_session_whoever_asks
     assert_eq!(host.join().unwrap(), [answer("allow", false)], "the host refuses `keep` for a session to be made; the person would be told it was not answered");
 }
 
+const READ: &str = "read the history of 'docs' (s111111) | last 100 records of the host's record | it may hold what that session saw or was typed";
+
+/// `api` is open with a request of its agent to read the history of another session (7).
+fn with_read_card() -> App {
+    let mut app = with_card();
+    app.ui.rows[0].approvals = vec![(7, READ.into())];
+    app.ui.rows[0].reads = vec![7];
+    app
+}
+
+#[test]
+fn the_row_knows_which_of_its_requests_read_a_history() {
+    let entry = json!({"session": "s1", "provider": "claude", "approvals": [{"approval_id": 3, "prompt": "run: ls"}, {"approval_id": 4, "prompt": "send", "tool": "send"},
+                                                                         {"approval_id": 5, "prompt": "create", "tool": "create"}, {"approval_id": 6, "prompt": "history", "tool": "history"}]});
+    let row = Row::of_status(&entry).unwrap();
+    assert_eq!((row.asks, row.makes, row.reads), (vec![4, 5, 6], vec![5], vec![6]));
+}
+
+#[test]
+fn a_request_to_read_a_history_can_be_allowed_for_the_session_and_the_window_says_that_records_were_handed_over_and_never_that_text_was_sent() {
+    let mut app = with_read_card();
+    let hint = app.hint_text(2000, 1.0);
+    assert!(hint.starts_with("Y allow  N deny  Shift+S allow for the session  V read it all   "), "{hint}");
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![page("last 100 records", 0, None, 16)]);
+    app.socket = path;
+    assert!(app.answer_key("v"));
+    assert_eq!(body(&app)[0], READ, "the view starts with the card");
+    assert!(body(&app).contains(&"Y allow  N deny  Shift+S allow for the session   Up Down PgUp PgDn Home End  move".to_string()), "{:?}", body(&app));
+    assert_eq!(host.join().unwrap(), [read(0)]);
+    let not_done = json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "unknown_session"});
+    let cases = [
+        ("y", false, answered("done"), "Allowed: the records were handed over."),
+        ("S", true, answered("done"), "Allowed for the session: the records were handed over, and later reads of that history are not asked."),
+        ("n", false, answered("declined"), "Declined: nothing was read."),
+        ("y", false, not_done.clone(), "Allowed, but nothing was read: the host does not know that session any more."),
+        ("S", true, not_done, "Allowed for the session, but nothing was read: the host does not know that session any more."),
+        ("y", false, json!({"ok": 0, "error": "expired"}), "Request 7 ran out of time: nothing was read."),
+    ];
+    for (key, keep, reply, said) in cases {
+        let (path, host) = fake_host(&dir, vec![reply]);
+        let mut app = with_read_card();
+        app.socket = path;
+        app.ui.mods = ModifiersState::SHIFT;
+        assert!(app.answer_key(key));
+        let what = if key == "n" { "deny" } else { "allow" };
+        assert_eq!(host.join().unwrap(), [answer(what, keep)], "{key}");
+        assert!(app.ui.rows[0].approvals.is_empty() && app.ui.rows[0].reads.is_empty() && app.ui.flash.as_deref() == Some(said), "{key}: {:?}", app.ui.flash);
+    }
+}
+
+#[test]
+fn shift_s_in_the_view_of_a_request_to_read_a_history_allows_it_for_the_session() {
+    let dir = Scratch::new("cardview");
+    let (path, host) = fake_host(&dir, vec![page("last 100 records", 0, None, 16), answered("done")]);
+    let mut app = with_read_card();
+    app.socket = path;
+    app.answer_key("v");
+    app.ui.mods = ModifiersState::SHIFT;
+    app.card_key('S');
+    assert_eq!(host.join().unwrap(), [read(0), answer("allow", true)]);
+    assert!(app.ui.panel.is_none() && app.ui.rows[0].reads.is_empty() && app.ui.flash.as_deref().is_some_and(|f| f.starts_with("Allowed for the session: the records were handed over")), "{:?}", app.ui.flash);
+}
+
 /// Every bare key that answers or opens a card of the host's own, with what the host is asked for it and says back.
 fn bare_keys() -> Vec<(&'static str, Value, Value)> {
     vec![

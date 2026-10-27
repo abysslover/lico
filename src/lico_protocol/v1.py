@@ -98,7 +98,7 @@ REPLIES = {
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
-                         "optional": {"tool": {"type": STR, "enum": ["send", "create"]}}}},    # a question the host asks for an agent's request; the program's own has none
+                         "optional": {"tool": {"type": STR, "enum": ["send", "create", "history"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
@@ -186,7 +186,7 @@ EVENTS = {
     "input": _obj({"v": _V, "ev": {"type": STR, "enum": ["input"]}, "session": {"type": STR},
                    "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed", "failed"]}}),
     "approval": _obj({"v": _V, "ev": {"type": STR, "enum": ["approval"]}, "session": {"type": STR},
-                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}, {"tool": {"type": STR, "enum": ["send", "create"]}}),
+                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}, {"tool": {"type": STR, "enum": ["send", "create", "history"]}}),
 }
 
 _COMMON_REQ = {"v": _V, "id": {"type": STR, "max_length": 64}}

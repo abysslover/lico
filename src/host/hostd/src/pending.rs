@@ -150,8 +150,8 @@ fn answer_at(shared: &Arc<Shared>, session: &str, generation: i64, id: i64, answ
             if s.state == State::Disconnected {
                 return Some(Err("session_disconnected")); // the word could not reach it; the request waits for it to come back
             }
-            if keep && (answer != "allow" || s.pending.records[position].tool != "send") {
-                return Some(Err("bad_request")); // only a yes can be remembered, and only for a send: a session is made once for each yes
+            if keep && (answer != "allow" || !matches!(s.pending.records[position].tool, "send" | "history")) {
+                return Some(Err("bad_request")); // only a yes can be remembered, and only for a send or a history: a session is made once for each yes
             }
         }
         let record = s.pending.records.remove(position);
