@@ -228,10 +228,21 @@ def test_what_goes_without_a_card_because_the_receiver_was_allowed_is_cleaned_th
 def test_a_text_that_is_nothing_once_cleaned_is_refused_as_an_empty_one_and_leaves_no_card(world):
     caller, _ = world.session(name="writer")
     target, _ = world.session(name="docs")
-    for text in ("\u200b", "\x1b[0m\U000e0041", "\x1b]0;title\x07"):
+    # empty once cleaned, and what is left of it shows nothing: a blank braille cell, a mark with nothing to sit on, a space, a line break
+    for text in ("\u200b", "\x1b[0m\U000e0041", "\x1b]0;title\x07", "\u2800", "\u0301", " ", "\n"):
         failed, answer = call(world.config(caller), "send", to=target, text=text)
         assert failed and answer.startswith("bad_request: ") and "draw nothing" in answer, (text, answer)
     assert status_of(world.conn, caller).get("approvals") is None and not heads(world.log, target)
+
+
+def test_a_word_and_a_heart_with_its_selector_show_something_and_get_a_card(world):
+    caller, generation = world.session(name="writer")
+    target, _ = world.session(name="docs")
+    for text in ("word", "\u2764\ufe0f"):
+        number = asked(world, caller, target, text)
+        card = status_of(world.conn, caller)["approvals"]
+        assert [a["approval_id"] for a in card] == [number] and text[0] in card[0]["prompt"], (text, card)
+        assert decide(world, caller, generation, number, "deny")["ok"] == 1
 
 
 def test_the_program_in_the_session_calls_send_with_the_credential_it_read_at_its_start_and_is_told_the_decision_as_its_next_input(world):

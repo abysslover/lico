@@ -67,7 +67,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     // the prompt is cleaned here, once, like the text of a `send`; a name is not mended: one with something to clean in it, or that is not plain, is refused
     let cleaned = leads::agent_text(prompt);
     let (prompt, removed) = (cleaned.text.as_str(), cleaned.removed);
-    if prompt.is_empty() || name.chars().count() > NAME_CHARS || (!name.is_empty() && (!folders::valid_name(name) || leads::agent_text(name).removed > 0)) {
+    if prompt.is_empty() || folders::shows_nothing(prompt) || name.chars().count() > NAME_CHARS || (!name.is_empty() && (!folders::valid_name(name) || leads::agent_text(name).removed > 0)) {
         return Err(needs());
     }
     let name = plain(name);
@@ -492,8 +492,21 @@ mod tests {
         let (seen, inbox) = (Mutex::default(), Mutex::default());
         perform_with(&w.shared, ONE, "", page["text"].as_str().unwrap(), &starter(&w, NEW, &seen, &inbox)).unwrap();
         assert_eq!(first_input(&inbox).split_once('\n').unwrap().1, "redevil\nsecond");
-        let got = make(&w, ONE, json!({"prompt": "\u{200b}\u{e0041}"}));
-        assert!(got.as_ref().is_err_and(|e| e.starts_with("bad_request: ") && e.contains("draw nothing")), "a prompt of nothing that draws is no prompt: {got:?}");
+        for prompt in ["\u{200b}\u{e0041}", "\u{2800}", "\u{0301}", " ", "\n"] {
+            let got = make(&w, ONE, json!({"prompt": prompt}));
+            assert!(got.as_ref().is_err_and(|e| e.starts_with("bad_request: ") && e.contains("draw nothing")), "a prompt of nothing that draws is no prompt: {prompt:?} {got:?}");
+        }
+    }
+
+    #[test]
+    fn a_word_and_a_heart_with_its_selector_are_prompts_and_get_a_card() {
+        let w = room();
+        for (prompt, shown) in [("word", "word"), ("\u{2764}\u{fe0f}", "\u{2764}")] {
+            let got = waits(&w, ONE, json!({"prompt": prompt}));
+            assert!(cards(&w, ONE)[0]["prompt"].as_str().unwrap().contains(shown), "{prompt:?}");
+            let generation = w.with(ONE, |s| s.generation as i64);
+            core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "deny", false).unwrap();
+        }
     }
 
     #[test]

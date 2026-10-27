@@ -76,7 +76,7 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     // the text is cleaned here, once: the card, the pages of it, the window, the command, the record and the receiver all get this string
     let cleaned = leads::agent_text(text);
     let (text, removed) = (cleaned.text.as_str(), cleaned.removed);
-    if text.is_empty() {
+    if text.is_empty() || crate::folders::shows_nothing(text) {
         return Err(refusal(shared, caller, "bad_request"));
     }
     if to == caller {
@@ -375,12 +375,25 @@ pub(crate) mod tests {
     fn a_text_of_nothing_that_draws_is_refused_as_an_empty_one_and_counts_as_a_call() {
         let w = pair();
         let window = Mutex::default();
-        for text in ["\u{200b}", "\u{1b}[0m\u{e0041}\u{202e}", "\u{1b}]0;title\u{7}"] {
+        // empty once cleaned, and what is left of it shows nothing: a blank braille cell, a mark with nothing to sit on, a space, a line break
+        let texts = ["\u{200b}", "\u{1b}[0m\u{e0041}\u{202e}", "\u{1b}]0;title\u{7}", "\u{2800}", "\u{0301}", " ", "\n"];
+        for text in texts {
             let text = call_in(&w, ONE, &ask(TWO, text), &window, Instant::now(), &Arc::default()).unwrap_err();
             assert!(text.starts_with("bad_request: ") && text.contains("draw nothing"), "{text}");
         }
-        assert_eq!(held(&window.lock().unwrap(), ONE), 3);
+        assert_eq!(held(&window.lock().unwrap(), ONE), texts.len());
         assert!(cards_of(&w, ONE).is_empty() && w.delivered(TWO).is_none());
+    }
+
+    #[test]
+    fn a_word_and_a_heart_with_its_selector_show_something_and_get_a_card() {
+        let w = pair();
+        for (text, shown) in [("word", "word"), ("\u{2764}\u{fe0f}", "\u{2764}")] {
+            let got: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, text), &Arc::default()).unwrap()).unwrap();
+            assert!(card_of(&w, ONE).contains(shown), "{text:?}");
+            let generation = w.with(ONE, |s| s.generation as i64);
+            core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "deny", false).unwrap();
+        }
     }
 
     #[test]
