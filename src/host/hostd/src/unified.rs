@@ -9,6 +9,7 @@ mod calls;
 mod capture;
 mod claude;
 mod cli;
+mod clipboard;
 mod codex;
 mod core;
 mod create;

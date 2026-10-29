@@ -9,7 +9,7 @@
 //! `x_error` (with the name of the X error). No file is ever left under a final name after an error.
 
 pub mod layout;
-mod out;
+pub(crate) mod out;
 pub mod shrink;
 #[cfg(test)]
 mod tests;

@@ -13,8 +13,8 @@ use serde_json::json;
 /// A job: the words after its name; prints the one answer line and exits.
 pub type Job = fn(&[String]) -> !;
 
-/// The table of jobs (S04 adds `clipboard_read` and `clipboard_write` here).
-pub const JOBS: &[(&str, Job)] = &[("capture", crate::capture::command)];
+/// The table of jobs (S04b adds `clipboard_write` here).
+pub const JOBS: &[(&str, Job)] = &[("capture", crate::capture::command), ("clipboard_read", crate::clipboard::job::read_command)];
 
 /// The job of that name.
 pub fn lookup(name: &str) -> Option<Job> {
@@ -42,9 +42,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_table_knows_capture_and_nothing_else() {
+    fn the_table_knows_capture_and_the_clipboard_read_and_nothing_else() {
         assert!(lookup("capture").is_some());
-        for name in ["", "Capture", "capture ", "clipboard_read", "xjob", "--screen"] {
+        assert!(lookup("clipboard_read").is_some());
+        for name in ["", "Capture", "capture ", "Clipboard_read", "clipboard_read ", "clipboard", "clipboard_write", "xjob", "--screen"] {
             assert!(lookup(name).is_none(), "{name:?}");
         }
         let mut names: Vec<&str> = JOBS.iter().map(|(n, _)| *n).collect();
