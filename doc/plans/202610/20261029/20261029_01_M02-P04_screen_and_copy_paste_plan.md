@@ -1,0 +1,95 @@
+# M02-P04 - Screen capture, clipboard and image paste (2026-10-29)
+
+> Status: in_progress
+> Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
+> Version: 1.0.0
+> Branch: `phase/M02-P04-screen-and-copy-paste`, cut at `ffc18ad` (the tip of `phase/M02-P03-agent-to-agent`, report 0.1.7) on the same chain, so `main` can later be moved forward in one step; nothing is pushed.
+> Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of this phase and covers P03 and P04 together. G4 for P03 (`ffc18ad`) waits for the owner; G4 for this phase will be asked for its exact tip.
+
+**Version 1.0.0** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
+
+## Goal
+
+A person can capture the screen, a window or a region, copy and paste text and an image with the window, paste an image into the input box so that it reaches the agent with the next message, and an agent can ask for a capture through the tool connection of P03. A screenshot never vanishes from the record without a trace. The work is X11 only; the X server and its version are written in the report.
+
+**Order of the steps:** S01 (the provider line reader, XF-08; the measured data loss comes first because everything after it returns images through that line), S02 (capture core and command, XF-01 to XF-03, MB-03), S03 (the helper process, XF-07), S04 (clipboard, XF-04, SF-06), S05 (image paste, XF-05), S06 (middle-button paste, XF-06), S07 (the agent tools and a row for the real program, SF-06), S08 (the memory measurement against MB-03, the report and the try-it text of P03 and P04 together). Each step: a red test first, then green, one commit, one short mail to the lead.
+
+## What exists already (read on 2026-10-29)
+
+- `core::bounded_lines` (`core.rs` 282) drops a line over its limit whole; `claude.rs` (limit 256 KiB) and `codex.rs` (256 KiB) read the program's output through it. A dropped line is not counted and not recorded: nothing is left in the record (XF-08, *measured* 6 of 6).
+- `claude.rs` `handle` turns a tool result into `> ` lines through `text_of`, which keeps text blocks only: an image block of any size gives no line at all, so even a small image leaves no trace.
+- The real program's own record file (2.1.310, read on this machine for its shape only, no content kept) has an image result as one line of about 110 to 150 KiB at 1200 x 800: the image data sits twice in it (`message.content[].content[].source.data` and `toolUseResult.file.base64`), and `media_type` comes after `data`. A window capture at 1080p is several times larger. The first 8 KiB of such a line holds `"type":"image"` but neither the size nor the type.
+- Text paste exists: `fetch_selection` and the owner of the selection in `gui/ui.rs` (about lines 1150 to 1305), Shift+Insert reads PRIMARY, Ctrl+V reads CLIPBOARD, an incremental transfer is refused. There is no middle-button handling and no image path. `x11rb` 0.13.2 (core protocol only, no extension feature) is a dependency; no deflate or PNG crate is in `Cargo.lock` or in the offline cache.
+- The tool connection (`tools.rs`, `mcp.rs`) answers with one text block; every argument is a string. `exp/202610/20261026/00001_real_program_canary` is the opt-in canary for the real program.
+- Test displays: `lico_measure.rig.Xvfb` starts a private server; `xdpyinfo`, `xclip`, `xsel` and `xdotool` are installed for fixtures.
+
+## S01 - the provider line reader (XF-08; host only)
+
+- **Probe first (one haiku turn, opt-in, the canary's way):** the real program reads a PNG of about 300 KiB; I keep the size of the line it writes on stdout and where the image data sits, outside git. The red test uses that shape. Nothing about the real program's stream is claimed before it.
+- **Red test:** a provider line over 256 KiB that holds an image result (the shape above) leaves a record `[image N KiB omitted]` for the image and the rest of the line (text after it, the tool result's other blocks) as before; today it leaves nothing. A line with a small image gives `[image N KiB]`. The record holds no path of the provider's folder. A line that is not JSON or is still over the limit after the strings are cut gives `[line N KiB omitted]`.
+- **Change:** the reader moves out of `core.rs` into its own file and cuts every string value over 4 KiB while it reads (a small state machine over the bytes: inside a string, escapes), keeping its length, so memory stays at the cap plus one string in flight and the message is parsed as before; `claude.rs` and `codex.rs` render image blocks and cut strings. Loops: 20 runs of each new test; the reader is also run on a 64 MiB line with a memory check.
+- **Not claimed:** what Codex prints for an image (shape-agnostic by the cut; no real-program row for it in this phase).
+
+## S02 - capture core and command (XF-01 to XF-03, MB-03)
+
+- **Command:** `lico capture` with `--screen` (default), `--window <id>` or `--region x,y,w,h`, `--out <file>`; the answer is one JSON line: `path`, `width`, `height`, `bytes`, the server (vendor and release from the connection setup), for a region its `offset` and `scale`, and the agent copy (`agent_path`, size, `scale`) shrunk to at most 1568 px on the long side. A click on the agent copy at (cx, cy) is the screen point (x + cx/scale, y + cy/scale); a test pins this with a fixture where a shrunk and an unshrunk region differ.
+- **Red tests (E, Xvfb 1920 x 1080 with a known pattern):** the full capture has the pattern's pixels at known places (read back with a small decoder in the test, not the product); a region returns the offset and scale of its coordinates; a window capture is the window's rectangle on the screen; an agent copy of a 1920-wide capture is 1568 wide.
+- **Bands (XF-03):** the screen is read with `GetImage` a band of rows at a time (about 256 KiB per band) and shrunk on the way (box filter, row accumulators), and the PNG is encoded row by row into the file. **Measured in S08, written in the report:** the peak of the helper's resident memory (VmHWM) minus its resident memory at start, at 1080p, against the 6 MiB of MB-03.
+- **PNG without a dependency:** the encoder (filter, a small LZ77 with fixed Huffman codes over a 32 KiB window, CRC and Adler) is written here; see Deviation D2. The compression ratio on a text screen and on a photo is measured against `import` and written.
+
+## S03 - the helper process (XF-07)
+
+- Every X job (capture, clipboard read, clipboard write for the command line) runs as `lico` called with a hidden job name, started by the host or the command, writing its answer on stdout and ending; the long-lived host holds no X connection. **Red tests:** after a capture the host has no child and no more threads or open files than before (read from `/proc`), and its resident memory is within the noise of before; a job that hangs is ended by its deadline and the caller says why.
+
+## S04 - clipboard (XF-04, SF-06)
+
+- **Read** (text or `image/png`) is done by the helper with a connection of its own, as `fetch_selection` does, and fails with a reason: `empty`, `timeout`, `too_large`. **Write** needs an owner that lives, so it is a request to the window (an event on the connection the window already has); with no window connected it fails with `no_window`. **Red tests:** E with `xclip` as the reader of what the window wrote (text and image) and as the writer of what the helper reads; `no_window` without a window.
+- **Off by default (SF-06):** the agent tool `clipboard_write` is not in the tool list until the person switches it on; the command line, run by a person, writes. The setting and its default are tested.
+- `gui/ui.rs` (1,305 lines, may not grow, TST-07): the selection code moves to `gui/clip.rs` in this step, so the file shrinks.
+
+## S05 - image paste (XF-05)
+
+- **Window:** Ctrl+V asks the clipboard for its targets; with `image/png` the image is fetched (an incremental transfer is accepted for the image, with a limit of 3 MiB and a deadline), the input box shows an attachment chip with its size, and the next message carries it. A larger image, a format other than PNG or a picture over 8000 px (read from the PNG header, no decoding) is refused with a notice in the box. The picture is held in the window until it is sent or removed (Escape on the chip): part of the temporary +6 MiB.
+- **Host:** the image goes into a private file of the host's folder (mode 0600 in a folder 0700, never in the repository, SF-04) and the `input` request carries the file's name, not the bytes (the request limit is smaller than the image). `claude.rs` `send_input` builds the user message with an image block (base64, media type, then the text); the file is removed when the message is sent. The protocol note gets the new field.
+- **Red tests:** P (host, no display): an `input` with an attachment gives a provider message with the image block in front of the text and the file is gone afterwards; a wrong name, a file over the limit or a path outside the folder is refused. W (window dump): the chip and the notices. E (one): Ctrl+V of an image set with `xclip` attaches it. **Not claimed:** that Codex takes the image; the step asks the real program (Claude) in S07's row and tries Codex only as a probe.
+
+## S06 - middle-button paste (XF-06)
+
+- A press of the middle button in the input box pastes PRIMARY at the caret (Shift+Insert exists today); the press does not move the selection. **Red test:** E, `xclip -selection primary` sets the text, `xdotool click 2` over the box, the text is in the box.
+
+## S07 - the agent tools (SF-06) and the real program
+
+- On the tool connection of P03: `capture` (arguments as strings: `kind`, `window`, `region`) and `clipboard_read`; `capture` answers with a text block (the JSON of S02) and an image block with the agent copy, so `mcp.rs` learns an answer with more than one block. They need the person's approval per call in the way `send` has (P03 S04), because they show the screen or the clipboard to the agent; the exact use of `pending.rs` is settled when the step starts. `clipboard_write` stays off (S04).
+- **Real program:** a new row in the canary (opt-in, costs allowance): the program calls `capture` on a private display and describes a known pattern; the row also shows the line over 256 KiB reaching the record as `[image N KiB omitted]` (S01 on the real stream). What the real program does is claimed from this row and from nothing else.
+
+## S08 - measurement and report
+
+- The memory of the helper at 1080p (MB-03), the window with an attachment, the host before and after a capture (standing cost 0), the time of a capture, the size of the PNGs, the whole suite and the usual run (TST-10), the X server name and version. Report 0.1.0 and the try-it text that covers P03 and P04 together, because the owner's G3 falls at the end of this phase.
+
+## Deviations (for decision)
+
+1. **D1, XF-08 cuts strings, it does not keep the first 8 KiB.** The requirement says the line is read as a stream that keeps its first 8 KiB or so. In the real record shape the image is in the line twice, `media_type` comes after the data and other blocks may follow it, so the head cannot tell the size or the type and loses what follows. Cutting every string over 4 KiB keeps the structure, gives each image its size and holds the same bound on memory. The record text is the one the requirement names (`image N KiB omitted`, `[image]`).
+2. **D2, no deflate or PNG dependency.** None is in the lock file or in the offline cache; adding a crate is a decision about the supply chain that is not mine. My default is an encoder of our own (about 150 lines, tested against `import` and a reference decoder in the test). If the lead prefers a crate, S02 changes and the rest does not.
+3. **D3, paste does not decode or shrink.** There is no inflate in the product; the paste is limited by size and by the dimensions in the PNG header, and refused with a notice above them. A clipboard image in another format is refused.
+4. **D4, a window capture is its rectangle on the screen.** What other windows draw over it is in the picture; capturing a covered window needs the Composite extension and is not part of this phase.
+5. **D5, capture and clipboard read ask for approval per call.** SF-06 names control and clipboard writing; reading the screen or the clipboard shows the person's data to the agent, so it gets the approval that `send` has.
+
+## Where this meets the code
+
+- Files at or over the limit (TST-07) that this phase touches: `core.rs` (1,118; the reader moves out in S01), `gui/ui.rs` (1,305; the selection code moves to `gui/clip.rs` in S04), `gui/mod.rs` (816, if the chip needs it: its part moves out). None may grow.
+- New tests are listed in `tests/testmap.toml` or sit in files that are; a new Rust module's `crate::` uses decide which tests a change selects (the lesson of P03 G3).
+- Public hygiene (SF-04): the capture folder, the pasted files and any token live under the host's private folder, never in the repository; the tests use private temporary folders; no workstation path, name or conversation is written to a tracked file.
+
+## Tests and the test rules
+
+- A wait in a test that hides a race says why it is there; a new test runs in loops before the done mail of its step; a test that depends on file modes or on the umask runs under 022 and 077; each test display is my own (`Xvfb` with a display number I got from `-displayfd`, on a private socket); I touch no X server that I did not start; the X server and version tested are recorded.
+- The whole suite stays within 180 s with 3 workers. The fresh-clone first run was 187.4 s at `b35a156` (the Rust test target compiles from scratch); any step that adds more than a few seconds says the number in its mail.
+- Heavy jobs go through `pri-heavy` with the label `lico`.
+
+## Not in this phase
+
+Wayland; capture of a covered window (Composite); several screens as separate images; clipboard formats other than text and PNG; control of the real screen (P05); a screenshot of the Lico window by the host for itself; Codex image input as a claim; the status documents (the lead's closing commit).
+
+## Changes
+
+- 1.0.0: first version, written as the phase's first step from the requirements, the code read on 2026-10-29 and the shape of the real program's record file.
