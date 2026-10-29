@@ -369,7 +369,7 @@ impl App {
     }
 
     fn on_sock_line(&mut self, line: &str) {
-        if self.on_input_reply(line) || self.on_resume_reply(line) || self.on_reconnect_reply(line) {
+        if self.on_input_reply(line) || self.on_resume_reply(line) || self.on_reconnect_reply(line) || self.on_clip_line(line) {
             return;
         }
         match jstr(line, "ev") {

@@ -13,6 +13,13 @@
 //! use), `bad_image` (the bytes are not a PNG), `no_display`, `x_error`.
 
 pub mod job;
+pub mod open;
+pub mod settings;
+pub mod write;
+#[cfg(test)]
+mod open_tests;
+#[cfg(test)]
+mod write_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

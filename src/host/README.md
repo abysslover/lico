@@ -32,3 +32,9 @@ trimmed in whole segments.
 1 on a usage error, 2 when the host answers with an error, 3 when the host cannot
 be reached and 4 on a timeout. The loopback HTTP listener is enabled with
 `--http-port` and `--http-token-file`.
+
+`lico clipboard write (--text STRING | --text-file FILE | --image FILE) [--timeout-ms N]` puts a text or a PNG picture on the CLIPBOARD
+through the newest window (the host cannot own a selection); it needs a running host with a window and answers `no_window` otherwise.
+The setting `clipboard_write` is off unless `settings.json` in the host's state folder, a regular file of yours that others cannot write,
+is a JSON object with `"clipboard_write": true`; it is for the agent tool that is not built yet, and a person's own command does not read it.
+It does not stop a program of your own user that can write that folder: such a program can switch it on.

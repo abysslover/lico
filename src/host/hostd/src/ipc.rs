@@ -114,6 +114,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "approval.answer" => &["session", "generation", "approval_id", "answer"],
         "approval.text" => &["session", "generation", "approval_id"],
         "view.attach" => &["session", "kind"],
+        "clipboard.write" => &["kind"], // and `text`, or for a picture `path` instead: see `clipboard_shape`
+        "clipboard.done" => &["req", "ok"],
         _ => &["view"], // view.detach
     };
     for (key, value) in request {
@@ -157,13 +159,32 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("approval.answer", "keep") => value.is_boolean(),
             ("view.attach", "kind") => matches!(value.as_str(), Some("gui" | "cli")),
             ("view.detach", "view") => valid_str(value, 64),
+            ("clipboard.write", "kind") => matches!(value.as_str(), Some("text" | "image")),
+            ("clipboard.write", "text") => matches!(value, Value::String(s) if !s.is_empty() && s.len() <= MAX_INPUT_TEXT), // any character: a clipboard holds what it holds
+            ("clipboard.write", "path") => matches!(value, Value::String(s) if s.starts_with('/') && crate::folders::valid_path_shape(s)),
+            ("clipboard.write", "timeout_ms") => in_range(value, 1, crate::clipwrite::TIMEOUT_CEILING_MS),
+            ("clipboard.done", "req") => valid_request_id(value),
+            ("clipboard.done", "ok") => value.is_boolean(),
+            ("clipboard.done", "kind") => matches!(value.as_str(), Some("text" | "image")),
+            ("clipboard.done", "error") => valid_str(value, 32),
+            ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
+            ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
             _ => false,
         };
         if !ok {
             return false;
         }
     }
-    required.iter().all(|key| request.contains_key(*key)) && (op != "transfer.send" || transfer_shape(request))
+    required.iter().all(|key| request.contains_key(*key)) && (op != "transfer.send" || transfer_shape(request)) && (op != "clipboard.write" || clipboard_shape(request))
+}
+
+/// A text write has `text` and no `path`; a picture write has `path` and no `text`.
+fn clipboard_shape(request: &Map<String, Value>) -> bool {
+    if request.get("kind").and_then(Value::as_str) == Some("image") {
+        request.contains_key("path") && !request.contains_key("text")
+    } else {
+        request.contains_key("text") && !request.contains_key("path")
+    }
 }
 
 /// A conversation is the whole conversation of the session `from`: it has no text. Text and lines are text, and `from` is the person's choice.
@@ -234,9 +255,16 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "approval.text" => crate::pending::text_page(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), int(&request, "offset").unwrap_or(0) as usize, int(&request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
         "view.attach" => match core::view_attach(shared, Some((sub, &rid)), &session, generation, int(&request, "after").unwrap_or(-1)) {
-            Ok(_) => return, // the reply was queued under the session lock
+            Ok(body) => {
+                if text(&request, "kind") == "gui" {
+                    crate::clipwrite::mark_gui(shared, body.get("view").and_then(Value::as_str).unwrap_or_default());
+                }
+                return; // the reply was queued under the session lock
+            }
             Err(code) => Err(code),
         },
+        "clipboard.write" => crate::clipwrite::write(shared, &request),
+        "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
         "view.detach" => core::view_detach(shared, text(&request, "view")),
         _ => return stream_op(shared, sub, &request, &op, &rid),
     };

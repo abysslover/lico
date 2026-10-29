@@ -22,6 +22,7 @@
 "tests/test_build_commit.py" = []
 "tests/test_capture_cli.py" = ["cli"]
 "tests/test_clipboard_read.py" = ["cli"]
+"tests/test_clipboard_write.py" = ["cli", "gui", "host"]
 "tests/test_card_window.py" = ["gui", "host"]
 "tests/test_claude_adapter.py" = ["host"]
 "tests/test_client_integration.py" = ["gui", "host", "synth"]
@@ -91,7 +92,8 @@ bin = ["synth"]           # src/bin/synth_agent.rs: the agent test double
 broker = ["host"]
 calls = ["host"]
 capture = ["cli"]
-clipboard = ["cli"]
+clipboard = ["cli", "gui"]     # the command (cli) and the safe open the window uses for a picture file (gui)
+clipwrite = ["host"]
 claude = ["host"]
 cli = ["cli"]
 codex = ["host"]

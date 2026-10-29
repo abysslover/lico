@@ -10,6 +10,7 @@ mod capture;
 mod claude;
 mod cli;
 mod clipboard;
+mod clipwrite;
 mod codex;
 mod core;
 mod create;

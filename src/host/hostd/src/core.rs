@@ -21,7 +21,7 @@ pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-
 pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -57,7 +57,7 @@ const MAX_VIEWS_PER_CONNECTION: usize = 64;
 pub struct ViewEntry {
     pub session: String,
     pub conn: Option<Arc<Sub>>,
-    pub created: Instant,
+    pub created: Instant, pub gui_seq: Option<u64>, // the second: Some(n) for a view of kind `gui`, n counting the attaches (the newest window gets a clipboard write, `clipwrite`)
 }
 
 pub struct Shared {
@@ -67,7 +67,7 @@ pub struct Shared {
     pub started: Instant,
     pub pending_creates: AtomicUsize,
     pub accounts: Mutex<crate::accounts::Accounts>,
-    pub logins: crate::login::Logins,
+    pub logins: crate::login::Logins, pub clip: crate::clipwrite::Relay, // the second: the clipboard writes that wait for a window
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;
@@ -822,7 +822,7 @@ pub fn view_attach(shared: &Shared, conn: Option<(&Arc<Sub>, &Option<Value>)>, s
         let mut views = shared.views.lock().unwrap();
         views.retain(|_, v| v.conn.is_some() || v.created.elapsed() < Duration::from_secs(600));
     }
-    shared.views.lock().unwrap().insert(view, ViewEntry { session: s.id.clone(), conn: conn.map(|(sub, _)| sub.clone()), created: Instant::now() });
+    shared.views.lock().unwrap().insert(view, ViewEntry { session: s.id.clone(), conn: conn.map(|(sub, _)| sub.clone()), created: Instant::now(), gui_seq: None });
     if let Some((sub, rid)) = conn {
         let mut all = obj(json!({"ok": 1}));
         if let Some(id) = rid {
@@ -1069,7 +1069,7 @@ mod tests {
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
         let shared = Arc::new(Shared {
             cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
-            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()),
+            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(),
         });
         let held = Arc::new(Mutex::new(Session::new("held".to_string(), false, &dir, 100, 100)));
         shared.sessions.write().unwrap().push(held.clone());

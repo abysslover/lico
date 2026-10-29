@@ -149,12 +149,13 @@ pub fn run(args: &[String], display: Option<&str>) -> Result<Value, ClipError> {
     }
 }
 
-/// `lico clipboard ...`: the words after `clipboard`. Only `read` exists; `write` is the next step and gives `usage` for now.
-pub fn cli(args: &[String]) -> ! {
+/// `lico clipboard ...`: the words after `clipboard`, and the host socket (`write` is a client of the host; `read` needs no host).
+pub fn cli(args: &[String], socket: &str) -> ! {
     match args.first().map(String::as_str) {
         Some("read") => read_command(&args[1..]),
-        Some(other) => finish(Err(usage(format!("unknown clipboard command {other} (only: read)")))),
-        None => finish(Err(usage("clipboard needs a command (only: read)"))),
+        Some("write") => super::write::command(&args[1..], socket),
+        Some(other) => finish(Err(usage(format!("unknown clipboard command {other} (read or write)")))),
+        None => finish(Err(usage("clipboard needs a command (read or write)"))),
     }
 }
 
@@ -169,7 +170,7 @@ pub(crate) fn one_line(answer: &Value) -> String {
     answer.to_string().replace('\u{85}', "\\u0085").replace('\u{2028}', "\\u2028").replace('\u{2029}', "\\u2029")
 }
 
-fn finish(result: Result<Value, ClipError>) -> ! {
+pub(super) fn finish(result: Result<Value, ClipError>) -> ! {
     let (line, code) = match &result {
         Ok(answer) => (answer.clone(), 0),
         Err(e) => (json!({"ok": 0, "error": e.reason, "detail": e.detail}), if e.reason == "usage" { 1 } else { 2 }),

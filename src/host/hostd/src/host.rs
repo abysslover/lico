@@ -152,7 +152,7 @@ pub fn run(args: Vec<String>) {
     let history: u64 = arg("--history", "5000").parse().expect("history");
     let size = cfg.payload;
     let accounts_dir = cfg.accounts_dir.clone();
-    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))), logins: Mutex::new(HashMap::new()) });
+    let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))), logins: Mutex::new(HashMap::new()), clip: Default::default() });
     registry::recover(&shared).unwrap_or_else(|why| refuse(&why)); // sessions of an earlier run come back as disconnected
     {
         // durability policy: the logs are synced to disk about once a second while records arrive, and the registry is

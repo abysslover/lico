@@ -43,6 +43,9 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
           one JSON line: path, width, height, bytes, offset, server, agent {path, width, height, bytes, scale}; needs no host\n\
   clipboard read [--selection clipboard|primary] [--kind text|image|auto] [--out FILE] [--max-bytes N] [--timeout-ms N]\n\
           one JSON line: a text in the line, a PNG picture in FILE (required for image and auto); needs no host\n\
+  clipboard write (--text STRING | --text-file FILE | --image FILE) [--timeout-ms N]\n\
+          put a text (at most 64 KiB) or a PNG picture (at most 3 MiB, 8000 px a side) on the clipboard through the window; one JSON line;\n\
+          the host and a window must run (the window owns the selection)\n\
   view attach SESSION [--kind gui|cli]\n\
   view detach VIEW\n\
 The socket defaults to $LICO_SOCKET, then to $XDG_RUNTIME_DIR/lico/host.sock.";
@@ -157,8 +160,8 @@ pub fn run(args: Vec<String>) {
         crate::capture::command(&args[1..]);
     }
     if args.first().map(String::as_str) == Some("clipboard") {
-        // the selection is read by this process, not by the host: no socket is needed
-        crate::clipboard::job::cli(&args[1..]);
+        // `read`: the selection is read by this process, not by the host, so no socket is needed. `write`: a client of the host (the window owns the selection)
+        crate::clipboard::job::cli(&args[1..], &socket);
     }
     if socket.is_empty() || args.is_empty() {
         die(1, USAGE);

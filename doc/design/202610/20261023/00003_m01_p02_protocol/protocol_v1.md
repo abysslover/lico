@@ -57,6 +57,8 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `input.status` | host | no | the state of an earlier request id, so a client that lost a reply can ask instead of sending again |
 | `approval.answer` | host | yes | answer a pending approval request (`allow` or `deny`) of a session |
 | `view.attach`, `view.detach` | host | yes | register a view of a session (the latest screen now, live records after it); views vanish with their connection and never stop a session |
+| `clipboard.write` | host | yes | write a text or a PNG picture to the CLIPBOARD selection through a window (M02-P04 S04b; the host holds no X connection and cannot own a selection): `kind` `text` with `text` (1 to 65536 bytes, any characters), or `image` with `path` (absolute; the WINDOW opens the file, never the host), optional `timeout_ms` (1 to 600000, default 3000). The host forwards the request to the newest connection that attached a view of kind `gui` and answers when that window confirms with `clipboard.done`; reply: `kind`, `bytes`, and `width` and `height` for a picture. Errors: `no_window` (no live window, at once), `timeout` (no confirmation in time; the request is forgotten), `too_large`, `bad_image`, `write_failed`, `x_error` (the reasons a window gives). A person's op: the tool connection has no way to ask for one |
+| `clipboard.done` | host | yes | the window's confirmation (or failure) of a `clipboard.write` request: `req` (the id of the pushed `clip.write` event), `ok` (boolean), and with `ok` true `kind`, `bytes`, `width`, `height`; with `ok` false `error` (one of the reasons above; any other word is taken as `x_error`). Heard only from the connection that was asked and only while the request waits: an unknown id, a wrong connection or a late confirmation answers `unknown_request` and changes nothing. Sent after `get_selection_owner(CLIPBOARD)` says the window owns the selection |
 | `resources` | host | no | host process memory (RSS and PSS), threads, sessions, subscribers, views, log bytes and the memory of each agent |
 
 Anything not in this table is refused as `unknown_op`.
@@ -177,3 +179,17 @@ sequence number must follow the one before): at the first frame that is cut shor
 later segment are set aside in owner-only `.damaged` files (never read again), the session shows one `[log recovered: ...]` record,
 and the sequence continues from the last good record. Logs are synced to disk about once a second; there is no checksum, so damage
 inside a frame that keeps its length is not detected.
+
+## Clipboard write (M02-P04 S04b)
+
+`lico clipboard write (--text STRING | --text-file FILE | --image FILE) [--timeout-ms N]` is a client of the host. It sends `clipboard.write`;
+the host pushes `{"ev":"clip.write","req":ID,"kind":"text"|"image","text":...|"path":...}` to the newest window, which takes the CLIPBOARD
+selection (a text as UTF8_STRING, STRING and TEXT; a picture as `image/png`, served by the incremental protocol above 256 KiB or what one X
+request can carry), checks that the server says it owns the selection, and answers `clipboard.done`. Only CLIPBOARD is written, never PRIMARY.
+A second write replaces the first; when another client takes the selection the window lets its content go. A window that is not the newest is
+never asked. The command exits 0 on success, 1 for a usage error and 2 for any other failure, and prints one JSON line; a host that cannot be
+reached ends it as the other commands end (exit 3 and 4).
+
+The setting `clipboard_write` (SF-06) is for the agent tool of M02-P04 S07, which does not exist yet: off unless the file `settings.json` in the
+host's state folder (the parent of the handoff folder) is a regular file of the user, at most 4096 bytes, not writable by group or others, holding a
+JSON object whose `clipboard_write` is the boolean `true`. Anything else, a missing file included, is off. It is read at each use.

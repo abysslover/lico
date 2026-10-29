@@ -25,7 +25,7 @@ pub(super) mod reconnect;
 pub(crate) use row::{clock_text, memrow, Row};
 #[path = "clip.rs"]
 mod clip;
-use clip::{clipboard_server, fetch_selection};
+use clip::fetch_selection;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
@@ -85,7 +85,7 @@ pub struct UiState {
     pub menu_geom: MenuGeom,
     pub ticks: u64,
     pub copied: u64,
-    pub clip_tx: Option<mpsc::Sender<String>>,
+    pub clip_tx: Option<mpsc::Sender<clip::Job>>,
     pub header: String,
     pub bar: Option<String>,
     pub window_span: (usize, usize),
@@ -333,17 +333,12 @@ impl App {
         self.copy_text(text);
     }
 
-    /// Put text on the clipboard: always the result of a person's own key.
+    /// Put text on the clipboard: the result of a person's own key, or of the host forwarding the `lico clipboard write` that the person ran (`clip::on_clip_line`; a picture too). Nothing else writes it; an agent tool (S07) must ask the person first.
     pub(crate) fn copy_text(&mut self, text: String) {
         if text.len() > COPY_LIMIT {
             return; // larger than one transfer; refused rather than cut
         }
-        let tx = self.ui.clip_tx.get_or_insert_with(|| {
-            let (tx, rx) = mpsc::channel::<String>();
-            thread::spawn(move || clipboard_server(rx));
-            tx
-        });
-        if tx.send(text).is_ok() {
+        if self.clip_sender().send(clip::Job::text(text)).is_ok() {
             self.ui.copied += 1;
         }
     }

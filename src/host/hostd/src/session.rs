@@ -105,6 +105,14 @@ impl Sub {
         self.overflowed.lock().unwrap().remove(session);
     }
 
+    /// The lines waiting in the queue, taken out (the tests read what was pushed to a connection).
+    #[cfg(test)]
+    pub fn drain(&self) -> Vec<String> {
+        let mut queue = self.queue.lock().unwrap();
+        queue.bytes = 0;
+        queue.lines.drain(..).map(|l| String::from_utf8_lossy(&l).to_string()).collect()
+    }
+
     pub fn pop_wait(&self) -> Option<Arc<Vec<u8>>> {
         let mut queue = self.queue.lock().unwrap();
         while queue.lines.is_empty() && !self.closed.load(std::sync::atomic::Ordering::Relaxed) {
