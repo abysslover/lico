@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::core::{self, Shared};
+use crate::lines::{self, Line};
 use crate::session::MAX_APPROVALS;
 use crate::session::{InputState, Session, State};
 
@@ -153,6 +154,13 @@ pub fn note(s: &mut Session, line: &str) {
 
 fn record(s: &mut Session, line: &str) {
     s.append(clip(&sanitize(line), MAX_RECORD).into_bytes());
+}
+
+/// A record line of `prefix` and `text`; the note of a text the reader cut is a line of its own.
+fn record_text(s: &mut Session, prefix: &str, text: &str) {
+    for line in lines::with_note(prefix, text) {
+        record(s, &line);
+    }
 }
 
 /// A line of what the agent said or a command printed: tagged when it begins like a record of the host (see `leads`).
@@ -307,9 +315,14 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     let reader_session = session.clone();
     let cwd = workspace.to_string_lossy().to_string();
     thread::spawn(move || {
-        for line in core::bounded_lines(stdout, MAX_PROVIDER_LINE) {
-            if let Ok(message) = serde_json::from_str::<Value>(&line) {
-                handle_message(&reader_session, pid, &message, &cwd);
+        for line in lines::lines(stdout, MAX_PROVIDER_LINE) {
+            match line {
+                Line::Text { text, bytes } => match serde_json::from_str::<Value>(&text) {
+                    Ok(message) => handle_message(&reader_session, pid, &message, &cwd),
+                    Err(_) if bytes > MAX_PROVIDER_LINE => omitted(&reader_session, pid, bytes), // too long to hold, and what was held is not a whole message
+                    Err(_) => {}
+                },
+                Line::Skipped { bytes } => omitted(&reader_session, pid, bytes),
             }
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
@@ -367,6 +380,14 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
 }
 
 // ------------------------------------------------------------------- messages
+/// A line the reader could not hold, said in the record with its size, so that a person sees that the program said something there.
+fn omitted(session: &Arc<Mutex<Session>>, pid: u32, bytes: usize) {
+    let mut s = session.lock().unwrap();
+    if s.agent_pid == pid {
+        record(&mut s, &lines::omitted_line(bytes));
+    }
+}
+
 fn handle_message(session: &Arc<Mutex<Session>>, pid: u32, message: &Value, cwd: &str) {
     let mut s = session.lock().unwrap();
     if s.agent_pid != pid {
@@ -446,6 +467,11 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
     let Some(link) = s.codex.as_mut() else { return };
     let approval = matches!(method, "item/commandExecution/requestApproval" | "item/fileChange/requestApproval");
     if approval {
+        if lines::has_cut(params) {
+            // a person is never asked to approve what the reader had to cut
+            let _ = send(link, json!({"id": id, "error": {"code": -32000, "message": "request too large"}}), None);
+            return;
+        }
         let prompt = if method.ends_with("commandExecution/requestApproval") {
             format!("run: {}", params.get("command").and_then(Value::as_str).unwrap_or("a command"))
         } else {
@@ -506,9 +532,9 @@ fn delta(s: &mut Session, item: &str, text: &str) {
 fn notification(s: &mut Session, method: &str, params: &Value) {
     let text = |p: &str| params.pointer(p).and_then(Value::as_str).unwrap_or("").to_string();
     match method {
-        "item/agentMessage/delta" | "item/commandExecution/outputDelta" => delta(s, &text("/itemId"), &text("/delta")),
+        "item/agentMessage/delta" | "item/commandExecution/outputDelta" => delta(s, &text("/itemId"), &lines::shown(&text("/delta"))),
         "item/started" => match text("/item/type").as_str() {
-            "commandExecution" => record(s, &format!("$ {}", text("/item/command"))),
+            "commandExecution" => record_text(s, "$ ", &text("/item/command")),
             "fileChange" => {
                 let count = params.pointer("/item/changes").and_then(Value::as_array).map_or(0, Vec::len);
                 record(s, &format!("[patch] {count} change(s)"));
@@ -538,7 +564,7 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
             s.set_busy(false);
             record(s, &format!("[turn {}]", text("/turn/status")));
         }
-        "error" => record(s, &format!("[error] {}", text("/error/message"))),
+        "error" => record_text(s, "[error] ", &text("/error/message")),
         "serverRequest/resolved" => {
             if let (Some(link), Some(resolved)) = (s.codex.as_mut(), params.get("requestId")) {
                 let numbers: Vec<i64> = link.approval_map.iter().filter(|(_, v)| *v == resolved).map(|(n, _)| *n).collect();

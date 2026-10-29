@@ -18,6 +18,7 @@ use std::thread;
 
 use crate::codex::{clip, sanitize};
 use crate::core::{self, Shared};
+use crate::lines::{self, Line};
 use crate::session::{InputState, Session, State, MAX_APPROVALS};
 
 const MAX_LINE: usize = 256 * 1024;
@@ -42,6 +43,13 @@ pub struct Link {
 
 fn record(s: &mut Session, line: &str) {
     s.append(clip(&sanitize(line), MAX_RECORD).into_bytes());
+}
+
+/// A record line of `prefix` and `text`; the note of a text the reader cut is a line of its own (`lines::with_note`).
+fn record_text(s: &mut Session, prefix: &str, text: &str) {
+    for line in lines::with_note(prefix, text) {
+        record(s, &line);
+    }
 }
 
 /// A line of what the agent said: tagged when it begins like a record of the host (see `leads`).
@@ -277,9 +285,14 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     let reader_session = session.clone();
     let key = grant.key;
     thread::spawn(move || {
-        for line in core::bounded_lines(stdout, MAX_LINE) {
-            if let Ok(message) = serde_json::from_str::<Value>(&line) {
-                handle(&reader_session, pid, &message);
+        for line in lines::lines(stdout, MAX_LINE) {
+            match line {
+                Line::Text { text, bytes } => match serde_json::from_str::<Value>(&text) {
+                    Ok(message) => handle(&reader_session, pid, &message),
+                    Err(_) if bytes > MAX_LINE => omitted(&reader_session, pid, bytes), // too long to hold, and what was held is not a whole message
+                    Err(_) => {}
+                },
+                Line::Skipped { bytes } => omitted(&reader_session, pid, bytes),
             }
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
@@ -302,10 +315,27 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     Ok(())
 }
 
+/// A line the reader could not hold, said in the record with its size, so that a person sees that the program said something there.
+fn omitted(session: &Arc<Mutex<Session>>, pid: u32, bytes: usize) {
+    let mut s = session.lock().unwrap();
+    if s.agent_pid == pid {
+        record(&mut s, &lines::omitted_line(bytes));
+    }
+}
+
+/// What a tool result shows: its text (a long one cut by the reader says how much was left out), a picture as one line with its size.
 fn text_of(content: &Value) -> String {
     match content {
-        Value::String(text) => text.clone(),
-        Value::Array(blocks) => blocks.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("\n"),
+        Value::String(text) => lines::shown(text).into_owned(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .filter_map(|b| match b["type"].as_str() {
+                Some("text") => b["text"].as_str().map(|text| lines::shown(text).into_owned()),
+                Some("image") => Some(lines::image_line(b)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
         _ => String::new(),
     }
 }
@@ -346,12 +376,16 @@ fn handle(session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
             for block in message["message"]["content"].as_array().into_iter().flatten() {
                 match block["type"].as_str() {
                     Some("text") => {
-                        for line in block["text"].as_str().unwrap_or("").split('\n') {
+                        let (text, note) = lines::split_cut(block["text"].as_str().unwrap_or(""));
+                        for line in text.split('\n') {
                             record_agent(&mut s, line.trim_end_matches('\r'));
+                        }
+                        if let Some(note) = note {
+                            record(&mut s, &note);
                         }
                     }
                     Some("tool_use") => match (block["name"].as_str(), block["input"]["command"].as_str()) {
-                        (Some("Bash"), Some(command)) => record(&mut s, &format!("$ {command}")),
+                        (Some("Bash"), Some(command)) => record_text(&mut s, "$ ", command),
                         (name, _) => record(&mut s, &format!("[tool] {}", clip(name.unwrap_or(""), 60))),
                     },
                     _ => {}
@@ -403,7 +437,7 @@ fn handle(session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
             if message["is_error"] == true || message["subtype"] != "success" {
                 record(&mut s, &format!("[turn failed] {}", clip(message["subtype"].as_str().unwrap_or(""), 60)));
                 for error in message["errors"].as_array().into_iter().flatten().take(MAX_RESULT_LINES) {
-                    record(&mut s, &format!("[error] {}", error.as_str().unwrap_or("")));
+                    record_text(&mut s, "[error] ", error.as_str().unwrap_or(""));
                 }
             } else {
                 record(&mut s, "[turn completed]");
@@ -430,8 +464,8 @@ fn control_request(s: &mut Session, message: &Value) {
     if link.approvals.values().any(|(known, _)| *known == request_id) {
         return; // the provider repeated a request id: one approval, never two
     }
-    if approvals_pending >= MAX_APPROVALS || input.to_string().len() > MAX_REQUEST_INPUT {
-        return refuse(link, "too many pending approvals or an input too large");
+    if approvals_pending >= MAX_APPROVALS || input.to_string().len() > MAX_REQUEST_INPUT || lines::has_cut(request) {
+        return refuse(link, "too many pending approvals or an input too large"); // a person is never asked to approve what the reader had to cut
     }
     s.approval_counter += 1;
     let number = s.approval_counter;

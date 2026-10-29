@@ -670,3 +670,26 @@ fn only_two_records_are_read_at_once_and_a_place_comes_back_when_a_read_ends() {
     drop((second, third));
     assert_eq!(gate.load(std::sync::atomic::Ordering::SeqCst), 0);
 }
+
+#[test]
+fn a_line_over_the_bound_that_holds_a_capture_twice_shows_the_picture_by_its_size_and_keeps_the_text_around_it() {
+    // a 1080p capture in the program's own record: the picture in the block and again in the line's own copy of it, together over MAX_LINE
+    let capture = "QUJD".repeat(2 << 20); // 8 MiB of base64 text, a picture of 6 MiB
+    let line = json!({"type": "user", "version": READ_VERSIONS[0], "timestamp": T2, "sessionId": ID,
+        "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t", "content": [{"type": "text", "text": "before"}, {"type": "image", "source": {"type": "base64", "data": capture, "media_type": "image/png"}}, {"type": "text", "text": "after"}]}]},
+        "toolUseResult": {"type": "image", "file": {"base64": capture, "type": "image/png"}}});
+    assert!(line.to_string().len() > 2 * MAX_LINE);
+    let doc = run(&[user("one", T1), line, user("two", T3)]);
+    let text = body(&doc);
+    assert!(text.contains("  [tool_result]\n    before\n    [image 6.0 MiB omitted]\n    after\n"), "{}", &text[..text.len().min(400)]);
+    assert!(text.contains("  one\n") && text.contains("  two\n"));
+    assert!(!head(&doc).iter().any(|l| l.starts_with("Skipped")), "{:?}", head(&doc));
+}
+
+#[test]
+fn a_text_over_the_bound_is_shown_by_its_first_4096_bytes_and_the_size_left_out() {
+    let doc = run(&[user(&"x".repeat(6 << 20), T1), user("next", T2)]);
+    let text = body(&doc);
+    assert!(text.contains(&format!("  {}\n  [6.0 MiB omitted]\n", "x".repeat(4096))), "{}", &text[..text.len().min(100)]);
+    assert!(text.contains("  next\n") && !head(&doc).iter().any(|l| l.starts_with("Skipped")));
+}

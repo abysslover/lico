@@ -352,3 +352,37 @@ def test_the_measurement_reads_the_claude_providers_file_up_to_the_last_finished
     path.write_bytes('{"type": "user", "text": "한"}\n'.encode("utf-8") + '{"type": "user", "text": "한'.encode("utf-8")[:-1])
     assert _received_lines(path) == ['{"type": "user", "text": "한"}']
     assert _received_lines(tmp_path / "none") == []
+
+
+def test_a_tool_result_with_a_picture_over_the_line_limit_is_recorded_as_a_picture_with_its_size_and_the_rest_of_the_line_is_kept():
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="pictures", text="pictures")["ok"] == 1
+            wait_for(lambda: "pictures done" in records(log, sid), timeout=60)
+            shown = records(log, sid)
+            # a picture of 225 KiB (two copies of its data: a line of 600 KiB, over the 256 KiB the reader holds) and one of 3 KiB are lines with their size, the text after each stays,
+            # and a text of 200 KiB with no picture reads exactly as it did when a long line was dropped whole (the first 20 rows)
+            assert [r for r in shown if r.startswith("> ")] == ["> [image 225.0 KiB omitted]", "> after the big picture", "> [image 3.0 KiB]", "> after the small picture",
+                                                                *[f"> row {n:05d} " + "t" * 90 for n in range(20)]]
+            assert not any("QUJD" in r for r in shown) and "[line" not in " ".join(shown)
+            assert status_of(conn, sid)["state"] == "running"
+            # the folder of the program is in the second copy of the picture's line: it is read and never written
+            assert [path for path, data in files_under(directory) if b"CANARY-provider-folder-5c3e" in data] == []
+        finally:
+            host.stop()
+
+
+def test_a_permission_request_the_reader_had_to_cut_is_refused_to_the_provider_and_never_put_to_a_person():
+    with private_dir() as directory:
+        host, log, received = claude_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_claude(conn)
+            assert conn.call(op="input", session=sid, generation=generation, request_id="bigask", text="bigask")["ok"] == 1
+            wait_for(lambda: "answered: error" in records(log, sid), timeout=30)       # a line the host dropped whole left the provider waiting for ever
+            assert status_of(conn, sid).get("approvals", []) == []
+        finally:
+            host.stop()

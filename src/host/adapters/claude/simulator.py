@@ -25,6 +25,8 @@ user message:
   "hold:A:C:G"  holds A MiB itself, in a child C MiB and in that child's child G MiB (touched pages, kept until the process group ends)
   "authfail"  an authentication failure the way the documentation describes api_retry and an error result
   "bad"       malformed, oversize and unending output, a forged status line in a tool command
+  "bigask"    one permission request whose command is 300 KB (a line over what the host holds); says what the host answered
+  "pictures"  three tool results: a picture of 225 KiB (a line of 600 KiB, the way the real program writes it), a small picture, and 2,000 rows of text with no picture
   otherwise   echoes the text back
 While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
 `--help` prints the part of the real program's help that names `--effort` and `--model` (or the file `--help-file` names, for a test).
@@ -140,6 +142,7 @@ INJECT = ("import json, os, sys, time\nend = time.monotonic() + int(sys.argv[1])
           "sys.stdout.write(''.join(line + '\\n' for line in json.loads(sys.argv[4])))\nsys.stdout.flush()\nopen(sys.argv[3], 'w').close()")
 HOLD_AND_SPAWN = "import subprocess,sys,time\nb=bytearray(int(sys.argv[1])<<20)\nfor i in range(0,len(b),4096):b[i]=1\nsubprocess.Popen([sys.executable,'-I','-c',sys.argv[3],sys.argv[2]])\ntime.sleep(120)"
 held = []
+PROVIDER_FOLDER = "/CANARY-provider-folder-5c3e/projects"     # a test looks for this in everything the host wrote
 
 
 def say(text):
@@ -260,6 +263,33 @@ def turn(message):
         out({"type": "control_request", "request_id": "i" * 100_000, "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "long id"}}})
         out({"type": "control_request", "request_id": "huge-1", "request": {"subtype": "can_use_tool", "tool_name": "Write", "input": {"content": "z" * 20000}}})
         say("hostile survived")
+        out(result())
+    elif text == "bigask":
+        out({"type": "control_request", "request_id": "big-1", "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {"command": "rm -rf " + "x" * 300_000}}})
+        while True:
+            reply = read_line()
+            if reply.get("type") == "control_response" and reply.get("response", {}).get("request_id") == "big-1":
+                break
+            if reply.get("type") == "user":
+                queued.append(reply)
+        say("answered: " + reply["response"]["subtype"])
+        out(result())
+    elif text == "pictures":
+        # the shape of the real program's line for a picture a tool returned (read from its output, 2.1.310 and 2.1.312): the data twice, once in the block and once
+        # in the line's own `tool_use_result`, `media_type` after the data, and the folder of the program in the second copy
+        def tool_result(blocks, data):
+            return {"type": "user", "uuid": str(uuid.uuid4()), "session_id": session, "parent_tool_use_id": None,
+                    "message": {"role": "user", "content": [{"tool_use_id": "toolu_x", "type": "tool_result", "content": blocks}]},
+                    "tool_use_result": {"type": "image", "file": {"base64": data, "type": "image/png", "originalSize": len(data) // 4 * 3, "filePath": PROVIDER_FOLDER + "/shot.png"}}}
+
+        def picture(data):
+            return {"type": "image", "source": {"type": "base64", "data": data, "media_type": "image/png"}}
+
+        big, small = "QUJD" * (300 * 1024 // 4), "QUJD" * 1024
+        out(tool_result([picture(big), {"type": "text", "text": "after the big picture"}], big))
+        out(tool_result([picture(small), {"type": "text", "text": "after the small picture"}], small))
+        out(tool_result([{"type": "text", "text": "\n".join(f"row {n:05d} " + "t" * 90 for n in range(2000))}], ""))
+        say("pictures done")
         out(result())
     elif text == "bad":
         sys.stdout.write("this is not json\n")

@@ -4,7 +4,7 @@
 //! told it, so the file is found by `projects/*/<id>.jsonl` and the project folder's name is never rebuilt. Nothing else under the home is opened (the sign-in material lives there too).
 //! The home is the one the host gave the program; below it no link is followed, and more than one file of the id is refused, not chosen between.
 //!
-//! The record is read as a stream, one line in memory (a line over `MAX_LINE` is read past and counted), and turned into a text for a receiver: who said what and when, every tool call and
+//! The record is read as a stream, one line in memory (a line over `MAX_LINE` has its long strings cut as the host's own reader does, `lines`; one that is too long even so is read past and counted), and turned into a text for a receiver: who said what and when, every tool call and
 //! result whole, an image by its size. What is left out is said in the head, by name and count, so that a shortened record never looks whole. The head and the lines at the left edge
 //! are the host's; every word of the conversation is cleaned like an agent's text (`leads::agent_text`) and indented, so nothing in it can pass for a line of the host.
 
@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 
 use crate::leads::agent_text;
+use crate::lines::{self, Next};
 use crate::transfer::size_text;
 
 /// The program versions whose record layout this reader knows: each one's record was compared with the reader's keys (`version.cli` of `capabilities.json`, the one the adapter was measured on, is among them).
@@ -150,36 +151,17 @@ pub enum Line {
     End,
 }
 
-/// The next line into `buf` (without its line end); a line over `MAX_LINE` is read past and not kept (`buf` is empty then). `Unended` is a last line with no line end.
+/// The next line into `buf` (without its line end), read by `lines::read_line` with the bound `MAX_LINE`: a string that takes the line over it is cut to its head and the size left out;
+/// a line that is too long even so is read past and not kept (`buf` is empty then). `Unended` is a last line with no line end.
 pub fn next_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> std::io::Result<Line> {
-    buf.clear();
-    let (mut any, mut long) = (false, false);
-    loop {
-        let chunk = reader.fill_buf()?;
-        if chunk.is_empty() {
-            return Ok(match (any, long) {
-                (false, _) => Line::End,
-                (true, true) => Line::Long,
-                (true, false) => Line::Unended,
-            });
-        }
-        any = true;
-        let end = chunk.iter().position(|&b| b == b'\n');
-        let part = &chunk[..end.unwrap_or(chunk.len())];
-        if !long {
-            if buf.len() + part.len() > MAX_LINE {
-                long = true;
-                *buf = Vec::new(); // what was held is let go, not kept
-            } else {
-                buf.extend_from_slice(part);
-            }
-        }
-        let used = end.map_or(chunk.len(), |at| at + 1);
-        reader.consume(used);
-        if end.is_some() {
-            return Ok(if long { Line::Long } else { Line::Whole });
-        }
-    }
+    let (kept, line) = match lines::read_line(reader, MAX_LINE)? {
+        Next::Whole { kept, .. } => (kept, Line::Whole),
+        Next::Unended { kept } => (kept, Line::Unended),
+        Next::Over { .. } => (Vec::new(), Line::Long),
+        Next::End => (Vec::new(), Line::End),
+    };
+    *buf = kept;
+    Ok(line)
 }
 
 // ------------------------------------------------------------------------------ what was seen
@@ -233,7 +215,7 @@ impl Out {
 
 /// A text of the conversation, cleaned and indented; the count of what the cleaning took goes to `tally`. Line ends at its end are not kept.
 fn lines_of(raw: &str, depth: usize, tally: &mut Tally) -> String {
-    let cleaned = agent_text(raw);
+    let cleaned = agent_text(&lines::shown(raw));
     tally.hidden += cleaned.removed;
     let pad = INDENT.repeat(depth);
     let text = cleaned.text.trim_end_matches('\n');
@@ -252,14 +234,6 @@ fn stamp(record: &Value) -> Option<String> {
     shaped.then(|| format!("{} {} UTC", &text[..10], &text[11..19]))
 }
 
-fn image_line(block: &Value) -> String {
-    let data = block.pointer("/source/data").and_then(Value::as_str);
-    match (block.pointer("/source/type").and_then(Value::as_str), data) {
-        (Some("base64"), Some(data)) => format!("[image {}]", size_text(data.len() / 4 * 3)),
-        _ => "[image]".to_string(),
-    }
-}
-
 /// The name of a tool: plain characters only, so that it cannot end its bracket or start another line.
 fn tool_name(raw: Option<&str>) -> String {
     let cleaned = raw.map(|n| agent_text(n).text.chars().take(64).map(|c| if c.is_alphanumeric() || matches!(c, '_' | '-' | '.' | ':') { c } else { '_' }).collect::<String>());
@@ -272,7 +246,7 @@ fn tool_input(input: &Value, tally: &mut Tally) -> String {
     let mut out = String::new();
     for (key, value) in fields {
         let key = agent_text(key); // the program's word for a field is cleaned like the rest
-        let value = agent_text(&value.as_str().map_or_else(|| value.to_string(), str::to_string));
+        let value = agent_text(&lines::shown(&value.as_str().map_or_else(|| value.to_string(), str::to_string)));
         tally.hidden += key.removed + value.removed;
         let mut pieces = value.text.trim_end_matches('\n').split('\n');
         out += &format!("{INDENT}{INDENT}{}: {}\n", key.text.replace('\n', " "), pieces.next().unwrap_or(""));
@@ -290,7 +264,7 @@ fn result_text(content: &Value, tally: &mut Tally) -> String {
             .iter()
             .map(|b| match b.get("type").and_then(Value::as_str) {
                 Some("text") => lines_of(b.get("text").and_then(Value::as_str).unwrap_or(""), 2, tally),
-                Some("image") => format!("{INDENT}{INDENT}{}\n", image_line(b)),
+                Some("image") => format!("{INDENT}{INDENT}{}\n", lines::image_line(b)),
                 other => {
                     tally.skip(other.unwrap_or(""), "block ");
                     String::new()
@@ -329,7 +303,7 @@ fn message(record: &Value, kind: &str, out: &mut Out, tally: &mut Tally) -> Resu
                 }
                 match found {
                     Some("text") => text += &lines_of(block.get("text").and_then(Value::as_str).unwrap_or(""), 1, tally),
-                    Some("image") => text += &format!("{INDENT}{}\n", image_line(block)),
+                    Some("image") => text += &format!("{INDENT}{}\n", lines::image_line(block)),
                     Some("tool_use") => {
                         text += &format!("{INDENT}[tool_use {}]\n", tool_name(block.get("name").and_then(Value::as_str)));
                         if let Some(input) = block.get("input") {

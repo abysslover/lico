@@ -429,3 +429,17 @@ def test_the_measurement_reads_the_providers_messages_up_to_the_last_finished_li
     path.write_bytes(b'{"id": 7, "result": {}}\n' + '{"id": 11, "result": {"text": "\ud55c"}}\n{"id": 12, "result": {"text": "\ud55c'.encode("utf-8")[:-1])
     assert _provider_messages(path) == [{"id": 7, "result": {}}, {"id": 11, "result": {"text": "\ud55c"}}]
     assert _provider_messages(tmp_path / "none") == []
+
+
+def test_an_approval_request_the_reader_had_to_cut_is_refused_to_the_provider_and_never_put_to_a_person():
+    with private_dir() as directory:
+        host, log, received = codex_host(directory)
+        try:
+            conn, sid, generation = new_session(host)
+            conn.call(op="input", session=sid, generation=generation, request_id="bigask", text="bigask")
+            wait_for(lambda: "bigask survived" in " ".join(texts(log, sid)))
+            refusal = wait_for(lambda: [m for m in sent(received) if m.get("id") == 9100])[0]           # a line the host dropped whole left the provider waiting for ever
+            assert refusal["error"]["code"] == -32000 and "approval_id" not in str(refusal)
+            assert [s for s in conn.call(op="status")["sessions"] if s["session"] == sid][0].get("approvals", []) == []
+        finally:
+            host.stop()

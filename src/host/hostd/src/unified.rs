@@ -27,6 +27,7 @@ mod ipc;
 mod keyring;
 mod leads;
 mod lifecycle;
+mod lines;
 mod login;
 mod marks;
 mod mcp;

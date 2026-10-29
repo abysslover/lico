@@ -4,7 +4,7 @@
 
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -239,7 +239,7 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
     });
     let owner = session.clone();
     thread::spawn(move || {
-        for line in bounded_lines(stdout, MAX_AGENT_LINE) {
+        for line in crate::lines::plain(stdout, MAX_AGENT_LINE) {
             let mut parts = line.splitn(3, ' ');
             match (parts.next(), parts.next(), parts.next()) {
                 (Some("R"), Some(data), None) => {
@@ -275,36 +275,6 @@ pub fn start_session(shared: &Arc<Shared>, producing: bool, rate: u64, history: 
     }
     shared.sessions.write().unwrap().push(session.clone());
     Ok(session)
-}
-
-/// Lines of an agent's output with a length limit: a longer line is dropped whole, so an
-/// agent that never ends a line cannot grow the host.
-pub fn bounded_lines(stream: std::process::ChildStdout, limit: usize) -> impl Iterator<Item = String> {
-    let mut reader = BufReader::new(stream);
-    std::iter::from_fn(move || loop {
-        let mut buf = Vec::new();
-        let n = reader.by_ref().take(limit as u64).read_until(b'\n', &mut buf).ok()?;
-        if n == 0 {
-            return None;
-        }
-        if buf.last() != Some(&b'\n') {
-            // too long without a newline: skip to the end of this line
-            let mut skip = Vec::new();
-            loop {
-                skip.clear();
-                match reader.by_ref().take(limit as u64).read_until(b'\n', &mut skip) {
-                    Ok(0) | Err(_) => return None,
-                    Ok(_) if skip.last() == Some(&b'\n') => break,
-                    Ok(_) => continue,
-                }
-            }
-            continue;
-        }
-        buf.pop();
-        if let Ok(text) = String::from_utf8(buf) {
-            return Some(text);
-        }
-    })
 }
 
 pub fn find(shared: &Shared, wanted: &str) -> Option<Arc<Mutex<Session>>> {

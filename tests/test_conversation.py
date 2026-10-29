@@ -216,11 +216,12 @@ def test_a_closed_sessions_conversation_can_be_handed_over_and_a_closed_receiver
     os.unlink(Path(world.home) / "projects" / "-work-proj" / f"{pid}.jsonl")
 
 
-def test_a_record_of_20000_lines_and_a_line_of_5_mib_are_read_in_bounded_memory_and_what_was_left_out_is_said(world):
+def test_a_record_of_20000_lines_a_text_of_5_mib_and_a_line_of_5_mib_that_cannot_be_cut_are_read_in_bounded_memory_and_what_was_left_out_is_said(world):
     sender, pid = world.spoken()
     receiver, _ = world.session()
     lines = [json.dumps(message("user", f"line number {n}")) + "\n" for n in range(20_000)]
     lines.insert(10_000, json.dumps(message("assistant", [{"type": "text", "text": "y" * (5 << 20)}])) + "\n")
+    lines.insert(15_000, json.dumps({**message("user", "padded"), "pad": [0] * (5 << 19)}, separators=(",", ":")) + "\n")  # over 4 MiB, but no string in it to cut
     lines.insert(500, "{broken json\n")
     put(world.home, pid, None, raw="".join(lines).encode())
     started = time.monotonic()
@@ -229,8 +230,9 @@ def test_a_record_of_20000_lines_and_a_line_of_5_mib_are_read_in_bounded_memory_
     assert time.monotonic() - started < 20
     stored = world.files(receiver)[0].read_text()
     head = stored.partition("\n\n")[2].partition("\n\n")[0]
-    assert "Messages shown: 20000 (20000 user, 0 assistant, 0 tool results)" in head and "Skipped: 1 line that did not parse; 1 line over 4.0 MiB." in head, head
-    assert "line number 19999" in stored and "yyyy" not in stored
+    assert "Messages shown: 20001 (20000 user, 1 assistant, 0 tool results)" in head and "Skipped: 1 line that did not parse; 1 line over 4.0 MiB." in head, head
+    assert "line number 19999" in stored and "y" * 4096 in stored and "y" * 4097 not in stored, "a text over the limit keeps its first 4 KiB"
+    assert "[5.0 MiB omitted]" in stored and "padded" not in stored, "the cut says what it took, the line that could not be cut leaves only the count"
     os.unlink(Path(world.home) / "projects" / "-work-proj" / f"{pid}.jsonl")
 
 

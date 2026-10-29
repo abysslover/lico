@@ -12,6 +12,7 @@ test can see exactly what the host sent. Modes are chosen by the text of a turn:
   "stall"     says "stalling", then nothing at all until the file `<received>.end` exists, then one line and the end of the turn (a turn a test decides to end)
   "bad"       malformed, oversize and endless messages
   "endless"   forty megabytes of one line that never ends, then a normal message
+  "bigask"    one approval request whose command is 300 KB (a line over what the host holds), then a normal message
   "hostile"   unending partial lines, thousands of item ids, hundreds of approval requests (one id repeated), an unknown server request
   "say:J"     J is a JSON list of strings: each is one agent-message delta of one item, as given (a test chooses the chunks); then the item ends and the turn completes
   "escape"    terminal escapes (clear screen, clipboard write, hyperlink, title, backspaces, bidi override, bell) and a very long line
@@ -187,6 +188,11 @@ def handle(message):
                 sys.stdout.flush()
             sys.stdout.write("\n")
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "e", "delta": "endless survived\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
+        elif text == "bigask":
+            out({"id": 9100, "method": "item/commandExecution/requestApproval", "params": {"threadId": active["thread"], "turnId": tid, "itemId": "big", "command": "rm -rf " + "x" * 300_000}})
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "bigend", "delta": "bigask survived\n"})
             notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
             active["turn"] = None
         elif text == "hostile":
