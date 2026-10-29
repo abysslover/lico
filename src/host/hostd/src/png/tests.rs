@@ -28,7 +28,7 @@ impl Rng {
     }
 }
 
-fn noise(w: usize, h: usize, seed: u64) -> Vec<u8> {
+pub(crate) fn noise(w: usize, h: usize, seed: u64) -> Vec<u8> {
     let mut r = Rng(seed | 1);
     (0..w * h * 3).map(|_| r.byte()).collect()
 }
@@ -37,7 +37,7 @@ fn colour(w: usize, h: usize, rgb: [u8; 3]) -> Vec<u8> {
     (0..w * h).flat_map(|_| rgb).collect()
 }
 
-fn gradient(w: usize, h: usize) -> Vec<u8> {
+pub(crate) fn gradient(w: usize, h: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(w * h * 3);
     for y in 0..h {
         for x in 0..w {
@@ -48,7 +48,7 @@ fn gradient(w: usize, h: usize) -> Vec<u8> {
 }
 
 /// Black blocks of 6 x 10 pixels on white, in bands of 16 rows with a gap between them, the way a screen of text looks.
-fn text_like(w: usize, h: usize) -> Vec<u8> {
+pub(crate) fn text_like(w: usize, h: usize) -> Vec<u8> {
     let mut v = Vec::with_capacity(w * h * 3);
     for y in 0..h {
         let (band, ly) = (y / 16, y % 16);
@@ -320,7 +320,7 @@ fn the_screen_sized_cases_with_noise_and_text() {
 // ---- the ratio against ImageMagick's own writer ----------------------------------------------------------------------------
 
 /// The bytes ImageMagick's PNG writer makes of the same pixels (the writer `import` uses, its defaults).
-fn imagemagick_size(pix: &[u8], w: usize, h: usize) -> usize {
+pub(crate) fn imagemagick_size(pix: &[u8], w: usize, h: usize) -> usize {
     let dir = Scratch::new("pngratio");
     let (raw, out) = (dir.0.join("in.rgb"), dir.0.join("out.png"));
     std::fs::write(&raw, pix).unwrap();
@@ -339,9 +339,9 @@ fn the_size_against_imagemagick_on_a_screen_of_text_a_gradient_and_noise() {
     }
 }
 
-/// The ceilings of the ratio (ours / ImageMagick's) on the synthetic images, from the measurement (24.1 and 4.8) with margin. The text-like one is far over the lead's stop level of 3 (116 point 3): it is pinned here only so that it cannot get worse, and the slice mail asks the lead to decide on dynamic codes.
-const RATIO_TEXT: f64 = 30.0;
-const RATIO_GRADIENT: f64 = 6.0;
+/// The ceilings of the ratio (ours / ImageMagick's) on the synthetic images, from the measurement (24.1 and 4.8) with margin. The text-like one is far over the lead's stop level of 3 (116 point 3) because the fixed Huffman codes stay: accepted by the lead on 2026-10-29 (mail 119); the report names the figures. The ceilings are pins so that the encoder cannot get worse.
+pub(crate) const RATIO_TEXT: f64 = 30.0;
+pub(crate) const RATIO_GRADIENT: f64 = 6.0;
 
 // ---- use, errors, memory ---------------------------------------------------------------------------------------------------
 

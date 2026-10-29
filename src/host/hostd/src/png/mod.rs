@@ -9,15 +9,12 @@
 //! Wrong use is an `Err` of kind `InvalidInput` and never a panic; a write error of the sink comes back as it is, and the encoder refuses
 //! everything after it, so it never goes on to write a file that has a hole in it.
 
-// The first caller is S02b (the screen read and `lico capture`); S02b removes this line.
-#![allow(dead_code)]
-
 use std::io::{self, Write};
 
 #[cfg(test)]
-mod readers;
+pub(crate) mod readers;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 /// The largest width or height a PNG may have.
 pub const MAX_SIDE: u32 = 0x7FFF_FFFF;

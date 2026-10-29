@@ -9,7 +9,7 @@ use std::process::Command;
 
 // ---- reader 1: the test's own decoder --------------------------------------------------------------------------------------
 
-pub(super) fn slow_crc(data: &[u8]) -> u32 {
+pub(crate) fn slow_crc(data: &[u8]) -> u32 {
     let mut c = 0xFFFF_FFFFu32;
     for &b in data {
         c ^= b as u32;
@@ -20,7 +20,7 @@ pub(super) fn slow_crc(data: &[u8]) -> u32 {
     !c
 }
 
-pub(super) fn slow_adler(data: &[u8]) -> u32 {
+pub(crate) fn slow_adler(data: &[u8]) -> u32 {
     let (mut a, mut b) = (1u32, 0u32);
     for &x in data {
         a = (a + x as u32) % 65521;
@@ -71,7 +71,7 @@ impl Rd<'_> {
 }
 
 /// Inflate for stored and fixed blocks; gives the bytes and how many input bytes the stream took. A dynamic block is an `Err`.
-pub(super) fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
+pub(crate) fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
     // The bases and extra bits of the length and distance codes, worked out from the rule of RFC 1951 (not copied from the writer).
     let mut lens = Vec::new();
     let mut base = 3usize;
@@ -151,7 +151,7 @@ pub(super) fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
     Ok((out, rd.pos))
 }
 
-pub(super) fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
+pub(crate) fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
     if z.len() < 6 || z[0] & 0x0F != 8 || z[0] >> 4 > 7 || (z[0] as u32 * 256 + z[1] as u32) % 31 != 0 || z[1] & 0x20 != 0 {
         return Err("bad zlib header".into());
     }
@@ -166,7 +166,7 @@ pub(super) fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-pub(super) fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
+pub(crate) fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
     let (a, b, c) = (a as i32, b as i32, c as i32);
     let p = a + b - c;
     let (pa, pb, pc) = ((p - a).abs(), (p - b).abs(), (p - c).abs());
@@ -179,17 +179,17 @@ pub(super) fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
     }) as u8
 }
 
-pub(super) struct Decoded {
-    pub(super) w: u32,
-    pub(super) h: u32,
-    pub(super) pix: Vec<u8>,
+pub(crate) struct Decoded {
+    pub(crate) w: u32,
+    pub(crate) h: u32,
+    pub(crate) pix: Vec<u8>,
     /// How often each filter type was used.
-    pub(super) filters: [usize; 5],
-    pub(super) idat_chunks: usize,
-    pub(super) biggest_idat: usize,
+    pub(crate) filters: [usize; 5],
+    pub(crate) idat_chunks: usize,
+    pub(crate) biggest_idat: usize,
 }
 
-pub(super) fn read_png(d: &[u8]) -> Result<Decoded, String> {
+pub(crate) fn read_png(d: &[u8]) -> Result<Decoded, String> {
     if d.get(..8) != Some(&[0x89, b'P', b'N', b'G', 13, 10, 26, 10][..]) {
         return Err("signature".into());
     }
@@ -258,7 +258,7 @@ pub(super) fn read_png(d: &[u8]) -> Result<Decoded, String> {
 
 /// Python's zlib and a chunk parser: every CRC, the order of the chunks, IHDR, the size of every IDAT, the end of the zlib stream (its Adler-32
 /// is checked by zlib itself) and the length of the data. Prints `ok` or `bad: why`.
-pub(super) const CHECK_PY: &str = r#"import struct, sys, zlib
+pub(crate) const CHECK_PY: &str = r#"import struct, sys, zlib
 def fail(why):
     print("bad: " + why)
     sys.exit(1)
@@ -299,12 +299,12 @@ if len(raw) != h * (1 + 3 * w):
 print("ok")
 "#;
 
-pub(super) fn run(cmd: &mut Command, what: &str) -> std::process::Output {
+pub(crate) fn run(cmd: &mut Command, what: &str) -> std::process::Output {
     cmd.output().unwrap_or_else(|e| panic!("{what} must be installed for these tests (they never skip): {e}"))
 }
 
 /// What the two outside programs say about `png`: Python's checker passes, `identify` gives the size, `convert` gives the pixels.
-pub(super) fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, String) {
+pub(crate) fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, String) {
     let dir = Scratch::new("png");
     let (file, script) = (dir.0.join("t.png"), dir.0.join("check.py"));
     std::fs::write(&file, png).unwrap();
@@ -319,7 +319,7 @@ pub(super) fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, Str
 }
 
 /// Both readers on `png`, which was made from `pix`: the pixels must come back exactly. Returns the first reader's result for the callers' counts.
-pub(super) fn both_readers(png: &[u8], w: u32, h: u32, pix: &[u8], name: &str) -> Decoded {
+pub(crate) fn both_readers(png: &[u8], w: u32, h: u32, pix: &[u8], name: &str) -> Decoded {
     let dec = read_png(png).unwrap_or_else(|e| panic!("{name}: the test decoder refuses: {e}"));
     assert_eq!((dec.w, dec.h), (w, h), "{name}");
     assert!(dec.pix == pix, "{name}: the test decoder's pixels differ from the input");

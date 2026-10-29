@@ -39,6 +39,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session watch ID [--after N] [--seconds S]\n\
   approval answer SESSION N allow|deny [--keep]   (--keep: with allow, a send of this agent to the same session needs no more questions while the session lives; a request to make a session is asked each time)\n\
   approval show SESSION N [OFFSET]   one page (16 KiB at most) of the whole text an agent's request waits with; `next` is the offset of the following page\n\
+  capture [--screen | --window ID | --region x,y,w,h] --out FILE   save the screen, a window or a region as a PNG (and FILE.agent.png, at most 1568 px)\n\
+          one JSON line: path, width, height, bytes, offset, server, agent {path, width, height, bytes, scale}; needs no host\n\
   view attach SESSION [--kind gui|cli]\n\
   view detach VIEW\n\
 The socket defaults to $LICO_SOCKET, then to $XDG_RUNTIME_DIR/lico/host.sock.";
@@ -148,6 +150,10 @@ pub fn run(args: Vec<String>) {
         }
         _ => std::env::var("LICO_SOCKET").ok().filter(|s| !s.is_empty()).or_else(|| std::env::var("XDG_RUNTIME_DIR").ok().map(|d| format!("{d}/lico/host.sock"))).unwrap_or_default(),
     };
+    if args.first().map(String::as_str) == Some("capture") {
+        // the screen is read by this process, not by the host: no socket is needed
+        crate::capture::command(&args[1..]);
+    }
     if socket.is_empty() || args.is_empty() {
         die(1, USAGE);
     }
