@@ -12,6 +12,7 @@ mod scroll;
 mod scroll_oracle;
 mod ui;
 mod update;
+mod wire;
 
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -29,6 +30,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use events::emit_ime;
+use wire::{jint, jstr, json_escape};
 
 const VISIBLE_LINES: usize = 40;
 const LINE_HEX: usize = 88;
@@ -97,19 +99,6 @@ struct App {
     recent_draws: VecDeque<std::time::Instant>, // draws in the last second: a burst is drawn at once, a sustained flood at a capped rate
 }
 
-fn json_escape(s: &str) -> String {
-    let mut out = String::new();
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
 /// Text from an agent is shown, never obeyed: control characters (escape, bell,
 /// backspace, carriage return) and the bidirectional overrides are dropped.
 fn clean(text: &str) -> String {
@@ -117,19 +106,6 @@ fn clean(text: &str) -> String {
         .filter(|c| !c.is_control() && !matches!(*c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{2028}' | '\u{2029}' | '\u{200E}' | '\u{200F}' | '\u{061C}'))
         .take(LINE_CHARS)
         .collect()
-}
-
-fn jint(s: &str, key: &str) -> Option<i64> {
-    let pat = format!("\"{key}\":");
-    let rest = &s[s.find(&pat)? + pat.len()..];
-    let end = rest.find(|c: char| !(c.is_ascii_digit() || c == '-')).unwrap_or(rest.len());
-    rest[..end].parse().ok()
-}
-
-fn jstr<'a>(s: &'a str, key: &str) -> Option<&'a str> {
-    let pat = format!("\"{key}\":\"");
-    let rest = &s[s.find(&pat)? + pat.len()..];
-    Some(&rest[..rest.find('"')?])
 }
 
 fn fill_rect(buf: &mut [u32], width: usize, x: usize, y: usize, size: usize, color: u32) {
