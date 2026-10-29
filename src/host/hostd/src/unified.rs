@@ -34,6 +34,7 @@ mod mcp;
 mod memory;
 mod payload;
 mod pending;
+mod png;
 mod provider_record;
 mod registry;
 mod session;
