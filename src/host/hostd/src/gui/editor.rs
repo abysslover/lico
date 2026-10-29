@@ -203,6 +203,7 @@ pub(crate) struct Editor {
     parked: HashMap<String, Parked>,
     sent: VecDeque<(String, String)>,
     recall: Option<Recall>,
+    pub(crate) pictures: super::picture::Pictures, // the pasted pictures: one chip per session, and those on their way to the host
     pub(crate) rect: Option<[f32; 4]>, // the box on screen, as the last frame drew it
     pub(crate) caret: Option<[f32; 4]>,
 }
@@ -503,6 +504,7 @@ impl Editor {
     pub(crate) fn forget(&mut self, session: &str) {
         self.parked.remove(session);
         self.sent.retain(|e| e.0 != session);
+        self.pictures.forget(session);
     }
 
     pub(crate) fn sent_count(&self, session: &str) -> usize {
@@ -635,7 +637,7 @@ impl Editor {
 impl App {
     /// The editor's part of the dump. While a panel owns the line (a sign-in code is typed or pasted into it) the dump has the length and not the text.
     pub(crate) fn editor_json(&self) -> Value {
-        let mut dump = self.ed.dump(&self.session);
+        let mut dump = self.dump_with_chip();
         if self.ui.panel.is_some() {
             (dump["text"], dump["cursor"], dump["len"]) = (Value::Null, Value::Null, json!(self.ed.text().len()));
         }
@@ -650,7 +652,7 @@ impl App {
         } else if self.ui.panel.is_some() || self.session.is_empty() {
             line(format!("> {}[{}]", self.ed.text(), self.preedit))
         } else {
-            self.ed.prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS), &self.preedit)
+            self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
         }
     }
 
@@ -760,7 +762,7 @@ impl App {
 
     /// Send the draft of the visible session as one input with its own request id; over the limit it stays, with the reason under the box.
     pub(crate) fn send_draft(&mut self) {
-        if self.session.is_empty() || self.reconnect_instead() {
+        if self.session.is_empty() || self.picture_send() || self.reconnect_instead() {
             return;
         }
         let Some(text) = self.ed.prepare_send(&self.session) else {
@@ -780,12 +782,12 @@ impl App {
         let id = id.to_string();
         if line.contains("\"ok\":0") {
             if let Some((session, text)) = self.pending_inputs.remove(&id) {
-                let note = super::ui::reconnect::input_note(&id, super::jstr(line, "error").unwrap_or("refused"));
+                let note = self.input_refused(&id, &session, super::jstr(line, "error").unwrap_or("refused"));
                 self.give_back_to(&session, &text, note);
                 self.dirty = true;
             }
         } else {
-            self.pending_inputs.remove(&id);
+            self.input_taken(&id);
         }
         true
     }

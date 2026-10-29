@@ -24,8 +24,8 @@ mod row;
 pub(super) mod reconnect;
 pub(crate) use row::{clock_text, memrow, Row};
 #[path = "clip.rs"]
-mod clip;
-use clip::fetch_selection;
+pub(super) mod clip;
+use super::picture::fetch_pasted;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
@@ -431,7 +431,7 @@ impl App {
                     Key::Named(NamedKey::Escape) => {
                         if self.ui.sel.is_some() {
                             self.ui.sel = None; // Esc with a selection only drops the selection
-                        } else if self.ed.is_empty() && self.preedit.is_empty() && !self.session.is_empty() {
+                        } else if !self.drop_chip() && self.ed.is_empty() && self.preedit.is_empty() && !self.session.is_empty() { // a picture waiting in the box goes first
                             self.go_start(); // an empty input line: back to the start screen (the session keeps running)
                         }
                         self.dirty = true;
@@ -490,9 +490,9 @@ impl App {
         }
         let Some(proxy) = self.ui.proxy.clone() else { return };
         self.ui.paste_pending = true;
-        let limit = if self.ui.panel.is_some() { 8192 } else { super::editor::PASTE_FETCH };
+        let (limit, image) = if self.ui.panel.is_some() { (8192, false) } else { (super::editor::PASTE_FETCH, selection == b"CLIPBOARD") }; // a picture only in the box of a session, only from the CLIPBOARD, only when there is no text
         thread::spawn(move || {
-            let _ = proxy.send_event(super::Ev::Paste(fetch_selection(selection, limit)));
+            let _ = proxy.send_event(super::Ev::Paste(fetch_pasted(None, selection, limit, image)));
         });
     }
 

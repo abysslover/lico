@@ -92,14 +92,21 @@ impl App {
     /// One `input` for `session` at `generation`, with a request id of its own (`gui-<process>-<n>`, an `r` after the number when the session was
     /// reconnected for it); the text waits under that id until the host has answered, and goes back to its box if the host refuses it.
     pub(crate) fn send_input(&mut self, session: &str, generation: i64, text: String, after_reconnect: bool) {
+        self.send_input_with(session, generation, text, after_reconnect, None);
+    }
+
+    /// `send_input`, with the NAME of a picture file that the host handed out (`picture.slot`) as the member `attachment`; gives back the request id.
+    pub(crate) fn send_input_with(&mut self, session: &str, generation: i64, text: String, after_reconnect: bool, attachment: Option<&str>) -> String {
         self.sent_count += 1;
         let request_id = format!("gui-{}-{}{}", std::process::id(), self.sent_count, if after_reconnect { "r" } else { "" });
+        let named = attachment.map(|name| format!(",\"attachment\":\"{name}\"")).unwrap_or_default();
         let msg = format!(
-            "{{\"op\":\"input\",\"id\":\"{request_id}\",\"session\":\"{session}\",\"generation\":{generation},\"request_id\":\"{request_id}\",\"text\":\"{}\"}}",
+            "{{\"op\":\"input\",\"id\":\"{request_id}\",\"session\":\"{session}\",\"generation\":{generation},\"request_id\":\"{request_id}\",\"text\":\"{}\"{named}}}",
             json_escape(&text)
         );
-        self.pending_inputs.insert(request_id, (session.to_string(), text));
+        self.pending_inputs.insert(request_id.clone(), (session.to_string(), text));
         self.send(&msg);
+        request_id
     }
 
     /// A text the host did not take goes back in front of the draft of its session (wherever that is) and, when that session is open, a line says why.
@@ -155,13 +162,15 @@ impl App {
 
     /// The host was replaced: the texts that waited for a resume were never sent and come back; what was in flight is let go, as it always was.
     pub(crate) fn release_held(&mut self) {
-        let held: Vec<String> = self.pending_inputs.keys().filter(|k| k.starts_with("reconnect-")).cloned().collect();
+        let held: Vec<String> = self.pending_inputs.keys().filter(|k| k.starts_with("reconnect-") || k.starts_with("slot-")).cloned().collect();
         for id in held {
             if let Some((session, text)) = self.pending_inputs.remove(&id) {
-                self.give_back_to(&session, &text, REPLACED.into());
+                let why = if id.starts_with("slot-") { self.slot_replaced(&id, &session) } else { REPLACED.into() }; // a text that waited for a place for its picture comes back with it
+                self.give_back_to(&session, &text, why);
             }
         }
         self.pending_inputs.clear();
+        self.ed.pictures.let_go(); // the pictures whose input was in flight: the host's own rules remove their files
     }
 
     /// The first item of the permanent line while the open session is disconnected, the longest form that fits `cols`.

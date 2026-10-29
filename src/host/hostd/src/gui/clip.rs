@@ -8,12 +8,12 @@ use std::time::{Duration, Instant};
 use x11rb::protocol::xproto::Atom;
 
 /// The text of a selection (`CLIPBOARD` or `PRIMARY`) as UTF-8, asked for through our own helper window on a connection of its own, within 500 ms.
-/// An incremental transfer or more than `limit` bytes is refused rather than cut.
-pub(super) fn fetch_selection(name: &[u8], limit: usize) -> Result<String, &'static str> {
+/// An incremental transfer or more than `limit` bytes is refused rather than cut. On `display` (`None`: `$DISPLAY`; the unit tests name a private one).
+pub(in crate::gui) fn fetch_selection(display: Option<&str>, name: &[u8], limit: usize) -> Result<String, &'static str> {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, CreateWindowAux, WindowClass};
     use x11rb::protocol::Event;
-    let (conn, screen) = x11rb::connect(None).map_err(|_| "empty")?;
+    let (conn, screen) = x11rb::connect(display).map_err(|_| "empty")?;
     let root = conn.setup().roots[screen].root;
     let win = conn.generate_id().map_err(|_| "empty")?;
     conn.create_window(0, win, root, 0, 0, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &CreateWindowAux::new()).map_err(|_| "empty")?;

@@ -7,6 +7,7 @@ mod events;
 mod fonts;
 mod menu;
 mod panel;
+mod picture;
 mod scroll;
 #[cfg(test)]
 mod scroll_oracle;
@@ -46,7 +47,7 @@ enum Ev {
     Sock(String),
     Cmd(String),
     Tick, // once a second in the first view: ask the host for the sessions again
-    Paste(Result<String, &'static str>), // the answer to a paste key: the selection's text, or why there is none
+    Paste(picture::Pasted), // the answer to a paste key: the selection's text or a picture, or why there is none
     Host(update::Update), // the worker that brings the host to this build reports
     SockEnded(u64), // the reader of the host connection with this serial ended: the host is gone, or was replaced
 }
@@ -345,7 +346,7 @@ impl App {
     }
 
     fn on_sock_line(&mut self, line: &str) {
-        if self.on_input_reply(line) || self.on_resume_reply(line) || self.on_reconnect_reply(line) || self.on_clip_line(line) {
+        if self.on_input_reply(line) || self.on_resume_reply(line) || self.on_reconnect_reply(line) || self.on_picture_reply(line) || self.on_clip_line(line) {
             return;
         }
         match jstr(line, "ev") {
@@ -633,7 +634,7 @@ impl ApplicationHandler<Ev> for App {
             Ev::Sock(line) => self.on_sock_line(&line),
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
             Ev::Tick => self.ui_tick(),
-            Ev::Paste(result) => self.on_paste(result),
+            Ev::Paste(answer) => self.on_paste_answer(answer),
             Ev::Host(update::Update::Line(line)) => {
                 self.ui.host_notice = Some(line);
                 self.dirty = true;

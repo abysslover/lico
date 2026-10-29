@@ -68,6 +68,30 @@ pub fn open_regular(path: &Path, min: u64, max: u64) -> Result<Opened, Fault> {
     Ok(Opened { file, size })
 }
 
+/// Writes `bytes` into the EMPTY file at `path` that the host made for a pasted picture (`picture.slot`, plan M02-P04 S05b): opened for writing only,
+/// WITHOUT creating it, without truncating it and without following a link at the last name (`O_NOFOLLOW`), never waiting for a pipe (`O_NONBLOCK`), and
+/// judged on the opened descriptor: a regular file of this user with no bytes in it yet (a size over 0 is `TooBig`). Every byte is written, then the file is
+/// closed. Faults: those of `open_regular`, and `Open` with the reason for a write that failed.
+pub fn write_slot(path: &Path, bytes: &[u8]) -> Result<(), Fault> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().write(true).custom_flags(O_NOFOLLOW | O_NONBLOCK).open(path).map_err(|e| {
+        let why = if e.raw_os_error() == Some(40) { "a symbolic link is not followed".to_string() } else { e.to_string() };
+        Fault::Open(why)
+    })?;
+    let meta = file.metadata().map_err(|e| Fault::Open(e.to_string()))?;
+    if !meta.file_type().is_file() {
+        return Err(Fault::NotRegular);
+    }
+    // SAFETY: geteuid has no arguments and cannot fail.
+    if meta.uid() != unsafe { geteuid() } {
+        return Err(Fault::NotYours);
+    }
+    if meta.len() > 0 {
+        return Err(Fault::TooBig(meta.len()));
+    }
+    file.write_all(bytes).and_then(|_| file.flush()).map_err(|e| Fault::Open(format!("the write failed: {e}")))
+}
+
 /// The whole file, at most `max` bytes. A file that holds more than `max` bytes when the read gets there is `TooBig`; one whose length is not the length
 /// `fstat` said is `Read` (it changed while it was read).
 pub fn read_checked(opened: Opened, max: u64) -> Result<Vec<u8>, Fault> {

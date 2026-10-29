@@ -189,3 +189,37 @@ fn the_setting_is_read_at_each_use_so_switching_it_needs_no_restart() {
     setting(&d, br#"{"clipboard_write": false}"#, 0o600);
     assert!(!clipboard_write_enabled(&path));
 }
+
+// ------------------------------------------------------------------------------------------------------------------------ write_slot (S05b)
+#[test]
+fn write_slot_fills_an_empty_file_of_the_user_and_nothing_else() {
+    let d = Scratch::new("write_slot");
+    let empty = file_of(&d, "empty.png", b"");
+    write_slot(&empty, b"all the bytes").unwrap();
+    assert_eq!(std::fs::read(&empty).unwrap(), b"all the bytes");
+    assert_eq!(write_slot(&empty, b"again"), Err(Fault::TooBig(13)), "a file that holds bytes is not written");
+    assert_eq!(std::fs::read(&empty).unwrap(), b"all the bytes");
+    // a missing name is not created
+    let missing = d.0.join("missing.png");
+    assert!(matches!(write_slot(&missing, b"x"), Err(Fault::Open(_))) && !missing.exists());
+    // a link at the last name is not followed, a link to a directory neither
+    let target = file_of(&d, "target", b"");
+    symlink(&target, d.0.join("link.png")).unwrap();
+    assert!(matches!(write_slot(&d.0.join("link.png"), b"x"), Err(Fault::Open(_))));
+    assert_eq!(std::fs::read(&target).unwrap(), b"");
+    assert!(write_slot(&d.0, b"x").is_err(), "a directory");
+    // a pipe does not hang
+    let fifo = d.0.join("fifo");
+    let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    assert_eq!(unsafe { mkfifo(c.as_ptr(), 0o600) }, 0);
+    assert!(write_slot(&fifo, b"x").is_err());
+    // a file of another user
+    assert!(write_slot(Path::new("/dev/null"), b"x").is_err(), "not a regular file");
+    assert!(unsafe { geteuid() } != u32::MAX);
+    // a file the user may not write
+    let ro = file_of(&d, "ro.png", b"");
+    std::fs::set_permissions(&ro, std::fs::Permissions::from_mode(0o400)).unwrap();
+    if unsafe { geteuid() } != 0 {
+        assert!(matches!(write_slot(&ro, b"x"), Err(Fault::Open(_))));
+    }
+}

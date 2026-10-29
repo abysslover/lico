@@ -23,7 +23,7 @@ mod write_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
-mod tests_x;
+pub(crate) mod tests_x;
 
 use std::os::unix::io::AsRawFd;
 use std::time::{Duration, Instant};

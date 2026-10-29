@@ -16,13 +16,13 @@ use std::thread;
 use x11rb::protocol::xproto::{ChangeWindowAttributesAux, ConnectionExt as _, PropMode, SelectionNotifyEvent, SELECTION_NOTIFY_EVENT};
 use x11rb::wrapper::ConnectionExt as _;
 
-struct Xvfb {
+pub(crate) struct Xvfb {
     child: Child,
-    name: String,
+    pub(crate) name: String,
 }
 
 impl Xvfb {
-    fn start() -> Xvfb {
+    pub(crate) fn start() -> Xvfb {
         let mut child = Command::new("Xvfb")
             .args(["-displayfd", "1", "-screen", "0", "320x200x24", "-nolisten", "tcp"])
             .stdout(Stdio::piped())
@@ -44,7 +44,7 @@ impl Drop for Xvfb {
 
 /// What an owner does.
 #[derive(Clone, Default)]
-struct Serve {
+pub(crate) struct Serve {
     /// The targets it converts to, with the bytes of each.
     targets: Vec<(&'static str, Vec<u8>)>,
     /// Whether it answers `TARGETS` (some owners refuse it).
@@ -59,13 +59,13 @@ struct Serve {
     ignore: bool,
 }
 
-struct Owner {
+pub(crate) struct Owner {
     stop: Arc<AtomicBool>,
     join: Option<thread::JoinHandle<()>>,
 }
 
 impl Owner {
-    fn start(display: &str, selection: &'static str, serve: Serve) -> Owner {
+    pub(crate) fn start(display: &str, selection: &'static str, serve: Serve) -> Owner {
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
         let (d, s) = (display.to_string(), stop.clone());
@@ -94,7 +94,10 @@ struct Incr {
 }
 
 fn owner_loop(display: &str, selection: &str, serve: Serve, stop: &AtomicBool, ready: mpsc::Sender<()>) {
-    let (conn, num) = x11rb::connect(Some(display)).expect("the test display");
+    // a server that has just printed its number can reset the first connection when several start at once: try again a few times
+    let (conn, num) = (0..20)
+        .find_map(|_| x11rb::connect(Some(display)).ok().or_else(|| { thread::sleep(Duration::from_millis(100)); None }))
+        .expect("the test display");
     let root = conn.setup().roots[num].root;
     let win = conn.generate_id().unwrap();
     let aux = CreateWindowAux::new().event_mask(EventMask::PROPERTY_CHANGE);
@@ -175,7 +178,7 @@ fn plain() -> ReadLimits {
     limits(65536, 3 * 1024 * 1024, 3000)
 }
 
-fn serve(targets: Vec<(&'static str, Vec<u8>)>) -> Serve {
+pub(crate) fn serve(targets: Vec<(&'static str, Vec<u8>)>) -> Serve {
     Serve { targets, list: true, ..Default::default() }
 }
 
@@ -192,7 +195,7 @@ fn noise(n: usize, seed: u64) -> Vec<u8> {
 }
 
 /// A forged PNG of `total` bytes: a real header with the given size, then noise (the reader looks at the header only).
-fn fake_png(w: u32, h: u32, total: usize) -> Vec<u8> {
+pub(crate) fn fake_png(w: u32, h: u32, total: usize) -> Vec<u8> {
     let mut v = head(w, h);
     v.extend(noise(total - v.len(), 7));
     v
