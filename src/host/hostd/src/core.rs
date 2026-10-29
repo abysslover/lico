@@ -43,7 +43,7 @@ pub struct Config {
     pub claude_args: Vec<String>, // placed before the flags the adapter adds (a simulator is started this way)
     pub cred_bin: PathBuf,        // the credential command a provider calls as its key helper
     pub cred_args: Vec<String>,   // its leading arguments (`cred`, when the command is this very program)
-    pub cred_dir: PathBuf,        // the credential metadata directory
+    pub cred_dir: PathBuf, #[allow(dead_code)] pub job_bin: PathBuf, // the credential metadata directory; the program an X job runs as (`xjob`; the callers are S04 and S07)
     pub workspace_root: PathBuf, pub handoff_dir: PathBuf, // the second: the files of long text one session sent another (`handoff`)
     pub accounts_dir: PathBuf,
     pub registry_dir: PathBuf,
@@ -1063,7 +1063,7 @@ mod tests {
         let cfg = Config {
             login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
             queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
-            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
+            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
             accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false, realistic_text: false,
         };
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));

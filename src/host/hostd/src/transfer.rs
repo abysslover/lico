@@ -484,7 +484,7 @@ pub(crate) mod tests {
         let cfg = Config {
             login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: path.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
             queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
-            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), cred_dir: path.join("cred"), workspace_root: path.join("work"), handoff_dir: path.join("handoff"),
+            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(), cred_dir: path.join("cred"), workspace_root: path.join("work"), handoff_dir: path.join("handoff"),
             accounts_dir: path.join("accounts"), registry_dir: path.join("registry"), text: false, realistic_text: false,
         };
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));

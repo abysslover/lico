@@ -20,6 +20,7 @@ mod folders;
 mod gui;
 mod handoff;
 mod history;
+mod helper;
 mod host;
 mod http;
 mod ident;
@@ -41,6 +42,7 @@ mod registry;
 mod session;
 mod tools;
 mod transfer;
+mod xjob;
 
 const LICENSE: &str = include_str!("../../../../LICENSE");
 const NOTICES: &str = include_str!("../NOTICES.txt");
@@ -58,6 +60,7 @@ fn main() {
         (_, Some("cred")) => credcmd::run(shifted("lico-cred")),
         (_, Some("gui")) => gui::run(shifted("lico-gui")),
         (_, Some("licenses")) => print!("{LICENSE}\n{NOTICES}"),
+        (_, Some("xjob")) => xjob::run(&args[2..]), // hidden: the job side of the helper process (no usage text names it)
         (_, Some("version" | "--version")) => println!("{}", ident::cli_line()),
         _ => cli::run(args),
     }

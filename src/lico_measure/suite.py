@@ -106,7 +106,8 @@ def cargo_job(filters, out):
     job = Job("cargo test --bin lico" + "".join(f" {f}" for f in filters), None, REPO / "src" / "host" / "hostd", {})
     job.log = out / "cargo.log"
     job.extra_env = {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": str(REPO / "private" / "cargo-home"),
-                     "CARGO_TARGET_DIR": str(receipts.build_root() / "host_hostd_test"), "CARGO_BUILD_JOBS": COMPILE_JOBS}
+                     "CARGO_TARGET_DIR": str(receipts.build_root() / "host_hostd_test"), "CARGO_BUILD_JOBS": COMPILE_JOBS,
+                     "LICO_BIN": str(receipts.build_root() / "host_hostd" / "release" / "lico")}      # the real program, for the unit tests that start it (helper::tests)
     job.argv = ["cargo", "test", "--bin", "lico", *(["--", *filters] if filters else [])]      # cargo takes one filter; libtest takes any number after --
     return job
 

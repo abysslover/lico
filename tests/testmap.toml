@@ -79,6 +79,7 @@
 "tests/test_transfer.py" = ["cli", "host"]
 "tests/test_unicode_clients.py" = ["gui", "host"]
 "tests/test_view_lifecycle.py" = ["gui", "host", "synth"]
+"tests/test_xjob.py" = ["cli"]
 "tests/test_window_keys.py" = ["gui", "host"]
 "tests/test_window_stdout.py" = ["gui", "host"]
 
@@ -99,6 +100,7 @@ creds = ["cred"]
 dbus = ["cred"]
 echo = ["host"]
 folders = ["host"]
+helper = ["host"]
 gui = ["gui"]
 handoff = ["host"]
 history = ["host"]
@@ -123,6 +125,7 @@ registry = ["host"]
 session = ["host"]
 tools = ["host"]
 transfer = ["host"]
+xjob = ["cli"]
 unified = ["*"]           # the dispatch: every role goes through it
 
 [rust]

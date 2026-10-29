@@ -81,6 +81,7 @@ pub fn run(args: Vec<String>) {
         cred_bin: if args.iter().any(|a| a == "--cred-bin") { PathBuf::from(arg("--cred-bin", "")) } else { std::env::current_exe().unwrap_or_default() },
         cred_args: if args.iter().any(|a| a == "--cred-bin") { Vec::new() } else { vec!["cred".to_string()] }, // this program is its own credential command
         cred_dir: PathBuf::from(arg("--cred-dir", base.join("credentials").to_str().unwrap_or("credentials"))),
+        job_bin: if args.iter().any(|a| a == "--job-bin") { PathBuf::from(arg("--job-bin", "")) } else { std::env::current_exe().unwrap_or_default() }, // an X job is this very program, called as `xjob`
         accounts_dir: PathBuf::from(arg("--accounts-dir", base.join("accounts").to_str().unwrap_or("accounts"))),
         registry_dir: PathBuf::from(arg("--registry-dir", base.join("registry").to_str().unwrap_or("registry"))),
         text: args.iter().any(|a| a == "--text" || a == "--realistic-text"),

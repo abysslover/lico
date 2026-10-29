@@ -48,3 +48,11 @@ Rust module runs; a changed file nobody declared selects everything. `size_allow
 Each test has its own socket, run directory and display (`rig.private_dir()`, `Xvfb` on `-displayfd`); the parallel runner gives each
 worker its own client home (`LICO_WORKER`). A test that needs something global (a fixed port, a fixed path under `private/`, a
 process found by name) cannot run beside others: make it unique per test.
+
+## Rust unit tests that start the real program
+
+A few Rust tests start the real `lico` (the helper process, `helper::tests`: a real capture on a private Xvfb). They find it in the environment
+variable `LICO_BIN`; the suite sets it to the release binary it has just built (`<build root>/host_hostd/release/lico`). Without the variable they use
+`private/build/host_hostd/release/lico` of the repository, and a binary that is not there is a failure with the path in the message, never a skip. By
+hand: build it first (`cargo build --release --locked --offline --bins`), then `LICO_BIN=... cargo test --bin lico helper::`. The test of the property
+"a host is unchanged after jobs" reads `/proc` and so runs in a process of its own: the test binary starts itself again on an `#[ignore]`d driver test.
