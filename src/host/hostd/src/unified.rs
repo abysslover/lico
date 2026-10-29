@@ -36,6 +36,7 @@ mod login;
 mod marks;
 mod mcp;
 mod memory;
+mod pasted;
 mod payload;
 mod pending;
 mod png;

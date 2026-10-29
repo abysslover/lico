@@ -217,7 +217,7 @@ pub fn text_page(shared: &Shared, session: &str, generation: i64, id: i64, offse
 /// The host's word to the session that asked, once per decision. It is input like a person's but written by the host: it opens no card and is answered by no notice.
 fn notify(shared: &Shared, session: &str, id: i64, words: &str) {
     let text = format!("[from lico | {} | approval {id}]\n{words}", crate::transfer::hhmm_now());
-    if let Err(code) = core::input(shared, session, None, &format!("n-{}", core::random_hex(8)), &text, Origin::Host) {
+    if let Err(code) = core::input(shared, session, None, &format!("n-{}", core::random_hex(8)), &text, Origin::Host, None) {
         eprintln!("lico-host: notice dropped session={session} approval={id} cause={code}");
     }
 }

@@ -93,7 +93,7 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" => &[],
+        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" => &[],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
         "session.rebind" => &["session", "generation", "account"],
@@ -149,6 +149,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.create", "history") => in_range(value, 0, 100_000),
             ("session.create", "payload") => in_range(value, 1, 4096),
             ("input" | "input.status", "request_id") => valid_request_id(value),
+            ("input", "attachment") => matches!(value, Value::String(s) if crate::pasted::valid_name(s)), // the NAME of a file in the pasted folder; the host builds the path
             ("input" | "transfer.send", "text") => valid_text(value),
             ("transfer.send", "from" | "to") => valid_str(value, 64),
             ("transfer.send", "kind") => matches!(value.as_str(), Some("text" | "lines" | "conversation")),
@@ -248,7 +249,8 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "account.remove" => core::account_remove(shared, text(&request, "account"), text(&request, "sessions")),
         "account.credential" => core::account_credential(shared, text(&request, "account"), text(&request, "credential_ref")),
         "snapshot" => core::snapshot(shared, &session, generation),
-        "input" => core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person),
+        "input" => crate::pasted::with_cleanup(shared, request.get("attachment").and_then(Value::as_str), |attachment| core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person, attachment)),
+        "picture.slot" => crate::pasted::slot(shared),
         "transfer.send" if text(&request, "kind") == "conversation" => crate::transfer::hand_over(shared, text(&request, "from"), text(&request, "to")),
         "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(&request, "to"), text(&request, "kind"), text(&request, "text"), crate::transfer::By::Person),
         "input.status" => core::input_status(shared, &session, text(&request, "request_id")),

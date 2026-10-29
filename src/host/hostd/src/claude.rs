@@ -76,17 +76,27 @@ fn new_uuid() -> String {
 }
 
 /// One host input is one user message; the provider queues it behind a turn that is running.
-pub fn send_input(s: &mut Session, request_id: &str, text: &str) -> Result<(), &'static str> {
+/// `picture`: a pasted picture; the message then holds the image block FIRST and the text after it.
+pub fn send_input(s: &mut Session, request_id: &str, text: &str, picture: Option<crate::pasted::Picture>) -> Result<(), &'static str> {
     let session_id = s.codex_thread.clone();
     let link = s.claude.as_mut().ok_or("session_disconnected")?;
     if link.pending_inputs.len() >= MAX_TRACKED_INPUTS {
         return Err("busy");
     }
     let uuid = new_uuid();
+    // the picture's text is MOVED into the message by assignment: `json!` would copy a 4 MiB string (and a content vector) at each nesting
+    let mut content = Vec::with_capacity(2);
+    if let Some(p) = picture {
+        let mut image = json!({"type": "image", "source": {"type": "base64", "media_type": "image/png"}});
+        image["source"]["data"] = Value::String(p.base64);
+        content.push(image);
+    }
+    content.push(json!({"type": "text", "text": text}));
     let mut message = json!({
         "type": "user", "uuid": uuid, "parent_tool_use_id": null,
-        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+        "message": {"role": "user"},
     });
+    message["message"]["content"] = Value::Array(content);
     if let Some(id) = session_id {
         message["session_id"] = json!(id);
     }

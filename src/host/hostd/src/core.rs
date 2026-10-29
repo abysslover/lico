@@ -21,7 +21,7 @@ pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-
 pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -737,25 +737,24 @@ pub fn snapshot(shared: &Shared, session: &str, generation: Option<i64>) -> Repl
 }
 
 /// An input is dispatched at most once per request id: a repeat returns its state. No generation: the target is whatever execution runs now (a transfer).
-pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id: &str, text: &str, origin: Origin) -> Reply {
+/// `attachment`: the name of a pasted picture (a Claude session only; judged after the states, before the file; the caller removes the file, see `pasted::with_cleanup`).
+pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id: &str, text: &str, origin: Origin, attachment: Option<&str>) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();
     check_generation(&s, generation)?;
     if let Some(state) = s.input_state(request_id) {
         return Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": true})));
     }
-    if s.state == State::Disconnected {
-        return Err("session_disconnected");
-    }
-    if s.state == State::Exited {
-        return Err("session_exited");
-    }
+    if s.state == State::Disconnected { return Err("session_disconnected"); }
+    if s.state == State::Exited { return Err("session_exited"); }
+    let picture = crate::pasted::take(shared, attachment, s.claude.is_some())?;
     if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, text)?;
         s.record_input(request_id, text, origin, crate::session::now_secs());
     } else if s.claude.is_some() {
-        crate::claude::send_input(&mut s, request_id, text)?;
-        s.record_input(request_id, text, origin, crate::session::now_secs());
+        let shown = crate::pasted::echo(text, picture.as_ref());
+        crate::claude::send_input(&mut s, request_id, text, picture)?;
+        s.record_input(request_id, &shown, origin, crate::session::now_secs());
     } else {
         if s.input_tx.is_none() {
             return Err("session_exited");

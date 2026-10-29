@@ -235,10 +235,10 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             let mut map = body_map(request).map_err(bad)?;
             map.insert("op".into(), json!("input"));
             map.insert("session".into(), json!(id));
-            if !valid_request("input", &map) {
+            if !valid_request("input", &map) || map.contains_key("attachment") { // a picture goes by the socket only (S05a): this route never reads a file
                 return Err(bad("bad_request"));
             }
-            core::input(shared, id, Some(int(&map, "generation").unwrap_or(0)), crate::ipc::text(&map, "request_id"), crate::ipc::text(&map, "text"), crate::session::Origin::Person)
+            core::input(shared, id, Some(int(&map, "generation").unwrap_or(0)), crate::ipc::text(&map, "request_id"), crate::ipc::text(&map, "text"), crate::session::Origin::Person, None)
         }
         ["v1", "approvals", number, "response"] => {
             allowed(method == "POST")?;
