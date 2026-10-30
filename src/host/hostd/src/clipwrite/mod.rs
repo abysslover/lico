@@ -79,6 +79,11 @@ fn newest_window(shared: &Shared) -> Option<Arc<Sub>> {
 }
 
 /// The op `clipboard.write`: forward to the newest window and wait for its confirmation. The request was checked by `ipc::valid_request`.
+/// Whether a window is attached that a write could go to (the same window `write` would ask).
+pub fn has_window(shared: &Shared) -> bool {
+    newest_window(shared).is_some()
+}
+
 pub fn write(shared: &Shared, request: &Map<String, Value>) -> Reply {
     let Some(window) = newest_window(shared) else { return Err("no_window") };
     let timeout = Duration::from_millis(request.get("timeout_ms").and_then(Value::as_i64).unwrap_or(TIMEOUT_DEFAULT_MS).clamp(1, TIMEOUT_CEILING_MS) as u64);

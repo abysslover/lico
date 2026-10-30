@@ -130,6 +130,7 @@ pub fn run(args: Vec<String>) {
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.handoff_dir).expect("handoff dir");
         crate::handoff::sweep(&cfg.handoff_dir, session::now_secs()); // received files older than their time go at start, and the oldest of all when the folders of all sessions together are over their budget
         crate::pasted::prepare(&cfg.handoff_dir).expect("pasted dir"); // 0700, and every file a window left in it is removed
+        crate::screentools::prepare(&cfg.handoff_dir).expect("captures dir"); // 0700 and empty: what an earlier host left of a capture goes
         crate::tools::reset(base.join("tools")).expect("tools dir");
         let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
     }

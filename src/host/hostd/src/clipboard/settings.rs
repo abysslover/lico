@@ -16,18 +16,14 @@ use super::open::open_regular;
 pub const MAX_SETTINGS_BYTES: u64 = 4096;
 
 /// The file name, in the state folder.
-#[allow(dead_code)] // S07 is the first caller (see below)
 pub const FILE_NAME: &str = "settings.json";
 
 /// The settings file of a host: beside `handoff`, in the state folder.
-#[allow(dead_code)] // S07 is the first caller (see below)
 pub fn settings_path(handoff_dir: &Path) -> PathBuf {
     handoff_dir.parent().unwrap_or(Path::new(".")).join(FILE_NAME)
 }
 
 /// Whether the agent tool `clipboard_write` may be offered, judged now from the file at `path`. Any doubt is `false`.
-// S07 (the agent tools) is the first caller: it offers the tool only when this says true. Until then only the tests call it.
-#[allow(dead_code)]
 pub fn clipboard_write_enabled(path: &Path) -> bool {
     let Ok(opened) = open_regular(path, 2, MAX_SETTINGS_BYTES) else { return false };
     if opened.file.metadata().map_or(true, |m| m.mode() & 0o022 != 0) {

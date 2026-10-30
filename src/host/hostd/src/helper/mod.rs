@@ -7,11 +7,10 @@
 //! - a job that does not end by the deadline, or answers too much, is ended with SIGKILL to its whole process group (the job and anything it
 //!   started), and the child is REAPED before the function returns: no zombie, no process left, no descriptor left open;
 //! - `Running` reaps on every path out of the function, a panic included;
-//! - the function prints nothing and keeps no state; the caller (S07 for the agent tool, S04 for the clipboard) shows the `JobError`.
+//! - the function prints nothing and keeps no state; the caller (`screentools` for the agent tools, `clipboard` for the command) shows the `JobError`.
 //!
 //! Limit: a grandchild that leaves the process group on purpose (`setsid`) is not reached by the group kill; a job of ours does not do that.
 
-#![allow(dead_code)] // the callers are S04 (the clipboard) and S07 (the agent tool `capture`); the first of them removes this line
 
 use serde_json::{json, Value};
 use std::ffi::c_ulong;
@@ -52,6 +51,7 @@ pub struct JobLimits {
 
 impl JobLimits {
     /// A capture: an answer line of a few hundred bytes, 64 KiB at most; a 1080p screen takes well under a second, 30 s is the stop.
+    #[cfg(test)] // the agent tool sets its own limits (`screentools::work`, 4 s); the 30 s of the command line are for the tests of the helper
     pub fn capture() -> JobLimits {
         JobLimits { max_output: 64 * 1024, deadline: Duration::from_secs(30) }
     }
@@ -70,6 +70,7 @@ impl JobError {
     fn new(reason: &str, detail: impl Into<String>) -> JobError {
         JobError { reason: reason.to_string(), detail: detail.into() }
     }
+    #[cfg(test)]
     pub fn to_json(&self) -> Value {
         json!({"ok": 0, "error": self.reason, "detail": self.detail})
     }

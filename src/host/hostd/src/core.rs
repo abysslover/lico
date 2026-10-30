@@ -43,7 +43,7 @@ pub struct Config {
     pub claude_args: Vec<String>, // placed before the flags the adapter adds (a simulator is started this way)
     pub cred_bin: PathBuf,        // the credential command a provider calls as its key helper
     pub cred_args: Vec<String>,   // its leading arguments (`cred`, when the command is this very program)
-    pub cred_dir: PathBuf, #[allow(dead_code)] pub job_bin: PathBuf, // the credential metadata directory; the program an X job runs as (`xjob`; the callers are S04 and S07)
+    pub cred_dir: PathBuf, pub job_bin: PathBuf, // the credential metadata directory; the program an X job runs as (`xjob`)
     pub workspace_root: PathBuf, pub handoff_dir: PathBuf, // the second: the files of long text one session sent another (`handoff`)
     pub accounts_dir: PathBuf,
     pub registry_dir: PathBuf,

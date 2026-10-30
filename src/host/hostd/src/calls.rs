@@ -16,7 +16,7 @@ use crate::leads;
 use crate::pending::{self, Asked, Request};
 use crate::transfer::{self, By, MAX_HOPS};
 
-/// Calls per minute of one session. Every `send`, `create` and `history` counts, a refused one too; `sessions` and `read_handoff` do not.
+/// Calls per minute of one session. Every `send`, `create`, `history`, `capture`, `clipboard_read` and `clipboard_write` counts, a refused one too; `sessions` and `read_handoff` do not.
 pub const PER_MINUTE: usize = 20;
 const MINUTE: Duration = Duration::from_secs(60);
 const KEPT: usize = 2 * PER_MINUTE; // a session that goes on asking does not make its list grow
@@ -158,10 +158,11 @@ pub(crate) fn card_line(head: &str, text: &str, removed: usize) -> String {
 }
 
 /// What the person's yes does for a request of `caller`. Err: the refusal the host gives now, in the words the model reads.
-pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
+pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, id: i64, tool: &str, target: &str, who: &str, text: &str) -> Result<String, String> {
     match tool {
         "create" => crate::create::perform(shared, caller, target, text),
         "history" => crate::history::perform(shared, caller, target, text),
+        "capture" | "clipboard_read" | "clipboard_write" => crate::screentools::perform(shared, caller, id, tool, target, who, text),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
             Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
             Err(code) => Err(refusal(shared, caller, code)),

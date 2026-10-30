@@ -56,6 +56,7 @@ struct Record {
 pub struct Pending {
     records: Vec<Record>,
     keeps: Vec<(&'static str, String)>, // what the person allowed for as long as this session lives: (tool, target)
+    pub(crate) grants: crate::screentools::grants::Grants, // the single-use yes of a capture or a clipboard read, until the agent calls again (S07a)
 }
 
 impl Pending {
@@ -176,7 +177,8 @@ fn answer_at(shared: &Arc<Shared>, session: &str, generation: i64, id: i64, answ
     let (outcome, reason, words) = if answer != "allow" {
         ("declined", None, record.declined_words())
     } else {
-        match crate::calls::perform(shared, session, record.tool, &record.target, &record.who, &record.text) {
+        match crate::calls::perform(shared, session, id, record.tool, &record.target, &record.who, &record.text) {
+            Ok(done) if crate::screentools::is_tool(record.tool) => ("done", None, format!("approved: {done}")), // a yes that allows or starts, not a thing already done
             Ok(done) => ("done", None, format!("approved and done: {done}")),
             Err(refused) => ("not_done", refused.split(": ").next().map(str::to_string), format!("not done: {refused}")),
         }
@@ -215,7 +217,7 @@ pub fn text_page(shared: &Shared, session: &str, generation: i64, id: i64, offse
 }
 
 /// The host's word to the session that asked, once per decision. It is input like a person's but written by the host: it opens no card and is answered by no notice.
-fn notify(shared: &Shared, session: &str, id: i64, words: &str) {
+pub(crate) fn notify(shared: &Shared, session: &str, id: i64, words: &str) {
     let text = format!("[from lico | {} | approval {id}]\n{words}", crate::transfer::hhmm_now());
     if let Err(code) = core::input(shared, session, None, &format!("n-{}", core::random_hex(8)), &text, Origin::Host, None) {
         eprintln!("lico-host: notice dropped session={session} approval={id} cause={code}");

@@ -39,6 +39,7 @@ mod memory;
 mod pasted;
 mod payload;
 mod pending;
+mod screentools;
 mod png;
 mod provider_record;
 mod registry;

@@ -236,10 +236,8 @@ fn the_shape_of_the_two_ops_is_strict() {
 
 #[test]
 fn the_list_of_tools_holds_no_clipboard_write_and_a_tool_call_of_that_name_is_unknown() {
-    // S04b builds no agent tool: an agent writing the clipboard is S07 and needs a person's approval first (XF-04). Until then the name is not on the list.
-    for tool in crate::mcp::TOOLS.iter() {
-        assert!(!tool.name.contains("clipboard"), "{}", tool.name);
-        assert!(!tool.description.contains("clipboard"), "the text of {} speaks of the clipboard", tool.name);
-    }
-    assert!(!crate::mcp::TOOLS.iter().any(|t| t.name == "clipboard_write" || t.name == "clipboard.write"));
+    // S07a (XF-04): the tool `clipboard_write` exists, but only behind the person's setting and their approval; the dotted name of the socket op is never a tool.
+    // The tool is in the table, and the list holds it only while the setting is on (the tests of `mcp` and the Python tests of S07a pin that).
+    assert!(crate::mcp::TOOLS.iter().any(|t| t.name == crate::mcp::WRITE_TOOL));
+    assert!(!crate::mcp::TOOLS.iter().any(|t| t.name == "clipboard.write"));
 }

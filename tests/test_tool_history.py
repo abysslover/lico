@@ -98,7 +98,7 @@ def test_the_list_names_history_with_a_session_and_a_count_and_read_handoff_with
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read"]
     history, handoff = tools["history"]["inputSchema"], tools["read_handoff"]["inputSchema"]
     assert history["required"] == ["session"] and sorted(history["properties"]) == ["last_n", "session"], history           # no `from`, no folder
     assert handoff["required"] == ["path"] and sorted(handoff["properties"]) == ["limit", "offset", "path"], handoff

@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use crate::core::{self, Shared};
 use crate::http::{self, Bucket};
-use crate::mcp::{self, Outcome};
+use crate::mcp::{self, Answer, Outcome};
 
 const MAX_BODY: usize = 128 * 1024;
 const TOO_LARGE: &str = "too_large: the request is over 128 KiB; split the text into parts, or write it to a file and ask the person to hand it over";
@@ -285,13 +285,16 @@ fn sessions(shared: &Shared, caller: &str) -> String {
     json!({"sessions": rows}).to_string()
 }
 
-fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<String, String> {
+fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
     match name {
-        "sessions" => Ok(sessions(shared, caller)),
-        "send" => crate::calls::send(shared, caller, arguments),
-        "create" => crate::create::create(shared, caller, arguments),
-        "history" => crate::history::history(shared, caller, arguments),
-        "read_handoff" => crate::inbox_read::read_handoff(shared, caller, arguments),
+        "sessions" => Ok(Answer::Text(sessions(shared, caller))),
+        "send" => crate::calls::send(shared, caller, arguments).map(Answer::Text),
+        "create" => crate::create::create(shared, caller, arguments).map(Answer::Text),
+        "history" => crate::history::history(shared, caller, arguments).map(Answer::Text),
+        "read_handoff" => crate::inbox_read::read_handoff(shared, caller, arguments).map(Answer::Text),
+        "capture" => crate::screentools::capture(shared, caller, arguments),
+        "clipboard_read" => crate::screentools::clipboard_read(shared, caller, arguments),
+        "clipboard_write" => crate::screentools::clipboard_write(shared, caller, arguments),
         _ => Err("unknown tool".into()),
     }
 }
@@ -350,7 +353,9 @@ fn serve_one(mut stream: TcpStream, shared: &Arc<Shared>, port: u16, limits: &Li
         Ok(request) => request,
         Err(status) => return refuse(&mut stream, status, "", if status == 413 { TOO_LARGE } else { "bad request" }),
     };
-    match mcp::handle(&request.body, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
+    // the person's setting is read for each message, so that switching it needs no restart (SF-06)
+    let writing = crate::clipboard::settings::clipboard_write_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir));
+    match mcp::handle_with(&request.body, writing, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
         Outcome::Accepted => http::write_response(&mut stream, 202, "", ""),
         Outcome::Reply(text) => http::write_response(&mut stream, 200, &text, ""),
         Outcome::Malformed(text) => http::write_response(&mut stream, 400, &text, ""),

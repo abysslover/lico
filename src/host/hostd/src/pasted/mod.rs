@@ -9,7 +9,7 @@
 //! A file that nobody used does not stay: every file in the folder goes at host start, and a slot call removes the files older than 10 minutes; at most 8
 //! files can be there at once (`busy`). The reply of a slot is for the person's own window; the agent never learns where the file is (`transfer.rs`).
 
-mod base64;
+pub(crate) mod base64;
 
 use serde_json::json;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
@@ -48,7 +48,7 @@ pub fn valid_name(name: &str) -> bool {
 }
 
 /// The folder, made if it is not there (0700). A link or a file in its place is not followed: it is replaced by a folder.
-fn ensure_dir(dir: &Path) -> std::io::Result<()> {
+pub(crate) fn ensure_dir(dir: &Path) -> std::io::Result<()> {
     if let Ok(meta) = std::fs::symlink_metadata(dir) {
         if !meta.is_dir() {
             std::fs::remove_file(dir)?;
@@ -66,7 +66,7 @@ fn remove_entry(path: &Path) {
 }
 
 /// Removes every entry of the folder (at host start).
-fn clear(dir: &Path) {
+pub(crate) fn clear(dir: &Path) {
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
         remove_entry(&entry.path());
     }
