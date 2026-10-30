@@ -25,6 +25,7 @@
 "tests/test_clipboard_write.py" = ["cli", "gui", "host"]
 "tests/test_picture_input.py" = ["host"]
 "tests/test_picture_paste.py" = ["gui", "host"]
+"tests/test_middle_paste.py" = ["gui", "host"]
 "tests/test_card_window.py" = ["gui", "host"]
 "tests/test_claude_adapter.py" = ["host"]
 "tests/test_client_integration.py" = ["gui", "host", "synth"]

@@ -419,3 +419,34 @@ fn a_value_is_confirmed_only_when_the_server_says_this_window_owns_the_selection
     let said: serde_json::Value = serde_json::from_str(&reports.recv_timeout(Duration::from_secs(10)).unwrap()).unwrap();
     assert_eq!(said["ok"].as_bool(), Some(true), "{said}");
 }
+
+// ---- the middle button (S06): the hit test and the choice, pure
+
+#[test]
+fn the_box_takes_its_left_and_top_edge_and_not_its_right_and_bottom_edge_at_any_scale() {
+    for s in [1.0f32, 2.0] {
+        let rect = Some([100.0 * s, 50.0 * s, 300.0 * s, 90.0 * s]);
+        let inside = |x: f32, y: f32| in_box(rect, x * s, y * s);
+        assert!(inside(100.0, 50.0) && inside(299.0, 89.0) && inside(200.0, 70.0), "inside, and the left and top edges");
+        assert!(!inside(300.0, 70.0) && !inside(200.0, 90.0), "the right and bottom edges are outside");
+        assert!(!inside(99.0, 70.0) && !inside(200.0, 49.0), "one pixel outside on the left and the top");
+        assert!(!inside(301.0, 70.0) && !inside(200.0, 91.0), "one pixel outside on the right and the bottom");
+        assert!(in_box(rect, 100.0 * s, 50.0 * s) && !in_box(rect, 100.0 * s - 0.5, 50.0 * s) && !in_box(rect, 100.0 * s, 50.0 * s - 0.5), "half a pixel decides");
+    }
+    assert!(!in_box(None, 150.0, 60.0), "no rectangle (a start screen): nowhere");
+}
+
+#[test]
+fn only_the_press_of_the_middle_button_over_the_box_with_no_menu_asks_for_the_primary_selection() {
+    use ElementState::{Pressed, Released};
+    let rect = Some([100.0, 50.0, 300.0, 90.0]);
+    let at = (150.0, 60.0);
+    assert!(wants_primary(Pressed, MouseButton::Middle, false, rect, at));
+    assert!(!wants_primary(Released, MouseButton::Middle, false, rect, at), "the release does nothing: one press, one paste");
+    for other in [MouseButton::Left, MouseButton::Right, MouseButton::Back, MouseButton::Forward, MouseButton::Other(9)] {
+        assert!(!wants_primary(Pressed, other, false, rect, at), "{other:?}");
+    }
+    assert!(!wants_primary(Pressed, MouseButton::Middle, true, rect, at), "with a menu open the press is ignored");
+    assert!(!wants_primary(Pressed, MouseButton::Middle, false, rect, (150.0, 95.0)), "outside the box");
+    assert!(!wants_primary(Pressed, MouseButton::Middle, false, None, at), "no box");
+}

@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.0.8
+> Version: 1.0.9
 > Branch: `phase/M02-P04-screen-and-copy-paste`, cut at `ffc18ad` (the tip of `phase/M02-P03-agent-to-agent`, report 0.1.7) on the same chain, so `main` can later be moved forward in one step; nothing is pushed.
 > Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of this phase and covers P03 and P04 together. G4 for P03 (`ffc18ad`) waits for the owner; G4 for this phase will be asked for its exact tip.
 
-**Version 1.0.8** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
+**Version 1.0.9** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
 
 ## Goal
 
@@ -61,6 +61,7 @@ A person can capture the screen, a window or a region, copy and paste text and a
 ## S06 - middle-button paste (XF-06)
 
 - A press of the middle button in the input box pastes PRIMARY at the caret (Shift+Insert exists today); the press does not move the selection. **Red test:** E, `xclip -selection primary` sets the text, `xdotool click 2` over the box, the text is in the box.
+- **Built, S06 (1.0.9):** a press of the middle button over the input box of a session (or the text-entry line of a panel: it is the same box and the same `start_paste`) pastes PRIMARY as text at the caret, exactly as Shift+Insert does (500 ms, the same notices, never sent, never a picture); the release, the other buttons, any place outside the box, a start screen and an open menu do nothing, and the selected output lines are not touched (`gui/clip.rs` `in_box`, `wants_primary`, `middle_press`; one arm in `ui_window_event`). The Keys help names the button. No deviation: the hit test takes no scale because the box rectangle (`Editor.rect`, from `place`) and the mouse position are both physical pixels, which is what the left-button tests use too. `paste_notice` moved from `gui/ui.rs` to `gui/clip.rs` to make room (ui.rs 1204 to 1198 lines).
 
 ## S07 - the agent tools (SF-06) and the real program
 
@@ -104,6 +105,7 @@ Wayland; capture of a covered window (Composite); several screens as separate im
 
 ## Changes
 
+- 1.0.9: S06 is built (the middle button pastes the primary selection into the input box: `gui::clip::{in_box, wants_primary, middle_press}`, one arm in `ui_window_event`, the Keys help line); no new deviation.
 - 1.0.8: S05b is built (the window side of a pasted picture: the chip, Enter, Escape, the sentences, `gui::picture`, `clipboard::open::write_slot`, the pure move to `gui/wire.rs`); D12 is new.
 - 1.0.7: S05 is split by the lead (mail 123) into S05a (the host side, built: the folder `pasted`, the op `picture.slot`, the member `attachment`, the image block, the transcript word) and S05b (the window; next); D11 is new.
 - 1.0.6: S04b is built (`lico clipboard write`, the host relay `clipwrite`, the window's owner side with the incremental transfer, the safe open and the setting `clipboard_write`); D10 is new.

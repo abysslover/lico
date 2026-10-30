@@ -409,6 +409,7 @@ impl App {
                 }
                 true
             }
+            WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
@@ -460,13 +461,6 @@ impl App {
     /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
     pub(crate) fn paste_allowed(&self) -> bool {
         self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { !self.session.is_empty() }
-    }
-
-    fn paste_notice(&mut self, text: &str) {
-        match self.ui.panel.as_mut() {
-            Some(p) => p.notice = text.to_string(),
-            None => self.ui.flash = Some(text.to_string()),
-        }
     }
 
     /// Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection; only on the person's own key.

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
+use winit::event::{ElementState, MouseButton};
 use x11rb::protocol::xproto::Atom;
 
 /// The text of a selection (`CLIPBOARD` or `PRIMARY`) as UTF-8, asked for through our own helper window on a connection of its own, within 500 ms.
@@ -357,7 +358,35 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
     }
 }
 
+/// Is the point inside the box as the last frame drew it? Both are physical pixels (the box is placed from the scaled layout, the mouse comes from the
+/// window system), so no scale is needed. The left and top edges belong to the box, the right and bottom ones do not (as for every control).
+pub(in crate::gui) fn in_box(rect: Option<[f32; 4]>, x: f32, y: f32) -> bool {
+    rect.map_or(false, |r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3])
+}
+
+/// Does this mouse event ask for the primary selection to be pasted? Only the PRESS of the MIDDLE button, over the box, with no menu open.
+pub(in crate::gui) fn wants_primary(state: ElementState, button: MouseButton, menu_open: bool, rect: Option<[f32; 4]>, at: (f64, f64)) -> bool {
+    button == MouseButton::Middle && state == ElementState::Pressed && !menu_open && in_box(rect, at.0 as f32, at.1 as f32)
+}
+
 impl super::super::App {
+    /// A press of the middle button over the input box: the same paste as Shift+Insert (the primary selection, text only, at the caret, never sent).
+    /// Anywhere else, on the release and for the other buttons nothing happens here (false: as before this existed). It does not touch the selected lines.
+    pub(super) fn middle_press(&mut self, state: ElementState, button: MouseButton) -> bool {
+        if !wants_primary(state, button, self.ui.menu_open.is_some(), self.ed.rect, self.ui.mouse) {
+            return false;
+        }
+        self.start_paste(b"PRIMARY");
+        true
+    }
+
+    pub(super) fn paste_notice(&mut self, text: &str) {
+        match self.ui.panel.as_mut() {
+            Some(p) => p.notice = text.to_string(),
+            None => self.ui.flash = Some(text.to_string()),
+        }
+    }
+
     /// The sender of the owner thread, started on first use. (It lives in `ui.clip_tx`; the thread gets a proxy of the event loop to report to.)
     pub(super) fn clip_sender(&mut self) -> &mpsc::Sender<Job> {
         let proxy = self.ui.proxy.clone();
