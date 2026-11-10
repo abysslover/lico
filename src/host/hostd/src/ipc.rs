@@ -116,6 +116,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "view.attach" => &["session", "kind"],
         "clipboard.write" => &["kind"], // and `text`, or for a picture `path` instead: see `clipboard_shape`
         "clipboard.done" => &["req", "ok"],
+        "settings.set" => &["clipboard_write"],
         _ => &["view"], // view.detach
     };
     for (key, value) in request {
@@ -170,6 +171,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "error") => valid_str(value, 32),
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
+            ("settings.set", "clipboard_write") => value.is_boolean(),
             _ => false,
         };
         if !ok {
@@ -267,6 +269,7 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         },
         "clipboard.write" => crate::clipwrite::write(shared, &request),
         "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
+        "settings.set" => crate::clipboard::settings::set_clipboard_write(&shared.cfg.handoff_dir, request.get("clipboard_write").and_then(Value::as_bool).unwrap_or(false)),
         "view.detach" => core::view_detach(shared, text(&request, "view")),
         _ => return stream_op(shared, sub, &request, &op, &rid),
     };

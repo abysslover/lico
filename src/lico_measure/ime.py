@@ -15,7 +15,7 @@ import subprocess
 import time
 
 from .procscope import tree_pids
-from .rig import REPO, Client, Host, Xvfb, _client_home, private_dir, session_rgb
+from .rig import REPO, Client, Host, Xvfb, _client_home, private_dir, session_rgb, short_base
 
 # 2-set keyboard: d-k-s-s-u-d spells 안녕, g-k-t-p-e-y spells 하세요, g-k-s-r-m-f spells 한글
 SENTENCE_KEYS = ["d", "k", "s", "s", "u", "d", "g", "k", "t", "p", "d", "y", "space",
@@ -37,8 +37,7 @@ class InputMethod:
     def _start(self, display: str) -> None:
         home = _client_home()
         # the daemon's socket lives under its cache directory; keep that path short (Unix socket limit)
-        root = REPO / "private" / "k"
-        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root = short_base("k")
         for old in root.iterdir():                  # stale sockets of private daemons that a killed run left (not those of runs in parallel with this one)
             if time.time() - old.stat().st_mtime > 86400:
                 shutil.rmtree(old, ignore_errors=True)

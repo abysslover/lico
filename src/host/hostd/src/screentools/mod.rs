@@ -149,7 +149,7 @@ fn two_calls(
     let mut reply = json!({
         "status": "pending", "approval_id": id,
         "message": format!(
-            "Nothing was {} yet. The person has been asked to allow this {}. Lico will tell you here when they decide; then call {} again with the same arguments. A restart of Lico drops the request.",
+            "Nothing was {} yet. The person has been asked to allow this {}. End your turn now; Lico will tell you here when they decide, and then call {} again with the same arguments. A restart of Lico drops the request.",
             if spec.tool == "capture" { "captured" } else { "read" }, spec.who, spec.tool
         ),
     });

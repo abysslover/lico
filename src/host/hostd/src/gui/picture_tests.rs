@@ -170,11 +170,12 @@ fn the_paste_function_asks_the_text_first_and_a_picture_only_when_there_is_no_te
     };
     let text = |p: Pasted| match p {
         Pasted::Text(t) => t,
-        Pasted::Picture(_) => panic!("a picture was asked for"),
+        Pasted::Picture(_) | Pasted::Captured(_) => panic!("a picture was asked for"),
     };
     let picture = |p: Pasted| match p {
         Pasted::Picture(r) => r,
         Pasted::Text(t) => panic!("a text answered: {t:?}"),
+        Pasted::Captured(_) => panic!("a screen capture answered"),
     };
     {
         let _owner = Owner::start(d, "CLIPBOARD", serve(vec![("UTF8_STRING", b"words".to_vec()), ("image/png", png.clone())]));
@@ -510,4 +511,32 @@ fn when_the_host_is_replaced_a_text_that_waited_for_a_place_comes_back_with_its_
 fn the_key_help_names_the_picture_keys() {
     let help = include_str!("panel.rs");
     assert!(help.contains("Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)"));
+    assert!(help.contains("Ctrl+Shift+P captures the screen into a Claude session"));
+}
+
+#[test]
+fn screen_capture_to_input_checks_session_provider_and_places_or_refuses_chip() {
+    let (mut app, _host) = window();
+    assert_eq!(app.capture_input_reason(), None);
+    app.session = "s-codex".into();
+    assert_eq!(app.capture_input_reason(), Some("only Claude sessions take pictures"));
+    app.session.clear();
+    assert_eq!(app.capture_input_reason(), Some("no session is open"));
+
+    app.session = "s-claude".into();
+    app.ui.paste_pending = true;
+    app.on_paste_answer(Pasted::Captured(Ok(pic(4096))));
+    assert!(!app.ui.paste_pending);
+    assert_eq!(app.editor_json()["picture"]["bytes"], 4096);
+    assert_eq!(note(&app), None);
+
+    app.ui.paste_pending = true;
+    app.on_paste_answer(Pasted::Captured(Ok(pic(2048))));
+    assert_eq!(app.editor_json()["picture"]["bytes"], 2048);
+    assert_eq!(note(&app).as_deref(), Some("The picture was replaced."));
+
+    app.ui.paste_pending = true;
+    app.on_paste_answer(Pasted::Captured(Err("Could not capture the screen.")));
+    assert_eq!(note(&app).as_deref(), Some("Could not capture the screen."));
+    assert_eq!(app.editor_json()["picture"]["bytes"], 2048);
 }

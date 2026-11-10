@@ -3,7 +3,7 @@
 //! cases are here too.
 
 use super::open::*;
-use super::settings::{clipboard_write_enabled, settings_path, MAX_SETTINGS_BYTES};
+use super::settings::{clipboard_write_enabled, set_clipboard_write, settings_path, status_json, MAX_SETTINGS_BYTES};
 use crate::handoff::Scratch;
 use std::io::{Cursor, Write};
 use std::os::unix::fs::{symlink, PermissionsExt};
@@ -188,6 +188,30 @@ fn the_setting_is_read_at_each_use_so_switching_it_needs_no_restart() {
     assert!(clipboard_write_enabled(&path));
     setting(&d, br#"{"clipboard_write": false}"#, 0o600);
     assert!(!clipboard_write_enabled(&path));
+}
+
+#[test]
+fn set_clipboard_write_writes_atomically_mode_0600_preserves_other_keys_and_refuses_links() {
+    use std::os::unix::fs::MetadataExt;
+    let d = Scratch::new("set_settings");
+    let handoff = d.0.join("state").join("handoff");
+    assert_eq!(status_json(&handoff), serde_json::json!({"clipboard_write": false}));
+    let body = set_clipboard_write(&handoff, true).unwrap();
+    assert_eq!(body.get("settings"), Some(&serde_json::json!({"clipboard_write": true})));
+    let path = settings_path(&handoff);
+    assert!(clipboard_write_enabled(&path));
+    assert_eq!(std::fs::symlink_metadata(&path).unwrap().mode() & 0o777, 0o600);
+    // another key in a valid settings file is preserved across a toggle
+    setting(&d, br#"{"notifications": false, "clipboard_write": true}"#, 0o600);
+    set_clipboard_write(&handoff, false).unwrap();
+    let saved: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(saved, serde_json::json!({"notifications": false, "clipboard_write": false}));
+    // a symbolic link or a directory at settings.json is refused and not followed
+    let target = file_of(&d, "outside.json", br#"{"keep": 1}"#);
+    std::fs::remove_file(&path).unwrap();
+    symlink(&target, &path).unwrap();
+    assert_eq!(set_clipboard_write(&handoff, true), Err("settings_failed"));
+    assert_eq!(std::fs::read(&target).unwrap(), br#"{"keep": 1}"#);
 }
 
 // ------------------------------------------------------------------------------------------------------------------------ write_slot (S05b)

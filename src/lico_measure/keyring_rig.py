@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 from .procscope import tree_pids
-from .rig import REPO
+from .rig import REPO, short_base
 
 CANARY_PASSWORD = "canary-login-password-6d41"
 
@@ -25,8 +25,7 @@ class PrivateKeyring:
     """`daemon=False` leaves a bus with no Secret Service; `unlock=False` a daemon with no keyring yet."""
 
     def __init__(self, daemon: bool = True, unlock: bool = True) -> None:
-        base = REPO / "private" / "kr"
-        base.mkdir(mode=0o700, parents=True, exist_ok=True)
+        base = short_base("kr")
         self.root = base / secrets.token_hex(3)      # kept short: the daemon's control socket lives under it
         self.procs: list[subprocess.Popen] = []
         try:                                          # a `with` does not call __exit__ when the constructor raises: what was started is stopped here

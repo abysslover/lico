@@ -47,10 +47,11 @@ const NOT_WRITTEN: &str = "The picture could not be written to the host's folder
 const GONE_SESSION: &str = "The session is gone; the picture could not be sent.";
 const NEWER: &str = "A newer picture was pasted meanwhile, so this one was dropped.";
 
-/// What the paste thread found: the text of the selection, or (only in the box of a session, only from the CLIPBOARD, only when there was no text) a picture.
+/// What the paste thread found: the text of the selection, (only in the box of a session, only from the CLIPBOARD, only when there was no text) a picture, or a screen capture.
 pub(crate) enum Pasted {
     Text(Result<String, &'static str>),
     Picture(Result<Read, ClipError>),
+    Captured(Result<Picture, &'static str>),
 }
 
 /// The paste thread's work on `display` (`None`: `$DISPLAY`): the text of `selection` first, exactly as before; ONLY when that answers `empty` and `image` is
@@ -190,12 +191,73 @@ fn refusal(error: &ClipError) -> &'static str {
 }
 
 impl App {
-    /// The answer of the paste thread: a text goes the old way, a picture becomes the chip of the open session.
+    /// The answer of the paste or screen-capture thread: a text goes the old way, a picture becomes the chip of the open session.
     pub(crate) fn on_paste_answer(&mut self, answer: Pasted) {
         match answer {
             Pasted::Text(result) => self.on_paste(result),
             Pasted::Picture(result) => self.on_picture_paste(result),
+            Pasted::Captured(result) => self.on_captured_picture(result),
         }
+    }
+
+    pub(crate) fn capture_input_reason(&self) -> Option<&'static str> {
+        if self.session.is_empty() {
+            Some("no session is open")
+        } else if !self.preedit.is_empty() {
+            Some("finish composing text first")
+        } else if self.ui.paste_pending {
+            Some("a picture is already being read")
+        } else if self.row_of(&self.session).map(|r| r.provider.as_str()) != Some("claude") {
+            Some("only Claude sessions take pictures")
+        } else {
+            None
+        }
+    }
+
+    /// Captures the whole screen off the UI thread and puts the shrunk PNG into the open Claude session's chip.
+    pub(crate) fn capture_to_input(&mut self) {
+        if self.ui.panel.is_some() || self.session.is_empty() || !self.preedit.is_empty() || self.ui.paste_pending {
+            return;
+        }
+        if self.row_of(&self.session).map(|r| r.provider.as_str()) != Some("claude") {
+            self.ed.say(ONLY_CLAUDE);
+            self.dirty = true;
+            return;
+        }
+        let Some(proxy) = self.ui.proxy.clone() else { return };
+        self.ui.paste_pending = true;
+        std::thread::spawn(move || {
+            let result = crate::capture::screen_png(None)
+                .map(|(bytes, width, height)| Picture { bytes, width, height })
+                .map_err(|e| if e.reason == "too_large" { "Capture refused: the screen picture is over 3 MiB." } else { "Could not capture the screen." });
+            let _ = proxy.send_event(super::Ev::Paste(Pasted::Captured(result)));
+        });
+    }
+
+    fn on_captured_picture(&mut self, result: Result<Picture, &'static str>) {
+        self.ui.paste_pending = false;
+        if !self.paste_allowed() || self.ui.panel.is_some() {
+            return;
+        }
+        let session = self.session.clone();
+        let said = match result {
+            Err(why) => Some(why),
+            Ok(pic) => {
+                if self.row_of(&session).map(|r| r.provider.as_str()) != Some("claude") {
+                    Some(ONLY_CLAUDE)
+                } else {
+                    match self.ed.pictures.put(&session, pic) {
+                        Put::Added => None,
+                        Put::Replaced => Some(REPLACED),
+                        Put::Full => Some(ANOTHER_WAITS),
+                    }
+                }
+            }
+        };
+        if let Some(line) = said {
+            self.ed.say(line);
+        }
+        self.dirty = true;
     }
 
     fn row_of(&self, session: &str) -> Option<&super::ui::Row> {

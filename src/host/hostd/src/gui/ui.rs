@@ -104,6 +104,7 @@ pub struct UiState {
     pub card_seen: Option<(String, i64, Instant)>, // the card of the host's own that was last drawn: its session, its id, and the instant of its first frame
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
+    pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
 }
 
 fn display_cols(text: &str) -> usize {
@@ -129,6 +130,7 @@ impl App {
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
         self.ui.rows = rows;
         self.ui.mem.read(&value);
+        self.ui.clipboard_write = value["settings"]["clipboard_write"] == json!(true);
         if let Some(row) = self.ui.rows.iter().find(|r| r.session == self.session) {
             self.generation = row.generation; // the target's generation, so an input or an answer is never aimed at a stale one
         }
@@ -429,6 +431,12 @@ impl App {
                         self.copy_selection();
                         true
                     }
+                    Key::Character(c) if chord && c.eq_ignore_ascii_case("p") => {
+                        if !event.repeat {
+                            self.capture_to_input();
+                        }
+                        true
+                    }
                     Key::Named(NamedKey::Escape) => {
                         if self.ui.sel.is_some() {
                             self.ui.sel = None; // Esc with a selection only drops the selection
@@ -654,7 +662,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "input": self.shown_input(), "editor": self.editor_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write}), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -1149,50 +1157,5 @@ fn blend(dst: &mut u32, r: u32, g: u32, b: u32, alpha: u32) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::{fonts, BACKGROUND};
-    use super::*;
-
-    /// The blit as it was before the rows were blended directly: `Buffer::draw` and a closure per pixel.
-    fn reference(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, ox: i32, oy: i32, clip_x: i32, ink: Color) {
-        buffer.draw(fs, swash, ink, |x, y, gw, gh, color| {
-            let alpha = color.a() as u32;
-            for row in 0..gh as i32 {
-                for col in 0..gw as i32 {
-                    let (px, py) = (x + col + ox, y + row + oy);
-                    if px >= 0 && py >= 0 && px < clip_x && (px as usize) < width && (py as usize) < height {
-                        let idx = py as usize * width + px as usize;
-                        let dst = buf[idx];
-                        let mix = |s: u8, shift: u32| {
-                            let d = (dst >> shift) & 0xFF;
-                            (d + ((s as u32).wrapping_sub(d) as i32 * alpha as i32 / 255) as u32) & 0xFF
-                        };
-                        buf[idx] = 0xFF00_0000 | mix(color.r(), 16) << 16 | mix(color.g(), 8) << 8 | mix(color.b(), 0);
-                    }
-                }
-            }
-        });
-    }
-
-    #[test]
-    fn the_row_blit_draws_the_same_pixels_as_the_callback_blit() {
-        let mut fs = fonts::system(false);
-        let mut faces = fonts::Faces::new(false);
-        let mut buffer = Buffer::new(&mut fs, Metrics::new(15.0, 18.0));
-        buffer.set_size(Some(380.0), Some(150.0));
-        buffer.lines = ["Hello, world fn main() { let x = 42; }", "파일을 읽습니다 안녕하세요 漢字 日本語 שלום", "🙂 e\u{301} → ✓ mixed 파일.rs", "a line that is long enough to wrap around the edge of the window, twice over, so that it does"]
-            .iter()
-            .map(|t| BufferLine::new(*t, LineEnding::None, faces.line(&mut fs, t), Shaping::Advanced))
-            .collect();
-        buffer.shape_until_scroll(&mut fs, true);
-        let (width, height) = (400usize, 160usize);
-        let mut swash = SwashCache::new();
-        for (ox, oy, clip) in [(10, 5, i32::MAX), (-7, 3, 150), (20, -9, 400)] {
-            let (mut a, mut b) = (vec![BACKGROUND; width * height], vec![BACKGROUND; width * height]);
-            reference(&mut buffer, &mut fs, &mut swash, &mut a, width, height, ox, oy, clip, Color::rgb(0xE0, 0xE0, 0xE0));
-            blit(&mut buffer, &mut fs, &mut swash, &mut b, width, height, ox, oy, clip, Color::rgb(0xE0, 0xE0, 0xE0));
-            assert!(a.iter().filter(|p| **p != BACKGROUND).count() > 2000, "the picture must hold text");
-            assert!(a == b, "the pixels differ for offset ({ox}, {oy}) clip {clip}");
-        }
-    }
-}
+#[path = "ui_tests.rs"]
+mod tests;

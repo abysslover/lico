@@ -32,6 +32,8 @@ pub enum Cmd {
     Older,
     Newer,
     Newest,
+    CaptureToInput,
+    ToggleClipWrite,
     Keys,
     About,
 }
@@ -97,6 +99,13 @@ impl App {
                 Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
                 Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
                 Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
+                Self::entry("Capture screen to input", "Ctrl+Shift+P", Cmd::CaptureToInput, panel_reason.or(self.capture_input_reason())),
+                Entry {
+                    label: format!("Agent clipboard write: {}", if self.ui.clipboard_write { "on" } else { "off" }),
+                    key: "",
+                    cmd: Cmd::ToggleClipWrite,
+                    reason: panel_reason,
+                },
             ],
             _ => vec![Self::entry("Keys", "", Cmd::Keys, None), Self::entry("About Lico", "", Cmd::About, None)],
         }
@@ -157,6 +166,8 @@ impl App {
                 let back = self.ui.scroll as isize;
                 self.scroll_by(-back);
             }
+            Cmd::CaptureToInput => self.capture_to_input(),
+            Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
             Cmd::Keys => self.panel_open(Step::Keys),
             Cmd::About => self.panel_open(Step::About),
         }
@@ -216,5 +227,21 @@ impl App {
             _ => {} // while a menu is open nothing else reaches the window
         }
         true
+    }
+
+    fn toggle_clipboard_write(&mut self) {
+        let next = !self.ui.clipboard_write;
+        let reply = self.host_call(serde_json::json!({"op": "settings.set", "clipboard_write": next}));
+        if reply["ok"] == serde_json::json!(1) {
+            self.ui.clipboard_write = reply["settings"]["clipboard_write"] == serde_json::json!(true);
+            self.send("{\"op\":\"status\"}");
+            self.ui.flash = Some(if self.ui.clipboard_write {
+                "Agent clipboard write is on (each write still asks you).".into()
+            } else {
+                "Agent clipboard write is off.".into()
+            });
+        } else {
+            self.ui.flash = Some("Could not change the clipboard setting.".into());
+        }
     }
 }

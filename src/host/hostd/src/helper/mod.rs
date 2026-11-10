@@ -11,7 +11,6 @@
 //!
 //! Limit: a grandchild that leaves the process group on purpose (`setsid`) is not reached by the group kill; a job of ours does not do that.
 
-
 use serde_json::{json, Value};
 use std::ffi::c_ulong;
 use std::io::Read;

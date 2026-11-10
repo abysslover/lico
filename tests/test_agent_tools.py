@@ -437,3 +437,44 @@ def test_the_real_window_takes_a_written_text_to_the_clipboard_when_y_allows_it_
             assert done.returncode == 0 and done.stdout.decode() == text, (done.stdout, told)
 
 
+def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the_claude_input_box():
+    centre = lambda r: ((r[0] + r[2]) // 2, (r[1] + r[3]) // 2)
+    item = lambda m, prefix: next(i for i in m["items"] if i["label"].startswith(prefix))
+    with private_dir() as directory:
+        made = {}
+        with window_with_session(directory, made) as w:
+            sid = made["sid"]
+            cfg = config_of(Path(w.directory) / "state" / "lico", sid)
+            wait_for(lambda: len(w.ui()["rows"]) == 1)
+            w.click(*row_centre(w, sid))
+            assert w.ui()["settings"] == {"clipboard_write": False}
+            assert "clipboard_write" not in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
+            # toggle Agent clipboard write ON from the View menu (no hand-written settings.json)
+            w.key("alt+v")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            assert item(m, "Agent clipboard write")["label"] == "Agent clipboard write: off"
+            w.click(*centre(item(m, "Agent clipboard write")["rect"]))
+            wait_for(lambda: w.ui()["settings"]["clipboard_write"] is True)
+            assert "clipboard_write" in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
+            settings_file = Path(w.directory) / "state" / "lico" / "settings.json"
+            assert stat.S_IMODE(settings_file.stat().st_mode) == 0o600
+            # toggle it back OFF from the View menu
+            w.key("alt+v")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            assert item(m, "Agent clipboard write")["label"] == "Agent clipboard write: on"
+            w.click(*centre(item(m, "Agent clipboard write")["rect"]))
+            wait_for(lambda: w.ui()["settings"]["clipboard_write"] is False)
+            assert "clipboard_write" not in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
+            # capture the screen directly into the Claude input box via View -> Capture screen to input
+            w.key("alt+v")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            cap_entry = item(m, "Capture screen to input")
+            assert cap_entry["enabled"] is True and cap_entry["key"] == "Ctrl+Shift+P"
+            w.click(*centre(cap_entry["rect"]))
+            chip = wait_for(lambda: w.ui()["editor"]["chip"])
+            assert chip.startswith("[picture ") and "1200x800]" in chip
+            w.key("Escape")
+            wait_for(lambda: w.ui()["editor"]["chip"] is None)
+
+
+

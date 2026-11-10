@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from .p02 import LICO
-from .rig import REPO, Xvfb, private_dir
+from .rig import REPO, Xvfb, private_dir, short_base
 
 TEXT_X = 334          # the main area starts right of the session list (LIST_W 330 in gui/ui.rs)
 GRAY_THRESHOLD = 140  # text is light on a near-black background
@@ -47,7 +47,7 @@ class ProductWindow:
         self._dir = private_dir()
         self.directory = self._dir.__enter__()
         self.xvfb = Xvfb()
-        self.runtime = REPO / "private" / "rt" / Path(self.directory).name[-6:]   # a short path: a socket's path has a length limit
+        self.runtime = short_base("rt") / Path(self.directory).name[-6:]   # a short path: a socket's path has a length limit
         self.runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
         for name in ("home", "state"):
             (Path(self.directory) / name).mkdir(mode=0o700)

@@ -13,7 +13,7 @@ import pytest
 from lico_measure import ime
 from lico_measure.captures import LICO, ProductWindow
 from lico_measure.keyring_rig import PrivateKeyring
-from lico_measure.rig import REPO
+from lico_measure.rig import REPO, short_base
 
 
 def running(pid):
@@ -92,7 +92,7 @@ def test_an_input_method_that_fails_while_it_starts_stops_its_bus_and_removes_it
                 pass
         bus = next(p for p in started if p.args[0] == "dbus-daemon")
         config = Path(bus.args[1].split("=", 1)[1])
-        cache = REPO / "private" / "k" / config.name.split("-")[-1].split(".")[0]      # named by the same two characters
+        cache = short_base("k") / config.name.split("-")[-1].split(".")[0]      # named by the same two characters
         assert not [p for p in started if p.poll() is None]
         assert not config.exists() and not cache.exists()
     finally:

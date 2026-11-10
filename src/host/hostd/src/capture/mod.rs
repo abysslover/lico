@@ -336,6 +336,43 @@ pub fn agent_path_of(out: &Path) -> PathBuf {
     out.with_file_name(format!("{stem}.agent.png"))
 }
 
+/// Captures the whole screen in bands into an in-memory PNG (shrunk to `AGENT_MAX_SIDE` if needed, capped at `MAX_IMAGE_FILE`), writing no file.
+pub fn screen_png(display: Option<&str>) -> Result<(Vec<u8>, u32, u32), CapError> {
+    let (conn, num) = x11rb::connect(display).map_err(|e| CapError::new("no_display", e.to_string()))?;
+    let setup = conn.setup();
+    let screen = &setup.roots[num];
+    let (root, width, height) = (screen.root, screen.width_in_pixels as u32, screen.height_in_pixels as u32);
+    let layout = layout_of(setup, screen)?;
+    let (aw, ah) = agent_size(width, height, AGENT_MAX_SIDE);
+    let mut enc = PngEncoder::new(Vec::new(), aw, ah).map_err(write_failed)?;
+    let mut shrinker = ((aw, ah) != (width, height)).then(|| Shrinker::new(width as usize, height as usize, aw as usize, ah as usize));
+    let stride = layout.stride(width as usize);
+    let band_rows = (BAND_BYTES / stride).max(1) as u32;
+    let mut rgb = vec![0u8; width as usize * 3];
+    let mut y = 0;
+    while y < height {
+        let rows = band_rows.min(height - y);
+        let reply = conn.get_image(ImageFormat::Z_PIXMAP, root, 0, y as i16, width as u16, rows as u16, !0).map_err(|e| x_error(e, false))?.reply().map_err(|e| x_error(e, false))?;
+        if reply.data.len() < stride * rows as usize {
+            return Err(CapError::new("x_error", "GetImage returned fewer bytes than the rows"));
+        }
+        for r in 0..rows as usize {
+            layout.row_to_rgb(&reply.data[r * stride..], width as usize, &mut rgb);
+            match shrinker.as_mut() {
+                Some(s) => s.push_row(&rgb, &mut |row| enc.push_row(row)).map_err(write_failed)?,
+                None => enc.push_row(&rgb).map_err(write_failed)?,
+            }
+        }
+        y += rows;
+    }
+    let bytes = enc.finish().map_err(write_failed)?;
+    let max = crate::clipboard::open::MAX_IMAGE_FILE;
+    if !fits(bytes.len() as u64, max) {
+        return Err(CapError::new("too_large", format!("{} bytes exceeds {max}", bytes.len())));
+    }
+    Ok((bytes, aw, ah))
+}
+
 /// The command: the words after `capture`. Prints one JSON line; the exit code is 0, 1 for a usage error and 2 for any other failure.
 pub fn command(args: &[String]) -> ! {
     let result = parse_args(args).and_then(|req| run(&req, &Options::default()));

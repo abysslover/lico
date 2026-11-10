@@ -194,7 +194,7 @@ reached ends it as the other commands end (exit 3 and 4).
 The setting `clipboard_write` (SF-06) governs the agent tool `clipboard_write` of M02-P04 S07a (listed and callable only while the setting is on, with the
 person's approval per call): off unless the file `settings.json` in the host's state folder (the parent of the handoff folder) is a regular file of the user,
 at most 4096 bytes, not writable by group or others, holding a JSON object whose `clipboard_write` is the boolean `true`. Anything else, a missing file included,
-is off. It is read at each use.
+is off. It is read at each use, reported in `status` under `"settings": {"clipboard_write": bool}`, and toggled over the local socket by `{"op": "settings.set", "clipboard_write": bool}` (used by the window's View menu; never exposed on HTTP or the tool connection).
 
 ## Pasted picture (M02-P04 S05a)
 

@@ -12,7 +12,7 @@ import pytest
 
 from lico_measure import notices
 from lico_measure.p02 import HOSTD_DIR
-from lico_measure.rig import REPO, Xvfb, private_dir
+from lico_measure.rig import REPO, Xvfb, private_dir, short_base
 
 EXE = HOSTD_DIR / "lico"
 ALLOWED_LIBRARIES = {"linux-vdso.so.1", "libgcc_s.so.1", "libm.so.6", "libc.so.6", "/lib64/ld-linux-x86-64.so.2"}
@@ -27,7 +27,7 @@ def alone(directory):
     home = Path(directory) / "home"
     for name in ("home", "state"):
         (Path(directory) / name).mkdir(mode=0o700)
-    runtime = REPO / "private" / "rt" / Path(directory).name[-6:]          # a short path: a socket's path may not be longer than about 100 bytes
+    runtime = short_base("rt") / Path(directory).name[-6:]                  # a short path: a socket's path may not be longer than about 100 bytes
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
     env = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "HOME": str(home), "XDG_RUNTIME_DIR": str(runtime), "XDG_STATE_HOME": str(Path(directory) / "state")}
     return exe, env

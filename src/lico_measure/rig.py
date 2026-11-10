@@ -46,9 +46,24 @@ CANDIDATE_ENV = {
 }
 
 
+def short_base(sub: str) -> Path:
+    """An owner-only 0700 folder short enough for AF_UNIX sockets even when REPO is nested deeply."""
+    candidate = REPO / "private" / sub
+    if len(str(candidate)) <= 62:
+        candidate.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return candidate
+    uid_run = Path(f"/run/user/{os.getuid()}")
+    root = (uid_run if uid_run.is_dir() else Path.home() / ".cache") / "lico-p"
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(root, 0o700)
+    target = root / sub
+    target.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return target
+
+
 def _client_home() -> Path:
     """A private, persistent home for client processes (font caches survive between runs). The parallel runner gives each worker its own."""
-    home = REPO / "private" / "scratch" / ("clienthome" + (f"-{os.environ['LICO_WORKER']}" if os.environ.get("LICO_WORKER") else ""))
+    home = short_base("scratch") / ("clienthome" + (f"-{os.environ['LICO_WORKER']}" if os.environ.get("LICO_WORKER") else ""))
     for sub in ("", "config", "cache", "data", "run"):
         (home / sub).mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(home / "run", 0o700)
@@ -241,9 +256,8 @@ class Client:
 
 
 def private_dir() -> tempfile.TemporaryDirectory:
-    """A 0700 run directory under the git-ignored private scratch area."""
-    base = REPO / "private" / "scratch" / "runs"
-    base.mkdir(parents=True, exist_ok=True)
+    """A 0700 run directory short enough for AF_UNIX sockets."""
+    base = short_base("runs")
     return tempfile.TemporaryDirectory(dir=base, prefix="run-")
 
 

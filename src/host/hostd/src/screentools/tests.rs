@@ -328,3 +328,45 @@ fn a_yes_with_no_window_open_says_no_window_in_the_notice_at_once() {
     let notices = r.notices().join("\n");
     assert!(notices.contains("not done: no_window: "), "{notices}");
 }
+
+#[test]
+fn clipboard_write_refuses_text_that_draws_nothing_and_leaves_no_card() {
+    let r = room();
+    for invisible in ["   \n\t  ", "\u{200B}\u{FEFF}", "\u{202E}\u{2066}", "\x07\x1b"] {
+        let e = r.write(invisible).unwrap_err();
+        assert!(e.starts_with("bad_request: clipboard_write needs"), "{invisible:?}: {e}");
+    }
+    assert_eq!(r.waiting(), 0);
+}
+
+#[test]
+fn captures_folder_at_four_fresh_files_refuses_with_busy_and_sweeps_stale_leftovers() {
+    let _one = serial();
+    let r = room();
+    let dir = work::captures_dir(&r.w.shared.cfg.handoff_dir);
+    for i in 0..work::MAX_FILES {
+        std::fs::write(dir.join(format!("fresh_{i}.png")), b"x").unwrap();
+    }
+    let id = pending_id(r.capture(&[]));
+    r.decide(id, "allow", false).unwrap();
+    let e = r.capture(&[]).unwrap_err();
+    assert!(e.starts_with("busy: "), "{e}");
+    assert_eq!(r.runs(), 0, "the helper did not start when four fresh files were already there");
+    // replace one fresh file with an old leftover (mtime 1970): the sweep removes it and the next call succeeds
+    std::fs::remove_file(dir.join("fresh_0.png")).unwrap();
+    let stale = dir.join("stale.png");
+    std::fs::write(&stale, b"x").unwrap();
+    let epoch = [libc_timespec(1), libc_timespec(1)];
+    let c = std::ffi::CString::new(stale.to_str().unwrap()).unwrap();
+    extern "C" {
+        fn utimensat(dirfd: i32, pathname: *const std::ffi::c_char, times: *const [i64; 2], flags: i32) -> i32;
+    }
+    fn libc_timespec(sec: i64) -> [i64; 2] {
+        [sec, 0]
+    }
+    assert_eq!(unsafe { utimensat(-100, c.as_ptr(), epoch.as_ptr(), 0) }, 0);
+    let id2 = pending_id(r.capture(&[]));
+    r.decide(id2, "allow", false).unwrap();
+    assert_eq!(blocks_of(r.capture(&[])).len(), 2);
+    assert!(!stale.exists(), "the stale leftover was swept");
+}

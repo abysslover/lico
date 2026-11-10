@@ -2,11 +2,11 @@
 
 > Status: in_progress
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.1.1
+> Version: 1.1.2
 > Branch: `phase/M02-P04-screen-and-copy-paste`, cut at `ffc18ad` (the tip of `phase/M02-P03-agent-to-agent`, report 0.1.7) on the same chain, so `main` can later be moved forward in one step; nothing is pushed.
 > Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of this phase and covers P03 and P04 together. G4 for P03 (`ffc18ad`) waits for the owner; G4 for this phase will be asked for its exact tip.
 
-**Version 1.1.1** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
+**Version 1.1.2** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
 
 ## Goal
 
@@ -70,6 +70,7 @@ A person can capture the screen, a window or a region, copy and paste text and a
 
 - **Built, S07a (1.1.0):** the host side of the three tools, no real program and no model call: `capture`, `clipboard_read` and `clipboard_write` on the tool connection, each with the person's approval (module `screentools`: `grants`, `work`, and the tool functions; the answer type `mcp::Answer` with blocks; `tools::run` and `mcp::handle_with` learn it). `clipboard_write` is listed only while the setting is on. The path of the approval, the words, the numbers and the limits are in Deviation D13.
 - **Built, S07b (1.1.1):** `real_program_canary.py` 1.2.0 (`--screen`, `--only R1,R2,...`, README 1.2.0) and the stale sentence in `protocol_v1.md` updated, tested against `claude` 2.1.322 (`haiku`) on a private `1200x800x24` `Xvfb`. `R1` (`auto`, 9.35 s, 2 calls, `[image 19.4 KiB]`), `R2` (`default`, 9.05 s, 2 calls, no extra approval) and `R5` (pasted green PNG, 3.04 s, 0 approvals) passed on the first clean run, and both offline judge mutations rejected wrong colours. Two real-stream facts were measured: (1) an MCP `tool_result` line on `claude` 2.1.322 carries the base64 once (~1.33x PNG), unlike the `Read` file tool probed in S01 (~2.7x), so a 172.0 KiB agent PNG stayed whole (`> [image 172.0 KiB]`) while a 298.6 KiB agent PNG crossed 256 KiB and wrote `> [image 298.6 KiB omitted]` in the record while `haiku` still saw the image and named the solid green top half; (2) on `R3` (298.6 KiB) and `R4` (`7431` reported, planted `BANANA` instruction ignored), `haiku` made one immediate `already_pending: true` repeat before ending turn 1 and one call after the notice (`calls=3`, 1 approval, `captures/` empty). No new deviation.
+- **Built, S07c (1.1.2):** human-administrator GUI controls in the `View` menu (`Agent clipboard write: off/on` backed by atomic `0600` `settings.set` over the local socket and `"settings"` in `status`, never exposed on HTTP or the tool connection; `Capture screen to input` / `Ctrl+Shift+P` using in-memory `capture::screen_png` into the open Claude session's picture chip), unit-test coverage for invisible-only `clipboard_write` text and `captures/` 4-file `busy` + stale sweep, `src/host/README.md` updated, and `tests/size_allowlist.toml` tightened (`core.rs` 1118 to 1087, `gui/ui.rs` 1198 to 1185 after moving inline tests to `gui/ui_tests.rs`).
 
 ## S08 - measurement and report
 
@@ -109,6 +110,7 @@ Wayland; capture of a covered window (Composite); several screens as separate im
 
 ## Changes
 
+- 1.1.2: S07c is built (`View` menu toggle `Agent clipboard write: off/on` via local-socket `settings.set` and `status` `"settings"`, `View` menu `Capture screen to input` / `Ctrl+Shift+P` via in-memory `capture::screen_png`, unit tests for invisible `clipboard_write` text and `captures/` 4-file `busy` + stale sweep, `src/host/README.md` updated, `gui/ui_tests.rs` split out, and `size_allowlist.toml` lowered).
 - 1.1.1: S07b is built (`real_program_canary.py` 1.2.0 `--screen` rows `R1` to `R5` and two judge mutations on `claude` 2.1.322 `haiku`, README 1.2.0, `protocol_v1.md` `clipboard_write` sentence updated, S07 bullet rewritten to the `target`/`kind`/setting-gated shape built in S07a); measured that MCP `tool_result` carries base64 once (~1.33x PNG, so 298.6 KiB triggers `[image 298.6 KiB omitted]` while the model still sees the image) and that `haiku` occasionally makes one `already_pending` check before ending turn 1; no new deviation.
 - 1.1.0: S07a is built (the agent tools `capture`, `clipboard_read` and `clipboard_write` on the tool connection, with the person's approval: `screentools`, the grants of the two-call form, `mcp::Answer`); new Deviation D13 (the approval path comes first in it).
 - 1.0.9: S06 is built (the middle button pastes the primary selection into the input box: `gui::clip::{in_box, wants_primary, middle_press}`, one arm in `ui_window_event`, the Keys help line); no new deviation.
