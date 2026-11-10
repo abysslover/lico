@@ -191,9 +191,10 @@ A second write replaces the first; when another client takes the selection the w
 never asked. The command exits 0 on success, 1 for a usage error and 2 for any other failure, and prints one JSON line; a host that cannot be
 reached ends it as the other commands end (exit 3 and 4).
 
-The setting `clipboard_write` (SF-06) is for the agent tool of M02-P04 S07, which does not exist yet: off unless the file `settings.json` in the
-host's state folder (the parent of the handoff folder) is a regular file of the user, at most 4096 bytes, not writable by group or others, holding a
-JSON object whose `clipboard_write` is the boolean `true`. Anything else, a missing file included, is off. It is read at each use.
+The setting `clipboard_write` (SF-06) governs the agent tool `clipboard_write` of M02-P04 S07a (listed and callable only while the setting is on, with the
+person's approval per call): off unless the file `settings.json` in the host's state folder (the parent of the handoff folder) is a regular file of the user,
+at most 4096 bytes, not writable by group or others, holding a JSON object whose `clipboard_write` is the boolean `true`. Anything else, a missing file included,
+is off. It is read at each use.
 
 ## Pasted picture (M02-P04 S05a)
 
