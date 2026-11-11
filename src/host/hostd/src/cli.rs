@@ -10,6 +10,7 @@ use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
+  capabilities                   protocol, operations, HTTP routes, MCP tools and limits\n\
   status                         host and session status\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
@@ -193,6 +194,9 @@ pub fn run(args: Vec<String>) {
     }
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     match words.as_slice() {
+        ["capabilities"] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "capabilities"})));
+        }
         ["status"] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "status"})));
         }

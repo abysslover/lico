@@ -30,6 +30,7 @@
 "tests/test_card_window.py" = ["gui", "host"]
 "tests/test_agent_tools.py" = ["gui", "host"]
 "tests/test_computer_use.py" = ["cli", "gui", "host"]
+"tests/test_control_parity.py" = ["cli", "host", "synth"]
 "tests/test_everyday_comfort.py" = ["cli", "gui", "host"]
 "tests/test_m02_milestone_review.py" = ["cli", "gui", "host"]
 "tests/test_claude_adapter.py" = ["host"]

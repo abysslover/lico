@@ -191,6 +191,51 @@ fn body_map(request: &Request) -> Result<Map<String, Value>, &'static str> {
     }
 }
 
+fn decode_query_component(raw: &str) -> Result<String, &'static str> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' => {
+                if i + 2 >= bytes.len() {
+                    return Err("bad_request");
+                }
+                let hex = std::str::from_utf8(&bytes[i + 1..=i + 2]).map_err(|_| "bad_request")?;
+                let byte = u8::from_str_radix(hex, 16).map_err(|_| "bad_request")?;
+                out.push(byte);
+                i += 3;
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8(out).map_err(|_| "bad_request")
+}
+
+fn query_map(query: &str) -> Result<Map<String, Value>, &'static str> {
+    let mut out = Map::new();
+    if query.is_empty() {
+        return Ok(out);
+    }
+    for pair in query.split('&') {
+        let (k, v) = pair.split_once('=').ok_or("bad_request")?;
+        let key = decode_query_component(k)?;
+        let val = decode_query_component(v)?;
+        if key.is_empty() || out.contains_key(&key) {
+            return Err("bad_request");
+        }
+        out.insert(key, Value::String(val));
+    }
+    Ok(out)
+}
+
 /// Map an authenticated request to a host operation; Err is a v1 error code.
 fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, (u16, &'static str)> {
     let parts: Vec<&str> = request.path.trim_start_matches('/').split('/').collect();
@@ -198,6 +243,34 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
     let bad = |code: &'static str| (status_of(code), code);
     let allowed = |ok: bool| if ok { Ok(()) } else { Err((405u16, "bad_request")) };
     let result = match parts.as_slice() {
+        ["v1"] => {
+            allowed(method == "POST")?;
+            let map = body_map(request).map_err(bad)?;
+            if let Some(v) = map.get("v").and_then(Value::as_i64) {
+                if v != 1 {
+                    return Err(bad("version_unsupported"));
+                }
+            }
+            let Some(op) = map.get("op").and_then(Value::as_str) else {
+                return Err(bad("bad_request"));
+            };
+            if !core::OPS.contains(&op) {
+                return Err(bad("unknown_op"));
+            }
+            if !valid_request(op, &map) {
+                return Err(bad("bad_request"));
+            }
+            let rid = map.get("id").cloned();
+            let mut body = crate::ipc::dispatch_request(shared, op, &map, true).unwrap_or(Err("bad_request")).map_err(bad)?;
+            if let Some(id) = rid {
+                body.insert("id".into(), id);
+            }
+            Ok(body)
+        }
+        ["v1", "capabilities"] => {
+            allowed(method == "GET")?;
+            crate::admin::capabilities(shared)
+        }
         ["v1", "status"] => {
             allowed(method == "GET")?;
             core::status(shared)
@@ -206,6 +279,18 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             allowed(method == "GET")?;
             core::resources(shared)
         }
+        ["v1", "accounts"] => match method {
+            "GET" => core::account_list(shared),
+            "POST" => {
+                let mut map = body_map(request).map_err(bad)?;
+                map.insert("op".into(), json!("account.create"));
+                if !valid_request("account.create", &map) {
+                    return Err(bad("bad_request"));
+                }
+                core::account_create(shared, crate::ipc::text(&map, "provider"), crate::ipc::text(&map, "label"))
+            }
+            _ => return Err((405, "bad_request")),
+        },
         ["v1", "settings"] => match method {
             "GET" => Ok(obj(json!({"settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir)}))),
             "POST" => {
@@ -256,6 +341,49 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 q => q.strip_prefix("after=").and_then(|n| n.parse::<i64>().ok()).filter(|n| *n >= -1).ok_or_else(|| bad("bad_request"))?,
             };
             core::events(shared, id, after)
+        }
+        ["v1", "sessions", id, "history"] if id_ok(id) => {
+            allowed(method == "GET")?;
+            let qmap = query_map(&request.query).map_err(bad)?;
+            if qmap.keys().any(|k| k != "before" && k != "limit") {
+                return Err(bad("bad_request"));
+            }
+            let before = qmap.get("before").and_then(Value::as_str).and_then(|s| s.parse::<i64>().ok()).ok_or_else(|| bad("bad_request"))?;
+            let limit = match qmap.get("limit") {
+                Some(v) => v.as_str().and_then(|s| s.parse::<i64>().ok()).ok_or_else(|| bad("bad_request"))?,
+                None => 100,
+            };
+            let req: Map<String, Value> = json!({"op": "history", "session": id, "before": before, "limit": limit}).as_object().cloned().unwrap_or_default();
+            if !valid_request("history", &req) {
+                return Err(bad("bad_request"));
+            }
+            core::history(shared, id, before, limit)
+        }
+        ["v1", "search"] => {
+            allowed(method == "GET")?;
+            let qmap = query_map(&request.query).map_err(bad)?;
+            if qmap.keys().any(|k| k != "q" && k != "session" && k != "limit") {
+                return Err(bad("bad_request"));
+            }
+            let query = qmap.get("q").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
+            let mut req = Map::new();
+            req.insert("op".into(), json!("session.search"));
+            req.insert("query".into(), json!(query));
+            if let Some(s) = qmap.get("session").and_then(Value::as_str) {
+                req.insert("session".into(), json!(s));
+            }
+            let limit = match qmap.get("limit") {
+                Some(v) => {
+                    let parsed = v.as_str().and_then(|s| s.parse::<i64>().ok()).ok_or_else(|| bad("bad_request"))?;
+                    req.insert("limit".into(), json!(parsed));
+                    parsed
+                }
+                None => crate::search::DEFAULT_LIMIT as i64,
+            };
+            if !valid_request("session.search", &req) {
+                return Err(bad("bad_request"));
+            }
+            crate::search::search_op(shared, query, req.get("session").and_then(Value::as_str), limit as usize)
         }
         ["v1", "sessions", id, "input"] if id_ok(id) => {
             allowed(method == "POST")?;

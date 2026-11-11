@@ -1,9 +1,11 @@
-//! Administrator account and session control operations (`M03-P01`):
+//! Administrator account, session, and capability control operations (`M03-P01`, `M03-P04`):
 //! - `account.rename`: rename an existing account's label atomically without touching credentials or homes.
 //! - `session.mode`: switch a provider session's permission mode (`"auto"` <-> `"default"`) safely with
 //!   generation checking. Codex applies `s.mode` per turn immediately; an idle running Claude session
 //!   restarts cleanly with `--permission-mode` (and `--resume` when a conversation id exists) while busy
 //!   or pending-approval turns refuse with `"busy"`.
+//! - `capabilities`: canonical machine-readable inventory of protocol version, build identity, operations,
+//!   socket-only operations, loopback HTTP routes, MCP agent tools, and host/window limits.
 
 use std::sync::Arc;
 
@@ -11,6 +13,64 @@ use serde_json::json;
 
 use crate::core::{check_generation, find, Reply, Shared};
 use crate::session::{obj, State};
+
+/// Operations bound to a stateful Unix-socket subscriber or local file attachment slot; `POST /v1` over HTTP refuses them with `bad_request`.
+pub const SOCKET_ONLY_OPS: &[&str] = &[
+    "subscribe",
+    "unsubscribe",
+    "view.attach",
+    "clipboard.write",
+    "clipboard.done",
+    "picture.slot",
+];
+
+/// Loopback HTTP routes served by `src/host/hostd/src/http.rs`.
+pub const HTTP_ROUTES: &[&str] = &[
+    "POST /v1",
+    "GET /v1/capabilities",
+    "GET /v1/status",
+    "GET /v1/resources",
+    "GET /v1/settings",
+    "POST /v1/settings",
+    "GET /v1/accounts",
+    "POST /v1/accounts",
+    "POST /v1/accounts/<id>/rename",
+    "GET /v1/sessions",
+    "POST /v1/sessions",
+    "GET /v1/sessions/<id>",
+    "GET /v1/sessions/<id>/snapshot",
+    "GET /v1/sessions/<id>/events",
+    "GET /v1/sessions/<id>/history",
+    "POST /v1/sessions/<id>/input",
+    "POST /v1/sessions/<id>/mode",
+    "POST /v1/sessions/<id>/rebind",
+    "GET /v1/search",
+    "POST /v1/approvals/<id>/response",
+    "POST /v1/views",
+    "DELETE /v1/views/<view>",
+];
+
+pub fn capabilities(shared: &Shared) -> Reply {
+    let mcp_tools: Vec<&'static str> = crate::mcp::TOOLS.iter().map(|t| t.name).collect();
+    Ok(obj(json!({
+        "protocol": 1,
+        "version": env!("CARGO_PKG_VERSION"),
+        "commit": env!("LICO_BUILT_COMMIT"),
+        "build": crate::core::build_id(),
+        "ops": crate::core::OPS,
+        "socket_only_ops": SOCKET_ONLY_OPS,
+        "http_routes": HTTP_ROUTES,
+        "mcp_tools": mcp_tools,
+        "limits": {
+            "max_request": crate::core::MAX_REQUEST,
+            "max_input_text": crate::ipc::MAX_INPUT_TEXT,
+            "max_sessions": shared.cfg.max_sessions,
+            "retain": shared.cfg.retain,
+            "font_px_min": crate::clipboard::settings::MIN_FONT_PX,
+            "font_px_max": crate::clipboard::settings::MAX_FONT_PX,
+        },
+    })))
+}
 
 pub fn account_rename(shared: &Shared, account: &str, label: &str) -> Reply {
     if !crate::ipc::valid_label(&json!(label)) {
@@ -102,5 +162,16 @@ mod tests {
         assert_eq!(reloaded.get(&created.id).unwrap().label, "Team Admin");
         assert_eq!(reloaded.default_for("claude").unwrap().id, created.id);
         assert_eq!(accounts.rename("a000000", "Ghost").err(), Some("unknown_account"));
+    }
+
+    #[test]
+    fn socket_only_ops_are_a_strict_subset_of_protocol_ops() {
+        for op in super::SOCKET_ONLY_OPS {
+            assert!(crate::core::OPS.contains(op), "missing in core::OPS: {op}");
+        }
+        assert!(crate::core::OPS.contains(&"capabilities"));
+        assert!(!super::SOCKET_ONLY_OPS.contains(&"capabilities"));
+        assert!(super::HTTP_ROUTES.contains(&"POST /v1"));
+        assert!(super::HTTP_ROUTES.contains(&"GET /v1/capabilities"));
     }
 }

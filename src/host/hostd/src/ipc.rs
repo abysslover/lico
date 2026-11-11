@@ -93,7 +93,7 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" => &[],
+        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" => &[],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
         "session.mode" => &["session", "generation", "mode"],
@@ -214,6 +214,78 @@ fn transfer_shape(request: &Map<String, Value>) -> bool {
     }
 }
 
+/// Shared non-streaming request dispatcher used by both the Unix socket (`via_http = false`) and `POST /v1` (`via_http = true`).
+/// Returns `None` only for socket-bound operations (`SOCKET_ONLY_OPS`) when `via_http` is `false`.
+pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<String, Value>, via_http: bool) -> Option<core::Reply> {
+    if via_http && (crate::admin::SOCKET_ONLY_OPS.contains(&op) || (op == "input" && request.contains_key("attachment"))) {
+        return Some(Err("bad_request"));
+    }
+    let session = text(request, "session");
+    let generation = int(request, "generation");
+    let result = match op {
+        "hello" => core::hello(shared),
+        "capabilities" => crate::admin::capabilities(shared),
+        "status" => core::status(shared),
+        "session.list" => core::session_list(shared),
+        "resources" => core::resources(shared),
+        "session.resume" => core::session_resume(shared, session, generation.unwrap_or(0)),
+        "session.purge" => core::session_purge_with(shared, session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
+        "session.close" => crate::lifecycle::session_close_with(shared, session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
+        "session.create" => core::session_create(
+            shared,
+            text(request, "kind"),
+            int(request, "rate").unwrap_or(0) as u64,
+            int(request, "history").unwrap_or(0) as u64,
+            int(request, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
+            request.get("account").and_then(Value::as_str),
+            text(request, "mode"),
+            crate::folders::Settings::of_request(request),
+        ),
+        "session.rename" => crate::folders::rename(shared, session, text(request, "name")),
+        "session.mode" => crate::admin::session_mode(shared, session, generation.unwrap_or(0), text(request, "mode")),
+        "session.options" => crate::folders::options(shared),
+        "session.rebind" => core::session_rebind(shared, session, generation.unwrap_or(0), text(request, "account")),
+        "account.create" => core::account_create(shared, text(request, "provider"), text(request, "label")),
+        "account.rename" => crate::admin::account_rename(shared, text(request, "account"), text(request, "label")),
+        "account.list" => core::account_list(shared),
+        "account.default" => core::account_default(shared, text(request, "account")),
+        "history" => core::history(shared, session, int(request, "before").unwrap_or(0), int(request, "limit").unwrap_or(100)),
+        "account.affected" => core::account_affected(shared, text(request, "account")),
+        "account.login.start" => crate::login::start(shared, text(request, "account"), if text(request, "method").is_empty() { "browser" } else { text(request, "method") }),
+        "account.login.input" => crate::login::input(shared, text(request, "account"), text(request, "code")),
+        "account.login.status" => crate::login::status(shared, text(request, "account"), request.get("check").and_then(Value::as_bool).unwrap_or(false)),
+        "host.stop" => core::host_stop(shared, request.get("force").and_then(Value::as_bool).unwrap_or(false), request.get("build").and_then(Value::as_str)),
+        "account.login.cancel" => crate::login::cancel(shared, text(request, "account")),
+        "account.remove" => core::account_remove(shared, text(request, "account"), text(request, "sessions")),
+        "account.credential" => core::account_credential(shared, text(request, "account"), text(request, "credential_ref")),
+        "snapshot" => core::snapshot(shared, session, generation),
+        "input" => crate::pasted::with_cleanup(shared, request.get("attachment").and_then(Value::as_str), |attachment| core::input(shared, session, Some(generation.unwrap_or(0)), text(request, "request_id"), text(request, "text"), crate::session::Origin::Person, attachment)),
+        "transfer.send" if text(request, "kind") == "conversation" => crate::transfer::hand_over(shared, text(request, "from"), text(request, "to")),
+        "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(request, "to"), text(request, "kind"), text(request, "text"), crate::transfer::By::Person),
+        "input.status" => core::input_status(shared, session, text(request, "request_id")),
+        "approval.text" => crate::pending::text_page(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), int(request, "offset").unwrap_or(0) as usize, int(request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
+        "approval.answer" => core::approval_answer(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), text(request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
+        "settings.set" => crate::clipboard::settings::update_settings(
+            &shared.cfg.handoff_dir,
+            crate::clipboard::settings::Patch {
+                clipboard_write: request.get("clipboard_write").and_then(Value::as_bool),
+                notifications: request.get("notifications").and_then(Value::as_bool),
+                group_by: request.get("group_by").and_then(Value::as_str),
+                font_px: int(request, "font_px"),
+            },
+        ),
+        "folder.git" => crate::worktree::folder_git_op(shared, text(request, "cwd")),
+        "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
+        "display.ensure" => crate::vdisplay::ensure(shared, session),
+        "display.status" => crate::vdisplay::status_op(shared, session),
+        "display.stop" => crate::vdisplay::stop_op(shared, session),
+        "real_screen.stop" => crate::computer::real::stop_op(shared, request.get("session").and_then(Value::as_str)),
+        "view.detach" => core::view_detach(shared, text(request, "view")),
+        _ => return None,
+    };
+    Some(result)
+}
+
 fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
     let parsed: Option<Value> = serde_json::from_slice(raw).ok();
     let Some(Value::Object(request)) = parsed else { return fail(sub, "bad_request", None) };
@@ -230,79 +302,24 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
     if !valid_request(&op, &request) {
         return fail(sub, "bad_request", rid.as_ref());
     }
-    let session = text(&request, "session").to_string();
-    let generation = int(&request, "generation");
-    let result = match op.as_str() {
-        "hello" => core::hello(shared),
-        "status" => core::status(shared),
-        "session.list" => core::session_list(shared),
-        "resources" => core::resources(shared),
-        "session.resume" => core::session_resume(shared, &session, generation.unwrap_or(0)),
-        "session.purge" => core::session_purge_with(shared, &session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
-        "session.close" => crate::lifecycle::session_close_with(shared, &session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
-        "session.create" => core::session_create(
-            shared,
-            text(&request, "kind"),
-            int(&request, "rate").unwrap_or(0) as u64,
-            int(&request, "history").unwrap_or(0) as u64,
-            int(&request, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
-            request.get("account").and_then(Value::as_str),
-            text(&request, "mode"),
-            crate::folders::Settings::of_request(&request),
-        ),
-        "session.rename" => crate::folders::rename(shared, &session, text(&request, "name")),
-        "session.mode" => crate::admin::session_mode(shared, &session, generation.unwrap_or(0), text(&request, "mode")),
-        "session.options" => crate::folders::options(shared),
-        "session.rebind" => core::session_rebind(shared, &session, generation.unwrap_or(0), text(&request, "account")),
-        "account.create" => core::account_create(shared, text(&request, "provider"), text(&request, "label")),
-        "account.rename" => crate::admin::account_rename(shared, text(&request, "account"), text(&request, "label")),
-        "account.list" => core::account_list(shared),
-        "account.default" => core::account_default(shared, text(&request, "account")),
-        "history" => core::history(shared, &session, int(&request, "before").unwrap_or(0), int(&request, "limit").unwrap_or(100)),
-        "account.affected" => core::account_affected(shared, text(&request, "account")),
-        "account.login.start" => crate::login::start(shared, text(&request, "account"), if text(&request, "method").is_empty() { "browser" } else { text(&request, "method") }),
-        "account.login.input" => crate::login::input(shared, text(&request, "account"), text(&request, "code")),
-        "account.login.status" => crate::login::status(shared, text(&request, "account"), request.get("check").and_then(Value::as_bool).unwrap_or(false)),
-        "host.stop" => core::host_stop(shared, request.get("force").and_then(Value::as_bool).unwrap_or(false), request.get("build").and_then(Value::as_str)),
-        "account.login.cancel" => crate::login::cancel(shared, text(&request, "account")),
-        "account.remove" => core::account_remove(shared, text(&request, "account"), text(&request, "sessions")),
-        "account.credential" => core::account_credential(shared, text(&request, "account"), text(&request, "credential_ref")),
-        "snapshot" => core::snapshot(shared, &session, generation),
-        "input" => crate::pasted::with_cleanup(shared, request.get("attachment").and_then(Value::as_str), |attachment| core::input(shared, &session, Some(generation.unwrap_or(0)), text(&request, "request_id"), text(&request, "text"), crate::session::Origin::Person, attachment)),
-        "picture.slot" => crate::pasted::slot(shared),
-        "transfer.send" if text(&request, "kind") == "conversation" => crate::transfer::hand_over(shared, text(&request, "from"), text(&request, "to")),
-        "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(&request, "to"), text(&request, "kind"), text(&request, "text"), crate::transfer::By::Person),
-        "input.status" => core::input_status(shared, &session, text(&request, "request_id")),
-        "approval.text" => crate::pending::text_page(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), int(&request, "offset").unwrap_or(0) as usize, int(&request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
-        "approval.answer" => core::approval_answer(shared, &session, generation.unwrap_or(0), int(&request, "approval_id").unwrap_or(0), text(&request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
-        "view.attach" => match core::view_attach(shared, Some((sub, &rid)), &session, generation, int(&request, "after").unwrap_or(-1)) {
-            Ok(body) => {
-                if text(&request, "kind") == "gui" {
-                    crate::clipwrite::mark_gui(shared, body.get("view").and_then(Value::as_str).unwrap_or_default());
+    let result = if let Some(reply) = dispatch_request(shared, &op, &request, false) {
+        reply
+    } else {
+        match op.as_str() {
+            "picture.slot" => crate::pasted::slot(shared),
+            "view.attach" => match core::view_attach(shared, Some((sub, &rid)), text(&request, "session"), int(&request, "generation"), int(&request, "after").unwrap_or(-1)) {
+                Ok(body) => {
+                    if text(&request, "kind") == "gui" {
+                        crate::clipwrite::mark_gui(shared, body.get("view").and_then(Value::as_str).unwrap_or_default());
+                    }
+                    return; // the reply was queued under the session lock
                 }
-                return; // the reply was queued under the session lock
-            }
-            Err(code) => Err(code),
-        },
-        "clipboard.write" => crate::clipwrite::write(shared, &request),
-        "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
-        "settings.set" => crate::clipboard::settings::update_settings(
-            &shared.cfg.handoff_dir,
-            crate::clipboard::settings::Patch {
-                clipboard_write: request.get("clipboard_write").and_then(Value::as_bool),
-                notifications: request.get("notifications").and_then(Value::as_bool),
-                group_by: request.get("group_by").and_then(Value::as_str),
-                font_px: int(&request, "font_px"),
+                Err(code) => Err(code),
             },
-        ),
-        "folder.git" => crate::worktree::folder_git_op(shared, text(&request, "cwd")),
-        "session.search" => crate::search::search_op(shared, text(&request, "query"), request.get("session").and_then(Value::as_str), int(&request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
-        "display.ensure" => crate::vdisplay::ensure(shared, &session),
-        "display.status" => crate::vdisplay::status_op(shared, &session),
-        "display.stop" => crate::vdisplay::stop_op(shared, &session),
-        "real_screen.stop" => crate::computer::real::stop_op(shared, request.get("session").and_then(Value::as_str)),
-        "view.detach" => core::view_detach(shared, text(&request, "view")),
-        _ => return stream_op(shared, sub, &request, &op, &rid),
+            "clipboard.write" => crate::clipwrite::write(shared, &request),
+            "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
+            _ => return stream_op(shared, sub, &request, &op, &rid),
+        }
     };
     match result {
         Ok(body) => sub.push(encode(reply_fields(&rid, body))),

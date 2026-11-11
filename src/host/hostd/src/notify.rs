@@ -84,7 +84,19 @@ fn run_once(bin: &OsString, body: &str) {
             cmd.env(key, val);
         }
     }
-    let Ok(mut child) = cmd.spawn() else { return }; // `notify-send` is optional: missing binary is silently ignored
+    let mut child = {
+        let mut attempt = 0;
+        loop {
+            match cmd.spawn() {
+                Ok(child) => break child,
+                Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 20 => {
+                    attempt += 1;
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(_) => return, // `notify-send` is optional: missing binary is silently ignored
+            }
+        }
+    };
     let deadline = Instant::now() + NOTIFY_WAIT;
     loop {
         match child.try_wait() {

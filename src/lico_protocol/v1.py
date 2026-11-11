@@ -31,6 +31,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
 # steps of the phase.
 INVENTORY = {
     "hello": {"state": "oracle", "mutates": False},
+    "capabilities": {"state": "host", "mutates": False},
     "status": {"state": "oracle", "mutates": False},
     "snapshot": {"state": "oracle", "mutates": False},
     "subscribe": {"state": "oracle", "mutates": True},
@@ -97,6 +98,26 @@ REPLIES = {
     "hello": _obj({"v": _V, "ok": _OK, "protocol": {"type": INT, "enum": [PROTOCOL]}, "host": {"type": STR},
                    "max_request": {"type": INT}, "retain": {"type": INT, "minimum": 1},
                    "ops": {"type": "array", "items": {"type": STR}}}, COMMON_REPLY_OPTIONAL),
+    "capabilities": _obj({
+        "v": _V,
+        "ok": _OK,
+        "protocol": {"type": INT, "enum": [PROTOCOL]},
+        "version": {"type": STR, "min_length": 1},
+        "commit": {"type": STR, "min_length": 1},
+        "build": {"type": STR, "min_length": 1},
+        "ops": {"type": "array", "items": {"type": STR}},
+        "socket_only_ops": {"type": "array", "items": {"type": STR}},
+        "http_routes": {"type": "array", "items": {"type": STR}},
+        "mcp_tools": {"type": "array", "items": {"type": STR}},
+        "limits": _obj({
+            "max_request": {"type": INT, "minimum": 1},
+            "max_input_text": {"type": INT, "minimum": 1},
+            "max_sessions": {"type": INT, "minimum": 1},
+            "retain": {"type": INT, "minimum": 1},
+            "font_px_min": {"type": INT, "minimum": 1},
+            "font_px_max": {"type": INT, "minimum": 1},
+        }),
+    }, COMMON_REPLY_OPTIONAL),
     "status": _obj({"v": _V, "ok": _OK, "pid": {"type": INT}, "sessions": {"type": "array", "items": {
         "type": "object",
         "required": {"session": {"type": STR}, "generation": {"type": INT, "minimum": 1}, "seq": {"type": INT, "minimum": -1},
@@ -293,6 +314,7 @@ REQUESTS = {
     "display.status": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.stop": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "real_screen.stop": _obj({}, {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}}),
+    "capabilities": _obj({}, _COMMON_REQ),
 }
 
 
