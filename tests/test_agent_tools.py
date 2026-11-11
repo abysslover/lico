@@ -447,7 +447,7 @@ def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the
             cfg = config_of(Path(w.directory) / "state" / "lico", sid)
             wait_for(lambda: len(w.ui()["rows"]) == 1)
             w.click(*row_centre(w, sid))
-            assert w.ui()["settings"] == {"clipboard_write": False}
+            assert w.ui()["settings"] == {"clipboard_write": False, "notifications": True}
             assert "clipboard_write" not in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
             # toggle Agent clipboard write ON from the View menu (no hand-written settings.json)
             w.key("alt+v")

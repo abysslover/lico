@@ -45,16 +45,28 @@ pub fn format_body(session_id: &str, name: Option<&str>, cwd: Option<&str>, even
     format!("'{label}' {event}")
 }
 
-fn notify_bin() -> OsString {
-    std::env::var_os("LICO_NOTIFY_BIN").filter(|v| !v.is_empty()).unwrap_or_else(|| OsString::from("notify-send"))
+fn notify_bin_from(override_bin: Option<OsString>, dbus_addr: Option<OsString>) -> Option<OsString> {
+    if let Some(v) = override_bin {
+        return (!v.is_empty()).then_some(v);
+    }
+    dbus_addr.filter(|v| !v.is_empty())?;
+    Some(OsString::from("notify-send"))
+}
+
+fn notify_bin() -> Option<OsString> {
+    notify_bin_from(std::env::var_os("LICO_NOTIFY_BIN"), std::env::var_os("DBUS_SESSION_BUS_ADDRESS"))
 }
 
 pub fn fire(handoff_dir: &Path, session_id: &str, name: Option<&str>, cwd: Option<&str>, event: &'static str) {
+    let Some(bin) = notify_bin() else { return };
+    fire_with(handoff_dir, bin, session_id, name, cwd, event);
+}
+
+fn fire_with(handoff_dir: &Path, bin: OsString, session_id: &str, name: Option<&str>, cwd: Option<&str>, event: &'static str) {
     if !notifications_enabled(&settings_path(handoff_dir)) {
         return;
     }
     let body = format_body(session_id, name, cwd, event);
-    let bin = notify_bin();
     std::thread::spawn(move || {
         run_once(&bin, &body);
     });
@@ -97,6 +109,13 @@ mod tests {
         // Missing helper binary: returns cleanly without panicking or leaving children.
         run_once(&OsString::from("/nonexistent/lico_no_such_notify_send"), "'api' finished");
 
+        // Without DBUS_SESSION_BUS_ADDRESS (e.g. headless Xvfb), default notify-send is skipped so GLib never autolaunches dbus-daemon.
+        assert_eq!(notify_bin_from(None, None), None);
+        assert_eq!(notify_bin_from(None, Some(OsString::new())), None);
+        assert_eq!(notify_bin_from(None, Some(OsString::from("unix:path=/run/user/1000/bus"))), Some(OsString::from("notify-send")));
+        assert_eq!(notify_bin_from(Some(OsString::new()), Some(OsString::from("unix:path=/run/user/1000/bus"))), None);
+        assert_eq!(notify_bin_from(Some(OsString::from("/bin/true")), None), Some(OsString::from("/bin/true")));
+
         // Enabled vs disabled in settings.json with a tiny shell double.
         let dir = std::env::temp_dir().join(format!("lico_notify_{}", crate::core::random_hex(6)));
         let handoff = dir.join("handoff");
@@ -112,7 +131,7 @@ mod tests {
 
         crate::clipboard::settings::set_settings(&handoff, None, Some(false)).unwrap();
         assert!(!notifications_enabled(&settings_path(&handoff)));
-        fire(&handoff, "s1111111", Some("docs"), None, "finished");
+        fire_with(&handoff, OsString::from(&bin), "s1111111", Some("docs"), None, "finished");
         std::thread::sleep(Duration::from_millis(40));
         assert_eq!(std::fs::read_to_string(&out).unwrap().lines().count(), 1, "nothing fired while disabled");
         let _ = std::fs::remove_dir_all(&dir);

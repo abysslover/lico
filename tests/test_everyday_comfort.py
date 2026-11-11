@@ -60,15 +60,19 @@ def start_claude_host(directory: str, env_overrides=None):
     return host, log, received
 
 
-def test_worktree_lifecycle_cli_and_parent_repo_safety():
+def test_worktree_lifecycle_cli_desktop_notifications_and_parent_repo_safety():
     with private_dir() as directory:
         root = Path(directory).resolve()
         repo = init_git_repo(root / "repo")
         (repo / "parent_untracked.txt").write_text("keep-me\n")
         plain = root / "plain_dir"
         plain.mkdir()
+        notify_log = root / "notify.log"
+        stub = root / "notify_stub.sh"
+        stub.write_text(f"#!/bin/sh\nprintf '%s\\t%s\\t%s\\n' \"$1\" \"$2\" \"$3\" >> '{notify_log}'\n")
+        stub.chmod(0o700)
 
-        host, _, received = start_claude_host(directory)
+        host, _, received = start_claude_host(directory, env_overrides={"LICO_NOTIFY_BIN": str(stub)})
         try:
             conn = Conn(host.socket)
             acc = account(conn, "Work", "claude")
@@ -125,43 +129,25 @@ def test_worktree_lifecycle_cli_and_parent_repo_safety():
             assert branch_check.returncode == 0
             porcelain = subprocess.run(["git", "-C", str(repo), "status", "--porcelain"], capture_output=True, text=True, check=True).stdout
             assert (repo / "parent_untracked.txt").read_text() == "keep-me\n" and "?? parent_untracked.txt" in porcelain
-        finally:
-            host.stop()
 
-
-def test_desktop_notifications_when_no_gui_is_open_and_settings_toggle():
-    with private_dir() as directory:
-        root = Path(directory).resolve()
-        notify_log = root / "notify.jsonl"
-        stub = root / "notify_stub.py"
-        stub.write_text(
-            f"#!{sys.executable}\nimport json, sys\n"
-            f"open({str(notify_log)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
-        )
-        stub.chmod(0o700)
-
-        host, _, _ = start_claude_host(directory, env_overrides={"LICO_NOTIFY_BIN": str(stub)})
-        try:
-            conn = Conn(host.socket)
-            acc = account(conn, "Work", "claude")
-            sid, gen = new_claude(conn, account=acc, mode="default", name="worker-alpha")
+            # Desktop notifications (no GUI attached) + CLI settings toggle (`NT-02`, `SF-02`, `SF-03`)
+            nsid, ngen = new_claude(conn, account=acc, mode="default", name="worker-alpha")
 
             def read_notifications():
-                return [json.loads(line) for line in notify_log.read_text().splitlines() if line.strip()] if notify_log.exists() else []
+                return [line.split("\t") for line in notify_log.read_text().splitlines() if line.strip()] if notify_log.exists() else []
 
-            # No GUI view attached -> turn finish fires notification with label ONLY, never prompt/transcript secrets
             canary = "SUPER_SECRET_CANARY_991"
-            assert conn.call(op="input", session=sid, generation=gen, request_id="n1", text=canary)["ok"] == 1
-            notes = wait_for(lambda: (n := read_notifications()) and n, timeout=5)
+            assert conn.call(op="input", session=nsid, generation=ngen, request_id="n1", text=canary)["ok"] == 1
+            notes = wait_for(lambda: [r for r in read_notifications() if "worker-alpha" in r[-1]], timeout=5)
             assert notes[-1][-2:] == ["Lico", "'worker-alpha' finished"]
             assert canary not in notify_log.read_text()
 
             # Attaching a GUI view suppresses desktop notifications
-            att = conn.call(op="view.attach", session=sid, kind="gui")
+            att = conn.call(op="view.attach", session=nsid, kind="gui")
             assert att["ok"] == 1
             before = len(read_notifications())
-            assert conn.call(op="input", session=sid, generation=gen, request_id="n2", text="quiet-turn")["ok"] == 1
-            wait_for(lambda: status_of(conn, sid)["finished_seq"] >= 4)
+            assert conn.call(op="input", session=nsid, generation=ngen, request_id="n2", text="quiet-turn")["ok"] == 1
+            wait_for(lambda: status_of(conn, nsid)["finished_seq"] >= 4)
             assert len(read_notifications()) == before
             assert conn.call(op="view.detach", view=att["view"])["ok"] == 1
 
@@ -172,13 +158,13 @@ def test_desktop_notifications_when_no_gui_is_open_and_settings_toggle():
             assert shown["settings"]["notifications"] is False
             settings_file = root / "settings.json"
             assert stat.S_IMODE(settings_file.stat().st_mode) == 0o600
-            assert conn.call(op="input", session=sid, generation=gen, request_id="n3", text="muted-turn")["ok"] == 1
-            wait_for(lambda: status_of(conn, sid)["finished_seq"] >= 6)
+            assert conn.call(op="input", session=nsid, generation=ngen, request_id="n3", text="muted-turn")["ok"] == 1
+            wait_for(lambda: status_of(conn, nsid)["finished_seq"] >= 6)
             assert len(read_notifications()) == before
 
             # Re-enabling notifications fires on approval needed too
             assert cli_run(host.socket, "settings", "--notifications", "on").returncode == 0
-            assert conn.call(op="input", session=sid, generation=gen, request_id="n4", text="fixture")["ok"] == 1
+            assert conn.call(op="input", session=nsid, generation=ngen, request_id="n4", text="fixture")["ok"] == 1
             wait_for(lambda: len(read_notifications()) > before, timeout=5)
             assert read_notifications()[-1][-2:] == ["Lico", "'worker-alpha' needs approval"]
         finally:

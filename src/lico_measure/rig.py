@@ -149,7 +149,7 @@ class Host:
         impl = impl or os.environ.get("LICO_HOST_IMPL") or ("hostd" if "hostd" in host_impls() else "oracle")
         self.socket = os.path.join(directory, "host.sock")
         self.directory = directory
-        env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1")
+        env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1", LICO_NOTIFY_BIN="")
         extra_args = list(extra_args or [])
         if TEXT_WORKLOAD:
             extra_args += [TEXT_WORKLOAD.get("flag", "--text"), "--payload", str(TEXT_WORKLOAD["payload"])]
