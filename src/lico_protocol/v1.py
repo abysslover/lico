@@ -23,7 +23,8 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
           "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed",
           "xvfb_unavailable", "no_display",
-          "worktree_needs_folder", "not_git_repo", "invalid_branch", "branch_exists", "worktree_failed", "worktree_dirty")
+          "worktree_needs_folder", "not_git_repo", "invalid_branch", "branch_exists", "worktree_failed", "worktree_dirty",
+          "file_missing", "file_not_regular", "file_unreadable")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -64,6 +65,8 @@ INVENTORY = {
     "transfer.send": {"state": "host", "mutates": True},
     "settings.set": {"state": "host", "mutates": True},
     "folder.git": {"state": "host", "mutates": False},
+    "folder.list": {"state": "host", "mutates": False},
+    "folder.read": {"state": "host", "mutates": False},
     "session.search": {"state": "host", "mutates": False},
     "display.ensure": {"state": "host", "mutates": True},
     "display.status": {"state": "host", "mutates": False},
@@ -235,6 +238,15 @@ REPLIES = {
                          COMMON_REPLY_OPTIONAL),
     "folder.git": _obj({"v": _V, "ok": _OK, "is_git": {"type": BOOL}, "repo": {"type": [STR, "null"], "max_length": MAX_PATH}},
                        {**COMMON_REPLY_OPTIONAL, "reason": {"type": STR, "max_length": 32}}),
+    "folder.list": _obj({"v": _V, "ok": _OK, "cwd": {"type": STR, "max_length": MAX_PATH}, "parent": {"type": [STR, "null"], "max_length": MAX_PATH},
+                         "entries": {"type": "array", "items": _obj({"name": {"type": STR, "min_length": 1, "max_length": 255},
+                                                                     "kind": {"type": STR, "enum": ["dir", "file", "link"]},
+                                                                     "size": {"type": INT, "minimum": 0}, "is_html": {"type": BOOL}})},
+                         "truncated": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
+    "folder.read": _obj({"v": _V, "ok": _OK, "path": {"type": STR, "max_length": MAX_PATH}, "cwd": {"type": STR, "max_length": MAX_PATH},
+                         "name": {"type": STR, "min_length": 1, "max_length": 255}, "size": {"type": INT, "minimum": 0},
+                         "binary": {"type": BOOL}, "truncated": {"type": BOOL}, "text": {"type": STR, "max_bytes": MAX_INPUT_TEXT}},
+                        COMMON_REPLY_OPTIONAL),
     "session.search": _obj({"v": _V, "ok": _OK, "query": {"type": STR, "max_length": 256}, "scope": {"type": STR, "enum": ["session", "all"]},
                             "matches": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME},
                                                                         "seq": {"type": INT, "minimum": 0}, "text": {"type": STR, "max_length": 240}})},
@@ -322,6 +334,8 @@ REQUESTS = {
     "resources": _obj({}, _COMMON_REQ),
     "settings.set": _obj({}, {**_COMMON_REQ, "clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}, "group_by": {"type": STR, "enum": ["account", "workspace"]}, "font_px": {"type": INT, "minimum": 12, "maximum": 20}}),
     "folder.git": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True}}, _COMMON_REQ),
+    "folder.list": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
+    "folder.read": _obj({"path": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
     "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
                            {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
     "display.ensure": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),

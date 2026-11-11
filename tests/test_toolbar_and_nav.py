@@ -152,7 +152,7 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             tb = u_reordered["toolbar"]
             assert tb["shown"] is True
             ids = [b["id"] for b in tb["buttons"]]
-            assert ids == ["new_session", "accounts", "close", "rename", "toggle_mode", "toggle_group", "find"]
+            assert ids == ["new_session", "accounts", "files", "close", "rename", "toggle_mode", "toggle_group", "find"]
             rects = [b["rect"] for b in tb["buttons"]]
             assert all(r is not None and 0 <= r[0] < r[2] <= 1200 and r[1] > 18 and r[3] < 60 for r in rects), rects
             assert all(a[2] <= b[0] for a, b in zip(rects, rects[1:])), rects

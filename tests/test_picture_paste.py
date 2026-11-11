@@ -185,7 +185,7 @@ def test_ctrl_v_of_a_png_shows_a_chip_enter_sends_it_to_claude_before_the_text_a
             assert shown(w, "Type a line to go with the picture.") and editor(w)["picture"], editor(w)
             assert len(sent_users(received)) == before and os.listdir(pasted_dir(w)) == []
             # Escape with a selection of lines only drops the selection; the chip stays and the next Escape removes it
-            lines = wait_for(lambda: w.ui()["layout"]["lines"] if len(w.ui()["layout"]["lines"]) >= 3 else None)
+            lines = wait_for(lambda: w.ui()["layout"]["lines"] if len(w.ui()["layout"]["lines"]) >= 2 else None)
             y0, y1 = (lines[0][0] + lines[0][1]) / 2, (lines[1][0] + lines[1][1]) / 2
             wid = w.window_id()
             subprocess.run(["xdotool", "mousemove", "--window", wid, "500", str(int(y0)), "mousedown", "1", "mousemove", "--window", wid, "500", str(int(y1)), "mouseup", "1"], env=w.env, check=True)

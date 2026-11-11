@@ -27,6 +27,7 @@ pub enum Step {
     Card,    // the whole text behind a card of the host's own (cardview.rs)
     AccountRename, // a new label for an account, on the input line (admin_ui.rs)
     Rebind,        // choose another account of the same provider for a closed session (admin_ui.rs)
+    Files,         // on-demand working-directory file viewer (files_ui.rs)
 }
 
 pub struct Panel {
@@ -45,6 +46,7 @@ pub struct Panel {
     pub ask: Option<confirm::Ask>, // the session that a rename or a confirmation is about
     pub send: Option<sendto::Outgoing>, // what the send-to-session panel holds
     pub card: Option<cardview::View>, // the text of a request, as far as it was read
+    pub files: Option<files_ui::Explorer>, // on-demand working-directory viewer
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -109,7 +111,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -222,9 +224,14 @@ impl App {
                 body.extend(lines);
                 heading
             }
+            Step::Files => {
+                let (heading, lines) = self.files_view(p);
+                body.extend(lines);
+                heading
+            }
             Step::Keys => {
                 body.extend([
-                    "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
+                    "Ctrl+N new session   Ctrl+A accounts   Ctrl+E working directory files (F5 refresh)   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
                     "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+C (or Ctrl+Shift+C) copy selected lines or prompt text   Ctrl+X cut prompt selection   Ctrl+Z, Ctrl+Y undo and redo   Ctrl+U clear the line",
                     "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions",
                     "Ctrl+Shift+G  group by account or workspace   Ctrl+=, Ctrl+-, Ctrl+0  text size (12 to 20 px)",
@@ -264,7 +271,7 @@ impl App {
 
     pub(crate) fn panel_json(&self) -> Value {
         match (self.panel_view(), self.ui.panel.as_ref()) {
-            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error, "form": self.form_json()}),
+            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error, "form": self.form_json(), "files": self.files_json()}),
             _ => Value::Null,
         }
     }
@@ -366,6 +373,12 @@ impl App {
                         }
                         return true;
                     }
+                    "e" if !self.ui.mods.alt_key() => {
+                        if !event.repeat {
+                            self.files_open();
+                        }
+                        return true;
+                    }
                     "=" | "+" if !self.ui.mods.alt_key() => {
                         if !event.repeat {
                             self.step_font_px(1);
@@ -392,7 +405,7 @@ impl App {
         if self.nav_key(event) {
             return true;
         }
-        if self.form_key(event) {
+        if self.form_key(event) || self.files_key(event) {
             return true;
         }
         let text_mode = self.text_mode();
@@ -452,7 +465,7 @@ impl App {
 
     /// A click on a line of a panel: the Y or N of a question, a choice of the send panel; false when the line is neither.
     pub(crate) fn panel_click(&mut self, line: usize) -> bool {
-        self.confirm_click(line) || self.send_click(line)
+        self.confirm_click(line) || self.send_click(line) || self.files_click(line)
     }
 
     fn submit_text(&mut self, step: Step, text: &str) {
@@ -599,6 +612,8 @@ mod admin_ui;
 pub(super) mod cardview;
 #[path = "confirm.rs"]
 pub(super) mod confirm;
+#[path = "files_ui.rs"]
+pub(super) mod files_ui;
 #[path = "newsession.rs"]
 mod newsession;
 #[path = "sendto.rs"]

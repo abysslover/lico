@@ -32,6 +32,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
+  files [DIR] | files --read FILE   list a working directory or read up to 64 KiB of a regular file (on demand)\n\
   settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
                                  show or update host and window settings\n\
   session show ID                one session
@@ -322,6 +323,17 @@ pub fn run(args: Vec<String>) {
                 request["limit"] = json!(v.parse::<i64>().unwrap_or_else(|_| die(1, USAGE)));
             }
             expect_ok(call(&mut connect(&socket), request));
+        }
+        ["files", "--read", file] => {
+            let p = std::path::Path::new(file);
+            let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
+            expect_ok(call(&mut connect(&socket), json!({"op": "folder.read", "path": abs.to_string_lossy()})));
+        }
+        ["files", rest @ ..] if rest.len() <= 1 && rest.first().is_none_or(|a| !a.starts_with('-')) => {
+            let raw = rest.first().copied().unwrap_or(".");
+            let p = std::path::Path::new(raw);
+            let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
+            expect_ok(call(&mut connect(&socket), json!({"op": "folder.list", "cwd": abs.to_string_lossy()})));
         }
         ["settings", rest @ ..] => {
             if rest.is_empty() {

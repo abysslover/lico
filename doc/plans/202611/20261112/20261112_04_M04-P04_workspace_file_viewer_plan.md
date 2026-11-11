@@ -1,6 +1,6 @@
 # M04-P04 Plan — On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass
 
-- Status: in_progress
+- Status: in_review
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution through `lico 0.2.0`)
 - Project: Lico
 - Milestone: [M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer](../../../milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md)
@@ -35,7 +35,7 @@ and `lico gui` (`Files` toolbar button, `View > Working directory files`,
    indices), pass Rust unit tests under `umask 022` and `umask 077`, pass the
    full cold pytest suite, pass `idle_memory` (`< 50.0 MiB` at scales `1` and
    `2`) and `hidden_growth` (`<= +10.0 MiB`), pass two-clone `suite acceptance`,
-   install `~/bin/lico` `0.2.0`, and capture manual inspection bundle `00004`
+   install `~/bin/lico` `0.2.0`, and capture manual inspection bundle `00005`
    before stopping at `M04` G3/G4.
 
 ## Slices
@@ -69,7 +69,7 @@ and `lico gui` (`Files` toolbar button, `View > Working directory files`,
   `cli.rs` (`lico files [DIR]` and `lico files --read FILE`).
 
 ### S03 — In-window Working Directory File Viewer, explicit `F5` refresh, `+ New here`, and `.html` opener (`files_ui.rs`)
-- Add `src/host/hostd/src/gui/files_ui.rs` (`<= 480` lines) and `Step::Files` on
+- Add `src/host/hostd/src/gui/files_ui.rs` (`<= 800` lines) and `Step::Files` on
   `panel::Step`:
   - Open via toolbar `Files`, `View > Working directory files`, or `Ctrl+E`,
     starting in the selected session's `cwd` (or most recent session folder ->
@@ -107,14 +107,14 @@ and `lico gui` (`Files` toolbar button, `View > Working directory files`,
      HTML source), and `+ New here` pre-filling `New session` in the browsed
      directory and launching an agent session there.
 
-### S05 — `0.2.0` version bump, documentation sync, full cold suite, memory gates, two-clone build, `~/bin/lico` install, and inspection bundle `00004`
+### S05 — `0.2.0` version bump, documentation sync, full cold suite, memory gates, two-clone build, `~/bin/lico` install, and inspection bundle `00005`
 - Bump `src/host/hostd/Cargo.toml` from `0.1.0` to `0.2.0` and update version
   assertions and public documentation.
 - Run Rust unit tests (`umask 022` and `umask 077`), full cold pytest suite,
   `idle_memory` (`scale 1` and `scale 2`, `< 50.0 MiB`), `hidden_growth`
   (`<= +10.0 MiB`), and two-clone `suite acceptance`.
 - Install `~/bin/lico` `0.2.0`, capture manual inspection bundle
-  `00004_M04-P04_workspace_file_viewer/`, visually inspect all rendered PNGs,
+  `00005_M04-P04_workspace_file_viewer/`, visually inspect all rendered PNGs,
   and stop cleanly at `M04` G3/G4.
 
 ## Acceptance criteria

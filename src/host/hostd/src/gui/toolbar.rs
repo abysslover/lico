@@ -49,9 +49,21 @@ impl App {
             _ => "Mode: auto",
         };
         let group_label = if self.ui.group_by_workspace { "Group: dir" } else { "Group: acct" };
+        let in_files = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Files);
+        if in_files {
+            return vec![
+                ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
+                ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
+                ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: true, reason: None },
+                ToolBtn { label: "+ New here".into(), id: "new_here", cmd: Cmd::NewInViewedDir, active: false, reason: None },
+                ToolBtn { label: "Refresh".into(), id: "refresh_files", cmd: Cmd::RefreshFiles, active: false, reason: None },
+                ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
+            ];
+        }
         vec![
             ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
             ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
+            ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: false, reason: None },
             ToolBtn { label: state_label, id: state_id, cmd: state_cmd, active: false, reason: state_reason },
             ToolBtn { label: "Rename".into(), id: "rename", cmd: Cmd::Rename, active: false, reason: self.ask_reason(Act::Rename) },
             ToolBtn { label: mode_label.into(), id: "toggle_mode", cmd: Cmd::ToggleMode, active: sel.is_some_and(|r| r.mode == "default"), reason: self.mode_reason() },
@@ -70,7 +82,7 @@ impl App {
             self.dirty = true;
             return;
         }
-        if self.ui.panel.is_some() && !matches!(cmd, Cmd::NewSession | Cmd::Accounts) {
+        if self.ui.panel.is_some() && !matches!(cmd, Cmd::NewSession | Cmd::Accounts | Cmd::Files | Cmd::RefreshFiles | Cmd::NewInViewedDir) {
             self.panel_close();
         }
         self.run_cmd(cmd);

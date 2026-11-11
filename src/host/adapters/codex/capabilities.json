@@ -3,11 +3,11 @@
  "provider": "codex",
  "path": "codex app-server over standard input and output (JSON lines)",
  "version": {
-  "cli": "0.167.0",
+  "cli": "0.167.1",
   "pinned": true,
-  "checked": "2026-11-11",
+  "checked": "2026-11-12",
   "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
-  "fixtures_recorded_with": "0.163.0 (still valid against the 0.167.0 schema, checked by the contract test)"
+  "fixtures_recorded_with": "0.163.0 (still valid against the 0.167.1 schema, checked by the contract test)"
  },
  "protocol_schema": {
   "generated_with": "codex app-server generate-json-schema",

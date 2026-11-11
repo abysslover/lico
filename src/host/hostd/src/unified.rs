@@ -21,6 +21,7 @@ mod creds;
 mod dbus;
 mod echo;
 mod folders;
+mod fsview;
 mod gui;
 mod handoff;
 mod history;

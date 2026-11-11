@@ -200,6 +200,17 @@ impl App {
         self.form_resume();
     }
 
+    /// Opens the new-session form pre-populated with a specific working directory (e.g., from the file viewer's `+ New here`).
+    pub(crate) fn form_open_at(&mut self, folder: String) {
+        self.form_open();
+        self.with_form(|_, f| {
+            f.folder = folder;
+            f.checked_folder = "\x00".to_string();
+        });
+        self.form_check_git();
+        self.form_resume();
+    }
+
     /// Refreshes whether `f.folder` is inside a git repository when `f.folder` changed.
     pub(crate) fn form_check_git(&mut self) {
         let Some((folder, already)) = self.ui.panel.as_ref().and_then(|p| p.form.as_ref().map(|f| (f.folder.trim().to_string(), f.checked_folder.clone()))) else {

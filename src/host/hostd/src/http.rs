@@ -47,8 +47,9 @@ fn status_of(code: &str) -> u16 {
     match code {
         "bad_request" | "version_unsupported" | "option_unavailable" => 400,
         "folder_not_absolute" | "folder_missing" | "folder_not_directory" | "folder_unreadable" | "folder_protected" => 400,
+        "file_not_regular" | "file_unreadable" => 400,
         "worktree_needs_folder" | "not_git_repo" | "invalid_branch" => 400,
-        "unknown_op" | "unknown_session" | "unknown_account" | "unknown_view" | "unknown_request" | "unknown_approval" => 404,
+        "unknown_op" | "unknown_session" | "unknown_account" | "unknown_view" | "unknown_request" | "unknown_approval" | "file_missing" => 404,
         "stale_generation" | "session_exited" | "branch_exists" | "worktree_dirty" => 409,
         "too_large" => 413,
         _ => 503,
@@ -384,6 +385,32 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 return Err(bad("bad_request"));
             }
             crate::search::search_op(shared, query, req.get("session").and_then(Value::as_str), limit as usize)
+        }
+        ["v1", "files"] => {
+            allowed(method == "GET")?;
+            let qmap = query_map(&request.query).map_err(bad)?;
+            if qmap.len() != 1 || !qmap.contains_key("cwd") {
+                return Err(bad("bad_request"));
+            }
+            let cwd = qmap.get("cwd").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
+            let req: Map<String, Value> = json!({"op": "folder.list", "cwd": cwd}).as_object().cloned().unwrap_or_default();
+            if !valid_request("folder.list", &req) {
+                return Err(bad("bad_request"));
+            }
+            crate::fsview::folder_list(shared, cwd)
+        }
+        ["v1", "files", "read"] => {
+            allowed(method == "GET")?;
+            let qmap = query_map(&request.query).map_err(bad)?;
+            if qmap.len() != 1 || !qmap.contains_key("path") {
+                return Err(bad("bad_request"));
+            }
+            let path = qmap.get("path").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
+            let req: Map<String, Value> = json!({"op": "folder.read", "path": path}).as_object().cloned().unwrap_or_default();
+            if !valid_request("folder.read", &req) {
+                return Err(bad("bad_request"));
+            }
+            crate::fsview::folder_read(shared, path)
         }
         ["v1", "sessions", id, "input"] if id_ok(id) => {
             allowed(method == "POST")?;

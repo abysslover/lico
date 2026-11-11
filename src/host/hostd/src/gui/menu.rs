@@ -38,6 +38,9 @@ pub enum Cmd {
     Newest,
     FindConversation,
     SearchAll,
+    Files,
+    RefreshFiles,
+    NewInViewedDir,
     CaptureToInput,
     ToggleGroupBy,
     ToggleEvents,
@@ -131,6 +134,7 @@ impl App {
             2 => {
                 let fpx = self.font_px() as i64;
                 vec![
+                    Self::entry("Working directory files", "Ctrl+E", Cmd::Files, None),
                     Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
                     Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
                     Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
@@ -254,6 +258,9 @@ impl App {
             }
             Cmd::FindConversation => self.open_search(false),
             Cmd::SearchAll => self.open_search(true),
+            Cmd::Files => self.files_open(),
+            Cmd::RefreshFiles => self.files_refresh(),
+            Cmd::NewInViewedDir => self.files_new_session_here(),
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleGroupBy => self.toggle_group_by(),
             Cmd::ToggleEvents => self.toggle_show_events(),

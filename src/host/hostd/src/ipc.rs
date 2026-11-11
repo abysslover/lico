@@ -119,7 +119,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "clipboard.write" => &["kind"], // and `text`, or for a picture `path` instead: see `clipboard_shape`
         "clipboard.done" => &["req", "ok"],
         "settings.set" => &[],
-        "folder.git" => &["cwd"],
+        "folder.git" | "folder.list" => &["cwd"],
+        "folder.read" => &["path"],
         "session.search" => &["query"],
         _ => &["view"], // view.detach
     };
@@ -182,6 +183,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
             ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
             ("folder.git", "cwd") => valid_str(value, 1024),
+            ("folder.list", "cwd") | ("folder.read", "path") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
             _ => false,
@@ -275,6 +277,8 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
             },
         ),
         "folder.git" => crate::worktree::folder_git_op(shared, text(request, "cwd")),
+        "folder.list" => crate::fsview::folder_list(shared, text(request, "cwd")),
+        "folder.read" => crate::fsview::folder_read(shared, text(request, "path")),
         "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
         "display.ensure" => crate::vdisplay::ensure(shared, session),
         "display.status" => crate::vdisplay::status_op(shared, session),
