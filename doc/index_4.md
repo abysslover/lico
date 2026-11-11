@@ -22,5 +22,6 @@
 | [M04-P01 report](reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | Direct sidebar session switching while panels are open, `auto_title` + `last_active_at` active-recency sorting, `dir:` header context, and clickable Toolbar; in_review 2026-11-12 |
 | [M04-P02 plan](plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | Clean conversation view hiding internal control markers by default and differentiating user, agent, tool, and error lines by color; in_review 2026-11-12 |
 | [M04-P02 report](reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | Default-hidden control markers (`Ctrl+Shift+E` toggle), user/agent/tool/error colors + `>> ` row background tint, and pixel-exact `scroll::Shift`; in_review 2026-11-12 |
+| [M04-P03 plan](plans/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_plan.md) | Provider weekly quota telemetry (`7d` remaining) and working-directory context display across `claude`, `codex`, `account.list`, `status`, and `lico gui`; G2 approved 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
