@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap};
 
 use super::ui::{blit, rect};
-use super::{FONT_PX, LINE_HEIGHT};
+use super::FONT_PX;
 
 pub type Rect = [f32; 4]; // x0, y0, x1, y1 in window pixels
 
@@ -31,6 +31,7 @@ pub struct Controls {
     pub hits: Vec<Hit>,
     labels: HashMap<String, (Buffer, f32)>,
     pub scale: f32,
+    pub font_px: f32,
     /// How many labels were shaped since the start (a label whose text and scale are unchanged is shaped once and reused).
     pub shapes: u64,
     /// The Allow and Deny buttons of the last frame were drawn dimmed (a card that may not be answered yet).
@@ -38,22 +39,26 @@ pub struct Controls {
 }
 
 impl Controls {
-    /// Start a frame: the boxes of the last one are forgotten, and shaped labels are dropped when the scale changed or too many piled up.
-    pub fn begin(&mut self, scale: f32) {
+    /// Start a frame: the boxes of the last one are forgotten, and shaped labels are dropped when the scale or text size changed or too many piled up.
+    pub fn begin(&mut self, scale: f32, font_px: f32) {
         self.hits.clear();
         self.dimmed = false;
-        if (self.scale - scale).abs() > f32::EPSILON || self.labels.len() > 600 {
+        let fp = if font_px <= 0.0 { FONT_PX } else { font_px };
+        if (self.scale - scale).abs() > f32::EPSILON || (self.font_px - fp).abs() > f32::EPSILON || self.labels.len() > 600 {
             self.labels.clear();
         }
         self.scale = scale;
+        self.font_px = fp;
     }
 
     fn label(&mut self, fs: &mut FontSystem, text: &str) -> &mut (Buffer, f32) {
         let s = self.scale;
+        let fp = if self.font_px <= 0.0 { FONT_PX } else { self.font_px };
+        let lh = fp + 4.0;
         if !self.labels.contains_key(text) {
-            let mut b = Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
+            let mut b = Buffer::new(fs, Metrics::new(fp * s, lh * s));
             b.set_wrap(Wrap::None);
-            b.set_size(Some(4000.0), Some(LINE_HEIGHT as f32 * s));
+            b.set_size(Some(4000.0), Some(lh * s));
             b.set_text(text, &Attrs::new().family(Family::Monospace), Shaping::Advanced, None);
             b.shape_until_scroll(fs, true);
             let width = b.layout_runs().map(|r| r.line_w).fold(0.0, f32::max);
@@ -90,7 +95,8 @@ impl Controls {
     /// has not been on screen for the dwell yet; a click on them answers nothing then).
     #[allow(clippy::too_many_arguments)]
     pub fn answer_buttons(&mut self, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, y: f32, ink: Color, live: bool) {
-        let (s, lh) = (self.scale, LINE_HEIGHT as f32 * self.scale);
+        let fp = if self.font_px <= 0.0 { FONT_PX } else { self.font_px };
+        let (s, lh) = (self.scale, (fp + 4.0) * self.scale);
         let (allow, deny, ink) = if live { (0xFF2E_6B3A, 0xFF7A_2E2E, ink) } else { (0xFF26_3A2C, 0xFF3A_2828, Color::rgb(0x9A, 0xA4, 0xB0)) };
         self.dimmed = !live;
         self.button(fs, swash, buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", allow, ink, Action::Allow);

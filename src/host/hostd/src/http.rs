@@ -206,6 +206,26 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             allowed(method == "GET")?;
             core::resources(shared)
         }
+        ["v1", "settings"] => match method {
+            "GET" => Ok(obj(json!({"settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir)}))),
+            "POST" => {
+                let mut map = body_map(request).map_err(bad)?;
+                map.insert("op".into(), json!("settings.set"));
+                if !valid_request("settings.set", &map) {
+                    return Err(bad("bad_request"));
+                }
+                crate::clipboard::settings::update_settings(
+                    &shared.cfg.handoff_dir,
+                    crate::clipboard::settings::Patch {
+                        clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
+                        notifications: map.get("notifications").and_then(Value::as_bool),
+                        group_by: map.get("group_by").and_then(Value::as_str),
+                        font_px: int(&map, "font_px"),
+                    },
+                )
+            }
+            _ => return Err((405, "bad_request")),
+        },
         ["v1", "sessions"] => match method {
             "GET" => core::session_list(shared),
             "POST" => {

@@ -115,7 +115,7 @@ REPLIES = {
                          "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY,
-                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}, "optional": {}},
+                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}, "group_by": {"type": STR, "enum": ["account", "workspace"]}, "font_px": {"type": INT, "minimum": 12, "maximum": 20}}, "optional": {}},
                    "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
@@ -196,7 +196,7 @@ REPLIES = {
                       {**COMMON_REPLY_OPTIONAL, "snapshot": SNAPSHOT_BODY, "missed": {"type": [INT, "null"]}}),
     "unsubscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "seq": {"type": INT, "minimum": -1}},
                         COMMON_REPLY_OPTIONAL),
-    "settings.set": _obj({"v": _V, "ok": _OK, "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}, "optional": {}}},
+    "settings.set": _obj({"v": _V, "ok": _OK, "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}, "group_by": {"type": STR, "enum": ["account", "workspace"]}, "font_px": {"type": INT, "minimum": 12, "maximum": 20}}, "optional": {}}},
                          COMMON_REPLY_OPTIONAL),
     "folder.git": _obj({"v": _V, "ok": _OK, "is_git": {"type": BOOL}, "repo": {"type": [STR, "null"], "max_length": MAX_PATH}},
                        {**COMMON_REPLY_OPTIONAL, "reason": {"type": STR, "max_length": 32}}),
@@ -285,7 +285,7 @@ REQUESTS = {
                         {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "after": {"type": INT, "minimum": -1}}),
     "view.detach": _obj({"view": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "resources": _obj({}, _COMMON_REQ),
-    "settings.set": _obj({}, {**_COMMON_REQ, "clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}),
+    "settings.set": _obj({}, {**_COMMON_REQ, "clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}, "group_by": {"type": STR, "enum": ["account", "workspace"]}, "font_px": {"type": INT, "minimum": 12, "maximum": 20}}),
     "folder.git": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True}}, _COMMON_REQ),
     "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
                            {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
@@ -388,8 +388,8 @@ def validate_request(op: str, message: dict) -> list[str]:
     validate_object(body, REQUESTS[op], "$", errors)
     if op == "transfer.send":
         errors += _transfer_shape(body)
-    if op == "settings.set" and "clipboard_write" not in body and "notifications" not in body:
-        errors.append("$.settings.set: at least one of clipboard_write or notifications required")
+    if op == "settings.set" and not any(k in body for k in ("clipboard_write", "notifications", "group_by", "font_px")):
+        errors.append("$.settings.set: at least one setting field required")
     return errors
 
 

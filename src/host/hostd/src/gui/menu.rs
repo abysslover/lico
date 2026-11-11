@@ -37,6 +37,10 @@ pub enum Cmd {
     FindConversation,
     SearchAll,
     CaptureToInput,
+    ToggleGroupBy,
+    FontLarger,
+    FontSmaller,
+    FontReset,
     ToggleClipWrite,
     ToggleNotifications,
     ToggleVirtualDisplay,
@@ -119,26 +123,53 @@ impl App {
                 ));
                 v
             }
-            2 => vec![
-                Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
-                Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
-                Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
-                Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
-                Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
-                Self::entry("Capture screen to input", "Ctrl+Shift+P", Cmd::CaptureToInput, panel_reason.or(self.capture_input_reason())),
-                Entry {
-                    label: format!("Agent clipboard write: {}", if self.ui.clipboard_write { "on" } else { "off" }),
-                    key: "",
-                    cmd: Cmd::ToggleClipWrite,
-                    reason: panel_reason,
-                },
-                Entry {
-                    label: format!("Desktop notifications: {}", if self.ui.notifications_off { "off" } else { "on" }),
-                    key: "",
-                    cmd: Cmd::ToggleNotifications,
-                    reason: panel_reason,
-                },
-            ],
+            2 => {
+                let fpx = self.font_px() as i64;
+                vec![
+                    Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
+                    Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
+                    Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
+                    Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
+                    Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
+                    Entry {
+                        label: format!("Group sessions: {}", if self.ui.group_by_workspace { "workspace" } else { "account" }),
+                        key: "Ctrl+Shift+G",
+                        cmd: Cmd::ToggleGroupBy,
+                        reason: panel_reason,
+                    },
+                    Self::entry(
+                        "Text size: larger",
+                        "Ctrl+=",
+                        Cmd::FontLarger,
+                        panel_reason.or(if fpx >= 20 { Some("at maximum") } else { None }),
+                    ),
+                    Self::entry(
+                        "Text size: smaller",
+                        "Ctrl+-",
+                        Cmd::FontSmaller,
+                        panel_reason.or(if fpx <= 12 { Some("at minimum") } else { None }),
+                    ),
+                    Self::entry(
+                        "Text size: 14 px (reset)",
+                        "Ctrl+0",
+                        Cmd::FontReset,
+                        panel_reason.or(if fpx == 14 { Some("default size") } else { None }),
+                    ),
+                    Self::entry("Capture screen to input", "Ctrl+Shift+P", Cmd::CaptureToInput, panel_reason.or(self.capture_input_reason())),
+                    Entry {
+                        label: format!("Agent clipboard write: {}", if self.ui.clipboard_write { "on" } else { "off" }),
+                        key: "",
+                        cmd: Cmd::ToggleClipWrite,
+                        reason: panel_reason,
+                    },
+                    Entry {
+                        label: format!("Desktop notifications: {}", if self.ui.notifications_off { "off" } else { "on" }),
+                        key: "",
+                        cmd: Cmd::ToggleNotifications,
+                        reason: panel_reason,
+                    },
+                ]
+            }
             _ => vec![Self::entry("Keys", "", Cmd::Keys, None), Self::entry("About Lico", "", Cmd::About, None)],
         }
     }
@@ -203,6 +234,10 @@ impl App {
             Cmd::FindConversation => self.open_search(false),
             Cmd::SearchAll => self.open_search(true),
             Cmd::CaptureToInput => self.capture_to_input(),
+            Cmd::ToggleGroupBy => self.toggle_group_by(),
+            Cmd::FontLarger => self.step_font_px(1),
+            Cmd::FontSmaller => self.step_font_px(-1),
+            Cmd::FontReset => self.step_font_px(0),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
             Cmd::ToggleNotifications => self.toggle_notifications(),
             Cmd::ToggleVirtualDisplay => self.toggle_virtual_display(),

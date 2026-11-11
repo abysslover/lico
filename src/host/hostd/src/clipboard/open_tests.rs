@@ -195,9 +195,12 @@ fn set_clipboard_write_writes_atomically_mode_0600_preserves_other_keys_and_refu
     use std::os::unix::fs::MetadataExt;
     let d = Scratch::new("set_settings");
     let handoff = d.0.join("state").join("handoff");
-    assert_eq!(status_json(&handoff), serde_json::json!({"clipboard_write": false, "notifications": true}));
+    assert_eq!(status_json(&handoff), serde_json::json!({"clipboard_write": false, "notifications": true, "group_by": "account", "font_px": 14}));
     let body = set_clipboard_write(&handoff, true).unwrap();
-    assert_eq!(body.get("settings"), Some(&serde_json::json!({"clipboard_write": true, "notifications": true})));
+    assert_eq!(body.get("settings"), Some(&serde_json::json!({"clipboard_write": true, "notifications": true, "group_by": "account", "font_px": 14})));
+    let body2 = super::settings::update_settings(&handoff, super::settings::Patch { group_by: Some("workspace"), font_px: Some(18), ..Default::default() }).unwrap();
+    assert_eq!(body2.get("settings"), Some(&serde_json::json!({"clipboard_write": true, "notifications": true, "group_by": "workspace", "font_px": 18})));
+    assert_eq!(super::settings::update_settings(&handoff, super::settings::Patch { font_px: Some(25), ..Default::default() }), Err("bad_request"));
     let path = settings_path(&handoff);
     assert!(clipboard_write_enabled(&path));
     assert_eq!(std::fs::symlink_metadata(&path).unwrap().mode() & 0o777, 0o600);

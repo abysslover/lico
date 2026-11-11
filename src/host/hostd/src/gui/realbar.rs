@@ -54,11 +54,16 @@ pub fn banner_text(entries: &[RealEntry]) -> Option<String> {
 }
 
 /// Height of the real-screen warning bar in physical pixels (`0.0` when inactive).
+#[allow(dead_code)]
 pub fn height_px(entries: &[RealEntry], scale: f32) -> f32 {
+    height_px_with(entries, scale, LINE_HEIGHT as f32)
+}
+
+pub fn height_px_with(entries: &[RealEntry], scale: f32, line_h: f32) -> f32 {
     if entries.is_empty() {
         0.0
     } else {
-        (LINE_HEIGHT as f32 + 4.0) * scale
+        (line_h + 4.0) * scale
     }
 }
 
@@ -69,8 +74,9 @@ pub fn draw(
 ) {
     let Some(text) = banner_text(entries) else { return };
     let s = controls.scale.max(1.0);
-    let h = height_px(entries, s);
-    let lh = LINE_HEIGHT as f32 * s;
+    let line_h = if controls.font_px <= 0.0 { LINE_HEIGHT as f32 } else { controls.font_px + 4.0 };
+    let h = height_px_with(entries, s, line_h);
+    let lh = line_h * s;
     controls::fill(buf, width, height, [0.0, y0, width as f32, y0 + h], BAR_BG);
     let ink = Color::rgb(0xFF, 0xF0, 0xF0);
     let btn_label = "Stop now (Ctrl+Alt+Esc)";

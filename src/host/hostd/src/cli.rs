@@ -31,7 +31,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
-  settings [--clipboard-write on|off] [--notifications on|off]   show or update host settings\n\
+  settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
+                                 show or update host and window settings\n\
   session show ID                one session
   session delete ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
                                  delete a session: its process, log and workspace (a folder you chose is never touched; `purge` is the same)\n\
@@ -336,6 +337,18 @@ pub fn run(args: Vec<String>) {
                 }
                 if let Some(v) = flag(&args, "--notifications") {
                     request["notifications"] = json!(parse_on_off(v));
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--group-by") {
+                    if !matches!(v.as_str(), "account" | "workspace") {
+                        die(1, USAGE);
+                    }
+                    request["group_by"] = json!(v);
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--font-size") {
+                    let px: i64 = v.parse().unwrap_or_else(|_| die(1, USAGE));
+                    request["font_px"] = json!(px);
                     any = true;
                 }
                 if !any {

@@ -261,8 +261,9 @@ impl App {
         let Some(context) = self.context.as_ref() else { return };
         let surface = if self.ui.enabled { None } else { Some(Surface::new(context, window.clone()).expect("surface")) };
         let scale = self.ui.scale.max(1.0);
+        let (fp, lh) = (self.font_px(), self.line_h());
         let fs = self.font_system.as_mut().expect("fonts");
-        let buffer = Buffer::new(fs, Metrics::new(FONT_PX * scale, LINE_HEIGHT as f32 * scale));
+        let buffer = Buffer::new(fs, Metrics::new(fp * scale, lh * scale));
         let rgb = 0xFF00_0000 | (u32::from_str_radix(id.get(1..7).unwrap_or("0"), 16).unwrap_or(0) & 0xFF_FFFF);
         self.view = Some(View {
             lines: VecDeque::new(), surface, buffer, swash: SwashCache::new(), session_rgb: rgb, seq_rgb: 0xFF00_0000,

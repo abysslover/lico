@@ -32,7 +32,7 @@ mod search;
 use super::picture::fetch_pasted;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
-use super::{clean, fill_rect, json_escape, App, BACKGROUND, FONT_PX, LINE_HEIGHT};
+use super::{clean, fill_rect, json_escape, App, BACKGROUND};
 
 pub const LIST_W: usize = 330; // wide enough for the longest state and the memory figure at the right end of a row
 const LIST_TOP: usize = 40;
@@ -109,7 +109,7 @@ pub struct UiState {
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
-    pub notifications_off: bool, // true when desktop notifications (`settings.notifications`) are turned off
+    pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, // view settings from host `settings.json`
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
@@ -139,8 +139,7 @@ impl App {
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
         self.ui.rows = rows;
         self.ui.mem.read(&value);
-        self.ui.clipboard_write = value["settings"]["clipboard_write"] == json!(true);
-        self.ui.notifications_off = value["settings"]["notifications"] == json!(false);
+        self.sync_settings(&value["settings"]);
         let real_next: Vec<super::realbar::RealEntry> = value["real_screen"].as_array().into_iter().flatten().filter_map(super::realbar::RealEntry::of_json).collect();
         if real_next != self.ui.real_screen {
             self.ui.real_screen = real_next;
@@ -335,9 +334,8 @@ impl App {
                 self.ui.scale = *scale_factor as f32;
                 self.ui.list_sig.clear(); // every label is shaped again at the new size (the controls notice the scale)
                 let s = self.ui.scale.max(1.0);
-                if let Some(view) = self.view.as_mut() {
-                    view.buffer.set_metrics(Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
-                }
+                let (fp, lh) = (self.font_px() * s, self.line_h() * s);
+                if let Some(view) = self.view.as_mut() { view.buffer.lines.clear(); view.buffer.set_metrics(Metrics::new(fp, lh)); }
                 self.dirty = true;
                 false // the window's own handling still runs
             }
@@ -398,7 +396,7 @@ impl App {
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
-                    MouseScrollDelta::PixelDelta(p) => (p.y / (LINE_HEIGHT as f32 * self.ui.scale.max(1.0)) as f64) as isize,
+                    MouseScrollDelta::PixelDelta(p) => (p.y / (self.line_h() * self.ui.scale.max(1.0)) as f64) as isize,
                 };
                 self.scroll_by(lines);
                 true
@@ -579,7 +577,7 @@ impl App {
 
     /// The permanent line at the bottom: the keys that exist, fewer of them when the window is narrow (the right-most go first).
     pub(crate) fn hint_text(&self, width: usize, scale: f32) -> String {
-        let cols = (width as f32 / (8.5 * scale)) as usize;
+        let cols = (width as f32 / (self.char_w() * scale)) as usize;
         if let Some(text) = self.hover_hint(cols) {
             return text; // the mouse is over a row: its memory, in place of the keys
         }
@@ -644,7 +642,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(), "search": self.search_json(), "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(), "search": self.search_json(), "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -697,10 +695,11 @@ impl App {
         let mut buf = buf;
         let s = self.ui.scale.max(1.0);
         let list_w = (LIST_W as f32 * s) as usize;
-        let lh = LINE_HEIGHT as f32 * s;
+        let (fp, line_h) = (self.font_px(), self.line_h());
+        let lh = line_h * s;
         let bar_h = if self.ui.menu { lh + 4.0 * s } else { 0.0 };
         let real_entries = self.ui.real_screen.clone();
-        let top = bar_h + super::realbar::height_px(&real_entries, s); // the text area and the list start below the bar and any real-screen warning
+        let top = bar_h + super::realbar::height_px_with(&real_entries, s, line_h);
         let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
@@ -730,7 +729,7 @@ impl App {
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
-        let cols = (text_w as f32 / (8.5 * s)).max(10.0) as usize;
+        let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
         let area_rows = ((height as f32 - top) / lh) as usize;
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
@@ -787,7 +786,7 @@ impl App {
         };
         let view = self.view.get_or_insert_with(|| {
             // no session selected yet: a text buffer still carries the header and the draft
-            let buffer = Buffer::new(fs, Metrics::new(FONT_PX * s, LINE_HEIGHT as f32 * s));
+            let buffer = Buffer::new(fs, Metrics::new(fp * s, lh));
             super::View { lines: Default::default(), surface: None, buffer, swash: SwashCache::new(), session_rgb: 0xFF00_0000, seq_rgb: 0xFF00_0000 }
         });
         build(first, &mut text, &mut view.buffer, fs);
@@ -928,7 +927,7 @@ impl App {
         let hint_ink = Color::rgb(0x9A, 0xA4, 0xB0);
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
-        controls.begin(s);
+        controls.begin(s, fp);
         // the session list: group headings and rows, each row a control
         let mut y = list_top;
         for item in &list_items {

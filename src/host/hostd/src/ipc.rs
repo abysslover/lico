@@ -179,6 +179,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
             ("settings.set", "clipboard_write" | "notifications") => value.is_boolean(),
+            ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
+            ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
             ("folder.git", "cwd") => valid_str(value, 1024),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
@@ -191,7 +193,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     required.iter().all(|key| request.contains_key(*key))
         && (op != "transfer.send" || transfer_shape(request))
         && (op != "clipboard.write" || clipboard_shape(request))
-        && (op != "settings.set" || request.contains_key("clipboard_write") || request.contains_key("notifications"))
+        && (op != "settings.set" || ["clipboard_write", "notifications", "group_by", "font_px"].iter().any(|k| request.contains_key(*k)))
 }
 
 /// A text write has `text` and no `path`; a picture write has `path` and no `text`.
@@ -284,7 +286,15 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         },
         "clipboard.write" => crate::clipwrite::write(shared, &request),
         "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
-        "settings.set" => crate::clipboard::settings::set_settings(&shared.cfg.handoff_dir, request.get("clipboard_write").and_then(Value::as_bool), request.get("notifications").and_then(Value::as_bool)),
+        "settings.set" => crate::clipboard::settings::update_settings(
+            &shared.cfg.handoff_dir,
+            crate::clipboard::settings::Patch {
+                clipboard_write: request.get("clipboard_write").and_then(Value::as_bool),
+                notifications: request.get("notifications").and_then(Value::as_bool),
+                group_by: request.get("group_by").and_then(Value::as_str),
+                font_px: int(&request, "font_px"),
+            },
+        ),
         "folder.git" => crate::worktree::folder_git_op(shared, text(&request, "cwd")),
         "session.search" => crate::search::search_op(shared, text(&request, "query"), request.get("session").and_then(Value::as_str), int(&request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
         "display.ensure" => crate::vdisplay::ensure(shared, &session),
