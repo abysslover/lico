@@ -122,7 +122,8 @@ class ProductWindow:
         if not self.stdin_open:
             time.sleep(upto)
             return False
-        quiet = 0.3 if self.ime else 0.15
+        quiet = 0.3 if self.ime else 0.10
+        step = 0.03 if self.ime else 0.02
         end = time.monotonic() + upto
         last, changed = since, None
         while time.monotonic() < end:
@@ -134,18 +135,19 @@ class ProductWindow:
                 last, changed = frames, time.monotonic()
             elif changed is not None and time.monotonic() - changed >= quiet:
                 return True
-            time.sleep(0.03)
+            time.sleep(step)
         return last != since
 
     def key(self, *keys: str) -> None:
         since = self.frames()
         subprocess.run(["xdotool", "key", *keys], env=self.env, check=True)
-        self.settle(since, 0.9)
+        self.settle(since, 0.9 if self.ime else 0.4)
 
     def type_text(self, text: str) -> None:
         since = self.frames()
-        subprocess.run(["xdotool", "type", "--delay", "40", text], env=self.env, check=True)
-        self.settle(since, 0.9)
+        delay = "40" if self.ime else "5"
+        subprocess.run(["xdotool", "type", "--delay", delay, text], env=self.env, check=True)
+        self.settle(since, 0.9 if self.ime else 0.4)
 
     def hold(self, key: str, seconds: float) -> None:
         since = self.frames()
@@ -179,15 +181,16 @@ class ProductWindow:
     def click(self, x: float, y: float, button: int = 1, times: int = 1) -> None:
         wid = self.window_id()
         since = self.frames()
-        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", "--repeat", str(times), "--delay", "80", str(button)], env=self.env, check=True)
-        self.settle(since, 0.7)
+        click_args = ["click", str(button)] if times == 1 else ["click", "--repeat", str(times), "--delay", "80", str(button)]
+        subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), *click_args], env=self.env, check=True)
+        self.settle(since, 0.7 if self.ime else 0.4)
 
     def move(self, x: float, y: float) -> None:
         """Put the pointer at (x, y) in the window without a click, and wait for the frame it causes."""
         wid = self.window_id()
         since = self.frames()
         subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y))], env=self.env, check=True)
-        self.settle(since, 0.7)
+        self.settle(since, 0.7 if self.ime else 0.35)
 
     def ui(self) -> dict:
         self.proc.stdin.write("ui\n")

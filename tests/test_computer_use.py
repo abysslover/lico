@@ -199,7 +199,9 @@ def test_real_screen_is_off_by_default_gated_and_stopped_from_gui_button_and_hot
             rpc(cfg, "initialize", {})
 
             wait_for(lambda: len(w.ui()["rows"]) == 1)
-            w.click(*row_centre(w, sid))
+            wid = w.window_id()
+            rx, ry = row_centre(w, sid)
+            subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(rx)), str(int(ry)), "click", "1"], env=w.env, check=True)
             wait_for(lambda: w.ui()["selected"] == sid)
             assert w.ui()["real_screen"]["active"] is False
 
@@ -211,12 +213,12 @@ def test_real_screen_is_off_by_default_gated_and_stopped_from_gui_button_and_hot
 
             # Never sticky for the session: keep=True is refused by the host and Shift+S is absent from the GUI hint
             assert conn.call(op="approval.answer", session=sid, generation=gen, approval_id=aid, answer="allow", keep=True)["error"] == "bad_request"
-            w.move(700, 400)
+            subprocess.run(["xdotool", "mousemove", "--window", wid, "700", "400"], env=w.env, check=True)
             u_card = ready(w)
             assert "Shift+S" not in u_card["hint"], u_card["hint"]
 
             # 2. Allow via Y in the GUI -> crimson real-screen bar appears with countdown and [ Stop now ] button
-            w.key("y")
+            subprocess.run(["xdotool", "key", "y"], env=w.env, check=True)
             rs = wait_for(lambda: (r := w.ui()["real_screen"]) and r["active"] and r["stop_rect"] and r)
             assert "!! REAL SCREEN: 'desk-bot' is controlling this screen" in rs["banner"]
             assert "left" in rs["banner"]
@@ -229,16 +231,17 @@ def test_real_screen_is_off_by_default_gated_and_stopped_from_gui_button_and_hot
 
             # 4. Clicking [ Stop now ] revokes immediately; next call is pending again
             sr = rs["stop_rect"]
-            w.click((sr[0] + sr[2]) / 2, (sr[1] + sr[3]) / 2)
+            wid = w.window_id()
+            subprocess.run(["xdotool", "mousemove", "--window", wid, str(int((sr[0] + sr[2]) / 2)), str(int((sr[1] + sr[3]) / 2)), "click", "1"], env=w.env, check=True)
             wait_for(lambda: w.ui()["real_screen"]["active"] is False)
             _, again = rpc(cfg, "tools/call", {"name": "computer", "arguments": {"action": "look", "target": "real"}})
             assert json.loads(again["result"]["content"][0]["text"])["status"] == "pending"
 
             # 5. Allow again, then revoke via Ctrl+Alt+Esc global hotkey in GUI
             ready(w)
-            w.key("y")
+            subprocess.run(["xdotool", "key", "y"], env=w.env, check=True)
             wait_for(lambda: w.ui()["real_screen"]["active"] is True)
-            w.key("ctrl+alt+Escape")
+            subprocess.run(["xdotool", "key", "ctrl+alt+Escape"], env=w.env, check=True)
             wait_for(lambda: w.ui()["real_screen"]["active"] is False)
 
 

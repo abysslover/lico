@@ -47,6 +47,14 @@ def reload_status(w: ProductWindow) -> None:
     w.proc.stdin.flush()
 
 
+def fast_key(w: ProductWindow, *keys: str) -> None:
+    subprocess.run(["xdotool", "key", *keys], env=w.env, check=True)
+
+
+def fast_type(w: ProductWindow, text: str) -> None:
+    subprocess.run(["xdotool", "type", "--delay", "2", text], env=w.env, check=True)
+
+
 def start_claude_host(directory: str, env_overrides=None):
     received = Path(directory) / "claude_received.txt"
     extra = [
@@ -186,19 +194,22 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             conn = Conn(w.socket)
 
             # 1. GUI worktree start + dirty-worktree confirmation (`WT-01`, `WT-02`)
-            w.key("ctrl+n")
-            w.type_text(str(repo))
-            w.key("Tab")  # checks folder.git and focuses Worktree row
-            form = wait_for(lambda: (f := w.ui()["panel"]["form"])["is_git"] and f)
-            assert form["focus"] == "Worktree" and form["worktree"] is False
-            w.key("space")
-            assert w.ui()["panel"]["form"]["worktree"] is True
-            w.key("Tab")
-            assert w.ui()["panel"]["form"]["focus"] == "Branch"
-            w.type_text("feat/gui-wt")
-            w.key("Tab")
-            w.type_text("gui-wt")
-            w.key("Return")
+            fast_key(w, "ctrl+n")
+            wait_for(lambda: (p := w.ui()["panel"]) and p["form"] is not None)
+            fast_type(w, str(repo))
+            wait_for(lambda: w.ui()["input"] == str(repo))
+            fast_key(w, "Tab")  # checks folder.git and focuses Worktree row
+            form = wait_for(lambda: (f := w.ui()["panel"]["form"]) and f["is_git"] and f["focus"] == "Worktree" and f)
+            assert form["worktree"] is False
+            fast_key(w, "space", "Tab")
+            wait_for(lambda: (f := w.ui()["panel"]["form"]) and f["worktree"] is True and f["focus"] == "Branch")
+            fast_type(w, "feat/gui-wt")
+            wait_for(lambda: w.ui()["input"] == "feat/gui-wt")
+            fast_key(w, "Tab")
+            wait_for(lambda: w.ui()["panel"]["form"]["focus"] == "Name")
+            fast_type(w, "gui-wt")
+            wait_for(lambda: w.ui()["input"] == "gui-wt")
+            fast_key(w, "Return")
             ui = wait_for(lambda: (u := w.ui())["panel"] is None and len(u["rows"]) == 1 and u)
             wt_sid = ui["selected"]
             assert "(wt)" in ui["list_text"] and ui["rows"][0]["worktree"]["branch"] == "feat/gui-wt"
@@ -209,13 +220,13 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             assert conn.call(op="input", session=wt_sid, generation=1, request_id="w1", text="hi")["ok"] == 1
             wait_for(lambda: status_of(conn, wt_sid)["activity"] == "idle")
             (wt_dir / "uncommitted.txt").write_text("dirty\n")
-            w.key("ctrl+shift+w")
+            fast_key(w, "ctrl+shift+w")
             panel = wait_for(lambda: w.ui()["panel"])
             assert panel["title"] == "Close worktree session"
-            w.key("r")
+            fast_key(w, "r")
             dirty_panel = wait_for(lambda: (p := w.ui()["panel"]) and p["title"] == "Uncommitted changes in worktree" and p)
             assert any(line.startswith("D  ") for line in dirty_panel["body"])
-            w.key("d")
+            fast_key(w, "d")
             wait_for(lambda: w.ui()["panel"] is None and not wt_dir.exists())
             assert (repo / "keep_me.txt").read_text() == "untouched\n"
             assert subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "refs/heads/feat/gui-wt"], capture_output=True).returncode == 0
@@ -223,8 +234,9 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             # 2. Background attention (`NT-01`) and View menu notification toggle (`NT-02`)
             s_front, g_front = new_claude(conn, account=made["account"], mode="auto", name="front")
             s_back, g_back = new_claude(conn, account=made["account"], mode="auto", name="back")
+            reload_status(w)
             wait_for(lambda: len(w.ui()["rows"]) == 3)
-            w.key("alt+2")  # switch to s_front (1 is closed gui-wt, 2 is front, 3 is back)
+            fast_key(w, "alt+2")  # switch to s_front (1 is closed gui-wt, 2 is front, 3 is back)
             wait_for(lambda: w.ui()["selected"] == s_front)
 
             # `stall` in s_back writes `>> stall` echo + `"stalling"` WITHOUT finishing the turn -> NOT unread!
@@ -240,23 +252,24 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
 
             # Let s_back finish its turn -> unread dot `•` and `[finished]` X11 title appear!
             end_stall.write_text("ok\n")
+            wait_for(lambda: status_of(conn, s_back)["activity"] == "idle")
+            reload_status(w)
             attn_ui = wait_for(lambda: (u := w.ui()) and next(r for r in u["rows"] if r["session"] == s_back)["unread"] and u)
             assert "\u20223 back" in attn_ui["list_text"], attn_ui["list_text"]
-            title_now = w.title()
-            assert title_now.startswith("Lico ") and title_now.endswith(" [finished]"), title_now
+            title_now = wait_for(lambda: (t := w.title()) and t.endswith(" [finished]") and t)
+            assert title_now.startswith("Lico "), title_now
 
             # Switching to s_back clears unread mark and restores base window title
-            w.key("alt+3")
+            fast_key(w, "alt+3")
             cleared_ui = wait_for(lambda: (u := w.ui())["selected"] == s_back and not next(r for r in u["rows"] if r["session"] == s_back)["unread"] and u)
-            assert "\u2022" not in cleared_ui["list_text"] and not w.title().endswith(" [finished]")
+            assert "\u2022" not in cleared_ui["list_text"]
+            wait_for(lambda: not w.title().endswith(" [finished]"))
 
             # View menu toggles Desktop notifications off
-            w.key("alt+v")
-            menu_items = w.ui()["menu"]["items"]
-            notif_idx = next(i for i, item in enumerate(menu_items) if "Desktop notifications: on" in item["label"])
-            for _ in range(notif_idx):
-                w.key("Down")
-            w.key("Return")
+            fast_key(w, "alt+v")
+            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
+            notif_rect = next(item["rect"] for item in menu["items"] if "Desktop notifications: on" in item["label"])
+            w.click((notif_rect[0] + notif_rect[2]) / 2, (notif_rect[1] + notif_rect[3]) / 2)
             wait_for(lambda: w.ui()["settings"]["notifications"] is False)
 
             # 3. Conversation search (`Ctrl+F`) & cross-session search (`Ctrl+Shift+F`) (`SR-01`, `SR-02`)
@@ -272,22 +285,24 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             assert cli_sr.returncode == 0 and "ANCIENT_NEEDLE_42" in cli_sr.stdout
 
             # Open s_front, type a draft, press Ctrl+F, search ANCIENT_NEEDLE_42 (scrolled > 50 lines back!)
-            w.key("alt+2")
+            fast_key(w, "alt+2")
             wait_for(lambda: w.ui()["selected"] == s_front)
-            w.type_text("keep my draft")
-            w.key("ctrl+f")
+            fast_type(w, "keep my draft")
+            wait_for(lambda: w.ui()["input"] == "keep my draft")
+            fast_key(w, "ctrl+f")
             wait_for(lambda: (s := w.ui()["search"]) is not None and s["scope"] == "session")
-            w.type_text("ANCIENT_NEEDLE_42")
+            fast_type(w, "ANCIENT_NEEDLE_42")
             found_ui = wait_for(lambda: (u := w.ui())["search"]["count"] >= 1 and u["scroll"] > 0 and u)
             assert "ANCIENT_NEEDLE_42" in "\n".join(window_lines(w))
             assert found_ui["input"] == "keep my draft"
-            w.key("Escape")
-            assert w.ui()["search"] is None and w.ui()["input"] == "keep my draft"
+            fast_key(w, "Escape")
+            wait_for(lambda: w.ui()["search"] is None)
+            assert w.ui()["input"] == "keep my draft"
 
             # Press Ctrl+Shift+F from s_front and jump directly to CROSS_SESSION_77 in s_back
-            w.key("ctrl+shift+f")
+            fast_key(w, "ctrl+shift+f")
             wait_for(lambda: (s := w.ui()["search"]) is not None and s["scope"] == "all")
-            w.type_text("CROSS_SESSION_77")
+            fast_type(w, "CROSS_SESSION_77")
             jumped = wait_for(lambda: (u := w.ui())["selected"] == s_back and u["search"]["count"] >= 1 and u)
             assert jumped["search"]["current"]["session"] == s_back
             assert "CROSS_SESSION_77" in "\n".join(window_lines(w))

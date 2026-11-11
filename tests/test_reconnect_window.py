@@ -149,5 +149,5 @@ def test_a_claude_session_whose_program_ends_at_once_is_resumed_once_and_not_a_s
             wait_for(lambda: "[provider disconnected]" in records(log, sid))
             shown = records(log, sid)
             assert shown.count(">> second question") == 1 and not [r for r in shown if r == "echo: second question"], shown
+            wait_for(lambda: w.ui()["hint"].startswith(HINT) or None)
             assert len(argv_of(received)) == 2, "the window did not resume a second time"
-            assert w.ui()["hint"].startswith(HINT)

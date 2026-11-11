@@ -23,14 +23,14 @@ def box_point(w, dx=0.0, dy=0.0):
     return (r[0] + r[2]) / 2 + dx, (r[1] + r[3]) / 2 + dy
 
 
-def slow_middle(w, x, y, hold=0.4):
+def slow_middle(w, x, y, hold=0.2):
     """Press the middle button, wait, release: a paste that waits for the release too would paste twice."""
     wid = w.window_id()
     since = w.frames()
     subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "mousedown", "2"], env=w.env, check=True)
     time.sleep(hold)
     subprocess.run(["xdotool", "mouseup", "2"], env=w.env, check=True)
-    w.settle(since, 0.7)
+    w.settle(since, 0.4)
 
 
 def press(w, x, y, button):
@@ -44,7 +44,7 @@ def clipboard_text(w):
 
 def nothing_happens(w, before, what):
     """Wait a moment (an answer takes a few ms): the box, the selection and the menu are as `before`."""
-    time.sleep(0.25)
+    time.sleep(0.08)
     now = (editor(w)["text"], editor(w)["cursor"], w.ui()["selection"], w.ui()["menu"]["open"])
     assert now == before, (what, now, before)
 
@@ -65,31 +65,33 @@ def test_a_middle_press_over_the_box_pastes_the_primary_selection_once_at_the_ca
             w.type_text("xz")
             w.key("Left")
             assert editor(w)["cursor"] == 1
-            w.click(*box_point(w), button=2)
+            press(w, *box_point(w), 2)
             state = wait_for(lambda: editor(w) if editor(w)["text"] == "xMIDDLEz" else None)
             assert state["cursor"] == 1 + len("MIDDLE"), state
-            time.sleep(0.25)
+            time.sleep(0.1)
             assert editor(w)["text"] == "xMIDDLEz" and editor(w)["cursor"] == 7, "one press is one paste"
             assert clipboard_text(w) == "CLIP", "the clipboard was not touched"
-            # the release does nothing: a press held for 0.4 s and released pastes once
+            # the release does nothing: a press held for 0.2 s and released pastes once
             w.key("ctrl+u")
             w.type_text("xz")
             w.key("Left")
             slow_middle(w, *box_point(w))
             wait_for(lambda: editor(w)["text"] == "xMIDDLEz" or None)
-            time.sleep(0.5)
+            time.sleep(0.15)
             assert editor(w)["text"] == "xMIDDLEz", "the release did not paste again"
             # (2) the press does not move the selected lines
             w.key("ctrl+u")
             for word in ("one", "two"):                                                    # output lines to select: two sent lines, each echoed
-                w.type_text(word)
-                w.key("Return")
+                subprocess.run(["xdotool", "type", "--delay", "2", word], env=w.env, check=True)
+                wait_for(lambda w_word=word: editor(w)["text"] == w_word or None)
+                subprocess.run(["xdotool", "key", "Return"], env=w.env, check=True)
+                wait_for(lambda: editor(w)["text"] == "" or None)
             lines = wait_for(lambda: w.ui()["layout"]["lines"] if len(w.ui()["layout"]["lines"]) >= 3 else None)
             y0, y1 = (lines[0][0] + lines[0][1]) / 2, (lines[1][0] + lines[1][1]) / 2
             wid = w.window_id()
             subprocess.run(["xdotool", "mousemove", "--window", wid, "500", str(int(y0)), "mousedown", "1", "mousemove", "--window", wid, "500", str(int(y1)), "mouseup", "1"], env=w.env, check=True)
             selection = wait_for(lambda: w.ui()["selection"] or None)
-            w.click(*box_point(w), button=2)
+            press(w, *box_point(w), 2)
             wait_for(lambda: editor(w)["text"] == "MIDDLE" or None)
             assert w.ui()["selection"] == selection, "the selected lines stay as they are"
             # (3) anywhere else a middle press does nothing: the list, an output line, the menu bar, the margins of the box; and the right button over the box
@@ -124,11 +126,11 @@ def test_a_middle_press_over_the_box_pastes_the_primary_selection_once_at_the_ca
             owners.nothing()
             owners.png(png)
             w.key("ctrl+u")
-            w.click(*box_point(w), button=2)
+            press(w, *box_point(w), 2)
             assert shown(w, "Nothing to paste.") and editor(w)["picture"] is None and editor(w)["chip"] is None and editor(w)["text"] == "", editor(w)
             # PRIMARY holds a text while the CLIPBOARD holds a picture: the text comes, and still no chip
             owners.own(b"words", selection="primary")
-            w.click(*box_point(w), button=2)
+            press(w, *box_point(w), 2)
             wait_for(lambda: editor(w)["text"] == "words" or None)
             assert editor(w)["picture"] is None and editor(w)["chip"] is None
             # a start screen has no box: a middle press there does nothing

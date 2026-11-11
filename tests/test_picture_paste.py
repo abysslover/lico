@@ -86,7 +86,12 @@ def pasted_dir(w):
 
 
 def press_paste(w):
-    w.key("ctrl+v")
+    subprocess.run(["xdotool", "key", "ctrl+v"], env=w.env, check=True)
+
+
+def fast_type(w, text):
+    subprocess.run(["xdotool", "type", "--delay", "2", text], env=w.env, check=True)
+    wait_for(lambda: editor(w)["text"] == text or None)
 
 
 def picture_sent(received):
@@ -137,7 +142,7 @@ def test_ctrl_v_of_a_png_shows_a_chip_enter_sends_it_to_claude_before_the_text_a
             w.key("ctrl+u")
             # Ctrl+V of a PNG: the chip and its line, the box untouched
             owners.png(png)
-            w.type_text("what is this?")
+            fast_type(w, "what is this?")
             press_paste(w)
             state = wait_for(lambda: editor(w) if editor(w)["picture"] else None)
             assert state["picture"] == {"bytes": len(png), "width": 40, "height": 30}, state
@@ -149,10 +154,10 @@ def test_ctrl_v_of_a_png_shows_a_chip_enter_sends_it_to_claude_before_the_text_a
             assert w.ui()["selected"] == sid
             # Shift+Insert reads PRIMARY, which never carries a picture: the PNG on the CLIPBOARD is not taken, and no chip is made
             owners.png(png)
-            w.key("shift+Insert")
+            subprocess.run(["xdotool", "key", "shift+Insert"], env=w.env, check=True)
             assert shown(w, "Nothing to paste.") and editor(w)["picture"] is None and editor(w)["chip"] is None, editor(w)
             w.key("ctrl+u")
-            w.type_text("what is this?")
+            fast_type(w, "what is this?")
             # Ctrl+V with no PNG left has nothing to paste: no chip
             owners.nothing()
             press_paste(w)
@@ -205,6 +210,7 @@ def test_ctrl_v_of_a_png_shows_a_chip_enter_sends_it_to_claude_before_the_text_a
             wait_for(lambda: w.ui()["selected"] != sid or None)
             # the menu's Paste works the same
             w.click(*row_centre(w, sid))
+            wait_for(lambda: w.ui()["selected"] == sid or None)
             owners.png(png)
             menu_paste(w)
             state = wait_for(lambda: editor(w) if editor(w)["picture"] else None)
@@ -270,13 +276,13 @@ def test_a_slot_the_host_refuses_and_an_input_it_refuses_give_the_text_and_the_c
             w.click(*row_centre(w, sid))
             conn = Conn(w.socket)
             owners.png(png)
-            w.type_text("kept text")
+            fast_type(w, "kept text")
             press_paste(w)
             wait_for(lambda: editor(w)["picture"] or None)
             # eight places taken through the socket: the host is busy and the window says so; text and chip are back
             for _ in range(8):
                 assert conn.call(op="picture.slot")["ok"] == 1
-            w.key("Return")
+            subprocess.run(["xdotool", "key", "Return"], env=w.env, check=True)
             assert shown(w, "Too many pictures are waiting, try again in a moment.")
             state = editor(w)
             assert state["text"] == "kept text" and state["picture"]["bytes"] == len(png), state
