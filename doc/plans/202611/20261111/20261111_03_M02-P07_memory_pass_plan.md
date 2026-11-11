@@ -1,10 +1,10 @@
 # M02-P07 - Memory pass and full-milestone review with every feature switched on (2026-11-11)
 
-> Status: completed
+> Status: done
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.1.0
-> Branch: `phase/M02-P07-memory-pass`, cut at `main` `c98b11e`; nothing is pushed.
-> Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of M02-P07 for M02-P07 and the whole M02 milestone. G4 local merge to `main` was authorized by the owner on 2026-11-11.
+> Version: 1.2.0
+> Branch: `phase/M02-P07-memory-pass`, cut at `main` `c98b11e`, merged to `main` and published on 2026-11-11.
+> Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 accepted by the owner on 2026-11-11 for M02-P07 and the whole M02 milestone. G4 merge and publication approved by the owner on 2026-11-11.
 
 **Version 1.1.0.** Requirements are MB-01 to MB-06, SF-01 to SF-10, TST-01 to TST-11, and cross-feature review of WK, SX, MI, IN, SC, AC, XF, CU, WT, NT and SR (planning set 1.6.6). Numbers marked *measured* come from earlier M02 reports (`c98b11e`); everything else is a design target.
 
@@ -17,6 +17,7 @@ With every capability of M02 switched on (`M02-P01` through `M02-P06`), verify a
    - **R2 (`computer/real.rs`, `vdisplay/mod.rs`):** clamp `LICO_REAL_SCREEN_S` to `1..=DEFAULT_SECS` (`900 s`) and `LICO_DISPLAY_IDLE_S` to `1..=DEFAULT_IDLE_SECS` (`600 s`) so test environment overrides can shorten timeouts without ever extending real-screen grants past 15 minutes or idle virtual displays past 10 minutes; sanitize `status["real_screen"][i]["name"]` against control and dropped invisible characters.
    - **R3 (`transfer.rs`, `gui/row.rs`, `calls.rs`, `computer/real.rs`, `search.rs`, `history/mod.rs`):** when a git worktree session has no explicit `name`, derive its human-readable label from `worktree_repo` before `cwd` (`<workspace_root>/worktrees/<session_id>`) in both `lico gui` (`Row::name`) and `lico-host` (`transfer::session_label`), matching `claude.rs`, `codex.rs`, `pending.rs` and `create.rs`.
    - **R4 (`M02-P04` Known Limit #3):** resolve the ~5 MiB retained PNG arena noted in the M02-P04 report when dropping or sending pasted screenshots in `lico gui`.
+   - **R5 (owner G3 live inspection finding, `gui/ui.rs`, `gui/menu.rs`, `gui/panel.rs`):** bind plain `Ctrl+C` and `Ctrl+Insert` (in addition to `Ctrl+Shift+C`) to copy selected conversation lines and sign-in URLs to `CLIPBOARD` with header confirmation, shrinking `gui/ui.rs` to `1,168` lines.
 3. **Full 10-minute hidden-growth measurement, clean-clone acceptance build, and milestone evidence matrix (`MB-01`, `MB-02`, `MB-04`, `MB-06`, `TST-01`, `TST-08`, `TST-10`):** measure `idle_memory` at scales 1 and 2 (`< 50.0 MiB`), `hidden_growth` (`10` vs `100` sessions), a real 10-minute (`600 s`) hidden-window drift run after exercising every M02 feature (`<= +10.0 MiB`), `suite run --cold` (`<= 180.0 s`), and `suite acceptance` (`build-release.sh` reproducible clean-clone check).
 
 **Order of the steps:**

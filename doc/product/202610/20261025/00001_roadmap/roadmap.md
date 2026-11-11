@@ -13,8 +13,8 @@ several accounts per provider, observable resource use. Budgets stay proposed ta
 
 | Milestone | Scope | State |
 |---|---|---|
-| M01 Measured Linux foundation | P01 to P07 and P07a have plans and reports on local `main` (all `in_review`, inspection pending); P08 (acceptance pack) is not started | G3 pending for every phase; G4 given for local `main` moves (2026-10-25, 2026-10-27 and 2026-11-11) |
-| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, memory per session, then a memory pass; P01 to P07 below | G1 approved 2026-10-26; all seven phases P01 to P07 are reported and merged on local `main` (`in_review`, G3 pending) |
+| M01 Measured Linux foundation | P01 to P07 and P07a are accepted, merged and published on `main` (`done`, 2026-11-11); P08 (acceptance pack) is next | G3 and G4 approved 2026-11-11 for P01 to P07a; P08 awaits its G2 plan approval |
+| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, git worktrees, notifications, search, and memory pass; P01 to P07 below | Done (2026-11-11): all seven phases P01 to P07 accepted at G3, merged and published on `main` at G4 (`milestone/M02-agentic-coding-basics`) |
 | M03 and later | Windows backend (own credential, windowing and measured acceptance) and the candidates pushed out of the earlier M02 proposal | not planned in detail |
 
 M01 "Done when" items still open: item 3 needs an installed official provider path exercised with real sign-in evidence (the account owner's first
@@ -67,5 +67,4 @@ release hygiene (public-clone build, package, documentation). The Windows backen
 
 ## Gates
 
-G1 milestone approval, G2 phase-plan approval, G3 inspection acceptance and G4 merge approval stay with the project owner. The owner approved G1 for M02, with the phase plans of G2 included, on 2026-10-26;
-G3 is pending; G4 was given for two moves of `main` (2026-10-25 and 2026-10-27), each without G3. Since 2026-10-27 each finished phase has its own G4 request, the phase branches are kept, and a milestone gets a branch `milestone/Mxx-<name>` at its closing commit (CONTRIBUTING.md). Publication (push) needs the owner's explicit yes for the exact list. This document grants none of them.
+G1 milestone approval, G2 phase-plan approval, G3 inspection acceptance and G4 merge approval stay with the project owner. On 2026-11-11 the owner accepted G3 and approved G4 merge and publication through M02-P07 (`milestone/M02-agentic-coding-basics`, with M01-P01 to M01-P07a also accepted). Phase branches are kept, and a milestone gets a branch `milestone/Mxx-<name>` at its closing commit (CONTRIBUTING.md). Publication (push) needs the owner's explicit yes for the exact list. This document grants none of them.

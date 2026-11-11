@@ -1,12 +1,12 @@
 # M02 — Agentic-coding basics
 
-- Status: in_progress
+- Status: done
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
 - Updated: 2026-11-11
-- Implementation: M02-P01 to M02-P07 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished
-- Next gate: G3 inspection for M02-P01 + M02-P02, for M02-P03 + M02-P04, for M02-P05 + M02-P06, and for M02-P07 + the whole M02 milestone; G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 to P07); nothing is published
-- Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
+- Implementation: M02-P01 to M02-P07 are built, reported, accepted by the owner at G3 (2026-11-11), and merged and published on `main` at G4 (2026-11-11). POC-0 (D1 to D4, no product code) is finished
+- Next gate: None (milestone achieved and closed on 2026-11-11)
+- Milestone branch: `milestone/M02-agentic-coding-basics` (created at the closing commit of M02 on `main`; the phase branches are kept)
 
 ## Goal
 
@@ -74,13 +74,13 @@ items that are not part of this milestone are listed as M03 candidates in the
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M02-P01 | Menu bar and shared controls, font and scroll speed, activity indicator, and the test cleanup (S05) | [Plan](../../../plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md) | Local bundle, verdict pending (with M02-P02) | None | in_review |
-| M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | [Plan](../../../plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | [Report](../../../reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | Local bundle, verdict pending | None | in_review |
-| M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | [Plan](../../../plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | [Report](../../../reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | Local bundle, verdict pending (with M02-P04) | None | in_review |
-| M02-P04 | Screen capture, clipboard read and write, image paste | [Plan](../../../plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | [Report](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | Local bundle, verdict pending (with M02-P03) | None | in_review |
-| M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | [Plan](../../../plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | [Report](../../../reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | Local bundle, verdict pending (with M02-P06) | None | in_review |
-| M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | [Plan](../../../plans/202611/20261111/20261111_02_M02-P06_everyday_comfort_plan.md) | [Report](../../../reports/202611/20261111/20261111_03_M02-P06_everyday_comfort_report.md) | Local bundle, verdict pending (with M02-P05) | None | in_review |
-| M02-P07 | Memory pass with every feature on, and review of the whole milestone | [Plan](../../../plans/202611/20261111/20261111_03_M02-P07_memory_pass_plan.md) | [Report](../../../reports/202611/20261111/20261111_04_M02-P07_memory_pass_report.md) | Local bundle, verdict pending (M02-P07 and M02) | None | in_review |
+| M02-P01 | Menu bar and shared controls, font and scroll speed, activity indicator, and the test cleanup (S05) | [Plan](../../../plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | [Plan](../../../plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | [Report](../../../reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | [Plan](../../../plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | [Report](../../../reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P04 | Screen capture, clipboard read and write, image paste | [Plan](../../../plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | [Report](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | [Plan](../../../plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | [Report](../../../reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | [Plan](../../../plans/202611/20261111/20261111_02_M02-P06_everyday_comfort_plan.md) | [Report](../../../reports/202611/20261111/20261111_03_M02-P06_everyday_comfort_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M02-P07 | Memory pass with every feature on, and review of the whole milestone | [Plan](../../../plans/202611/20261111/20261111_03_M02-P07_memory_pass_plan.md) | [Report](../../../reports/202611/20261111/20261111_04_M02-P07_memory_pass_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 
 Phases run in this order. The plan of each phase is written as its first step,
 reviewed independently, and records any deviation from the planning set. POC-0 is
@@ -94,8 +94,8 @@ change.
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-26 | Scope, order, phases M02-P01 to M02-P07 and the approval rhythm, as written in the planning set |
 | G2 phase plan approval | Approved 2026-10-26 together with G1 for M02-P02 to M02-P07 (M02-P01 was approved on 2026-10-25) | One plan note per phase, written as the phase's first step; included in the milestone approval and not asked separately |
-| G3 inspection acceptance | Pending | The owner looks at the real window and the report at the end of M02-P02 (with M02-P01), M02-P04, M02-P06 and M02-P07 |
-| G4 merge approval | Approved 2026-10-27 and 2026-11-11 for local `main` moves up to M02-P07, otherwise pending | Local `main` fast-forward moves up to M02-P02 (2026-10-27) and M02-P03 to M02-P07 (2026-11-11), each with G3 still pending; nothing is pushed without separate publication approval |
+| G3 inspection acceptance | Approved 2026-11-11 | The owner inspected the real window on a live installed Claude Code session and accepted M02-P01 to M02-P07 and the whole M02 milestone |
+| G4 merge approval | Approved 2026-10-27 and 2026-11-11 | Fast-forward merges of M02-P01 to M02-P07 into `main`, milestone branch `milestone/M02-agentic-coding-basics`, and publication to `origin` approved by the owner on 2026-11-11 |
 
 Publication (push) of any branch needs the owner's explicit yes for the exact
 list of what is published. Approving this milestone is not a push approval, and
@@ -103,8 +103,7 @@ approval of one gate does not carry to the next.
 
 ## Blocked on
 
-- G3 inspection verdicts from the owner for M02-P01 + M02-P02, M02-P03 + M02-P04, M02-P05 + M02-P06, and M02-P07 + the whole M02 milestone (all seven phase reports and local inspection bundles are ready).
-- Tests with a real provider sign-in need an account of the owner; they are run once at the end of a phase and the installed provider version is recorded.
+None. M02 achieved and closed on 2026-11-11.
 
 ## Out of scope
 
@@ -117,4 +116,7 @@ did, REST parity, accessibility, release hygiene) are M03 candidates.
 
 ## When done
 
-Not filled yet: M02-P01 to M02-P07 are built, reported and merged to local `main`, and wait for the owner's G3 inspection verdict. When the owner accepts G3 for the milestone, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.
+Closed on 2026-11-11 at branch `milestone/M02-agentic-coding-basics` after the owner's live G3 inspection and G4 merge and publication approval:
+- **Delivered (`63/63` M02 requirements measured across `M02-P01` to `M02-P07`):** menu bar and shared controls (`M02-P01`); real-folder sessions, 64 KiB multi-line input, folded `>> ` echo, and per-session private memory (`M02-P02`); inline (`<= 4 KiB`) and file-path (`> 4 KiB`) inter-session transfers and loopback MCP agent tools with in-window approvals (`M02-P03`); X11 screen capture, clipboard read/write, PNG chip paste, middle-click paste, and `Ctrl+C` / `Ctrl+Insert` / `Ctrl+Shift+C` selection copy (`M02-P04` and `M02-P07` `R5`); per-session `Xvfb` virtual displays, XTEST `computer` actions, and 15-minute gated real-screen control (`M02-P05`); git worktree sessions, unread attention marks, `notify-send` desktop notifications, and zero-resident-index single/all-session search (`M02-P06`); cross-thread `M_MMAP_THRESHOLD` (`128 KiB`) and `malloc_trim(0)` heap reclamation plus full-milestone review fixes `R1` to `R5` (`M02-P07`).
+- **Final measured budgets:** idle window RSS `24.01 to 24.18 MiB` at scale 1 and `35.14 to 35.23 MiB` at scale 2 (`< 50.0 MiB`); 10-minute hidden-window drift `+0.56 MiB` GUI and `+0.00 MiB` host (`<= +10.0 MiB`); warm `--cold` suite `449` tests in `167.7 s` (`<= 180.0 s`, peak `1,663.1 MiB < 2,048 MiB`) plus `564` Rust unit tests and reproducible clean-clone `suite acceptance`.
+- **Deferred to later milestones (as scoped):** `M01-P08` public-clone acceptance pack for `M01`, `M03` Linux workbench candidates (workspace grouping, REST parity, accessibility, Wayland test), and the Windows backend milestone.

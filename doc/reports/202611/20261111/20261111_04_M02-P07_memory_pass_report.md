@@ -1,14 +1,14 @@
 # M02-P07 report - memory pass and full-milestone review with every feature switched on
 
-- Version: 0.1.0
-- Status: in_review (inspection verdict G3 pending; G3 falls here at the end of M02-P07 and covers M02-P07 and the whole M02 milestone)
+- Version: 0.2.0
+- Status: done (owner G3 inspection verdict: accept on 2026-11-11; G4 merged to `main` and published)
 - Date: 2026-11-11
-- Plan: [M02-P07](../../../plans/202611/20261111/20261111_03_M02-P07_memory_pass_plan.md) (version 1.1.0; Deviations D1 and D2 record every as-built refinement)
+- Plan: [M02-P07](../../../plans/202611/20261111/20261111_03_M02-P07_memory_pass_plan.md) (version 1.2.0; Deviations D1 and D2 and review items R1 to R5 record every as-built refinement)
 - Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-- Branch: `phase/M02-P07-memory-pass`, plan and implementation commits at `cbe6816` (before this closing report and status commit) cut at `main` `c98b11e`; nothing is pushed. Inspection bundle `private/manual_inspection/202611/20261111/00005_M02-P07_memory_pass/` (3 window captures, warm `--cold` suite log, `suite acceptance` log, `umask 022`/`077` Rust logs, 6 clean-tree `idle_memory` logs, `hidden_growth` logs, and 10-minute `600.0 s` hidden-window drift JSON).
-- Tested tree: `cbe6816` (`lico 0.0.0 (commit cbe6816, build a664cfd4ec579f54)`, standalone release `build 18c778849cdf1dff`). This closing commit touches `doc/`, `PLAN.md` and `README.md` only.
-- Gates: G1 and G2 approved 2026-10-26. G3 pending (covers M02-P07 and the whole M02 milestone). G4 local merge to `main` authorized by the owner on 2026-11-11; nothing is published.
-- Changes in 0.1.0: first version.
+- Branch: `phase/M02-P07-memory-pass`, implementation commits `cbe6816` and `9571d12` cut at `main` `c98b11e`; merged to `main` and published on the owner's 2026-11-11 approval. Inspection bundle `private/manual_inspection/202611/20261111/00005_M02-P07_memory_pass/` (3 window captures, warm `--cold` suite log, `suite acceptance` log, `umask 022`/`077` Rust logs, 6 clean-tree `idle_memory` logs, `hidden_growth` logs, and 10-minute `600.0 s` hidden-window drift JSON).
+- Tested tree: `cbe6816` (`lico 0.0.0 (commit cbe6816, build a664cfd4ec579f54)`, standalone release `build 18c778849cdf1dff`) and `9571d12` (`R5` `Ctrl+C` / `Ctrl+Insert` copy fix: 139 tests in 37 files passed in 139.8 s, peak 1,561.4 MiB).
+- Gates: G1 and G2 approved 2026-10-26. G3 accepted by the owner on 2026-11-11 after live inspection on an installed Claude Code session (`host <1M window 7M`, session resumed across build replacement, MCP tools and handoff directory attached). G4 merge and publication approved by the owner on 2026-11-11.
+- Changes in 0.2.0: recorded owner G3 acceptance, G4 publication, and `R5` (`9571d12`, `Ctrl+C` and `Ctrl+Insert` copy of selected lines and sign-in URLs, `gui/ui.rs` ratcheted to 1,168 lines).
 
 ## What was built
 
@@ -24,6 +24,7 @@ With every M02 capability switched on (`M02-P01` through `M02-P06`), Lico's allo
   - **R2 (`computer/real.rs`, `vdisplay/mod.rs`, `CU-01`, `CU-05`):** clamped `LICO_REAL_SCREEN_S` to `1..=900` (`15 min`) and `LICO_DISPLAY_IDLE_S` to `1..=600` (`10 min`) so environment overrides can shorten test timers without ever extending real-screen permissions or idle virtual displays; sanitized `status["real_screen"][i]["name"]` against control and dropped invisible characters.
   - **R3 (`transfer.rs`, `gui/row.rs`, `calls.rs`, `computer/real.rs`, `search.rs`, `history/mod.rs`, `WT-01`):** unified human-readable session naming via `transfer::session_label` and `Row::name` so an unnamed git worktree session displays its parent repository name (`worktree_repo` before `cwd`, e.g. `lico-demo (wt)`) across the GUI session list, header, approval cards, `session.search`, `real_screen` banners, `transfer` headers, and `history` cards instead of the internal `<session_id>` worktree directory name.
   - **R4 (`M02-P04` Known Limit #3):** eliminated the ~5 MiB retained secondary-arena RSS after dropping or sending pasted PNG chips in `lico gui`.
+  - **R5 (`9571d12`, `gui/ui.rs`, `gui/menu.rs`, `gui/panel.rs`, `tests/size_allowlist.toml`, `tests/test_m02_milestone_review.py`):** following the owner's live G3 inspection, bound plain `Ctrl+C` and `Ctrl+Insert` (alongside `Ctrl+Shift+C`) to copy selected conversation lines and sign-in URLs to `CLIPBOARD` with header confirmation (`Copied N lines.`), shrinking `gui/ui.rs` to `1,168` lines.
 
 ## Tests and evidence
 

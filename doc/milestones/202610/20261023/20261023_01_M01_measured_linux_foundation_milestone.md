@@ -4,8 +4,8 @@
 - Approved: 2026-10-23 (G1, as written in the proposal)
 - Project: Lico
 - Updated: 2026-11-11
-- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a have reports and are merged on local `main` (all `in_review`, inspection verdicts pending); M01-P08 (acceptance pack) is not started
-- Next gate: G3 inspection of the M01 reports and bundles (G4 was given for local `main` moves on 2026-10-25, 2026-10-27 and 2026-11-11, each without G3); the account owner's first real sign-in and end-to-end use are still to come
+- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a are built, reported, accepted by the owner at G3 (2026-11-11), and merged and published on `main` at G4; M01-P08 (acceptance pack) is next
+- Next gate: G2 plan approval for M01-P08 (acceptance pack); M01-P01 to M01-P07a G3 and G4 were approved on 2026-11-11, and the owner exercised live Claude Code session continuity across host replacement on 2026-11-11
 - Milestone branch: `milestone/M01-measured-linux-foundation`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -50,14 +50,14 @@ informs this division; it does not establish runtime compatibility.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M01-P01 | Bounded architecture comparison, raw resource table and a proposed renderer/host decision | [Plan](../../../plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | [Report](../../../reports/202610/20261023/20261023_01_M01-P01_architecture_measurement_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | [Plan](../../../plans/202610/20261023/20261023_02_M01-P02_persistent_host_control_surface_plan.md) | [Report](../../../reports/202610/20261023/20261023_02_M01-P02_persistent_host_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P03 | One real supported agent, explicit target/input/approval/reconnect and Unicode/IME evidence | [Plan](../../../plans/202610/20261023/20261023_03_M01-P03_first_real_agent_plan.md) | [Report](../../../reports/202610/20261024/20261024_01_M01-P03_first_real_agent_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P04 | OS-keyring-only authentication, verified same-provider accounts and a second provider adapter | [Plan](../../../plans/202610/20261024/20261024_01_M01-P04_accounts_and_second_provider_plan.md) | [Report](../../../reports/202610/20261024/20261024_02_M01-P04_accounts_and_second_provider_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P05 | Measured resources, failure recovery, public-clone Linux packaging and owner end-to-end use | [Plan](../../../plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | [Report](../../../reports/202610/20261024/20261024_03_M01-P05_workflow_recovery_and_single_executable_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P06 | Session creation, accounts and provider sign-in inside the window | [Plan](../../../plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | [Report](../../../reports/202610/20261025/20261025_01_M01-P06_in_window_login_and_session_creation_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes the blank window after Ctrl+N) | [Plan](../../../plans/202610/20261025/20261025_01_M01-P07_window_first_view_and_keys_plan.md) | [Report](../../../reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Local bundle, verdict pending | None | in_review |
-| M01-P07a | Comparison of lightweight Rust UI toolkits (egui, iced, Slint) against the hand-drawn client on the unchanged 50 MiB budget | [Plan](../../../plans/202610/20261025/20261025_02_M01-P07a_ui_toolkit_comparison_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M01-P07a_ui_toolkit_comparison_report.md) | Awaiting review | None | in_review |
+| M01-P01 | Bounded architecture comparison, raw resource table and a proposed renderer/host decision | [Plan](../../../plans/202610/20261023/20261023_01_M01-P01_architecture_measurement_plan.md) | [Report](../../../reports/202610/20261023/20261023_01_M01-P01_architecture_measurement_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P02 | Persistent synthetic host, canonical control surface and UI hide/exit/reattach continuity | [Plan](../../../plans/202610/20261023/20261023_02_M01-P02_persistent_host_control_surface_plan.md) | [Report](../../../reports/202610/20261023/20261023_02_M01-P02_persistent_host_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P03 | One real supported agent, explicit target/input/approval/reconnect and Unicode/IME evidence | [Plan](../../../plans/202610/20261023/20261023_03_M01-P03_first_real_agent_plan.md) | [Report](../../../reports/202610/20261024/20261024_01_M01-P03_first_real_agent_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P04 | OS-keyring-only authentication, verified same-provider accounts and a second provider adapter | [Plan](../../../plans/202610/20261024/20261024_01_M01-P04_accounts_and_second_provider_plan.md) | [Report](../../../reports/202610/20261024/20261024_02_M01-P04_accounts_and_second_provider_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P05 | Measured resources, failure recovery, public-clone Linux packaging and owner end-to-end use | [Plan](../../../plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | [Report](../../../reports/202610/20261024/20261024_03_M01-P05_workflow_recovery_and_single_executable_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P06 | Session creation, accounts and provider sign-in inside the window | [Plan](../../../plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | [Report](../../../reports/202610/20261025/20261025_01_M01-P06_in_window_login_and_session_creation_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes the blank window after Ctrl+N) | [Plan](../../../plans/202610/20261025/20261025_01_M01-P07_window_first_view_and_keys_plan.md) | [Report](../../../reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
+| M01-P07a | Comparison of lightweight Rust UI toolkits (egui, iced, Slint) against the hand-drawn client on the unchanged 50 MiB budget | [Plan](../../../plans/202610/20261025/20261025_02_M01-P07a_ui_toolkit_comparison_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M01-P07a_ui_toolkit_comparison_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 | M01-P08 | Acceptance pack: a clean public clone rebuilds the package; one index maps every "Done when" item of this milestone to its evidence; the owner's end-to-end checklist | Not written | Not produced | Not produced | None | not_started |
 
 Phases run sequentially. Future plans are written from earlier evidence and need
@@ -69,9 +69,9 @@ is gated as unsupported, rather than advertised through simulated behavior.
 | Gate | State | Boundary |
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
-| G2 phase plan approval | Approved 2026-10-23 for M01-P01, M01-P02 and M01-P03; approved 2026-10-24 for M01-P04 to M01-P06 as drafted; approved 2026-10-25 for M01-P07 and M01-P07a by the owner's decisions in chat; M01-P08 has no plan yet | Implementation and experiments of those phases as written |
-| G3 inspection acceptance | Pending | Reports and local bundles exist for the phases above; every inspection verdict is pending |
-| G4 merge approval | Approved for two moves of `main`, otherwise pending | `main` was moved by fast-forward on the owner's approval, without G3: on 2026-10-25 to pull request 1 and M01-P01 to M01-P05, on 2026-10-27 to the finished work up to M02-P02; every other phase merge is asked for on its own when the phase is finished and verified (CONTRIBUTING.md) |
+| G2 phase plan approval | Approved for M01-P01 to M01-P07a; pending for M01-P08 | Implementation and experiments of those phases as written |
+| G3 inspection acceptance | Approved 2026-11-11 for M01-P01 to M01-P07a; pending for M01-P08 | Owner accepted M01-P01 to M01-P07a on 2026-11-11; M01-P08 remains |
+| G4 merge approval | Approved 2026-10-25, 2026-10-27 and 2026-11-11 for M01-P01 to M01-P07a (merged and published) | `main` fast-forwarded and published on the owner's 2026-11-11 approval |
 
 G1 and G2 were approved together on 2026-10-23. Later phase plans need their own
 approval. Setup/publication permission is not phase or merge approval, and
@@ -80,11 +80,7 @@ inherited.
 
 ## Blocked on
 
-- G3: owner inspection of the reports and bundles of M01-P01 to M01-P07 and M01-P07a; every verdict is pending.
-- G4: explicit owner approval is required before any phase merge and is asked for each finished phase (given for two moves of `main`: 2026-10-25 and 2026-10-27).
-- "Done when" item 3: an installed official provider path exercised with real sign-in evidence (the account owner's first real login).
-- "Done when" item 5: a clean public clone produces the reviewed Linux package (M01-P08), and the account owner has used it end to end.
-- M01-P08: its plan is not written; it needs its own approval (G2) before it starts.
+- M01-P08: its plan needs its own approval (G2) before implementation/execution starts, followed by G3 and G4 to close M01 (`milestone/M01-measured-linux-foundation`).
 
 ## Out of scope
 
