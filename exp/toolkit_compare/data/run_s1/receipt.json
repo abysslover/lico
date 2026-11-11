@@ -1,0 +1,58 @@
+{
+ "command": "python -m lico_measure run --out <checkout>/private/runs/s1 --candidates a2,egui,iced,slint --only idle_memory,hidden_growth,activation,restart,idle_cpu,inventory,korean_ime --text --ui --scale 1",
+ "commit": "bd46894ac26bf46682088d6bc8137a8472484f3b",
+ "tree_dirty": false,
+ "started": "2026-10-25T09:52:29+0900",
+ "experiments": [
+  "idle_memory",
+  "hidden_growth",
+  "activation",
+  "restart",
+  "idle_cpu",
+  "inventory",
+  "korean_ime"
+ ],
+ "candidates": [
+  "a2",
+  "egui",
+  "iced",
+  "slint"
+ ],
+ "environment": {
+  "kernel": "6.8.0-38-generic",
+  "machine": "x86_64",
+  "python": "3.12.3",
+  "gtk": "3.24.41",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "display": "Xvfb, X11, no compositor, software rendering",
+  "cpu_logical": 24
+ },
+ "binary_sha256": {
+  "a2": "1a98bc52a92c4699c0bf72ed2f0d7e0cd82ed5049cee4c609ff4e9e40b635eef",
+  "egui": "e0494ea64b88d983e529307147474c254b66bad4ade17267755b8869dc6aba7a",
+  "iced": "817064442bbf25dcdaf77cfcfc6446125781db5a27805014577d3f6f36ae2b2c",
+  "slint": "25e016c8efcd6a96753e0746a9bb23cf00c77bd0bfd19e86bedbb82d39b144be"
+ },
+ "workload": {
+  "record_bytes": 110,
+  "rate_per_second": 100,
+  "stream_duration_s": 30,
+  "viewport": "1200x800",
+  "switches": 100,
+  "restarts": 100,
+  "idle_interval_s": 60,
+  "text_workload": {
+   "payload": 110,
+   "history": 10000,
+   "shape": "UTF-8 lines of mixed scripts (Latin, Korean, ideographs, Hebrew, emoji, a combining accent, code), about 110 bytes"
+  },
+  "accounts_on_host": 0,
+  "display_scale": 1,
+  "client_args": {
+   "a2": [
+    "--ui"
+   ]
+  }
+ },
+ "finished": "2026-10-25T10:10:47+0900"
+}

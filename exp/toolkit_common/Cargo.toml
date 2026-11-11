@@ -1,0 +1,10 @@
+[package]
+name = "lico-toolkit-common"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+# Protocol and state shared by the three toolkit experiments of M01-P07a, so that only the drawing differs.
+[dependencies]
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }

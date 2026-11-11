@@ -1,0 +1,5393 @@
+{
+ "schema": "lico.measure.report.v1",
+ "environment": {
+  "kernel": "6.8.0-38-generic",
+  "machine": "x86_64",
+  "python": "3.12.3",
+  "gtk": "3.24.41",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "display": "Xvfb, X11, no compositor, software rendering",
+  "cpu_logical": 24
+ },
+ "measurements": [],
+ "candidates": {
+  "a2": {
+   "idle_memory": {
+    "measurements": [
+     {
+      "metric": "gui_idle_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 22.75390625,
+      "samples": [
+       22.75390625,
+       22.6328125,
+       22.62890625
+      ],
+      "target": {
+       "limit": 50.0,
+       "spec": "PERF-01",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_idle_pss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 13.2236328125,
+      "samples": [
+       13.2236328125,
+       13.2353515625,
+       13.1904296875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_peak_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 21.87109375,
+      "samples": [
+       21.87109375,
+       21.94140625,
+       21.40234375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_anon_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 3.75,
+      "samples": [
+       3.75,
+       3.9375,
+       3.75
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_file_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 14.44140625,
+      "samples": [
+       14.55859375,
+       14.44140625,
+       14.08984375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 5.7578125,
+      "samples": [
+       5.7578125,
+       5.72265625,
+       5.79296875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 7.75390625,
+      "samples": [
+       7.75390625,
+       7.74609375,
+       7.8203125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "one visible session, idle",
+       "process_scope": "virtual display server",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 66.90625,
+      "samples": [
+       66.90625,
+       66.87109375,
+       67.01171875
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "gui_processes": [
+      "lico-candidate-"
+     ],
+     "gui_process_count": 1,
+     "launches": 3,
+     "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process",
+     "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+     "load": {
+      "loadavg": [
+       3.4189453125,
+       5.125,
+       6.916015625
+      ],
+      "t": 1792889575.8640199
+     }
+    }
+   },
+   "hidden_growth": {
+    "measurements": [
+     {
+      "metric": "hidden_growth_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 0.21875,
+      "samples": [
+       0.21875,
+       0.01953125,
+       -0.265625
+      ],
+      "target": {
+       "limit": 10.0,
+       "spec": "PERF-02",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 22.921875,
+      "samples": [
+       22.90625,
+       22.921875,
+       23.08984375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 22.94140625,
+      "samples": [
+       23.125,
+       22.94140625,
+       22.82421875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 6.6953125,
+      "samples": [
+       6.57421875,
+       6.6953125,
+       6.73828125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.6796875,
+      "samples": [
+       15.64453125,
+       15.734375,
+       15.6796875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 26.84375,
+      "samples": [
+       26.6875,
+       26.84375,
+       26.890625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 217.12890625,
+      "samples": [
+       217.12890625,
+       217.3046875,
+       217.02734375
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "pairing": "delta i = repetition i at 100 minus repetition i at 10",
+     "load": {
+      "loadavg": [
+       3.1611328125,
+       4.80419921875,
+       6.68798828125
+      ],
+      "t": 1792889639.103048
+     }
+    }
+   },
+   "activation": {
+    "measurements": [
+     {
+      "metric": "activation_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "a2",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 70.221774,
+      "samples": [
+       70.722412,
+       139.77613,
+       59.651432,
+       66.797542,
+       52.68934,
+       56.28599,
+       65.062332,
+       66.7376,
+       49.462239,
+       56.597427,
+       63.878042,
+       59.09498,
+       54.439338,
+       59.676128,
+       63.09373,
+       61.932523,
+       59.719792,
+       50.490883,
+       63.293888,
+       67.010804,
+       51.162052,
+       67.470494,
+       47.917578,
+       70.221774,
+       49.723612,
+       63.725343,
+       62.287976,
+       51.984467,
+       60.622808,
+       56.185498,
+       66.781951,
+       61.308093,
+       53.540207,
+       56.985301,
+       67.888473,
+       51.773328,
+       62.281804,
+       69.955161,
+       44.837565,
+       73.375395,
+       43.178138,
+       61.878391,
+       69.104291,
+       55.491987,
+       58.950967,
+       58.939485,
+       62.315156,
+       56.317899,
+       59.00612,
+       68.07231,
+       50.742368,
+       57.126427,
+       55.715219,
+       59.952409,
+       68.225078,
+       50.576083,
+       64.027893,
+       61.104507,
+       62.529611,
+       60.288023,
+       53.618594,
+       53.21426,
+       67.827156,
+       60.674184,
+       61.505845,
+       47.093189,
+       59.239741,
+       66.626757,
+       63.307732,
+       62.066415,
+       63.780615,
+       47.074724,
+       53.689078,
+       75.902852,
+       55.701953,
+       58.342175,
+       51.777634,
+       58.942058,
+       55.066791,
+       59.26564,
+       62.74131,
+       56.788677,
+       62.351634,
+       58.225013,
+       55.833922,
+       64.002685,
+       61.292631,
+       53.702202,
+       76.307055,
+       43.547194,
+       61.33421,
+       62.626183,
+       69.996936,
+       42.557122,
+       69.839559,
+       60.460819,
+       59.979929,
+       52.813502,
+       56.890979,
+       69.60246
+      ],
+      "target": {
+       "limit": 100.0,
+       "spec": "PERF-03",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "activation_first_visit_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "median",
+      "value": 59.0264685,
+      "samples": [
+       41.345397,
+       137.706576,
+       68.623048,
+       55.386884,
+       61.618105,
+       49.394404,
+       58.475103,
+       65.660798,
+       53.830431,
+       59.010144,
+       58.404458,
+       58.164395,
+       59.424557,
+       60.826187,
+       65.959322,
+       67.897916,
+       46.797615,
+       57.318916,
+       60.174164,
+       57.53266,
+       59.143675,
+       59.094463,
+       62.377429,
+       60.181057,
+       61.208479,
+       53.380129,
+       67.916261,
+       53.83574,
+       58.147523,
+       62.05482,
+       60.500521,
+       58.074594,
+       55.27992,
+       71.342457,
+       49.529549,
+       58.895045,
+       55.710605,
+       63.926407,
+       59.861512,
+       62.164616,
+       57.91397,
+       63.306755,
+       50.71002,
+       63.00779,
+       64.534928,
+       51.197332,
+       62.47357,
+       54.235526,
+       64.98601,
+       57.695306,
+       68.068628,
+       55.393786,
+       54.589154,
+       59.889775,
+       57.438029,
+       63.765672,
+       60.774737,
+       53.684393,
+       71.028263,
+       58.477225,
+       50.17054,
+       68.095337,
+       53.089158,
+       59.000143,
+       55.136889,
+       68.237807,
+       51.103624,
+       59.042793,
+       74.202292,
+       50.317377,
+       53.198063,
+       59.52288,
+       70.849043,
+       46.478539,
+       68.208311,
+       51.441993,
+       63.694557,
+       55.110899,
+       64.102318,
+       62.785839,
+       56.579495,
+       65.05605,
+       58.605847,
+       59.524523,
+       56.424372,
+       53.14915,
+       58.447868,
+       59.905423,
+       67.875331,
+       58.277476,
+       63.034208,
+       57.691047,
+       54.240032,
+       57.003257,
+       55.223542,
+       58.855037,
+       63.001957,
+       59.624632,
+       60.886567,
+       64.230059
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "timeouts_revisit": 0,
+     "timeouts_first_visit": 0,
+     "timeout_cap_ms": 2000.0,
+     "revisit_order": "stride 37 over 100 sessions",
+     "load": {
+      "loadavg": [
+       3.51904296875,
+       4.75634765625,
+       6.6201171875
+      ],
+      "t": 1792889663.1954622
+     }
+    }
+   },
+   "restart": {
+    "measurements": [
+     {
+      "metric": "restart_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "a2",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "page cache warm after first launch; others not controlled",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 100.827265,
+      "samples": [
+       91.76814,
+       97.053612,
+       96.319374,
+       89.487068,
+       90.126286,
+       87.057084,
+       86.846516,
+       84.574761,
+       88.505421,
+       95.415504,
+       98.067508,
+       86.144879,
+       95.864332,
+       86.926325,
+       95.443216,
+       86.643871,
+       89.21432,
+       101.004027,
+       88.943388,
+       85.68068,
+       83.246378,
+       97.500985,
+       109.549852,
+       89.09799,
+       89.081949,
+       88.933107,
+       97.835587,
+       93.356459,
+       94.44718,
+       108.392102,
+       87.637939,
+       86.361766,
+       98.43068,
+       87.92982,
+       86.03103,
+       85.453548,
+       85.672872,
+       97.719235,
+       86.332469,
+       88.684075,
+       98.899635,
+       99.480673,
+       88.331789,
+       86.640602,
+       86.722376,
+       86.123894,
+       86.142249,
+       95.167279,
+       88.660489,
+       95.10454,
+       89.679615,
+       87.965465,
+       97.494938,
+       98.815625,
+       85.374907,
+       95.964986,
+       86.858,
+       85.769994,
+       86.558805,
+       104.867845,
+       84.252034,
+       86.353907,
+       88.726802,
+       96.009849,
+       93.647513,
+       90.345071,
+       90.251144,
+       94.851509,
+       84.76897,
+       100.827265,
+       85.783357,
+       94.119135,
+       85.140532,
+       98.796826,
+       84.502495,
+       81.645344,
+       95.57192,
+       99.29636,
+       86.542782,
+       96.084649,
+       90.712634,
+       96.130404,
+       81.495189,
+       96.282071,
+       87.796471,
+       86.73864,
+       98.914497,
+       90.069146,
+       91.189956,
+       89.852276,
+       86.359593,
+       85.651906,
+       85.350676,
+       94.184003,
+       104.864012,
+       89.953477,
+       88.174704,
+       87.248202,
+       87.369782,
+       86.552888
+      ],
+      "target": {
+       "limit": 500.0,
+       "spec": "PERF-04",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "cold_start_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "best-effort cold: posix_fadvise DONTNEED on mapped files; pages mapped by other processes stay resident",
+       "p95_method": "nearest rank"
+      },
+      "n": 10,
+      "statistic": "median",
+      "value": 107.0212265,
+      "samples": [
+       219.91633,
+       136.951063,
+       108.017039,
+       142.020114,
+       136.858977,
+       106.025414,
+       99.818,
+       102.104451,
+       98.243514,
+       99.529985
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "files_evicted": 23,
+     "files_mapped": 23,
+     "cold_runs": 10,
+     "load": {
+      "loadavg": [
+       4.63916015625,
+       4.9072265625,
+       6.6025390625
+      ],
+      "t": 1792889696.530663
+     }
+    }
+   },
+   "idle_cpu": {
+    "measurements": [
+     {
+      "metric": "idle_cpu_percent",
+      "unit": "% of one core",
+      "scope": {
+       "candidate": "a2",
+       "workload": "idle visible session",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "max",
+      "value": 0.03333329362333825,
+      "samples": [
+       0.03333329362333825
+      ],
+      "target": {
+       "limit": 0.5,
+       "spec": "PERF-05",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "display_server_idle_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "idle visible session",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 0.0,
+      "samples": [
+       0.0
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 14.433315577923636,
+      "samples": [
+       14.433315577923636
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "a2",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [
+        "--ui"
+       ],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 0.3999995079332187,
+      "samples": [
+       0.3999995079332187
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "load": {
+      "loadavg": [
+       3.30029296875,
+       4.34716796875,
+       6.17919921875
+      ],
+      "t": 1792889823.155652
+     }
+    }
+   },
+   "inventory": {
+    "measurements": [],
+    "observations": {
+     "binary_bytes": 6455160,
+     "mapped_file_count": 78,
+     "mapped_file_bytes_total": 58811060,
+     "package_size": "unverified: no package is produced in this phase",
+     "app_window_1200x800_present": true,
+     "fonts_mapped": [
+      "DejaVuSansMono-Bold.ttf",
+      "DejaVuSansMono-BoldOblique.ttf",
+      "DejaVuSansMono-Oblique.ttf",
+      "DejaVuSansMono.ttf",
+      "LiberationMono-Bold.ttf",
+      "LiberationMono-BoldItalic.ttf",
+      "LiberationMono-Italic.ttf",
+      "LiberationMono-Regular.ttf",
+      "NanumGothicCoding.ttf",
+      "NanumGothicCodingBold.ttf",
+      "NimbusMonoPS-Bold.otf",
+      "NimbusMonoPS-BoldItalic.otf",
+      "NimbusMonoPS-Italic.otf",
+      "NimbusMonoPS-Regular.otf",
+      "NotoMono-Regular.ttf",
+      "NotoSans-Regular.ttf",
+      "NotoSansMono-Bold.ttf",
+      "NotoSansMono-Regular.ttf",
+      "TlwgMono-Bold.otf",
+      "TlwgMono-BoldOblique.otf",
+      "TlwgMono-Oblique.otf",
+      "TlwgMono.otf",
+      "TlwgTypo-Bold.otf",
+      "TlwgTypo-BoldOblique.otf",
+      "TlwgTypo-Oblique.otf",
+      "TlwgTypo.otf",
+      "UbuntuMono-Italic[wght].ttf",
+      "UbuntuMono[wght].ttf",
+      "UbuntuSansMono-Italic[wght].ttf",
+      "UbuntuSansMono[wght].ttf",
+      "lmmono10-italic.otf",
+      "lmmono10-regular.otf",
+      "lmmono12-regular.otf",
+      "lmmono8-regular.otf",
+      "lmmono9-regular.otf",
+      "lmmonocaps10-oblique.otf",
+      "lmmonocaps10-regular.otf",
+      "lmmonolt10-bold.otf",
+      "lmmonolt10-boldoblique.otf",
+      "lmmonolt10-oblique.otf",
+      "lmmonolt10-regular.otf",
+      "lmmonoltcond10-oblique.otf",
+      "lmmonoltcond10-regular.otf",
+      "lmmonoslant10-regular.otf",
+      "texgyrecursor-bold.otf",
+      "texgyrecursor-bolditalic.otf",
+      "texgyrecursor-italic.otf",
+      "texgyrecursor-regular.otf",
+      "unifont.otf",
+      "unifont_csur.otf",
+      "unifont_jp.otf",
+      "unifont_jp_sample.otf",
+      "unifont_sample.otf",
+      "unifont_upper.otf",
+      "unifont_upper_sample.otf"
+     ],
+     "gui_process_count": 1,
+     "declared_environment": {
+      "server": "Xvfb (X11, no compositor, software rendering)",
+      "screen": "1200x800x24",
+      "scale": "1 (declared, not observed)",
+      "wayland": "unverified"
+     },
+     "gpu": "GPU allocation unverified (the virtual display does not use the GPU)",
+     "cpu_logical": 24,
+     "largest_resident_mappings": [
+      {
+       "mapping": "<checkout>/private/build/host_hostd/release/lico",
+       "rss_kb": 5304,
+       "pss_kb": 4002
+      },
+      {
+       "mapping": "/dev/shm/softbuffer-x11-D2H8Zny (deleted)",
+       "rss_kb": 3752,
+       "pss_kb": 1876
+      },
+      {
+       "mapping": "[heap]",
+       "rss_kb": 3188,
+       "pss_kb": 3188
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+       "rss_kb": 1416,
+       "pss_kb": 28
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0",
+       "rss_kb": 816,
+       "pss_kb": 90
+      },
+      {
+       "mapping": "/usr/share/fonts/truetype/nanum/NanumGothicCoding.ttf",
+       "rss_kb": 728,
+       "pss_kb": 412
+      },
+      {
+       "mapping": "/usr/share/fonts/opentype/unifont/unifont.otf",
+       "rss_kb": 680,
+       "pss_kb": 620
+      },
+      {
+       "mapping": "[anonymous]",
+       "rss_kb": 392,
+       "pss_kb": 392
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+       "rss_kb": 312,
+       "pss_kb": 10
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+       "rss_kb": 264,
+       "pss_kb": 108
+      },
+      {
+       "mapping": "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+       "rss_kb": 236,
+       "pss_kb": 156
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+       "rss_kb": 232,
+       "pss_kb": 16
+      }
+     ],
+     "screen_read_period_us": 18.9,
+     "latency_resolution_note": "two screen reads per poll; latency values cannot resolve below this period"
+    }
+   },
+   "korean_ime": {
+    "measurements": [],
+    "observations": {
+     "keys": [
+      "d",
+      "k",
+      "s",
+      "s",
+      "u",
+      "d",
+      "g",
+      "k",
+      "t",
+      "p",
+      "d",
+      "y",
+      "space",
+      "g",
+      "k",
+      "s",
+      "r",
+      "m",
+      "f",
+      "space"
+     ],
+     "input_method": "ibus 1.5.29 with the Hangul engine (2-set), private session",
+     "all_exact": true,
+     "runs": {
+      "normal": {
+       "key_delay_ms": 80,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 56,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast": {
+       "key_delay_ms": 8,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 56,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "under output": {
+       "key_delay_ms": 40,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 56,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast under output": {
+       "key_delay_ms": 8,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 56,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      }
+     },
+     "not_covered": "preedit mid-switch, other input methods, Wayland text-input, candidate popups"
+    }
+   }
+  },
+  "egui": {
+   "idle_memory": {
+    "measurements": [
+     {
+      "metric": "gui_idle_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 27.28515625,
+      "samples": [
+       27.28515625,
+       27.015625,
+       27.10546875
+      ],
+      "target": {
+       "limit": 50.0,
+       "spec": "PERF-01",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_idle_pss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 21.447265625,
+      "samples": [
+       21.546875,
+       21.37109375,
+       21.447265625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_peak_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 27.13671875,
+      "samples": [
+       27.23046875,
+       27.13671875,
+       27.0859375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_anon_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 14.328125,
+      "samples": [
+       14.33203125,
+       14.328125,
+       14.22265625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_file_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 8.66796875,
+      "samples": [
+       8.66796875,
+       8.57421875,
+       8.7109375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 5.734375,
+      "samples": [
+       5.70703125,
+       5.75390625,
+       5.734375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 7.75390625,
+      "samples": [
+       7.73046875,
+       7.77734375,
+       7.75390625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "one visible session, idle",
+       "process_scope": "virtual display server",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 66.9921875,
+      "samples": [
+       66.97265625,
+       67.0078125,
+       66.9921875
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "gui_processes": [
+      "lico-toolkit-eg"
+     ],
+     "gui_process_count": 1,
+     "launches": 3,
+     "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process",
+     "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+     "load": {
+      "loadavg": [
+       2.72607421875,
+       4.04931640625,
+       5.99072265625
+      ],
+      "t": 1792889868.8119788
+     }
+    }
+   },
+   "hidden_growth": {
+    "measurements": [
+     {
+      "metric": "hidden_growth_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 0.55859375,
+      "samples": [
+       0.53515625,
+       0.55859375,
+       0.171875
+      ],
+      "target": {
+       "limit": 10.0,
+       "spec": "PERF-02",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 28.2109375,
+      "samples": [
+       28.2109375,
+       28.19140625,
+       28.35546875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 28.74609375,
+      "samples": [
+       28.74609375,
+       28.75,
+       28.52734375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 6.671875,
+      "samples": [
+       6.7734375,
+       6.671875,
+       6.6640625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.59765625,
+      "samples": [
+       15.59765625,
+       15.515625,
+       15.6015625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 26.859375,
+      "samples": [
+       26.88671875,
+       26.859375,
+       26.78125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 217.01953125,
+      "samples": [
+       217.04296875,
+       216.82421875,
+       217.01953125
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "pairing": "delta i = repetition i at 100 minus repetition i at 10",
+     "load": {
+      "loadavg": [
+       4.70947265625,
+       4.34228515625,
+       6.01416015625
+      ],
+      "t": 1792889902.1825564
+     }
+    }
+   },
+   "activation": {
+    "measurements": [
+     {
+      "metric": "activation_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "egui",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 8.013238,
+      "samples": [
+       6.96571,
+       9.611177,
+       5.437001,
+       5.080197,
+       5.407205,
+       4.848319,
+       4.800609,
+       5.10846,
+       6.346439,
+       6.249747,
+       5.145531,
+       4.796702,
+       5.055951,
+       4.49978,
+       7.959877,
+       5.249116,
+       4.683307,
+       5.175347,
+       4.605259,
+       5.46298,
+       6.403798,
+       6.85506,
+       6.17175,
+       7.248774,
+       4.814596,
+       4.995257,
+       5.424918,
+       5.158294,
+       5.191617,
+       5.471736,
+       4.979157,
+       5.564472,
+       5.636268,
+       6.094854,
+       8.546586,
+       6.785759,
+       6.062262,
+       5.054469,
+       5.426291,
+       5.80679,
+       5.265047,
+       5.735645,
+       5.559984,
+       4.726809,
+       7.464562,
+       4.731218,
+       6.646015,
+       5.839201,
+       4.506814,
+       5.669611,
+       5.408498,
+       4.90716,
+       6.833629,
+       4.626359,
+       7.240989,
+       4.720157,
+       4.646517,
+       6.100535,
+       5.24563,
+       7.707981,
+       5.296566,
+       5.416483,
+       4.574371,
+       4.983494,
+       5.86516,
+       5.797712,
+       5.494941,
+       5.058075,
+       5.572557,
+       5.12913,
+       6.08228,
+       6.562106,
+       7.259534,
+       7.713622,
+       6.020794,
+       5.486505,
+       7.386364,
+       5.54767,
+       5.2407,
+       5.774147,
+       5.699717,
+       4.614397,
+       5.464823,
+       8.566984,
+       8.013238,
+       6.407654,
+       6.19341,
+       7.264513,
+       6.843087,
+       6.564061,
+       5.315241,
+       5.068485,
+       5.422824,
+       8.170355,
+       5.857104,
+       8.263571,
+       7.592203,
+       6.678777,
+       5.601692,
+       5.948728
+      ],
+      "target": {
+       "limit": 100.0,
+       "spec": "PERF-03",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "activation_first_visit_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "median",
+      "value": 5.3763465,
+      "samples": [
+       16.548983,
+       5.963957,
+       6.526559,
+       5.860401,
+       6.123708,
+       5.115534,
+       5.464574,
+       5.39349,
+       4.889407,
+       5.379693,
+       5.442521,
+       7.261979,
+       4.76412,
+       5.564171,
+       5.227405,
+       6.699427,
+       7.302255,
+       5.560415,
+       5.091008,
+       5.117798,
+       6.808743,
+       4.737499,
+       4.813984,
+       5.212587,
+       5.497466,
+       5.334558,
+       5.254526,
+       6.99286,
+       6.15597,
+       5.531439,
+       6.604066,
+       9.123956,
+       5.582306,
+       5.188071,
+       5.475053,
+       7.272669,
+       7.32581,
+       5.75954,
+       5.657017,
+       6.804144,
+       4.973746,
+       6.157863,
+       4.591945,
+       5.276248,
+       5.477748,
+       4.968836,
+       4.773918,
+       4.943078,
+       5.759851,
+       4.871303,
+       7.184042,
+       6.081228,
+       4.77992,
+       5.181909,
+       7.495079,
+       9.058673,
+       5.933479,
+       6.614516,
+       7.076218,
+       5.094534,
+       5.960741,
+       5.373,
+       4.655836,
+       4.917811,
+       6.132064,
+       7.15642,
+       5.036906,
+       5.353844,
+       5.247493,
+       5.585492,
+       5.369474,
+       5.193311,
+       5.37295,
+       5.073985,
+       5.154327,
+       5.09759,
+       5.029872,
+       5.170197,
+       5.164156,
+       4.914124,
+       4.669071,
+       4.872014,
+       6.817438,
+       5.001439,
+       6.559291,
+       4.631921,
+       5.924702,
+       6.856503,
+       4.760243,
+       4.708144,
+       4.581916,
+       5.008793,
+       5.493037,
+       5.181799,
+       5.003512,
+       6.887972,
+       6.396193,
+       5.516672,
+       4.881843,
+       5.268563
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "timeouts_revisit": 0,
+     "timeouts_first_visit": 0,
+     "timeout_cap_ms": 2000.0,
+     "revisit_order": "stride 37 over 100 sessions",
+     "load": {
+      "loadavg": [
+       4.298828125,
+       4.26513671875,
+       5.970703125
+      ],
+      "t": 1792889915.3430727
+     }
+    }
+   },
+   "restart": {
+    "measurements": [
+     {
+      "metric": "restart_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "egui",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "page cache warm after first launch; others not controlled",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 38.173834,
+      "samples": [
+       38.173834,
+       32.734718,
+       32.339533,
+       32.160073,
+       32.939766,
+       30.439883,
+       29.833068,
+       32.462364,
+       32.193456,
+       32.054303,
+       29.605848,
+       32.916081,
+       29.807549,
+       34.766948,
+       30.552576,
+       31.299387,
+       34.710621,
+       32.223733,
+       29.729761,
+       30.22138,
+       29.090093,
+       30.265663,
+       28.995394,
+       31.895552,
+       29.114709,
+       35.77449,
+       31.978871,
+       30.489968,
+       31.01017,
+       31.789542,
+       28.777823,
+       29.940099,
+       31.838304,
+       29.404437,
+       29.748667,
+       29.95707,
+       32.19594,
+       30.564869,
+       30.5656,
+       31.263047,
+       30.056509,
+       30.892517,
+       29.912737,
+       34.979448,
+       31.505446,
+       30.572222,
+       34.155631,
+       33.342435,
+       36.379713,
+       33.815278,
+       31.75144,
+       38.837746,
+       30.471242,
+       29.272628,
+       33.722252,
+       33.284996,
+       37.986739,
+       30.591168,
+       29.240736,
+       34.179136,
+       30.945397,
+       29.633438,
+       29.328101,
+       29.621456,
+       29.466212,
+       30.492071,
+       29.049135,
+       29.115179,
+       28.899793,
+       39.316039,
+       31.909829,
+       29.767803,
+       29.760067,
+       32.046477,
+       31.43418,
+       29.562344,
+       29.604424,
+       36.499459,
+       28.781479,
+       28.701648,
+       29.334664,
+       28.520435,
+       35.294943,
+       33.188443,
+       38.694435,
+       35.847957,
+       30.383314,
+       30.943874,
+       34.475304,
+       33.011569,
+       29.775506,
+       40.683421,
+       29.981094,
+       31.483914,
+       29.426277,
+       38.038725,
+       40.516115,
+       28.869925,
+       30.418661,
+       31.574565
+      ],
+      "target": {
+       "limit": 500.0,
+       "spec": "PERF-04",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "cold_start_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "best-effort cold: posix_fadvise DONTNEED on mapped files; pages mapped by other processes stay resident",
+       "p95_method": "nearest rank"
+      },
+      "n": 10,
+      "statistic": "median",
+      "value": 57.3110505,
+      "samples": [
+       227.12504,
+       51.898637,
+       58.418463,
+       53.40378,
+       52.691895,
+       68.380731,
+       57.635613,
+       60.197543,
+       56.986488,
+       55.682674
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "files_evicted": 23,
+     "files_mapped": 23,
+     "cold_runs": 10,
+     "load": {
+      "loadavg": [
+       4.44677734375,
+       4.29052734375,
+       5.92333984375
+      ],
+      "t": 1792889942.3499968
+     }
+    }
+   },
+   "idle_cpu": {
+    "measurements": [
+     {
+      "metric": "idle_cpu_percent",
+      "unit": "% of one core",
+      "scope": {
+       "candidate": "egui",
+       "workload": "idle visible session",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "max",
+      "value": 0.0,
+      "samples": [
+       0.0
+      ],
+      "target": {
+       "limit": 0.5,
+       "spec": "PERF-05",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "display_server_idle_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "idle visible session",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 0.0,
+      "samples": [
+       0.0
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 47.49994387240766,
+      "samples": [
+       47.49994387240766
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "egui",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 4.649994505404119,
+      "samples": [
+       4.649994505404119
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "load": {
+      "loadavg": [
+       3.19287109375,
+       3.85498046875,
+       5.5546875
+      ],
+      "t": 1792890068.8890145
+     }
+    }
+   },
+   "inventory": {
+    "measurements": [],
+    "observations": {
+     "binary_bytes": 6599760,
+     "mapped_file_count": 23,
+     "mapped_file_bytes_total": 14314696,
+     "package_size": "unverified: no package is produced in this phase",
+     "app_window_1200x800_present": true,
+     "fonts_mapped": [],
+     "gui_process_count": 1,
+     "declared_environment": {
+      "server": "Xvfb (X11, no compositor, software rendering)",
+      "screen": "1200x800x24",
+      "scale": "1 (declared, not observed)",
+      "wayland": "unverified"
+     },
+     "gpu": "GPU allocation unverified (the virtual display does not use the GPU)",
+     "cpu_logical": 24,
+     "largest_resident_mappings": [
+      {
+       "mapping": "[anonymous]",
+       "rss_kb": 10836,
+       "pss_kb": 10836
+      },
+      {
+       "mapping": "<checkout>/private/build/toolkit_egui/release/lico-toolkit-egui",
+       "rss_kb": 5056,
+       "pss_kb": 5056
+      },
+      {
+       "mapping": "/dev/shm/softbuffer-x11-JA2LvH2 (deleted)",
+       "rss_kb": 3752,
+       "pss_kb": 1876
+      },
+      {
+       "mapping": "[heap]",
+       "rss_kb": 3604,
+       "pss_kb": 3604
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+       "rss_kb": 1480,
+       "pss_kb": 28
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0",
+       "rss_kb": 816,
+       "pss_kb": 68
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+       "rss_kb": 488,
+       "pss_kb": 15
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+       "rss_kb": 268,
+       "pss_kb": 75
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+       "rss_kb": 232,
+       "pss_kb": 16
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0",
+       "rss_kb": 164,
+       "pss_kb": 12
+      },
+      {
+       "mapping": "/usr/lib/locale/C.utf8/LC_CTYPE",
+       "rss_kb": 124,
+       "pss_kb": 10
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxcb-xkb.so.1.0.0",
+       "rss_kb": 116,
+       "pss_kb": 42
+      }
+     ],
+     "screen_read_period_us": 18.7,
+     "latency_resolution_note": "two screen reads per poll; latency values cannot resolve below this period"
+    }
+   },
+   "korean_ime": {
+    "measurements": [],
+    "observations": {
+     "keys": [
+      "d",
+      "k",
+      "s",
+      "s",
+      "u",
+      "d",
+      "g",
+      "k",
+      "t",
+      "p",
+      "d",
+      "y",
+      "space",
+      "g",
+      "k",
+      "s",
+      "r",
+      "m",
+      "f",
+      "space"
+     ],
+     "input_method": "ibus 1.5.29 with the Hangul engine (2-set), private session",
+     "all_exact": true,
+     "runs": {
+      "normal": {
+       "key_delay_ms": 80,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 28,
+       "trace_tail": [
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "enabled",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast": {
+       "key_delay_ms": 8,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 28,
+       "trace_tail": [
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "enabled",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "under output": {
+       "key_delay_ms": 40,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 28,
+       "trace_tail": [
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "enabled",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast under output": {
+       "key_delay_ms": 8,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 28,
+       "trace_tail": [
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "enabled",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "disabled",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      }
+     },
+     "not_covered": "preedit mid-switch, other input methods, Wayland text-input, candidate popups"
+    }
+   }
+  },
+  "iced": {
+   "idle_memory": {
+    "measurements": [
+     {
+      "metric": "gui_idle_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 25.40234375,
+      "samples": [
+       25.40234375,
+       25.28125,
+       25.1484375
+      ],
+      "target": {
+       "limit": 50.0,
+       "spec": "PERF-01",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_idle_pss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.7451171875,
+      "samples": [
+       15.9130859375,
+       15.7451171875,
+       15.640625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_peak_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 24.421875,
+      "samples": [
+       24.4921875,
+       24.41796875,
+       24.421875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_anon_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 4.875,
+      "samples": [
+       4.875,
+       4.875,
+       4.875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_file_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.984375,
+      "samples": [
+       16.0546875,
+       15.98046875,
+       15.984375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 5.6796875,
+      "samples": [
+       5.6484375,
+       5.73828125,
+       5.6796875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 7.703125,
+      "samples": [
+       7.671875,
+       7.74609375,
+       7.703125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "one visible session, idle",
+       "process_scope": "virtual display server",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 67.00390625,
+      "samples": [
+       67.14453125,
+       67.00390625,
+       66.96875
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "gui_processes": [
+      "lico-toolkit-ic"
+     ],
+     "gui_process_count": 1,
+     "launches": 3,
+     "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process",
+     "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+     "load": {
+      "loadavg": [
+       4.7841796875,
+       4.1865234375,
+       5.58544921875
+      ],
+      "t": 1792890114.4249437
+     }
+    }
+   },
+   "hidden_growth": {
+    "measurements": [
+     {
+      "metric": "hidden_growth_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 0.91796875,
+      "samples": [
+       0.85546875,
+       0.91796875,
+       0.5625
+      ],
+      "target": {
+       "limit": 10.0,
+       "spec": "PERF-02",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 25.546875,
+      "samples": [
+       25.546875,
+       25.51171875,
+       25.5546875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 26.40234375,
+      "samples": [
+       26.40234375,
+       26.4296875,
+       26.1171875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 6.62890625,
+      "samples": [
+       6.63671875,
+       6.62890625,
+       6.57421875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.5546875,
+      "samples": [
+       15.57421875,
+       15.5546875,
+       15.453125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 26.77734375,
+      "samples": [
+       26.8359375,
+       26.77734375,
+       26.7578125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 216.71484375,
+      "samples": [
+       217.21875,
+       216.71484375,
+       216.4765625
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "pairing": "delta i = repetition i at 100 minus repetition i at 10",
+     "load": {
+      "loadavg": [
+       7.19921875,
+       4.95751953125,
+       5.77685546875
+      ],
+      "t": 1792890162.88398
+     }
+    }
+   },
+   "activation": {
+    "measurements": [
+     {
+      "metric": "activation_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "iced",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 102.807766,
+      "samples": [
+       87.986481,
+       97.259721,
+       47.119884,
+       47.209123,
+       47.367531,
+       55.606259,
+       56.843604,
+       46.420894,
+       45.62458,
+       47.69447,
+       54.400511,
+       48.85479,
+       46.065092,
+       47.275768,
+       42.874388,
+       42.75379,
+       41.973466,
+       48.46319,
+       44.826433,
+       102.807766,
+       114.186842,
+       45.220938,
+       42.987691,
+       47.087182,
+       49.955118,
+       49.381544,
+       45.745769,
+       44.527809,
+       44.311821,
+       47.791162,
+       44.859996,
+       46.204575,
+       49.1673,
+       67.579116,
+       46.547092,
+       46.030757,
+       65.333956,
+       59.597495,
+       45.900341,
+       59.348263,
+       44.979822,
+       52.474625,
+       58.143398,
+       49.256208,
+       56.593322,
+       52.004577,
+       115.658992,
+       126.823373,
+       62.932221,
+       44.559149,
+       45.271744,
+       49.93017,
+       44.587512,
+       49.456736,
+       44.572574,
+       46.719648,
+       46.515643,
+       62.692939,
+       58.506184,
+       47.649454,
+       46.034284,
+       50.498583,
+       47.473662,
+       45.239112,
+       47.132598,
+       48.603075,
+       50.474137,
+       45.949484,
+       48.00271,
+       48.867874,
+       41.787845,
+       44.435535,
+       43.559411,
+       85.041738,
+       86.318318,
+       44.787068,
+       42.971089,
+       47.494551,
+       45.448428,
+       45.272615,
+       44.50758,
+       47.650105,
+       45.876145,
+       54.57538,
+       48.439305,
+       59.652418,
+       55.273209,
+       45.705152,
+       49.818569,
+       64.578589,
+       51.929955,
+       58.131274,
+       138.925744,
+       143.13941,
+       48.846283,
+       46.210816,
+       53.049039,
+       53.355227,
+       48.0874,
+       57.759543
+      ],
+      "target": {
+       "limit": 100.0,
+       "spec": "PERF-03",
+       "comparison": "<="
+      },
+      "classification": "missed"
+     },
+     {
+      "metric": "activation_first_visit_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "median",
+      "value": 46.223247,
+      "samples": [
+       111.707784,
+       155.352848,
+       126.715143,
+       129.041285,
+       147.587334,
+       87.018584,
+       45.639169,
+       47.324161,
+       45.628439,
+       51.569878,
+       51.194188,
+       46.292583,
+       48.027689,
+       44.3262,
+       54.617362,
+       55.096877,
+       47.41399,
+       51.789712,
+       55.250047,
+       54.625667,
+       51.551664,
+       44.878012,
+       45.538278,
+       41.902022,
+       44.618942,
+       44.22593,
+       45.48634,
+       50.641314,
+       42.072425,
+       47.798827,
+       47.983636,
+       51.853173,
+       50.108338,
+       43.509678,
+       51.594625,
+       51.134665,
+       47.892524,
+       41.783067,
+       46.153911,
+       47.575415,
+       42.633843,
+       58.202381,
+       57.099027,
+       51.363508,
+       55.116444,
+       55.739923,
+       45.200922,
+       43.209561,
+       46.729707,
+       46.539869,
+       43.445927,
+       43.487806,
+       43.727568,
+       47.985168,
+       44.708832,
+       41.119635,
+       46.108675,
+       51.286562,
+       56.912115,
+       49.932295,
+       42.268664,
+       44.049076,
+       45.364199,
+       42.166962,
+       41.198032,
+       44.448149,
+       41.370858,
+       40.345272,
+       42.03873,
+       40.733014,
+       41.332226,
+       43.08194,
+       40.488052,
+       42.630537,
+       49.099392,
+       53.979417,
+       41.313761,
+       40.885873,
+       40.714669,
+       44.9776,
+       46.800301,
+       46.141998,
+       45.991373,
+       43.558539,
+       47.739674,
+       58.022651,
+       44.23678,
+       42.141273,
+       42.399941,
+       46.476359,
+       45.526966,
+       46.602617,
+       46.021811,
+       51.394907,
+       43.9295,
+       48.027558,
+       45.578123,
+       47.190327,
+       51.984971,
+       47.397529
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "timeouts_revisit": 0,
+     "timeouts_first_visit": 0,
+     "timeout_cap_ms": 2000.0,
+     "revisit_order": "stride 37 over 100 sessions",
+     "load": {
+      "loadavg": [
+       8.0078125,
+       5.28564453125,
+       5.86767578125
+      ],
+      "t": 1792890186.2105303
+     }
+    }
+   },
+   "restart": {
+    "measurements": [
+     {
+      "metric": "restart_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "iced",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "page cache warm after first launch; others not controlled",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 144.180884,
+      "samples": [
+       147.381177,
+       160.018819,
+       144.180884,
+       170.386305,
+       149.289049,
+       91.305954,
+       104.451195,
+       95.118513,
+       93.248402,
+       105.559609,
+       111.187755,
+       102.754471,
+       101.226016,
+       103.502494,
+       115.163782,
+       130.494119,
+       118.908664,
+       100.738845,
+       98.514525,
+       90.331313,
+       114.38933,
+       111.144072,
+       96.844692,
+       100.573854,
+       102.184865,
+       95.779401,
+       96.673909,
+       107.269856,
+       106.791413,
+       110.68186,
+       97.327132,
+       102.110334,
+       104.018978,
+       95.748401,
+       102.81243,
+       106.07518,
+       107.320722,
+       94.497018,
+       101.399341,
+       104.845608,
+       115.831061,
+       115.586609,
+       113.228106,
+       130.806226,
+       120.241218,
+       127.702977,
+       101.218579,
+       104.553677,
+       96.352882,
+       187.923314,
+       135.549312,
+       125.543329,
+       99.831951,
+       93.741691,
+       98.225908,
+       95.804105,
+       94.416836,
+       92.045448,
+       94.356521,
+       91.680439,
+       102.328845,
+       111.634445,
+       97.102206,
+       99.963559,
+       96.704896,
+       115.558494,
+       105.737952,
+       100.059249,
+       104.194467,
+       97.094742,
+       100.521151,
+       102.973972,
+       113.874113,
+       112.245909,
+       101.406703,
+       107.473117,
+       91.858995,
+       96.256107,
+       104.192393,
+       100.39866,
+       98.865345,
+       98.802976,
+       95.667416,
+       97.749667,
+       100.439606,
+       102.224216,
+       94.147226,
+       95.63308,
+       88.186129,
+       106.753618,
+       87.838603,
+       93.134582,
+       91.397713,
+       120.365399,
+       96.144956,
+       92.272595,
+       85.9777,
+       97.939705,
+       111.889163,
+       101.835201
+      ],
+      "target": {
+       "limit": 500.0,
+       "spec": "PERF-04",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "cold_start_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "best-effort cold: posix_fadvise DONTNEED on mapped files; pages mapped by other processes stay resident",
+       "p95_method": "nearest rank"
+      },
+      "n": 10,
+      "statistic": "median",
+      "value": 163.20779,
+      "samples": [
+       280.609824,
+       187.33704,
+       179.937519,
+       178.356413,
+       213.965227,
+       105.910274,
+       148.059167,
+       130.856566,
+       131.379553,
+       130.449087
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "files_evicted": 24,
+     "files_mapped": 24,
+     "cold_runs": 10,
+     "load": {
+      "loadavg": [
+       8.82763671875,
+       5.87109375,
+       6.04296875
+      ],
+      "t": 1792890222.4520886
+     }
+    }
+   },
+   "idle_cpu": {
+    "measurements": [
+     {
+      "metric": "idle_cpu_percent",
+      "unit": "% of one core",
+      "scope": {
+       "candidate": "iced",
+       "workload": "idle visible session",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "max",
+      "value": 0.0,
+      "samples": [
+       0.0
+      ],
+      "target": {
+       "limit": 0.5,
+       "spec": "PERF-05",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "display_server_idle_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "idle visible session",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 0.0,
+      "samples": [
+       0.0
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 97.86654847510464,
+      "samples": [
+       97.86654847510464
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "iced",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 3.1499961958097367,
+      "samples": [
+       3.1499961958097367
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "load": {
+      "loadavg": [
+       10.02880859375,
+       7.416015625,
+       6.59619140625
+      ],
+      "t": 1792890349.1531694
+     }
+    }
+   },
+   "inventory": {
+    "measurements": [],
+    "observations": {
+     "binary_bytes": 5561168,
+     "mapped_file_count": 66,
+     "mapped_file_bytes_total": 90459220,
+     "package_size": "unverified: no package is produced in this phase",
+     "app_window_1200x800_present": true,
+     "fonts_mapped": [
+      "DejaVuSans.ttf",
+      "DejaVuSansMono-Bold.ttf",
+      "DejaVuSansMono.ttf",
+      "FreeMono.ttf",
+      "FreeSans.ttf",
+      "LiberationMono-Bold.ttf",
+      "LiberationMono-Regular.ttf",
+      "NanumGothicCoding.ttf",
+      "NanumGothicCodingBold.ttf",
+      "NimbusMonoPS-Bold.otf",
+      "NimbusMonoPS-Regular.otf",
+      "NotoColorEmoji.ttf",
+      "NotoMono-Regular.ttf",
+      "NotoSans-Regular.ttf",
+      "NotoSansCJK-Regular.ttc",
+      "NotoSansHebrew-Regular.ttf",
+      "NotoSansMono-Bold.ttf",
+      "NotoSansMono-Regular.ttf",
+      "NotoSansSymbols-Regular.ttf",
+      "NotoSansSymbols2-Regular.ttf",
+      "TlwgMono-Bold.otf",
+      "TlwgMono.otf",
+      "TlwgTypo-Bold.otf",
+      "TlwgTypo.otf",
+      "UbuntuMono[wght].ttf",
+      "UbuntuSansMono[wght].ttf",
+      "lmmono10-regular.otf",
+      "lmmono12-regular.otf",
+      "lmmono8-regular.otf",
+      "lmmono9-regular.otf",
+      "lmmonocaps10-regular.otf",
+      "lmmonolt10-bold.otf",
+      "lmmonolt10-regular.otf",
+      "lmmonoltcond10-regular.otf",
+      "texgyrecursor-bold.otf",
+      "texgyrecursor-regular.otf",
+      "unifont.otf",
+      "unifont_csur.otf",
+      "unifont_jp.otf",
+      "unifont_jp_sample.otf",
+      "unifont_sample.otf",
+      "unifont_upper.otf",
+      "unifont_upper_sample.otf"
+     ],
+     "gui_process_count": 1,
+     "declared_environment": {
+      "server": "Xvfb (X11, no compositor, software rendering)",
+      "screen": "1200x800x24",
+      "scale": "1 (declared, not observed)",
+      "wayland": "unverified"
+     },
+     "gpu": "GPU allocation unverified (the virtual display does not use the GPU)",
+     "cpu_logical": 24,
+     "largest_resident_mappings": [
+      {
+       "mapping": "<checkout>/private/build/toolkit_iced/release/lico-toolkit-iced",
+       "rss_kb": 4824,
+       "pss_kb": 4824
+      },
+      {
+       "mapping": "/dev/shm/softbuffer-x11-ZkSxCJK (deleted)",
+       "rss_kb": 3752,
+       "pss_kb": 1876
+      },
+      {
+       "mapping": "[heap]",
+       "rss_kb": 3184,
+       "pss_kb": 3184
+      },
+      {
+       "mapping": "[anonymous]",
+       "rss_kb": 1624,
+       "pss_kb": 1624
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+       "rss_kb": 1480,
+       "pss_kb": 27
+      },
+      {
+       "mapping": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+       "rss_kb": 1472,
+       "pss_kb": 88
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0",
+       "rss_kb": 816,
+       "pss_kb": 90
+      },
+      {
+       "mapping": "/usr/share/fonts/truetype/nanum/NanumGothicCoding.ttf",
+       "rss_kb": 728,
+       "pss_kb": 412
+      },
+      {
+       "mapping": "/usr/share/fonts/opentype/unifont/unifont.otf",
+       "rss_kb": 680,
+       "pss_kb": 620
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+       "rss_kb": 600,
+       "pss_kb": 24
+      },
+      {
+       "mapping": "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+       "rss_kb": 532,
+       "pss_kb": 465
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+       "rss_kb": 288,
+       "pss_kb": 120
+      }
+     ],
+     "screen_read_period_us": 21.0,
+     "latency_resolution_note": "two screen reads per poll; latency values cannot resolve below this period"
+    }
+   },
+   "korean_ime": {
+    "measurements": [],
+    "observations": {
+     "keys": [
+      "d",
+      "k",
+      "s",
+      "s",
+      "u",
+      "d",
+      "g",
+      "k",
+      "t",
+      "p",
+      "d",
+      "y",
+      "space",
+      "g",
+      "k",
+      "s",
+      "r",
+      "m",
+      "f",
+      "space"
+     ],
+     "input_method": "ibus 1.5.29 with the Hangul engine (2-set), private session",
+     "all_exact": false,
+     "runs": {
+      "normal": {
+       "key_delay_ms": 80,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 56,
+       "trace_tail": [
+        [
+         "commit",
+         "\ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast": {
+       "key_delay_ms": 8,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\uc14d\ud558\u314e \u315b\uae00\u3134\u314f ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": false,
+       "committed_only_grows": true,
+       "ime_events": 64,
+       "trace_tail": [
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\uc14d\ud558\u314e \u315b\uae00\u3134"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\u3134"
+        ],
+        [
+         "text",
+         "\uc548\ub155\uc14d\ud558\u314e \u315b\uae00\u3134\u314f"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\u314f"
+        ],
+        [
+         "text",
+         "\uc548\ub155\uc14d\ud558\u314e \u315b\uae00\u3134\u314f "
+        ],
+        [
+         "text",
+         "\uc548\ub155\uc14d\ud558\u314e \u315b\uae00\u3134\u314f "
+        ]
+       ]
+      },
+      "under output": {
+       "key_delay_ms": 40,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 54,
+       "trace_tail": [
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\ud55c"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast under output": {
+       "key_delay_ms": 8,
+       "output_while_typing": true,
+       "final_text": "\uc548\ud558\uc138\ub155 \ud55c\uc694\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": false,
+       "committed_only_grows": true,
+       "ime_events": 53,
+       "trace_tail": [
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uc694"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         "\u3131"
+        ],
+        [
+         "preedit",
+         "\uadf8"
+        ],
+        [
+         "preedit",
+         "\uae00"
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "text",
+         "\uc548\ud558\uc138\ub155 \ud55c\uc694\uae00 "
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "preedit",
+         ""
+        ],
+        [
+         "commit",
+         "\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ud558\uc138\ub155 \ud55c\uc694\uae00 "
+        ]
+       ]
+      }
+     },
+     "not_covered": "preedit mid-switch, other input methods, Wayland text-input, candidate popups"
+    }
+   }
+  },
+  "slint": {
+   "idle_memory": {
+    "measurements": [
+     {
+      "metric": "gui_idle_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 31.95703125,
+      "samples": [
+       31.68359375,
+       31.86328125,
+       31.95703125
+      ],
+      "target": {
+       "limit": 50.0,
+       "spec": "PERF-01",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_idle_pss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 20.9423828125,
+      "samples": [
+       20.791015625,
+       20.9423828125,
+       21.0205078125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_peak_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 30.91796875,
+      "samples": [
+       30.859375,
+       30.91796875,
+       31.0390625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_anon_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 3.1875,
+      "samples": [
+       3.1875,
+       3.1875,
+       3.375
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_idle_rss_file_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 24.109375,
+      "samples": [
+       24.109375,
+       24.16796875,
+       24.1015625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 5.8125,
+      "samples": [
+       5.79296875,
+       5.8125,
+       5.81640625
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 7.81640625,
+      "samples": [
+       7.81640625,
+       7.81640625,
+       7.828125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_idle_rss_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "one visible session, idle",
+       "process_scope": "virtual display server",
+       "viewport": "1200x800",
+       "settle_s": 3.0,
+       "sample_unit": "independent launch",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 70.78125,
+      "samples": [
+       70.8203125,
+       70.78125,
+       70.61328125
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "gui_processes": [
+      "lico-toolkit-sl"
+     ],
+     "gui_process_count": 1,
+     "launches": 3,
+     "composition_note": "anon and file parts come from the status counters, which can differ from the smaps total by about 0.4 MiB per process",
+     "peak_note": "sum of per-process VmHWM; peaks need not coincide and the kernel high-water mark can read below an instantaneous RSS",
+     "load": {
+      "loadavg": [
+       9.4462890625,
+       7.62353515625,
+       6.70703125
+      ],
+      "t": 1792890395.8435612
+     }
+    }
+   },
+   "hidden_growth": {
+    "measurements": [
+     {
+      "metric": "hidden_growth_rss_mib",
+      "unit": "MiB",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "max",
+      "value": 0.43359375,
+      "samples": [
+       0.078125,
+       0.43359375,
+       0.1640625
+      ],
+      "target": {
+       "limit": 10.0,
+       "spec": "PERF-02",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "gui_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 31.96875,
+      "samples": [
+       31.98046875,
+       31.8125,
+       31.96875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "gui_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "gui process tree",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 32.1328125,
+      "samples": [
+       32.05859375,
+       32.24609375,
+       32.1328125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 6.609375,
+      "samples": [
+       6.609375,
+       6.62109375,
+       6.54296875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program only (not its agent processes)",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 15.4921875,
+      "samples": [
+       15.4921875,
+       15.5390625,
+       15.453125
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_10_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 26.734375,
+      "samples": [
+       26.7734375,
+       26.734375,
+       26.66796875
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "host_and_agents_rss_100_sessions_mib",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "10 vs 100 sessions, each shown once then hidden",
+       "process_scope": "host program and the agent processes it started",
+       "viewport": "1200x800",
+       "output": "agent-shaped UTF-8 text lines",
+       "history": 10000
+      },
+      "n": 3,
+      "statistic": "median",
+      "value": 217.03515625,
+      "samples": [
+       217.03515625,
+       217.11328125,
+       216.83203125
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "pairing": "delta i = repetition i at 100 minus repetition i at 10",
+     "load": {
+      "loadavg": [
+       8.9541015625,
+       7.72802734375,
+       6.78662109375
+      ],
+      "t": 1792890439.6191008
+     }
+    }
+   },
+   "activation": {
+    "measurements": [
+     {
+      "metric": "activation_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "slint",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 28.5685,
+      "samples": [
+       42.719502,
+       19.495031,
+       21.990442,
+       22.146155,
+       22.004628,
+       22.096552,
+       22.422848,
+       21.732365,
+       21.92603,
+       21.685256,
+       22.345763,
+       22.163619,
+       20.678886,
+       21.813377,
+       21.980874,
+       21.976315,
+       21.150546,
+       22.177825,
+       20.807619,
+       39.802746,
+       20.513404,
+       20.953864,
+       21.755989,
+       21.291372,
+       20.514907,
+       22.221328,
+       21.37557,
+       22.581096,
+       21.214948,
+       21.625062,
+       21.573775,
+       19.819183,
+       22.773239,
+       21.910621,
+       22.079019,
+       21.125148,
+       21.569747,
+       21.653686,
+       20.741454,
+       19.981118,
+       20.403887,
+       21.975644,
+       22.343869,
+       20.712199,
+       20.44297,
+       23.513427,
+       44.898786,
+       28.5685,
+       21.11049,
+       15.70721,
+       20.853024,
+       20.843196,
+       21.991593,
+       22.155203,
+       20.140068,
+       20.663637,
+       22.043873,
+       17.425955,
+       21.241568,
+       20.27314,
+       21.869784,
+       20.149096,
+       19.909543,
+       20.660351,
+       21.054645,
+       24.587084,
+       21.132352,
+       22.95924,
+       24.608314,
+       24.16674,
+       21.178549,
+       20.64983,
+       22.163939,
+       44.562531,
+       24.191456,
+       20.88241,
+       20.060608,
+       21.261115,
+       20.787601,
+       21.766539,
+       20.64886,
+       14.894276,
+       20.963032,
+       20.856421,
+       20.645352,
+       21.41749,
+       22.114957,
+       20.954977,
+       20.8029,
+       21.389036,
+       20.615005,
+       21.202714,
+       37.072953,
+       19.28838,
+       20.80843,
+       20.590519,
+       20.887539,
+       20.611929,
+       20.912707,
+       20.842545
+      ],
+      "target": {
+       "limit": 100.0,
+       "spec": "PERF-03",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "activation_first_visit_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "100 sessions (5 producing 100 rec/s while hidden), history 10000 records",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "median",
+      "value": 21.226560499999998,
+      "samples": [
+       160.338916,
+       47.314347,
+       51.190364,
+       40.579994,
+       28.464834,
+       33.98277,
+       22.703569,
+       20.532299,
+       21.227372,
+       21.004881,
+       21.712437,
+       22.078478,
+       21.12054,
+       21.827123,
+       21.752462,
+       20.261508,
+       20.200322,
+       20.58014,
+       21.524182,
+       21.368468,
+       21.694383,
+       21.819149,
+       21.881777,
+       21.416679,
+       21.27384,
+       20.776851,
+       21.171486,
+       21.955275,
+       21.611927,
+       21.357788,
+       21.411099,
+       21.350013,
+       20.191627,
+       21.12057,
+       21.118656,
+       20.129159,
+       20.791429,
+       20.729451,
+       21.890223,
+       21.293316,
+       21.225749,
+       21.648867,
+       21.680067,
+       21.615404,
+       20.98244,
+       18.139973,
+       21.463227,
+       21.806685,
+       21.870085,
+       21.517279,
+       21.579917,
+       21.045318,
+       21.938754,
+       13.225937,
+       20.18259,
+       19.875059,
+       22.533868,
+       20.693404,
+       19.782544,
+       21.01502,
+       21.400077,
+       13.49768,
+       20.920412,
+       19.860301,
+       22.164731,
+       21.333101,
+       21.006184,
+       23.958658,
+       20.139428,
+       20.503054,
+       21.127142,
+       20.982489,
+       20.663667,
+       20.68653,
+       21.442348,
+       20.434123,
+       20.149527,
+       20.636456,
+       20.036653,
+       22.009017,
+       21.854836,
+       20.529414,
+       20.393978,
+       19.68515,
+       19.956623,
+       21.54986,
+       20.378219,
+       20.879374,
+       20.131953,
+       20.00332,
+       21.340916,
+       21.21597,
+       22.150775,
+       20.623933,
+       20.085616,
+       22.31249,
+       22.06886,
+       23.290857,
+       21.668514,
+       21.209538
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "timeouts_revisit": 0,
+     "timeouts_first_visit": 0,
+     "timeout_cap_ms": 2000.0,
+     "revisit_order": "stride 37 over 100 sessions",
+     "load": {
+      "loadavg": [
+       8.33203125,
+       7.6650390625,
+       6.7861328125
+      ],
+      "t": 1792890456.7338943
+     }
+    }
+   },
+   "restart": {
+    "measurements": [
+     {
+      "metric": "restart_p95_ms",
+      "unit": "ms",
+      "scope": {
+       "candidate": "slint",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "page cache warm after first launch; others not controlled",
+       "p95_method": "nearest rank"
+      },
+      "n": 100,
+      "statistic": "p95",
+      "value": 214.120545,
+      "samples": [
+       216.284461,
+       213.934174,
+       229.602862,
+       190.680438,
+       205.397299,
+       184.940302,
+       180.996717,
+       179.394984,
+       187.213864,
+       196.568272,
+       190.502171,
+       167.147805,
+       214.120545,
+       174.375218,
+       187.944683,
+       175.000769,
+       176.383479,
+       177.227592,
+       188.218029,
+       168.860657,
+       210.698314,
+       168.037663,
+       205.297179,
+       195.646862,
+       202.133125,
+       167.231472,
+       176.860919,
+       177.665518,
+       164.743294,
+       180.899803,
+       167.180726,
+       170.591544,
+       191.323499,
+       197.356047,
+       202.601769,
+       179.572146,
+       186.78418,
+       164.668022,
+       182.966784,
+       167.270555,
+       169.984037,
+       163.370822,
+       180.491441,
+       178.227948,
+       192.124059,
+       185.469007,
+       218.022698,
+       176.742523,
+       175.132835,
+       192.268502,
+       171.42725,
+       174.012861,
+       175.48003,
+       181.009969,
+       197.329676,
+       175.582313,
+       197.55501,
+       185.062098,
+       173.716722,
+       163.062339,
+       185.507268,
+       177.086732,
+       171.052662,
+       180.077107,
+       165.356199,
+       190.106469,
+       181.774861,
+       166.912827,
+       165.607924,
+       196.000775,
+       166.807267,
+       182.878635,
+       168.785341,
+       179.249364,
+       195.764168,
+       175.130909,
+       177.038921,
+       170.948283,
+       183.339094,
+       173.79121,
+       170.836592,
+       176.154942,
+       190.647379,
+       220.985938,
+       178.53259,
+       227.987444,
+       183.167599,
+       178.631126,
+       190.301295,
+       177.77047,
+       175.35439,
+       177.556236,
+       166.25889,
+       184.61473,
+       180.68406,
+       163.639356,
+       179.882698,
+       174.847472,
+       183.052049,
+       171.549297
+      ],
+      "target": {
+       "limit": 500.0,
+       "spec": "PERF-04",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "cold_start_ms",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "start GUI process, attach to one of 100 sessions (5 producing, history 10000 records), snapshot path",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "clock": "monotonic",
+       "frame_source": "X server pixels",
+       "filesystem": "best-effort cold: posix_fadvise DONTNEED on mapped files; pages mapped by other processes stay resident",
+       "p95_method": "nearest rank"
+      },
+      "n": 10,
+      "statistic": "median",
+      "value": 237.47199,
+      "samples": [
+       498.450584,
+       242.519063,
+       273.52995,
+       242.170484,
+       232.773496,
+       215.430599,
+       225.042742,
+       228.843177,
+       213.72561,
+       261.884697
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "files_evicted": 70,
+     "files_mapped": 70,
+     "cold_runs": 10,
+     "load": {
+      "loadavg": [
+       6.95263671875,
+       7.44140625,
+       6.7509765625
+      ],
+      "t": 1792890501.106291
+     }
+    }
+   },
+   "idle_cpu": {
+    "measurements": [
+     {
+      "metric": "idle_cpu_percent",
+      "unit": "% of one core",
+      "scope": {
+       "candidate": "slint",
+       "workload": "idle visible session",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "max",
+      "value": 0.0666665890855169,
+      "samples": [
+       0.0666665890855169
+      ],
+      "target": {
+       "limit": 0.5,
+       "spec": "PERF-05",
+       "comparison": "<="
+      },
+      "classification": "met"
+     },
+     {
+      "metric": "display_server_idle_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "idle visible session",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 0.01666664727137921,
+      "samples": [
+       0.01666664727137921
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "gui process tree",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 94.0988529602072,
+      "samples": [
+       94.0988529602072
+      ],
+      "classification": "reported"
+     },
+     {
+      "metric": "display_server_noisy_cpu_percent",
+      "unit": "",
+      "scope": {
+       "candidate": "slint",
+       "workload": "visible session producing 100 rec/s",
+       "process_scope": "virtual display server",
+       "output": "agent-shaped UTF-8 text lines",
+       "accounts_on_host": 0,
+       "display_scale": 1,
+       "client_args": [],
+       "viewport": "1200x800",
+       "interval_s": 60
+      },
+      "n": 1,
+      "statistic": "median",
+      "value": 3.699954898541622,
+      "samples": [
+       3.699954898541622
+      ],
+      "classification": "reported"
+     }
+    ],
+    "observations": {
+     "load": {
+      "loadavg": [
+       7.09912109375,
+       7.11669921875,
+       6.7041015625
+      ],
+      "t": 1792890627.9524882
+     }
+    }
+   },
+   "inventory": {
+    "measurements": [],
+    "observations": {
+     "binary_bytes": 16142192,
+     "mapped_file_count": 213,
+     "mapped_file_bytes_total": 174247787,
+     "package_size": "unverified: no package is produced in this phase",
+     "app_window_1200x800_present": true,
+     "fonts_mapped": [
+      "DejaVuSans.ttf",
+      "DejaVuSansMono.ttf",
+      "FreeMono.ttf",
+      "FreeSans.ttf",
+      "FreeSerif.ttf",
+      "Laksaman.otf",
+      "NanumGothic.ttf",
+      "NimbusSans-Regular.otf",
+      "NotoSans-Regular.ttf",
+      "NotoSansAdlam-Regular.ttf",
+      "NotoSansArabic-Regular.ttf",
+      "NotoSansArmenian-Regular.ttf",
+      "NotoSansAvestan-Regular.ttf",
+      "NotoSansBalinese-Regular.ttf",
+      "NotoSansBamum-Regular.ttf",
+      "NotoSansBassaVah-Regular.ttf",
+      "NotoSansBatak-Regular.ttf",
+      "NotoSansBengali-Regular.ttf",
+      "NotoSansBhaiksuki-Regular.ttf",
+      "NotoSansBrahmi-Regular.ttf",
+      "NotoSansBuginese-Regular.ttf",
+      "NotoSansBuhid-Regular.ttf",
+      "NotoSansCJK-Regular.ttc",
+      "NotoSansCanadianAboriginal-Regular.ttf",
+      "NotoSansCarian-Regular.ttf",
+      "NotoSansCaucasianAlbanian-Regular.ttf",
+      "NotoSansChakma-Regular.ttf",
+      "NotoSansCham-Regular.ttf",
+      "NotoSansCherokee-Regular.ttf",
+      "NotoSansCoptic-Regular.ttf",
+      "NotoSansCuneiform-Regular.ttf",
+      "NotoSansCypriot-Regular.ttf",
+      "NotoSansDeseret-Regular.ttf",
+      "NotoSansDevanagari-Regular.ttf",
+      "NotoSansDuployan-Regular.ttf",
+      "NotoSansElbasan-Regular.ttf",
+      "NotoSansElymaic-Regular.ttf",
+      "NotoSansEthiopic-Regular.ttf",
+      "NotoSansGeorgian-Regular.ttf",
+      "NotoSansGlagolitic-Regular.ttf",
+      "NotoSansGothic-Regular.ttf",
+      "NotoSansGrantha-Regular.ttf",
+      "NotoSansGujarati-Regular.ttf",
+      "NotoSansGunjalaGondi-Regular.ttf",
+      "NotoSansGurmukhi-Regular.ttf",
+      "NotoSansHanifiRohingya-Regular.ttf",
+      "NotoSansHanunoo-Regular.ttf",
+      "NotoSansHatran-Regular.ttf",
+      "NotoSansHebrew-Regular.ttf",
+      "NotoSansJavanese-Regular.ttf",
+      "NotoSansKaithi-Regular.ttf",
+      "NotoSansKannada-Regular.ttf",
+      "NotoSansKayahLi-Regular.ttf",
+      "NotoSansKharoshthi-Regular.ttf",
+      "NotoSansKhmer-Regular.ttf",
+      "NotoSansKhojki-Regular.ttf",
+      "NotoSansKhudawadi-Regular.ttf",
+      "NotoSansLao-Regular.ttf",
+      "NotoSansLepcha-Regular.ttf",
+      "NotoSansLimbu-Regular.ttf",
+      "NotoSansLinearA-Regular.ttf",
+      "NotoSansLinearB-Regular.ttf",
+      "NotoSansLisu-Regular.ttf",
+      "NotoSansLycian-Regular.ttf",
+      "NotoSansLydian-Regular.ttf",
+      "NotoSansMahajani-Regular.ttf",
+      "NotoSansMalayalam-Regular.ttf",
+      "NotoSansMandaic-Regular.ttf",
+      "NotoSansManichaean-Regular.ttf",
+      "NotoSansMarchen-Regular.ttf",
+      "NotoSansMasaramGondi-Regular.ttf",
+      "NotoSansMath-Regular.ttf",
+      "NotoSansMayanNumerals-Regular.ttf",
+      "NotoSansMedefaidrin-Regular.ttf",
+      "NotoSansMeeteiMayek-Regular.ttf",
+      "NotoSansMendeKikakui-Regular.ttf",
+      "NotoSansMeroitic-Regular.ttf",
+      "NotoSansMiao-Regular.ttf",
+      "NotoSansModi-Regular.ttf",
+      "NotoSansMongolian-Regular.ttf",
+      "NotoSansMro-Regular.ttf",
+      "NotoSansMultani-Regular.ttf",
+      "NotoSansMyanmar-Regular.ttf",
+      "NotoSansNKo-Regular.ttf",
+      "NotoSansNabataean-Regular.ttf",
+      "NotoSansNewTaiLue-Regular.ttf",
+      "NotoSansNewa-Regular.ttf",
+      "NotoSansNushu-Regular.ttf",
+      "NotoSansOgham-Regular.ttf",
+      "NotoSansOlChiki-Regular.ttf",
+      "NotoSansOriya-Regular.ttf",
+      "NotoSansOsage-Regular.ttf",
+      "NotoSansOsmanya-Regular.ttf",
+      "NotoSansPahawhHmong-Regular.ttf",
+      "NotoSansPalmyrene-Regular.ttf",
+      "NotoSansPauCinHau-Regular.ttf",
+      "NotoSansPhagsPa-Regular.ttf",
+      "NotoSansPhoenician-Regular.ttf",
+      "NotoSansRejang-Regular.ttf",
+      "NotoSansRunic-Regular.ttf",
+      "NotoSansSaurashtra-Regular.ttf",
+      "NotoSansSharada-Regular.ttf",
+      "NotoSansShavian-Regular.ttf",
+      "NotoSansSiddham-Regular.ttf",
+      "NotoSansSinhala-Regular.ttf",
+      "NotoSansSogdian-Regular.ttf",
+      "NotoSansSoraSompeng-Regular.ttf",
+      "NotoSansSoyombo-Regular.ttf",
+      "NotoSansSundanese-Regular.ttf",
+      "NotoSansSylotiNagri-Regular.ttf",
+      "NotoSansSyriac-Regular.ttf",
+      "NotoSansTagalog-Regular.ttf",
+      "NotoSansTagbanwa-Regular.ttf",
+      "NotoSansTaiLe-Regular.ttf",
+      "NotoSansTaiTham-Regular.ttf",
+      "NotoSansTaiViet-Regular.ttf",
+      "NotoSansTakri-Regular.ttf",
+      "NotoSansTamil-Regular.ttf",
+      "NotoSansTelugu-Regular.ttf",
+      "NotoSansThaana-Regular.ttf",
+      "NotoSansThai-Regular.ttf",
+      "NotoSansTifinagh-Regular.ttf",
+      "NotoSansTirhuta-Regular.ttf",
+      "NotoSansUgaritic-Regular.ttf",
+      "NotoSansVai-Regular.ttf",
+      "NotoSansWancho-Regular.ttf",
+      "NotoSansWarangCiti-Regular.ttf",
+      "NotoSansYi-Regular.ttf",
+      "NotoSansZanabazarSquare-Regular.ttf",
+      "NotoSerifCJK-Regular.ttc",
+      "Umpush.otf",
+      "UnDotum.ttf",
+      "Waree.otf",
+      "bkai00mp.ttf",
+      "dotum.ttf",
+      "ipaexg.ttf",
+      "lmmono10-regular.otf",
+      "lmmonoprop10-regular.otf",
+      "texgyrebonum-regular.otf",
+      "uming.ttc",
+      "unifont.otf",
+      "unifont_csur.otf",
+      "unifont_jp_sample.otf",
+      "unifont_upper.otf",
+      "wqy-zenhei.ttc"
+     ],
+     "gui_process_count": 1,
+     "declared_environment": {
+      "server": "Xvfb (X11, no compositor, software rendering)",
+      "screen": "1200x800x24",
+      "scale": "1 (declared, not observed)",
+      "wayland": "unverified"
+     },
+     "gpu": "GPU allocation unverified (the virtual display does not use the GPU)",
+     "cpu_logical": 24,
+     "largest_resident_mappings": [
+      {
+       "mapping": "<checkout>/private/build/toolkit_slint/release/lico-toolkit-slint",
+       "rss_kb": 9708,
+       "pss_kb": 9708
+      },
+      {
+       "mapping": "/dev/shm/softbuffer-x11-NsbDrvg (deleted)",
+       "rss_kb": 3752,
+       "pss_kb": 1876
+      },
+      {
+       "mapping": "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+       "rss_kb": 2560,
+       "pss_kb": 258
+      },
+      {
+       "mapping": "[heap]",
+       "rss_kb": 2296,
+       "pss_kb": 2296
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+       "rss_kb": 1536,
+       "pss_kb": 28
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0",
+       "rss_kb": 816,
+       "pss_kb": 91
+      },
+      {
+       "mapping": "[anonymous]",
+       "rss_kb": 492,
+       "pss_kb": 492
+      },
+      {
+       "mapping": "/var/cache/fontconfig/0bd3dc0958fa2205aaaa8ebb13e2872b-le64.cache-9",
+       "rss_kb": 468,
+       "pss_kb": 234
+      },
+      {
+       "mapping": "/var/cache/fontconfig/2300eef321c393bfd76478a5c0e95b23-le64.cache-9",
+       "rss_kb": 376,
+       "pss_kb": 376
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+       "rss_kb": 312,
+       "pss_kb": 10
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libfontconfig.so.1.12.1",
+       "rss_kb": 296,
+       "pss_kb": 70
+      },
+      {
+       "mapping": "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+       "rss_kb": 264,
+       "pss_kb": 100
+      }
+     ],
+     "screen_read_period_us": 20.4,
+     "latency_resolution_note": "two screen reads per poll; latency values cannot resolve below this period"
+    }
+   },
+   "korean_ime": {
+    "measurements": [],
+    "observations": {
+     "keys": [
+      "d",
+      "k",
+      "s",
+      "s",
+      "u",
+      "d",
+      "g",
+      "k",
+      "t",
+      "p",
+      "d",
+      "y",
+      "space",
+      "g",
+      "k",
+      "s",
+      "r",
+      "m",
+      "f",
+      "space"
+     ],
+     "input_method": "ibus 1.5.29 with the Hangul engine (2-set), private session",
+     "all_exact": true,
+     "runs": {
+      "normal": {
+       "key_delay_ms": 80,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 10,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548"
+        ],
+        [
+         "text",
+         "\uc548\ub155"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast": {
+       "key_delay_ms": 8,
+       "output_while_typing": false,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 10,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548"
+        ],
+        [
+         "text",
+         "\uc548\ub155"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "under output": {
+       "key_delay_ms": 40,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 10,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548"
+        ],
+        [
+         "text",
+         "\uc548\ub155"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      },
+      "fast under output": {
+       "key_delay_ms": 8,
+       "output_while_typing": true,
+       "final_text": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "expected": "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 ",
+       "exact": true,
+       "committed_only_grows": true,
+       "ime_events": 10,
+       "trace_tail": [
+        [
+         "text",
+         "\uc548"
+        ],
+        [
+         "text",
+         "\uc548\ub155"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00"
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ],
+        [
+         "text",
+         "\uc548\ub155\ud558\uc138\uc694 \ud55c\uae00 "
+        ]
+       ]
+      }
+     },
+     "not_covered": "preedit mid-switch, other input methods, Wayland text-input, candidate popups"
+    }
+   }
+  }
+ }
+}

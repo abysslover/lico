@@ -1,0 +1,12 @@
+ERROR exp/toolkit_compare/test_acceptance.py::test_hide_releases_the_view_and_neutralises_the_markers[iced]
+ERROR exp/toolkit_compare/test_acceptance.py::test_hide_releases_the_view_and_neutralises_the_markers[slint]
+ERROR exp/toolkit_compare/test_acceptance.py::test_all_hundred_sessions_are_known[egui]
+ERROR exp/toolkit_compare/test_acceptance.py::test_all_hundred_sessions_are_known[iced]
+ERROR exp/toolkit_compare/test_acceptance.py::test_all_hundred_sessions_are_known[slint]
+ERROR exp/toolkit_compare/test_acceptance.py::test_the_entry_line_echoes_typed_text[egui]
+ERROR exp/toolkit_compare/test_acceptance.py::test_the_entry_line_echoes_typed_text[iced]
+ERROR exp/toolkit_compare/test_acceptance.py::test_the_entry_line_echoes_typed_text[slint]
+ERROR exp/toolkit_compare/test_acceptance.py::test_quit_ends_the_process[egui]
+ERROR exp/toolkit_compare/test_acceptance.py::test_quit_ends_the_process[iced]
+ERROR exp/toolkit_compare/test_acceptance.py::test_quit_ends_the_process[slint]
+15 errors in 0.07s

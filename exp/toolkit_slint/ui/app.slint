@@ -1,0 +1,80 @@
+import { LineEdit, TextEdit, ListView } from "std-widgets.slint";
+
+export component MainWindow inherits Window {
+    title: "Lico candidate slint";
+    preferred-width: 1200px;
+    preferred-height: 800px;
+    background: #101418;
+    forward-focus: entry-field;
+
+    in property <[string]> sessions;
+    in property <int> selected: -1;
+    in property <string> output;
+    in property <length> menu-height: 40px;
+    in property <color> session-color: #202020;
+    in property <color> seq-color: #202020;
+    in-out property <string> entry;
+
+    callback pick(int);
+    callback menu(string);
+    callback entry-edited(string);
+    callback find-edited(string);
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem { title: "Open session list"; activated => { root.menu("File/Open"); } }
+            MenuItem { title: "Quit"; activated => { root.menu("File/Quit"); } }
+        }
+        Menu {
+            title: "Session";
+            MenuItem { title: "New session"; activated => { root.menu("Session/New"); } }
+            MenuItem { title: "Find session..."; activated => { find-popup.show(); root.menu("Session/Find"); } }
+        }
+        Menu {
+            title: "Help";
+            MenuItem { title: "About"; activated => { root.menu("Help/About"); } }
+        }
+    }
+
+    HorizontalLayout {
+        ListView {
+            width: 240px;
+            for name[index] in root.sessions: Rectangle {
+                height: 24px;
+                background: index == root.selected ? #3060c0 : transparent;
+                Text { x: 8px; text: name; color: #e0e0e0; vertical-alignment: center; }
+                TouchArea { clicked => { root.pick(index); } }
+            }
+        }
+        VerticalLayout {
+            TextEdit {
+                read-only: true;
+                wrap: no-wrap;
+                text: root.output;
+                font-family: "DejaVu Sans Mono";
+                vertical-stretch: 1;
+            }
+            entry-field := LineEdit {
+                text <=> root.entry;
+                edited(text) => { root.entry-edited(text); }
+            }
+        }
+    }
+
+    // The measurement markers: two blocks of 16 x 16 physical pixels at the top left of the window.
+    Rectangle { x: 0phx; y: -1 * root.menu-height; width: 16phx; height: 16phx; background: root.session-color; }
+    Rectangle { x: 16phx; y: -1 * root.menu-height; width: 16phx; height: 16phx; background: root.seq-color; }
+
+    find-popup := PopupWindow {
+        x: 120px; y: 36px; width: 260px; height: 40px;
+        close-policy: close-on-click-outside;
+        Rectangle {
+            background: #202830;
+            find-field := LineEdit {
+                placeholder-text: "find session";
+                edited(text) => { root.find-edited(text); }
+            }
+        }
+    }
+}

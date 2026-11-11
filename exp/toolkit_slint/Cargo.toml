@@ -1,0 +1,24 @@
+[package]
+name = "lico-toolkit-slint"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+build = "build.rs"
+
+# M01-P07a candidate: Slint 1.18.1 with its software renderer (CPU, no GPU) on the winit X11 backend.
+# License: GPL-3.0-only OR Slint Royalty-free 2.0 OR Slint Software 3.0 (not an MIT or Apache license): see the report.
+[dependencies]
+slint = { version = "=1.18.1", default-features = false, features = ["std", "backend-winit-x11", "renderer-software", "software-renderer-systemfonts", "accessibility", "compat-1-2"] }
+lico-toolkit-common = { path = "../toolkit_common" }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+[profile.release]
+opt-level = 2
+debug = false
+lto = false
+codegen-units = 16
+panic = "abort"
+strip = true
