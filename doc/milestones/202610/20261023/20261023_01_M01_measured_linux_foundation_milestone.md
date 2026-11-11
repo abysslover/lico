@@ -1,11 +1,11 @@
 # M01 — Measured Linux foundation
 
-- Status: in_progress
-- Approved: 2026-10-23 (G1, as written in the proposal)
+- Status: in_review
+- Approved: 2026-10-23 (G1, as written in the proposal; M01-P08 G2 approved 2026-11-11)
 - Project: Lico
 - Updated: 2026-11-11
-- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a are built, reported, accepted by the owner at G3 (2026-11-11), and merged and published on `main` at G4; M01-P08 (acceptance pack) is next
-- Next gate: G2 plan approval for M01-P08 (acceptance pack); M01-P01 to M01-P07a G3 and G4 were approved on 2026-11-11, and the owner exercised live Claude Code session continuity across host replacement on 2026-11-11
+- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a are accepted at G3 and merged on `main` at G4 (2026-11-11); M01-P08 (acceptance pack, test-suite optimization, and `lico 0.1.0`) is built and reported on `phase/M01-P08-acceptance-pack`
+- Next gate: Owner G3 inspection acceptance and G4 merge approval for M01-P08 to close M01 (`milestone/M01-measured-linux-foundation`)
 - Milestone branch: `milestone/M01-measured-linux-foundation`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -58,7 +58,7 @@ informs this division; it does not establish runtime compatibility.
 | M01-P06 | Session creation, accounts and provider sign-in inside the window | [Plan](../../../plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | [Report](../../../reports/202610/20261025/20261025_01_M01-P06_in_window_login_and_session_creation_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 | M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes the blank window after Ctrl+N) | [Plan](../../../plans/202610/20261025/20261025_01_M01-P07_window_first_view_and_keys_plan.md) | [Report](../../../reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 | M01-P07a | Comparison of lightweight Rust UI toolkits (egui, iced, Slint) against the hand-drawn client on the unchanged 50 MiB budget | [Plan](../../../plans/202610/20261025/20261025_02_M01-P07a_ui_toolkit_comparison_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M01-P07a_ui_toolkit_comparison_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
-| M01-P08 | Acceptance pack: a clean public clone rebuilds the package; one index maps every "Done when" item of this milestone to its evidence; the owner's end-to-end checklist | Not written | Not produced | Not produced | None | not_started |
+| M01-P08 | Acceptance pack: a clean public clone rebuilds the package; one index maps every "Done when" item of this milestone to its evidence; test-suite optimization and `0.1.0` version bump | [Plan](../../../plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | [Report](../../../reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md) | Bundle `00006` (pending G3) | `phase/M01-P08-acceptance-pack` | in_review |
 
 Phases run sequentially. Future plans are written from earlier evidence and need
 separate approval. A later provider that cannot meet storage or isolation rules
@@ -69,18 +69,18 @@ is gated as unsupported, rather than advertised through simulated behavior.
 | Gate | State | Boundary |
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
-| G2 phase plan approval | Approved for M01-P01 to M01-P07a; pending for M01-P08 | Implementation and experiments of those phases as written |
-| G3 inspection acceptance | Approved 2026-11-11 for M01-P01 to M01-P07a; pending for M01-P08 | Owner accepted M01-P01 to M01-P07a on 2026-11-11; M01-P08 remains |
-| G4 merge approval | Approved 2026-10-25, 2026-10-27 and 2026-11-11 for M01-P01 to M01-P07a (merged and published) | `main` fast-forwarded and published on the owner's 2026-11-11 approval |
+| G2 phase plan approval | Approved for M01-P01 to M01-P08 (M01-P08 approved 2026-11-11) | Implementation and experiments of those phases as written |
+| G3 inspection acceptance | Approved 2026-11-11 for M01-P01 to M01-P07a; pending for M01-P08 | Owner accepted M01-P01 to M01-P07a on 2026-11-11; M01-P08 report and bundle `00006` await G3 |
+| G4 merge approval | Approved 2026-10-25, 2026-10-27 and 2026-11-11 for M01-P01 to M01-P07a (merged and published); pending for M01-P08 | `main` fast-forwarded and published through M02-P07 on 2026-11-11 |
 
-G1 and G2 were approved together on 2026-10-23. Later phase plans need their own
-approval. Setup/publication permission is not phase or merge approval, and
+G1 and G2 were approved together on 2026-10-23, and M01-P08 G2 was approved on
+2026-11-11. Setup/publication permission is not phase or merge approval, and
 approval of one gate does not carry to the next. No automatic-merge lane is
 inherited.
 
 ## Blocked on
 
-- M01-P08: its plan needs its own approval (G2) before implementation/execution starts, followed by G3 and G4 to close M01 (`milestone/M01-measured-linux-foundation`).
+- M01-P08: awaits the owner's G3 inspection acceptance and G4 merge approval to close M01 (`milestone/M01-measured-linux-foundation`).
 
 ## Out of scope
 

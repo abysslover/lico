@@ -18,18 +18,17 @@ This repository holds the [product requirements](doc/product/202610/20261023/000
 the phase plans and reports, and the source of the finished phases. Implementation is written on reviewed phase branches. Since
 2026-10-27 each finished phase reaches `main` on the owner's merge approval (G4); the phase branches are
 kept, and a branch `milestone/Mxx-<name>` marks a milestone once it is achieved (see [CONTRIBUTING.md](CONTRIBUTING.md)). On
-2026-11-11 the owner accepted G3 and approved G4 merge and publication through M02-P07 (`milestone/M02-agentic-coding-basics`). No tagged release exists yet (`M01-P08` acceptance pack remains). Resource budgets are targets unless a report marks a number
+2026-11-11 the owner accepted G3 and approved G4 merge and publication through M02-P07 (`milestone/M02-agentic-coding-basics`). On `phase/M01-P08-acceptance-pack`, `lico` is bumped to `0.1.0` and the `M01-P08` acceptance pack awaits owner G3/G4 review. Resource budgets are targets unless a report marks a number
 as measured.
 
-The first milestone is the [measured Linux foundation](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) (`M01-P01` to `M01-P07a` accepted; `M01-P08` acceptance pack remaining).
+The first milestone is the [measured Linux foundation](doc/milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md) (`M01-P01` to `M01-P07a` accepted; `M01-P08` acceptance pack in review on `phase/M01-P08-acceptance-pack`).
 The second milestone, [M02 Agentic-coding basics](doc/milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md), is complete (`milestone/M02-agentic-coding-basics`, accepted and published on 2026-11-11):
 sessions that run in a real folder or git worktree, sending between sessions, Lico tools that an agent can call, screen capture and clipboard, computer use,
 attention marks, notifications, conversation search, and per-session memory in the window, verified against the limit of an idle window under 50 MiB (`24.01..24.18` / `35.14..35.23 MiB`).
 Its [planning set](doc/product/202610/20261026/00001_agentic_basics_plan/planning.md) gives the scope and the order, and the
 [roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) shows where each milestone stands.
 
-The program is one executable, `lico`; its build is described in [src/host/README.md](src/host/README.md). No release exists, and the
-acceptance pack that shows a clean public clone rebuilding it (M01-P08) is not started. The build must work from a public clone with
+The program is one executable, `lico` (`0.1.0` on `phase/M01-P08-acceptance-pack`); its build is described in [src/host/README.md](src/host/README.md) and end-to-end verification is in [doc/manual_end_to_end.md](doc/manual_end_to_end.md). Two clean clones build byte-for-byte identical release binaries (`python3 -m lico_suite acceptance`, [M01-P08 report](doc/reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md)). The build works from a public clone with
 documented, publicly available dependencies.
 Provider tools are independently installed unless redistribution is permitted.
 

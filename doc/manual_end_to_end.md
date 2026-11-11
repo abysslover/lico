@@ -1,43 +1,33 @@
-# Owner end-to-end use of Lico (M01-P06)
+# Owner end-to-end guide (`lico 0.1.0`)
 
-Version: 0.1.1
+Version: 1.0.0
 
-This is for the person who owns the accounts. Lico never reads a provider's login files and never stores a provider secret; each
-account only has a private directory that the provider itself fills when you sign in. A real session can be billed by the provider.
-Nothing here is run by the development session, and the sign-in of Claude Code and Codex has only been tried against a test double:
-what you see first is the evidence.
+This guide is for the account owner administering Lico on Linux. Lico never reads a provider's login files and never stores a provider secret in plaintext; application-owned credentials live only in the OS keyring (`lico cred`, failing closed when the store is locked or missing), and each account owns a private directory (`0700`) that the provider itself populates when you sign in. A live provider session may incur provider usage charges.
 
-State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`). Use the file you were given as `lico`; it has no other files.
+State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`), and the local owner-only socket defaults to `$XDG_RUNTIME_DIR/lico/host.sock`. Everything ships in one self-contained executable (`lico`): `lico gui` opens the administrator window, `lico host` runs the background session host, `lico --version` prints the build identity, and `lico licenses` prints third-party notices.
 
-## In the window (`lico gui`)
+## Administrator window (`lico gui`)
 
-1. `lico gui` starts the window (and a host if none runs). On the first screen: **Ctrl+N** new session, **Ctrl+A** accounts.
-2. **Ctrl+N**: press `1` (codex) or `2` (claude), then the number of an account, or `n` to make one (type a label, Enter).
-   Then **Enter** starts the session, or **L** signs the account in first.
-3. **Sign in**: the window shows the address the provider printed. **Ctrl+Shift+C** copies it, **Ctrl+O** opens it in the browser (only when
-   you press it). If the provider asks for a code, paste it into the input line and press Enter; it is cleared at once and never echoed.
-   For Codex, **D** switches to the device-code sign-in. **Esc** leaves and ends an unfinished sign-in.
-4. **Ctrl+A**: pick an account for sign-in (S), default (F), or removal: **D** (its sessions stay, unbound) or **E** (ends them); the window names the
-   sessions first and asks for the same key again. The provider's own login is not revoked.
-5. Pick a session in the list; approvals, history, selection and copy work as before.
-6. **A folder you choose** (Ctrl+N, the Folder row): Claude is started in it and reads its `CLAUDE.md`, but not the folder's own Claude settings
-   (`.claude/settings.json`: hooks, environment, helper programs; nor its `.mcp.json`), because those would run without your decision. Your own
-   Claude settings are used. A session without a folder works in a scratch folder Lico made, which has none of these.
-   A Codex session in a chosen folder does not load the folder's `.codex/` configuration (MCP servers, hooks, notify, model providers) either: Codex
-   trusts a folder when a thread may write in it, so Lico starts every Codex thread read-only and carries the mode in each turn. That is Codex's
-   behaviour at 0.164.0; run the check again when Codex updates.
-7. **Memory** (right end of each row, and one line at the bottom of the list): what the session's program and everything it started hold of their
-   own (`RssAnon` + `RssShmem`, in M or G; amber from 1 GiB, red from 2 GiB). Put the mouse on a row and the bottom line gives the figure, the RSS
-   beside it and the number of processes. A program a tool detached from the session (`setsid`) is not counted. The host looks only while a window is
-   open and asks the system every 3 seconds at most.
+1. **Start and host continuity**: `lico gui` opens the window and starts `lico host` automatically if none is running (and replaces an older host build cleanly while reconnecting existing sessions). Closing the window or pressing **Esc** on an empty input line detaches the view without stopping running sessions.
+2. **Accounts and sign-in (`Ctrl+A`)**:
+   - Press `1..9` to open an account's actions: **S** signs in with the provider's own flow (**Ctrl+C** / **Ctrl+Shift+C** copies the URL, **Ctrl+O** opens it in the browser, **D** selects Codex device-code sign-in; any verification code typed or pasted into the input line is masked as `*`, sent once, and cleared immediately without logging).
+   - **F** sets the default account for that provider; **D** removes the account while keeping its sessions unbound; **E** removes the account and ends its sessions (both ask for a second press after naming bound sessions).
+3. **New sessions (`Ctrl+N`)**:
+   - Choose provider (`codex` or `claude`), account (or create one inline), permission mode (`auto` skips routine tool prompts; `default` asks on each gated action), optional model/effort, working folder (`Folder`, reading `CLAUDE.md` without trusting repo-local `.claude/settings.json`, `.mcp.json`, or `.codex/config.toml`), and optional git worktree branch (`Worktree`, creating an isolated branch checkout).
+4. **Daily session control (`Session` menu and shortcuts)**:
+   - **Ctrl+Tab** / **Ctrl+Shift+Tab** and **Alt+1..9** switch sessions; **F2** (or double-clicking a row) renames a session; **Ctrl+Shift+W** closes a session (keeping its history and worktree choice for **Ctrl+R** or **Enter** to resume); **Ctrl+Delete** deletes a session (two-step warning if a Lico-managed git worktree has uncommitted files; a user-chosen folder is never deleted).
+   - **Y** / **N** (or the **Allow** / **Deny** buttons) answer pending approvals; for Lico's own agent tool cards, **S** allows for the remainder of the session and **V** opens the full request text.
+   - **Ctrl+C** / **Ctrl+Insert** (or **Ctrl+Shift+C**) copies selected transcript lines; **Ctrl+V** pastes text (up to 64 KiB, multi-line with **Shift+Enter**) or attaches a PNG image chip in a Claude session (**Esc** drops the chip and immediately reclaims heap memory); **Shift+Insert** or middle-click pastes the primary selection; **Ctrl+Shift+P** captures the screen into the Claude input box.
+   - **Ctrl+Shift+S** sends the draft or selected lines to another session (inline up to 4 KiB, file handoff above 4 KiB without truncation); `Session > Hand over conversation...` hands over a full Claude transcript.
+   - `Session > Virtual display: start/stop` manages a session's private `Xvfb` display for computer use; **Ctrl+Alt+Esc** (or the red banner button) immediately revokes time-bounded (15-minute max) real-screen control.
+5. **Search, notifications, and memory (`View` menu)**:
+   - **Ctrl+F** searches within the open conversation; **Ctrl+Shift+F** searches across all sessions on demand with zero resident index overhead.
+   - `View` toggles **Agent clipboard write** (default off; each write still asks) and **Desktop notifications** (`notify-send` when no window is attached; unread background turns show `•` and approvals show `!` in the list and window title).
+   - Each session row shows private process-tree memory (`RssAnon + RssShmem` in M/G; amber from 1 GiB, red from 2 GiB), and the bottom-left summary reports total session, host, and window memory.
 
-## On the command line (same host)
+## Agent and script CLI (`lico ...`)
 
-- `lico account create --provider codex --label Work`, `lico account login ID [--device]`, `lico account auth ID` (Codex says if it is signed in;
-  Claude Code: null), `lico session create --kind codex --account ID`, `lico session send ID TEXT`, `lico session watch ID`,
-  `lico session resume ID`, `lico session rebind ID ACCOUNT` (not in the window yet), `lico session close ID` (stops the agent, keeps the session to resume), `lico session delete ID` (the same as `purge`), `lico account remove ID detach|end`.
-- Restart check: `lico status` shows the host pid; stop it (SIGTERM, or SIGKILL for a crash) and start `lico gui` again: every session is
-  **disconnected** with its history until you resume it.
-
-Not in this phase: renaming an account, rebinding from the window, Wayland-specific behavior, accessibility. Write down anything that surprised you
-(especially the first real sign-in of each provider: the address, a code prompt, a failure); that is the evidence the phase is judged on.
+- **Status and resources**: `lico status`, `lico resources`, `lico settings [--clipboard-write on|off] [--notifications on|off]`, `lico host stop [--force]`.
+- **Accounts**: `lico account create --provider codex|claude --label Work`, `lico account list`, `lico account login ID [--device]`, `lico account auth ID`, `lico account default ID`, `lico account affected ID`, `lico account remove ID detach|end`.
+- **Sessions and search**: `lico session list`, `lico session create --kind claude --account ID [--cwd DIR] [--worktree BRANCH] [--mode auto|default]`, `lico session send ID TEXT|- [--from ID2 | --conversation --from ID2]`, `lico session watch ID`, `lico session close ID`, `lico session resume ID`, `lico session rebind ID ACCOUNT`, `lico session rename ID [NAME]`, `lico session delete ID`, `lico history ID BEFORE [LIMIT]`, `lico search QUERY [--session ID]`.
+- **Screen, clipboard, and displays**: `lico capture --screen|--window ID|--region x,y,w,h --out FILE`, `lico clipboard read ...`, `lico clipboard write ...`, `lico display [status|stop|run]`, `lico real-screen stop`.

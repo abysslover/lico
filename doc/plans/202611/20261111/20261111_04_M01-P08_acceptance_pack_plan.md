@@ -1,7 +1,7 @@
 # M01-P08 Plan: Acceptance pack, test-suite bottleneck optimization, and 0.1.0 release version
 
-- Status: in_progress
-- Version: 1.0.0
+- Status: in_review
+- Version: 1.0.1
 - Date: 2026-11-11
 - Milestone: [M01 — Measured Linux foundation](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)
 - Phase: `M01-P08` (`phase/M01-P08-acceptance-pack`)
@@ -21,7 +21,7 @@
 | Step | Scope | Verification |
 |---|---|---|
 | S01 | Commit this approved phase plan on `phase/M01-P08-acceptance-pack` | Guard checks pass |
-| S02 | Profile and remove test-suite bottlenecks: pre-compile `cargo test --bin lico --no-run` before worker launch so `rustc` peak RSS never overlaps GUI workers, tune default parallel workers (`5`) within the `2048 MiB` cap, tighten `ProductWindow` non-IME frame-settle polling, and replace blind fixed `time.sleep` delays in `test_frame_cost.py`, `test_host_replacement.py`, `test_activity.py`, `test_first_view.py`, `test_paste_open.py`, `test_window_keys.py`, `test_permission_mode.py`, and `suite acceptance` with deterministic state/frame synchronization without weakening any assertion | Full `--cold` suite passes with zero dropped tests, lower wall time (`<< 180 s`), and peak RSS `<= 2048 MiB` |
+| S02 | Profile and remove test-suite bottlenecks: pre-compile `cargo test --bin lico --no-run` before worker launch so `rustc` peak RSS never overlaps GUI workers, tune default parallel workers (`4`) within the `2048 MiB` cap, tighten `ProductWindow` non-IME frame-settle polling, and replace blind fixed `time.sleep` delays in `test_frame_cost.py`, `test_host_replacement.py`, `test_activity.py`, `test_first_view.py`, `test_paste_open.py`, `test_window_keys.py`, `test_permission_mode.py`, and `suite acceptance` with deterministic state/frame synchronization without weakening any assertion | Full `--cold` suite passes with zero dropped tests, lower wall time (`<< 180 s`), and peak RSS `<= 2048 MiB` |
 | S03 | Clone the public repository twice into distinct directories, run `src/host/hostd/build-release.sh`, verify byte-for-byte `sha256` reproducibility, `ldd` glibc-only imports, `lico licenses`, and zero private path strings; upon success, bump `lico` version `0.0.0` -> `0.1.0` (`Cargo.toml`, `Cargo.lock`, `codex.rs` handshake `CARGO_PKG_VERSION`, `test_single_executable.py`) and re-verify `--cold` + `suite acceptance` | `suite acceptance` and `suite run --cold` pass at `0.1.0` |
 | S04 | Update `doc/manual_end_to_end.md`, generate the `M01-P08` manual inspection bundle, write the `M01-P08` phase report with the complete `M01` `"Done when"` evidence index, and update status documents (`M01` milestone, `PLAN.md`, `README.md`, `roadmap.md`, `doc/index_3.md`) | Guard and reference checks pass |
 

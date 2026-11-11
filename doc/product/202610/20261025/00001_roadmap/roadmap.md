@@ -13,12 +13,11 @@ several accounts per provider, observable resource use. Budgets stay proposed ta
 
 | Milestone | Scope | State |
 |---|---|---|
-| M01 Measured Linux foundation | P01 to P07 and P07a are accepted, merged and published on `main` (`done`, 2026-11-11); P08 (acceptance pack) is next | G3 and G4 approved 2026-11-11 for P01 to P07a; P08 awaits its G2 plan approval |
+| M01 Measured Linux foundation | P01 to P07 and P07a are accepted, merged and published on `main` (`done`, 2026-11-11); P08 (`lico 0.1.0` acceptance pack) is built and in review on `phase/M01-P08-acceptance-pack` | G3 and G4 approved 2026-11-11 for P01 to P07a; P08 G2 approved 2026-11-11 and awaits G3/G4 |
 | M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, git worktrees, notifications, search, and memory pass; P01 to P07 below | Done (2026-11-11): all seven phases P01 to P07 accepted at G3, merged and published on `main` at G4 (`milestone/M02-agentic-coding-basics`) |
-| M03 and later | Windows backend (own credential, windowing and measured acceptance) and the candidates pushed out of the earlier M02 proposal | not planned in detail |
+| M03 Linux administrator GUI completeness and control-surface parity | Account rename, in-window session rebind and permission-mode toggle, workspace grouping and text size settings, prompt editor selection/undo/reflow, and CLI/HTTP/capabilities parity (`M03-P01` to `M03-P04`; Windows backend stays in a later milestone) | G1 and G2 approved 2026-11-11 |
 
-M01 "Done when" items still open: item 3 needs an installed official provider path exercised with real sign-in evidence (the account owner's first
-real login), and item 5 needs a clean public clone to produce the reviewed Linux package plus the account owner's end-to-end use.
+All five M01 "Done when" items are evidenced in the [M01-P08 acceptance pack report](../../../../reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md) (live session continuity accepted at G3 on 2026-11-11 and two-clone reproducible `lico 0.1.0` build verified via `python3 -m lico_suite acceptance`).
 
 ## Phases
 
@@ -26,9 +25,9 @@ real login), and item 5 needs a clean public clone to produce the reviewed Linux
 
 | ID | Outcome | Evidence |
 |---|---|---|
-| M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes a blank window after Ctrl+N) | red-then-green capture test on a virtual display, three captures; report written, inspection pending |
-| M01-P07a | Comparison of lightweight Rust UI toolkits against the hand-drawn client on the unchanged 50 MiB budget (approved in chat on 2026-10-25) | comparison report on its phase branch, inspection pending |
-| M01-P08 | Acceptance pack: clean public clone rebuilds the package; one index maps every M01 "Done when" item to its evidence; owner end-to-end checklist | clone-and-build log, evidence index; no new feature |
+| M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes a blank window after Ctrl+N) | red-then-green capture test on a virtual display, three captures; accepted at G3 and merged on 2026-11-11 |
+| M01-P07a | Comparison of lightweight Rust UI toolkits against the hand-drawn client on the unchanged 50 MiB budget (approved in chat on 2026-10-25) | comparison report accepted at G3 and merged on 2026-11-11 |
+| M01-P08 | Acceptance pack: clean public clone rebuilds `lico 0.1.0` identically; cold 449-test suite cut from `179.3 s` to `92.9 s`; one index maps every M01 "Done when" item to its evidence; updated owner end-to-end guide | two-clone receipt, `suite acceptance` pass, cold ledger, [report](../../../../reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md); inspection pending |
 
 ### M02 Agentic-coding basics (approved 2026-10-26)
 
