@@ -422,3 +422,65 @@ fn bring_up(socket: &str, start_host: &dyn Fn() -> Result<String, String>) -> Re
 #[cfg(test)]
 #[path = "update_tests.rs"]
 mod tests;
+
+/// The host's socket for this user, starting the host (detached, with its own state directory) when none answers.
+pub(super) fn ensure_host() -> String {
+    try_ensure_host().unwrap_or_else(|(message, code)| {
+        eprintln!("lico: {message}");
+        std::process::exit(code)
+    })
+}
+
+/// The same, answering with a message and an exit code instead of ending the process (the update worker must not end the window).
+pub(super) fn try_ensure_host() -> Result<String, (String, i32)> {
+    let runtime = std::env::var("XDG_RUNTIME_DIR").map_err(|_| ("XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket".to_string(), 2))?;
+    let dir = std::path::Path::new(&runtime).join("lico");
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir);
+    }
+    let socket = dir.join("host.sock").to_string_lossy().to_string();
+    if UnixStream::connect(&socket).is_ok() {
+        return Ok(socket);
+    }
+    let state = std::env::var("XDG_STATE_HOME").ok().map(std::path::PathBuf::from).or_else(|| std::env::var("HOME").ok().map(|h| std::path::Path::new(&h).join(".local/state"))).map(|p| p.join("lico"));
+    let Some(state) = state else {
+        return Err(("neither XDG_STATE_HOME nor HOME is set, so there is nowhere to keep the host's state".to_string(), 2));
+    };
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&state);
+    }
+    let started = std::env::current_exe().ok().and_then(|exe| {
+        use std::os::unix::process::CommandExt;
+        let mut command = std::process::Command::new(exe);
+        command.arg("host").arg("--socket").arg(&socket).arg("--state-dir").arg(&state).arg("--sessions").arg("0").arg("--producing").arg("0");
+        // what the host says goes to a file of its own in the state directory (owner-only), not into the void
+        let log = || {
+            use std::os::unix::fs::OpenOptionsExt;
+            std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(state.join("host.log")).map(std::process::Stdio::from).unwrap_or_else(|_| std::process::Stdio::null())
+        };
+        command.stdin(std::process::Stdio::null()).stdout(log()).stderr(log());
+        unsafe {
+            command.pre_exec(|| {
+                extern "C" {
+                    fn setsid() -> i32;
+                }
+                setsid(); // its own session: closing this window does not end it
+                Ok(())
+            });
+        }
+        command.spawn().ok()
+    });
+    if started.is_none() {
+        return Err(("could not start the host".to_string(), 3));
+    }
+    // a second host that is started while another one is coming up ends at once, and the socket is then the other one's: either way the socket is waited for
+    for _ in 0..100 {
+        if UnixStream::connect(&socket).is_ok() {
+            return Ok(socket);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Err(("the host did not come up".to_string(), 3))
+}

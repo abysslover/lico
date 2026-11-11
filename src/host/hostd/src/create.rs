@@ -74,7 +74,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     let found = core::find(shared, caller).ok_or("session_exited: this session has ended")?;
     let (cwd, hops, chosen) = {
         let s = found.lock().unwrap();
-        (s.settings.cwd.clone(), s.incoming_hops, chosen_words(&s.settings))
+        (s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone()), s.incoming_hops, chosen_words(&s.settings))
     };
     if hops + 1 > MAX_HOPS {
         return Err(calls::refusal(shared, caller, "chain_depth"));
@@ -211,7 +211,8 @@ fn make(shared: &Arc<Shared>, caller: &str, name: &str, prompt: &str, start: &dy
     let Some(found) = found else { return Err(calls::refusal(shared, caller, "session_exited")) };
     let (cwd, account, hops, label, model, effort) = {
         let s = found.lock().unwrap();
-        (s.settings.cwd.clone(), s.account.clone(), s.incoming_hops, transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.settings.model.clone(), s.settings.effort.clone())
+        let parent_cwd = s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone());
+        (parent_cwd.clone(), s.account.clone(), s.incoming_hops, transfer::label(&s.id, s.settings.name.as_deref(), parent_cwd.as_deref()), s.settings.model.clone(), s.settings.effort.clone())
     };
     if hops + 1 > MAX_HOPS {
         return Err(calls::refusal(shared, caller, "chain_depth"));
@@ -220,7 +221,7 @@ fn make(shared: &Arc<Shared>, caller: &str, name: &str, prompt: &str, start: &dy
     let made_by = label.chars().take(MADE_BY_CHARS).collect::<String>().trim_end().to_string(); // a cut at a space leaves no space at the end of the name
     let composed = if name.is_empty() { format!("made by {made_by}") } else { format!("{name} - made by {made_by}") };
     // the folder, the account, the model and the effort are the caller's, the mode is the one that asks the person; nothing here comes from the agent but the name and the prompt
-    let spec = Spec { settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort }, account, mode: "default" };
+    let spec = Spec { settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort, ..Settings::default() }, account, mode: "default" };
     let id = start(&spec).map_err(start_words)?;
     let Some(new) = core::find(shared, &id) else { return Err(calls::refusal(shared, caller, "unknown_session")) };
     let generation = {
@@ -371,7 +372,7 @@ mod tests {
 
     /// The caller's choices and the agent's name and prompt, as a `create` card is made of them.
     fn card_for(name: &str, folder: Option<&str>, model: Option<&str>, effort: Option<&str>, prompt: &str, removed: usize) -> String {
-        let settings = Settings { cwd: folder.map(String::from), name: None, model: model.map(String::from), effort: effort.map(String::from) };
+        let settings = Settings { cwd: folder.map(String::from), name: None, model: model.map(String::from), effort: effort.map(String::from), ..Settings::default() };
         card_of(name, folder, &chosen_words(&settings), prompt, removed)
     }
 
@@ -385,7 +386,7 @@ mod tests {
                 for model in [None, Some("opus"), Some(id26), Some(id40.as_str())] {
                     for effort in [None, Some("high"), Some("medium"), Some("xhigh"), Some("12345678")] {
                         for prompt in ["p".to_string(), "x".repeat(500)] {
-                            let settings = Settings { cwd: None, name: None, model: model.map(String::from), effort: effort.map(String::from) };
+                            let settings = Settings { cwd: None, name: None, model: model.map(String::from), effort: effort.map(String::from), ..Settings::default() };
                             let words = format!("mode: asks for approval | {} | {STARTS}", chosen_words(&settings));
                             let card = card_for(&name, folder, model, effort, &prompt, 0);
                             assert!(card.chars().count() <= calls::CARD_CHARS && card.starts_with("create session") && card.contains(&words), "{name:?} {folder:?} {model:?} {effort:?}: {card}");
@@ -636,7 +637,7 @@ mod tests {
         w.with(ONE, |s| (s.incoming_hops, s.account) = (2, Some("main".into())));
         let (seen, inbox) = (Mutex::default(), Mutex::default());
         let got = perform_with(&w.shared, ONE, "reviewer", "review it", &starter(&w, NEW, &seen, &inbox)).unwrap();
-        let spec = Spec { settings: Settings { cwd: Some(FOLDER.into()), name: Some("reviewer - made by writer".into()), model: None, effort: None }, account: Some("main".into()), mode: "default" };
+        let spec = Spec { settings: Settings { cwd: Some(FOLDER.into()), name: Some("reviewer - made by writer".into()), model: None, effort: None, ..Settings::default() }, account: Some("main".into()), mode: "default" };
         assert_eq!(*seen.lock().unwrap(), [spec], "the folder, the account and the mode are the caller's and the host's, the name is the agent's with who made it");
         assert!(got.starts_with(&format!("created session {NEW} 'reviewer - made by writer' in '{FOLDER}', mode: asks for approval; the first prompt (9 B) was delivered (inline)")), "{got}");
         assert_eq!(w.with(NEW, |s| (s.made_by.clone(), s.incoming_hops)), (Some(ONE.to_string()), 3), "it is marked, and the prompt is a step on the chain");

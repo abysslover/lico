@@ -30,6 +30,10 @@ pub struct Row {
     pub stalled: bool,      // the host's own judgement: working, nothing to answer, and silent for its stall time
     pub cwd: String,        // the folder the person chose, empty for a scratch workspace
     pub name: String,       // the name the person gave it, or empty
+    pub finished_seq: Option<i64>, // sequence number of the last completed turn in this host run, if any
+    pub worktree_branch: String,   // git branch when started in a Lico worktree, else empty
+    pub worktree_repo: String,     // parent git repository root when started in a Lico worktree
+    pub worktree_exists: bool,     // whether `<workspace_root>/worktrees/<session>` is still on disk
     pub memory_kb: u64,     // what the agent and all its descendants hold of their own (RssAnon + RssShmem), 0 until the host says
     pub rss_kb: u64,        // the same processes' VmRSS
     pub processes: u32,
@@ -79,6 +83,10 @@ impl Row {
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
             cwd: clean(&text("cwd")), name: clean(&text("name")),
+            finished_seq: entry["finished_seq"].as_i64().filter(|&n| n >= 0),
+            worktree_branch: clean(entry["worktree"]["branch"].as_str().unwrap_or("")),
+            worktree_repo: clean(entry["worktree"]["repo"].as_str().unwrap_or("")),
+            worktree_exists: entry["worktree"]["exists"].as_bool().unwrap_or(false),
             memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,
         })
     }

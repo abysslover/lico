@@ -1,12 +1,12 @@
 # M02-P06 - Everyday comfort: git worktree sessions, attention marks, desktop notifications, and conversation search (2026-11-11)
 
-> Status: in_progress
+> Status: completed
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.0.0
+> Version: 1.1.0
 > Branch: `phase/M02-P06-everyday-comfort`, cut at `main` `9700012`; nothing is pushed.
 > Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of M02-P06 and covers M02-P05 and M02-P06 together. G4 local merge to `main` was authorized by the owner on 2026-11-11.
 
-**Version 1.0.0.** Requirements are WT-01, WT-02, NT-01, NT-02, SR-01, SR-02, SF-02, SF-03, SF-07, MB-01, MB-04 and TST-01 to TST-10 as they touch this phase (planning set 1.6.5) and are not re-opened; where this plan refines an open design point, see "Deviations and refinements". Numbers marked *measured* come from earlier M02 reports (`9700012`); everything else is a design target.
+**Version 1.1.0** (1.0.0 plus as-built refinement in D5 for `core/tests.rs` and `gui/update.rs`). Requirements are WT-01, WT-02, NT-01, NT-02, SR-01, SR-02, SF-02, SF-03, SF-07, MB-01, MB-04 and TST-01 to TST-10 as they touch this phase (planning set 1.6.6) and are not re-opened; where this plan refines an open design point, see "Deviations and refinements". Numbers marked *measured* come from earlier M02 reports (`9700012`); everything else is a design target.
 
 ## Goal
 
@@ -35,7 +35,7 @@ Give the person running several sessions at once the three everyday-comfort capa
 - **D2 (`WT-01`, `WT-02` worktree location and recent-folder memory):** worktrees created by Lico live at `<workspace_root>/worktrees/<session_id>` (separate from scratch folders `<workspace_root>/<session_id>`), while `recent_folders.json` records the parent git repository path (`worktree_repo`) rather than the internal worktree path so the next `Ctrl+N` offers the repository again. Under `SF-07`, socket ops `session.close` and `session.purge` default `worktree` to `"keep"` when omitted so automated callers never delete a worktree implicitly; `lico gui` always asks keep (`K`) vs remove (`R`) when `worktree.exists` is true, and asks a second confirmation (`D` remove anyway / `K` keep / `N` cancel) if `git status --porcelain` reports uncommitted or untracked changes (`worktree_dirty`).
 - **D3 (`NT-02` notification privacy and testability):** `notify-send` receives only `--app-name=Lico` and the sanitized session title (`'name' finished` or `'name' needs approval`), never transcript text, approval prompt commands, or credentials (`SF-02`, `SF-03`). `LICO_NOTIFY_BIN` overrides the binary path in tests so both present and missing notification helpers are tested deterministically without touching the desktop bus.
 - **D4 (`SR-01`, `SR-02` non-destructive search input and history jump):** opening search (`Ctrl+F` / `Ctrl+Shift+F`) edits `SearchState::query` directly without overwriting `Editor`'s per-session draft. Jumping to a match whose `seq` lies before the 40-line live snapshot loads a bounded history slice around `seq` from disk via `history` and centers `scroll` on `seq`, keeping zero resident index in both host and client.
-- **D5 (`TST-01` and `TST-07` budgets):** inline `core.rs` unit tests move to `core_tests.rs` and `refresh_list` moves from `gui/ui.rs` to `gui/attn.rs` so both allowlisted files shrink; `tests/test_everyday_comfort.py` shares one `ProductWindow` fixture across its checks so warm `--cold` stays under `180.0 s`.
+- **D5 (`TST-01` and `TST-07` budgets):** inline `core.rs` unit tests move to `core/tests.rs` (mounted via `#[path = "core/tests.rs"]` so `testmap.py` maps it to module `core`, shrinking `core.rs` from `1,087` to `988` lines), `refresh_list` moves from `gui/ui.rs` to `gui/attn.rs`, and `ensure_host` / `try_ensure_host` move from `gui/mod.rs` to `gui/update.rs` (keeping `gui/mod.rs` at `744` lines, well below `800`); `tests/test_everyday_comfort.py` shares one `ProductWindow` across its GUI checks so warm `--cold` stays under `180.0 s`.
 
 ## Verification plan
 

@@ -243,6 +243,9 @@ impl App {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines
         }
         self.session.clear(); // nothing typed while no view is shown can be sent anywhere
+        if self.ui.enabled {
+            self.refresh_list();
+        }
     }
 
     fn show(&mut self, id: &str, after: Option<i64>) {
@@ -274,6 +277,9 @@ impl App {
             format!("{{\"op\":\"subscribe\",\"session\":\"{id}\",\"after\":{}}}", self.cursor)
         };
         self.send(&msg);
+        if self.ui.enabled {
+            self.refresh_list();
+        }
         // the first view waits for the snapshot before it draws: a frame without the lines is a frame thrown away
         self.dirty = !self.ui.enabled;
     }
@@ -397,6 +403,7 @@ impl App {
                     if let Some(snap) = line.find("\"snapshot\":").and_then(|i| jint(&line[i..], "seq")) {
                         self.cursor = snap;
                     }
+                    self.apply_pending_search_jump();
                 }
                 self.emit_state("subscribed");
                 self.dirty = true;
@@ -590,10 +597,15 @@ impl ApplicationHandler<Ev> for App {
                         emit_ime("ignored", &text);
                     }
                     Ime::Commit(text) => {
-                        emit_ime("commit", &text);
-                        self.ed.put(&text);
-                        self.preedit.clear();
-                        emit_ime("text", self.ed.text());
+                        if self.ui.enabled && self.ui.search.open && self.ui.panel.is_none() {
+                            self.preedit.clear();
+                            self.search_put(&text);
+                        } else {
+                            emit_ime("commit", &text);
+                            self.ed.put(&text);
+                            self.preedit.clear();
+                            emit_ime("text", self.ed.text());
+                        }
                     }
                     Ime::Enabled => emit_ime("enabled", ""),
                     Ime::Disabled => emit_ime("disabled", ""),
@@ -656,75 +668,13 @@ impl ApplicationHandler<Ev> for App {
     }
 }
 
-/// The host's socket for this user, starting the host (detached, with its own state directory) when none answers.
-fn ensure_host() -> String {
-    try_ensure_host().unwrap_or_else(|(message, code)| {
-        eprintln!("lico: {message}");
-        std::process::exit(code)
-    })
-}
-
-/// The same, answering with a message and an exit code instead of ending the process (the update worker must not end the window).
-fn try_ensure_host() -> Result<String, (String, i32)> {
-    let runtime = std::env::var("XDG_RUNTIME_DIR").map_err(|_| ("XDG_RUNTIME_DIR is not set; start a host with `lico host --socket PATH` and pass --socket".to_string(), 2))?;
-    let dir = std::path::Path::new(&runtime).join("lico");
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir);
-    }
-    let socket = dir.join("host.sock").to_string_lossy().to_string();
-    if UnixStream::connect(&socket).is_ok() {
-        return Ok(socket);
-    }
-    let state = std::env::var("XDG_STATE_HOME").ok().map(std::path::PathBuf::from).or_else(|| std::env::var("HOME").ok().map(|h| std::path::Path::new(&h).join(".local/state"))).map(|p| p.join("lico"));
-    let Some(state) = state else {
-        return Err(("neither XDG_STATE_HOME nor HOME is set, so there is nowhere to keep the host's state".to_string(), 2));
-    };
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&state);
-    }
-    let started = std::env::current_exe().ok().and_then(|exe| {
-        use std::os::unix::process::CommandExt;
-        let mut command = std::process::Command::new(exe);
-        command.arg("host").arg("--socket").arg(&socket).arg("--state-dir").arg(&state).arg("--sessions").arg("0").arg("--producing").arg("0");
-        // what the host says goes to a file of its own in the state directory (owner-only), not into the void
-        let log = || {
-            use std::os::unix::fs::OpenOptionsExt;
-            std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(state.join("host.log")).map(std::process::Stdio::from).unwrap_or_else(|_| std::process::Stdio::null())
-        };
-        command.stdin(std::process::Stdio::null()).stdout(log()).stderr(log());
-        unsafe {
-            command.pre_exec(|| {
-                extern "C" {
-                    fn setsid() -> i32;
-                }
-                setsid(); // its own session: closing this window does not end it
-                Ok(())
-            });
-        }
-        command.spawn().ok()
-    });
-    if started.is_none() {
-        return Err(("could not start the host".to_string(), 3));
-    }
-    // a second host that is started while another one is coming up ends at once, and the socket is then the other one's: either way the socket is waited for
-    for _ in 0..100 {
-        if UnixStream::connect(&socket).is_ok() {
-            return Ok(socket);
-        }
-        thread::sleep(std::time::Duration::from_millis(50));
-    }
-    Err(("the host did not come up".to_string(), 3))
-}
-
 pub fn run(args: Vec<String>) {
     let arg = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
     // `lico gui` is the product: it finds (or starts) the host itself and shows the first view; the name the
     // measurement harness uses keeps the older bare view unless it is given --ui
     let product = args[0] == "lico-gui";
     let explicit = arg("--socket");
-    let socket = explicit.clone().unwrap_or_else(|| ensure_host());
+    let socket = explicit.clone().unwrap_or_else(update::ensure_host);
     // a host of another build is replaced by a worker once the window exists (the window shows at once and says so)
     let outdated = if explicit.is_none() { update::stale(&socket) } else { None };
     let host_notice = outdated.as_ref().map(|_| "Updating the host to this build...".to_string());
@@ -775,7 +725,7 @@ pub fn run(args: Vec<String>) {
             let tell = |update: update::Update| {
                 let _ = proxy_for_update.send_event(Ev::Host(update));
             };
-            update::run(&socket, seen, &|| try_ensure_host().map_err(|(message, _)| message), &tell);
+            update::run(&socket, seen, &|| update::try_ensure_host().map_err(|(message, _)| message), &tell);
         });
     }
     event_loop.run_app(&mut app).expect("run");

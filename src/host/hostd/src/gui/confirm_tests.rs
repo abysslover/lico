@@ -157,3 +157,24 @@ fn a_close_the_host_refuses_for_want_of_a_conversation_is_said_in_the_windows_wo
     assert_eq!(why("no_conversation_yet"), "this session has no conversation to come back to yet");
     assert_eq!(why("bad_request"), "the host answered bad_request"); // a malformed request is no longer taken for it
 }
+
+#[test]
+fn closing_or_deleting_a_worktree_session_asks_keep_or_remove_and_dirty_worktree_warns_explicitly() {
+    let mut app = open("running", "idle", "/work/wt");
+    app.ui.rows[0].worktree_branch = "feat/demo".into();
+    app.ui.rows[0].worktree_repo = "/work/repo".into();
+    app.ui.rows[0].worktree_exists = true;
+
+    app.run_cmd(Cmd::Close); // even idle worktree sessions ask K / R / N
+    let (title, body) = app.panel_view().unwrap();
+    assert_eq!(title, "Close worktree session");
+    assert!(body.iter().any(|l| l.contains("main repository /work/repo is not touched")) && body.iter().any(|l| l.contains("branch 'feat/demo' stays")), "{body:?}");
+    assert!(body.iter().any(|l| l.starts_with("K  ")) && body.iter().any(|l| l.starts_with("R  ")), "{body:?}");
+
+    app.ui.panel.as_mut().unwrap().ask.as_mut().unwrap().dirty_confirm = true;
+    let (dtitle, dbody) = app.panel_view().unwrap();
+    assert_eq!(dtitle, "Uncommitted changes in worktree");
+    assert!(dbody.iter().any(|l| l.starts_with("D  ")) && dbody.iter().any(|l| l.starts_with("K  ")), "{dbody:?}");
+    app.confirm_key('n');
+    assert!(app.ui.panel.is_none() && app.ed.text() == "my draft");
+}

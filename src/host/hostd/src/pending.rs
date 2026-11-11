@@ -127,7 +127,10 @@ pub fn ask(shared: &Shared, caller: &str, request: &Request, now: u64, held: &Ar
     let id = s.approval_counter;
     s.add_card(id, request.tool, request.card);
     s.pending.records.push(Record { id, tool: request.tool, target: request.target.to_string(), who: request.who.to_string(), text: request.text.to_string(), expires: now + EXPIRY, _held: held });
+    let notify_meta = (s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone()));
+    drop(s);
     eprintln!("{}", log_line(caller, request.tool, id, "asked", bytes));
+    crate::notify::on_approval_needed(shared, &notify_meta.0, notify_meta.1.as_deref(), notify_meta.2.as_deref());
     Ok(Asked::New(id))
 }
 

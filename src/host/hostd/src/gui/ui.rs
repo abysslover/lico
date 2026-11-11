@@ -18,6 +18,8 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::Window;
 
 use super::controls::{self, Action, Controls};
+#[path = "attn.rs"]
+mod attn;
 #[path = "row.rs"]
 mod row;
 #[path = "reconnect.rs"]
@@ -25,6 +27,8 @@ pub(super) mod reconnect;
 pub(crate) use row::{clock_text, memrow, Row};
 #[path = "clip.rs"]
 pub(super) mod clip;
+#[path = "search.rs"]
+mod search;
 use super::picture::fetch_pasted;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
@@ -105,6 +109,10 @@ pub struct UiState {
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
+    pub notifications_off: bool, // true when desktop notifications (`settings.notifications`) are turned off
+    pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
+    pub window_title: String, // last X11 title set by `sync_window_title`
+    pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
     pub real_screen: Vec<super::realbar::RealEntry>, // active time-bounded real-screen grants
 }
 
@@ -132,6 +140,7 @@ impl App {
         self.ui.rows = rows;
         self.ui.mem.read(&value);
         self.ui.clipboard_write = value["settings"]["clipboard_write"] == json!(true);
+        self.ui.notifications_off = value["settings"]["notifications"] == json!(false);
         let real_next: Vec<super::realbar::RealEntry> = value["real_screen"].as_array().into_iter().flatten().filter_map(super::realbar::RealEntry::of_json).collect();
         if real_next != self.ui.real_screen {
             self.ui.real_screen = real_next;
@@ -237,41 +246,6 @@ impl App {
         } else {
             self.ui.labels.get(account).cloned().unwrap_or_else(|| account.to_string())
         }
-    }
-
-    /// The list as the host last said it: group headings and rows with their numbers; the boxes are made when it is drawn (see `draw_ui`).
-    pub(super) fn refresh_list(&mut self) {
-        let now = self.clock_now();
-        let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
-        for row in &self.ui.rows {
-            let key = (row.provider.clone(), row.account.clone());
-            if !groups.contains(&key) {
-                groups.push(key);
-            }
-        }
-        let mut items = Vec::new();
-        let mut number = 0usize;
-        self.ui.numbered.clear();
-        for (provider, account) in &groups {
-            items.push(ListItem::Heading(format!("{provider} / {}", self.label_of(account))));
-            for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
-                let marker = if row.session == self.session { ">" } else if !row.approvals.is_empty() { "!" } else { " " };
-                let approvals = if row.approvals.is_empty() { String::new() } else { format!(" x{}", row.approvals.len()) };
-                let short = row.title(9);
-                number += 1;
-                self.ui.numbered.push(row.session.clone());
-                let digit = if number <= 9 { number.to_string() } else { " ".to_string() };
-                // a working session shows its clock here: the list changes once a second while a turn is open, and that is what redraws the window
-                let (state, age) = row.list_parts(now);
-                items.push(ListItem::Row(row.session.clone(), format!("{marker}{digit} {short} {state}{approvals} {age}"), memrow::cell(row)));
-            }
-        }
-        let sig: String = items.iter().map(|i| match i { ListItem::Heading(t) => t.clone(), ListItem::Row(_, t, c) => memrow::sig(t, c) }).collect::<Vec<_>>().join("\n");
-        if sig != self.ui.list_sig {
-            self.ui.list_sig = sig;
-            self.dirty = true;
-        }
-        self.ui.list_items = items;
     }
 
     // ------------------------------------------------------------------ lines of the selected session
@@ -429,7 +403,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -537,6 +511,9 @@ impl App {
         self.ui.behind = false;
         self.ui.history_pending = false;
         self.show(id, None);
+        if self.ui.search.open && !self.ui.search.scope_all && self.ui.search.pending_jump.is_none() && !self.ui.search.query.is_empty() {
+            self.run_search();
+        }
         self.dirty = true;
     }
 
@@ -656,6 +633,8 @@ impl App {
                 "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
                 "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
                 "virtual_display": if r.virtual_display.is_empty() { Value::Null } else { json!(r.virtual_display) },
+                "unread": self.row_unread(r),
+                "worktree": if r.worktree_branch.is_empty() { Value::Null } else { json!({"branch": r.worktree_branch, "repo": r.worktree_repo, "exists": r.worktree_exists}) },
                 "selected": r.session == self.session,
             }))
             .collect();
@@ -670,7 +649,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(), "search": self.search_json(), "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -751,6 +730,7 @@ impl App {
         let total = memrow::total(&self.ui.rows, &self.ui.mem);
         let session_sel = self.session.clone();
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
+        let search_bar = if self.ui.panel.is_some() { None } else { self.search_bar_line() };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
@@ -759,7 +739,7 @@ impl App {
         let area_rows = ((height as f32 - top) / lh) as usize;
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
-        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + status.is_some() as usize + n_prompt - 1);
+        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + n_prompt - 1);
         let fs = self.font_system.as_mut()?;
         let lines: Vec<(i64, String)> = match &panel_view {
             Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
@@ -780,7 +760,11 @@ impl App {
         if let Some(b) = &bar {
             text.push_str(&format!("\n{}{}", clean(b), "\u{a0}".repeat(24))); // the buttons stand over the end of its last row (190 logical pixels): 24 no-break spaces wrap with the last word and keep that room empty
         }
-        let base = 1 + bar.is_some() as usize;
+        if let Some(sb) = &search_bar {
+            text.push('\n');
+            text.push_str(&clean(sb));
+        }
+        let base = 1 + bar.is_some() as usize + search_bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
         let faces = &mut self.ui.faces;
@@ -826,9 +810,15 @@ impl App {
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();
         let mut approval_y = None;
+        let mut search_y: Option<(f32, f32)> = None;
+        let search_line_i = 1 + bar.is_some() as usize;
         for run in view.buffer.layout_runs() {
             if bar.is_some() && run.line_i == 1 {
                 approval_y = Some(run.line_top + top);
+            }
+            if search_bar.is_some() && run.line_i == search_line_i {
+                let (y0, y1) = (run.line_top + top, run.line_top + run.line_height + top);
+                search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
             if run.line_i >= base && first + (run.line_i - base) < end {
                 let idx = first + (run.line_i - base);
@@ -883,7 +873,7 @@ impl App {
             corner: if self.ui.markers { 16 } else { 0 },
             overlay: Overlay {
                 menu: menu_open.is_some(),
-                selection: self.ui.sel.is_some(),
+                selection: self.ui.sel.is_some() || search_bar.is_some(),
                 panel: panel_view.is_some(),
                 approval: bar.is_some(),
                 preedit: !self.preedit.is_empty(),
@@ -917,6 +907,17 @@ impl App {
             let idx = y * width + list_w - 1;
             if let Some(px) = buf.get_mut(idx) {
                 *px = 0xFF30_3840;
+            }
+        }
+        if let Some((sy0, sy1)) = search_y {
+            rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
+        }
+        if panel_view.is_none() && self.ui.search.open {
+            for (y0, y1, idx) in &self.ui.hit_lines {
+                if let Some(active) = lines.get(*idx).and_then(|(seq, _)| self.ui.search.line_kind(&session_sel, *seq)) {
+                    let bg = if active { 0xFF5A_4314 } else { 0xFF2B_2412 };
+                    rect(&mut buf, width, height, list_w as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, bg);
+                }
             }
         }
         if let Some((a, b)) = self.ui.sel {

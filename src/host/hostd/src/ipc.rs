@@ -116,7 +116,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "view.attach" => &["session", "kind"],
         "clipboard.write" => &["kind"], // and `text`, or for a picture `path` instead: see `clipboard_shape`
         "clipboard.done" => &["req", "ok"],
-        "settings.set" => &["clipboard_write"],
+        "settings.set" => &[],
+        "folder.git" => &["cwd"],
+        "session.search" => &["query"],
         _ => &["view"], // view.detach
     };
     for (key, value) in request {
@@ -124,7 +126,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history" | "display.ensure" | "display.status" | "display.stop" | "real_screen.stop", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history" | "display.ensure" | "display.status" | "display.stop" | "real_screen.stop" | "session.search", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
             ("snapshot" | "subscribe" | "input" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
@@ -143,6 +145,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("history", "before") => in_range(value, 0, i64::MAX),
             ("history", "limit") => in_range(value, 1, 200),
             ("session.create", "cwd") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
+            ("session.create", "worktree_branch") => matches!(value, Value::String(s) if crate::worktree::valid_branch_shape(s)),
+            ("session.close" | "session.purge", "worktree") => matches!(value.as_str(), Some("keep" | "remove")),
+            ("session.close" | "session.purge", "force_dirty") => value.is_boolean(),
             ("session.create" | "session.rename", "name") => matches!(value, Value::String(s) if crate::folders::valid_name(s)),
             ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
             ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
@@ -171,14 +176,20 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "error") => valid_str(value, 32),
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
-            ("settings.set", "clipboard_write") => value.is_boolean(),
+            ("settings.set", "clipboard_write" | "notifications") => value.is_boolean(),
+            ("folder.git", "cwd") => valid_str(value, 1024),
+            ("session.search", "query") => crate::search::valid_query(value),
+            ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
             _ => false,
         };
         if !ok {
             return false;
         }
     }
-    required.iter().all(|key| request.contains_key(*key)) && (op != "transfer.send" || transfer_shape(request)) && (op != "clipboard.write" || clipboard_shape(request))
+    required.iter().all(|key| request.contains_key(*key))
+        && (op != "transfer.send" || transfer_shape(request))
+        && (op != "clipboard.write" || clipboard_shape(request))
+        && (op != "settings.set" || request.contains_key("clipboard_write") || request.contains_key("notifications"))
 }
 
 /// A text write has `text` and no `path`; a picture write has `path` and no `text`.
@@ -223,8 +234,8 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "session.list" => core::session_list(shared),
         "resources" => core::resources(shared),
         "session.resume" => core::session_resume(shared, &session, generation.unwrap_or(0)),
-        "session.purge" => core::session_purge(shared, &session, generation.unwrap_or(0)),
-        "session.close" => crate::lifecycle::session_close(shared, &session, generation.unwrap_or(0)),
+        "session.purge" => core::session_purge_with(shared, &session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
+        "session.close" => crate::lifecycle::session_close_with(shared, &session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
         "session.create" => core::session_create(
             shared,
             text(&request, "kind"),
@@ -269,7 +280,9 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         },
         "clipboard.write" => crate::clipwrite::write(shared, &request),
         "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
-        "settings.set" => crate::clipboard::settings::set_clipboard_write(&shared.cfg.handoff_dir, request.get("clipboard_write").and_then(Value::as_bool).unwrap_or(false)),
+        "settings.set" => crate::clipboard::settings::set_settings(&shared.cfg.handoff_dir, request.get("clipboard_write").and_then(Value::as_bool), request.get("notifications").and_then(Value::as_bool)),
+        "folder.git" => crate::worktree::folder_git_op(shared, text(&request, "cwd")),
+        "session.search" => crate::search::search_op(shared, text(&request, "query"), request.get("session").and_then(Value::as_str), int(&request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
         "display.ensure" => crate::vdisplay::ensure(shared, &session),
         "display.status" => crate::vdisplay::status_op(shared, &session),
         "display.stop" => crate::vdisplay::stop_op(shared, &session),

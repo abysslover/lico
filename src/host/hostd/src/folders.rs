@@ -26,10 +26,12 @@ const HELP_GRACE: Duration = Duration::from_secs(1);
 /// What a person chose for a session. Every field is optional; the default is "not chosen".
 #[derive(Clone, Default, Debug, PartialEq)]
 pub struct Settings {
-    pub cwd: Option<String>,    // a folder the person picked (canonical path); none = a scratch workspace made by the host
-    pub name: Option<String>,   // the name the person gave it; none = the default text
-    pub model: Option<String>,  // `--model`; none = the program's default
-    pub effort: Option<String>, // `--effort`; none = the program's default
+    pub cwd: Option<String>,             // a folder the person picked (canonical path; for a worktree session, `<workspace_root>/worktrees/<id>`)
+    pub name: Option<String>,            // the name the person gave it; none = the default text
+    pub model: Option<String>,           // `--model`; none = the program's default
+    pub effort: Option<String>,          // `--effort`; none = the program's default
+    pub worktree_repo: Option<String>,   // canonical parent git repository when started in a worktree (M02-P06)
+    pub worktree_branch: Option<String>, // branch created for that worktree (M02-P06)
 }
 
 /// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
@@ -71,13 +73,27 @@ impl Settings {
     /// The choices of a `session.create` request (its shape was checked by `ipc::valid_request`).
     pub fn of_request(request: &Map<String, Value>) -> Settings {
         let field = |key: &str| request.get(key).and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
-        Settings { cwd: field("cwd"), name: field("name"), model: field("model"), effort: field("effort") }
+        Settings {
+            cwd: field("cwd"),
+            name: field("name"),
+            model: field("model"),
+            effort: field("effort"),
+            worktree_repo: None,
+            worktree_branch: field("worktree_branch"),
+        }
     }
 
     /// The fields of the registry record: `scratch` is always written, the rest only when chosen.
     pub fn record_fields(&self) -> Map<String, Value> {
         let mut fields = obj(json!({"scratch": self.cwd.is_none()}));
-        for (key, value) in [("cwd", &self.cwd), ("name", &self.name), ("chosen_model", &self.model), ("chosen_effort", &self.effort)] {
+        for (key, value) in [
+            ("cwd", &self.cwd),
+            ("name", &self.name),
+            ("chosen_model", &self.model),
+            ("chosen_effort", &self.effort),
+            ("worktree_repo", &self.worktree_repo),
+            ("worktree_branch", &self.worktree_branch),
+        ] {
             if let Some(value) = value {
                 fields.insert(key.to_string(), json!(value));
             }
@@ -105,6 +121,11 @@ impl Settings {
         if scratch == cwd.is_some() {
             return Err(bad("folder"));
         }
+        let worktree_repo = text("worktree_repo", |s| valid_path_shape(s) && Path::new(s).is_absolute())?;
+        let worktree_branch = text("worktree_branch", crate::worktree::valid_branch_shape)?;
+        if worktree_repo.is_some() != worktree_branch.is_some() || (worktree_repo.is_some() && cwd.is_none()) {
+            return Err(bad("worktree"));
+        }
         // A name stored before the hidden characters were refused loads without them; one holding a control character stops the load as before.
         let name = match value.get("name") {
             Some(Value::String(s)) if !s.chars().any(char::is_control) => {
@@ -113,7 +134,7 @@ impl Settings {
             }
             _ => text("name", name_shape)?,
         };
-        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)? })
+        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch })
     }
 }
 
@@ -154,6 +175,16 @@ pub fn prepare(shared: &Shared, kind: &str, mut chosen: Settings) -> Result<Sett
         }
         chosen.cwd = Some(check_folder(shared, folder)?);
     }
+    if let Some(branch) = chosen.worktree_branch.take() {
+        if !matches!(kind, "claude" | "codex") {
+            return Err("option_unavailable");
+        }
+        let folder = chosen.cwd.as_deref().ok_or("worktree_needs_folder")?;
+        let repo = crate::worktree::git_toplevel(folder).ok_or("not_git_repo")?;
+        let clean = crate::worktree::check_branch(&branch)?;
+        chosen.worktree_repo = Some(repo);
+        chosen.worktree_branch = Some(clean);
+    }
     if chosen.model.is_some() || chosen.effort.is_some() {
         if kind != "claude" {
             return Err("option_unavailable");
@@ -169,12 +200,16 @@ pub fn prepare(shared: &Shared, kind: &str, mut chosen: Settings) -> Result<Sett
 /// The directory a provider process runs in: the chosen folder, checked again now (it may be gone, or may have become
 /// a link into the host's state), else the session's scratch workspace, made if it is not there.
 pub fn working_dir(shared: &Shared, session: &Arc<Mutex<Session>>) -> Result<PathBuf, &'static str> {
-    let (id, cwd) = {
+    let (id, cwd, is_worktree) = {
         let s = session.lock().unwrap();
-        (s.id.clone(), s.settings.cwd.clone())
+        (s.id.clone(), s.settings.cwd.clone(), s.settings.worktree_repo.is_some())
     };
     if let Some(folder) = cwd {
-        return check_folder(shared, &folder).map(PathBuf::from);
+        return if is_worktree {
+            crate::worktree::check_worktree_dir(shared, &id, &folder)
+        } else {
+            check_folder(shared, &folder).map(PathBuf::from)
+        };
     }
     let workspace = shared.cfg.workspace_root.join(id);
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&workspace).map_err(|_| "busy")?;
@@ -208,8 +243,12 @@ fn remove_scratch_in(root: &Path, id: &str, scratch: bool) {
 /// A session backed by a provider program (or its simulator): one process, one provider session, running in the chosen
 /// folder or in a scratch workspace of its own. Nothing of one that never became ready remains: no process, no log, and
 /// no workspace the host made.
-pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(String, u64)>, mode: &'static str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
+pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(String, u64)>, mode: &'static str, mut chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
     let id = format!("s{}", crate::core::random_hex(8));
+    if let (Some(repo), Some(branch)) = (chosen.worktree_repo.clone(), chosen.worktree_branch.clone()) {
+        let wt = crate::worktree::create(shared, &repo, &id, &branch)?;
+        chosen.cwd = Some(wt.to_string_lossy().into_owned());
+    }
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     {
         let mut s = session.lock().unwrap();
@@ -229,6 +268,7 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
         s.stop_process();
         s.purge_log();
         remove_own(shared, &s.id, s.settings.cwd.is_none());
+        crate::worktree::remove_checked(shared, s.settings.worktree_repo.as_deref(), &s.id);
         return Err(code);
     }
     shared.sessions.write().unwrap().push(session.clone());
@@ -275,7 +315,8 @@ fn recent_path(shared: &Shared) -> PathBuf {
 /// What the last session was started with, for the new-session screen to offer again: only what was chosen.
 fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> Map<String, Value> {
     let mut last = obj(json!({"kind": kind, "mode": mode}));
-    for (key, value) in [("account", account), ("cwd", chosen.cwd.as_deref()), ("model", chosen.model.as_deref()), ("effort", chosen.effort.as_deref())] {
+    let remembered_cwd = chosen.worktree_repo.as_deref().or(chosen.cwd.as_deref());
+    for (key, value) in [("account", account), ("cwd", remembered_cwd), ("model", chosen.model.as_deref()), ("effort", chosen.effort.as_deref())] {
         if let Some(value) = value {
             last.insert(key.to_string(), json!(value));
         }
@@ -537,9 +578,9 @@ mod tests {
 
     #[test]
     fn what_the_last_session_chose_is_kept_and_what_it_left_out_is_not() {
-        let chosen = Settings { cwd: None, name: Some("n".into()), model: Some("opus".into()), effort: None };
+        let chosen = Settings { cwd: None, name: Some("n".into()), model: Some("opus".into()), effort: None, ..Settings::default() };
         assert_eq!(last_of("codex", None, "auto", &chosen), obj(json!({"kind": "codex", "mode": "auto", "model": "opus"})));
-        let all = Settings { cwd: Some("/w".into()), name: None, model: Some("sonnet".into()), effort: Some("low".into()) };
+        let all = Settings { cwd: Some("/w".into()), name: None, model: Some("sonnet".into()), effort: Some("low".into()), ..Settings::default() };
         assert_eq!(last_of("claude", Some("a1"), "default", &all), obj(json!({"kind": "claude", "mode": "default", "account": "a1", "cwd": "/w", "model": "sonnet", "effort": "low"})));
     }
 
@@ -602,7 +643,7 @@ mod tests {
 
     #[test]
     fn the_registry_fields_round_trip_and_an_older_record_is_a_scratch_session() {
-        let chosen = Settings { cwd: Some("/work/project".into()), name: Some("api".into()), model: Some("opus".into()), effort: Some("high".into()) };
+        let chosen = Settings { cwd: Some("/work/project".into()), name: Some("api".into()), model: Some("opus".into()), effort: Some("high".into()), ..Settings::default() };
         let record = Value::Object(chosen.record_fields());
         assert_eq!(Settings::from_record(&record, "s1").unwrap(), chosen);
         assert_eq!(record["scratch"], json!(false));

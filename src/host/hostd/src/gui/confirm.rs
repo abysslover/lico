@@ -31,6 +31,10 @@ pub struct Ask {
     pub title: String,
     pub working: bool,
     pub cwd: String, // the folder the person chose; empty for a scratch workspace
+    pub worktree_branch: String,
+    pub worktree_repo: String,
+    pub worktree_exists: bool,
+    pub dirty_confirm: bool,
 }
 
 fn why(error: &str) -> String {
@@ -94,11 +98,22 @@ impl App {
             return;
         }
         let Some(row) = self.selected_row() else { return };
-        let ask = Ask { act, session: row.session.clone(), generation: row.generation, title: row.title(40).trim_end().to_string(), working: row.holds_a_turn(), cwd: row.cwd.clone() };
-        if act == Act::Close && !ask.working {
-            return match self.ask_do(&ask, "") {
+        let ask = Ask {
+            act,
+            session: row.session.clone(),
+            generation: row.generation,
+            title: row.title(40).trim_end().to_string(),
+            working: row.holds_a_turn(),
+            cwd: row.cwd.clone(),
+            worktree_branch: row.worktree_branch.clone(),
+            worktree_repo: row.worktree_repo.clone(),
+            worktree_exists: row.worktree_exists,
+            dirty_confirm: false,
+        };
+        if act == Act::Close && !ask.working && !ask.worktree_exists {
+            return match self.ask_do(&ask, "", None, false) {
                 Ok(done) => self.ui.flash = Some(done),
-                Err(why) => self.ui.flash = Some(format!("Close session: {why}")),
+                Err((_, text)) => self.ui.flash = Some(format!("Close session: {text}")),
             };
         }
         let name = row.name.clone();
@@ -112,25 +127,37 @@ impl App {
     }
 
     /// The host does it; the window follows: a deleted session leaves the list, the screen and the draft box, a closed one stays.
-    fn ask_do(&mut self, ask: &Ask, name: &str) -> Result<String, String> {
-        let request = match ask.act {
+    fn ask_do(&mut self, ask: &Ask, name: &str, worktree: Option<&str>, force_dirty: bool) -> Result<String, (String, String)> {
+        let mut request = match ask.act {
             Act::Rename => json!({"op": "session.rename", "session": ask.session, "name": name}),
             Act::Close => json!({"op": "session.close", "session": ask.session, "generation": ask.generation}),
             Act::Delete => json!({"op": "session.purge", "session": ask.session, "generation": ask.generation}),
         };
+        if let Some(policy) = worktree {
+            request["worktree"] = json!(policy);
+            if force_dirty {
+                request["force_dirty"] = json!(true);
+            }
+        }
         let reply = self.host_call(request);
         if reply["ok"] != json!(1) {
-            return Err(why(reply["error"].as_str().unwrap_or("unknown")));
+            let code = reply["error"].as_str().unwrap_or("unknown").to_string();
+            let text = why(&code);
+            return Err((code, text));
         }
         if ask.act == Act::Delete {
             self.session_gone(&ask.session);
         }
         self.send("{\"op\":\"status\"}");
-        Ok(match ask.act {
-            Act::Rename if name.is_empty() => "The name is taken away.".into(),
-            Act::Rename => "Renamed.".into(),
-            Act::Close => "Session closed. Ctrl+R brings it back.".into(),
-            Act::Delete => "Session deleted.".into(),
+        Ok(match (ask.act, worktree) {
+            (Act::Rename, _) if name.is_empty() => "The name is taken away.".into(),
+            (Act::Rename, _) => "Renamed.".into(),
+            (Act::Close, Some("remove")) => "Session closed and worktree removed (branch kept). Ctrl+R brings the session back.".into(),
+            (Act::Close, Some("keep")) => "Session closed (worktree kept). Ctrl+R brings it back.".into(),
+            (Act::Close, _) => "Session closed. Ctrl+R brings it back.".into(),
+            (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
+            (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
+            (Act::Delete, _) => "Session deleted.".into(),
         })
     }
 
@@ -150,12 +177,32 @@ impl App {
     /// Y in the confirmation: do what was asked.
     fn confirm_yes(&mut self) {
         let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
-        match self.ask_do(&ask, "") {
+        match self.ask_do(&ask, "", None, false) {
             Ok(done) => {
                 self.panel_close();
                 self.ui.flash = Some(done);
             }
-            Err(why) => self.notice(format!("Not done: {why}.")),
+            Err((_, text)) => self.notice(format!("Not done: {text}.")),
+        }
+    }
+
+    fn confirm_worktree(&mut self, policy: &str, force_dirty: bool) {
+        let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
+        match self.ask_do(&ask, "", Some(policy), force_dirty) {
+            Ok(done) => {
+                self.panel_close();
+                self.ui.flash = Some(done);
+            }
+            Err((code, _)) if code == "worktree_dirty" => {
+                if let Some(p) = self.ui.panel.as_mut() {
+                    if let Some(a) = p.ask.as_mut() {
+                        a.dirty_confirm = true;
+                    }
+                    p.notice.clear();
+                }
+                self.dirty = true;
+            }
+            Err((_, text)) => self.notice(format!("Not done: {text}.")),
         }
     }
 
@@ -163,7 +210,7 @@ impl App {
     pub(crate) fn rename_submit(&mut self, text: &str) {
         let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
         let outcome = if crate::folders::valid_name(text) {
-            self.ask_do(&ask, text)
+            self.ask_do(&ask, text, None, false).map_err(|(_, t)| t)
         } else if crate::folders::shows_nothing(text.trim()) {
             Err("the name shows nothing (only characters that are not drawn)".to_string())
         } else {
@@ -187,21 +234,33 @@ impl App {
         }
     }
 
-    /// Y does it, N keeps the session as it is; any other key does nothing.
+    /// Y (or K/R/D on a worktree session) does it, N keeps the session as it is; any other key does nothing.
     pub(crate) fn confirm_key(&mut self, key: char) {
-        match key {
-            'y' => self.confirm_yes(),
-            'n' => self.panel_close(),
+        let Some((wt, dirty)) = self.ui.panel.as_ref().and_then(|p| p.ask.as_ref().map(|a| (a.worktree_exists, a.dirty_confirm))) else {
+            return;
+        };
+        match (wt, dirty, key) {
+            (false, _, 'y') => self.confirm_yes(),
+            (true, false, 'k') | (true, true, 'k') => self.confirm_worktree("keep", false),
+            (true, false, 'r') => self.confirm_worktree("remove", false),
+            (true, true, 'd') => self.confirm_worktree("remove", true),
+            (_, _, 'n') => self.panel_close(),
             _ => {}
         }
     }
 
-    /// A click on the Y or N line of the confirmation; false when the line is neither.
+    /// A click on an action line of the confirmation; false when the line is none of them.
     pub(crate) fn confirm_click(&mut self, line: usize) -> bool {
         let Some((_, body)) = self.panel_view().filter(|_| self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Confirm)) else { return false };
-        match body.get(line).map(|l| l.chars().next()) {
-            Some(Some('Y')) => self.confirm_yes(),
-            Some(Some('N')) => self.panel_close(),
+        let Some((wt, dirty)) = self.ui.panel.as_ref().and_then(|p| p.ask.as_ref().map(|a| (a.worktree_exists, a.dirty_confirm))) else {
+            return false;
+        };
+        match (wt, dirty, body.get(line).and_then(|l| l.chars().next())) {
+            (false, _, Some('Y')) => self.confirm_yes(),
+            (true, _, Some('K')) => self.confirm_worktree("keep", false),
+            (true, false, Some('R')) => self.confirm_worktree("remove", false),
+            (true, true, Some('D')) => self.confirm_worktree("remove", true),
+            (_, _, Some('N')) => self.panel_close(),
             _ => return false,
         }
         true
@@ -211,6 +270,40 @@ impl App {
     pub(crate) fn ask_view(&self, p: &Panel) -> (String, Vec<String>) {
         let Some(ask) = p.ask.as_ref() else { return (String::new(), Vec::new()) };
         let named = format!("\"{}\"", ask.title);
+        if ask.act != Act::Rename && ask.worktree_exists {
+            let verb = if ask.act == Act::Close { "close session" } else { "delete session" };
+            if ask.dirty_confirm {
+                return (
+                    "Uncommitted changes in worktree".into(),
+                    vec![
+                        format!("The worktree of {named} (branch '{}') has uncommitted or untracked changes.", ask.worktree_branch),
+                        format!("Removing it discards uncommitted files in that worktree. Branch '{}' and {} are not touched.", ask.worktree_branch, ask.worktree_repo),
+                        String::new(),
+                        format!("D  {verb} and remove dirty worktree anyway"),
+                        format!("K  {verb} and keep worktree"),
+                        "N  cancel".into(),
+                    ],
+                );
+            }
+            let heading = if ask.act == Act::Close { "Close worktree session" } else { "Delete worktree session" };
+            let first = match (ask.act, ask.working) {
+                (Act::Close, true) => format!("Stop the work of {named} and close it?"),
+                (Act::Close, false) => format!("Close {named}? Its conversation stays; Ctrl+R brings it back."),
+                _ => format!("Delete {named}? This cannot be undone."),
+            };
+            return (
+                heading.into(),
+                vec![
+                    first,
+                    format!("Worktree on branch '{}' (main repository {} is not touched).", ask.worktree_branch, ask.worktree_repo),
+                    format!("Removing the worktree deletes only Lico's checkout; branch '{}' stays in git.", ask.worktree_branch),
+                    String::new(),
+                    format!("K  {verb} and keep worktree"),
+                    format!("R  {verb} and remove worktree (branch stays)"),
+                    "N  cancel".into(),
+                ],
+            );
+        }
         let folder = if ask.cwd.is_empty() { "Its scratch workspace is removed with it.".to_string() } else { format!("The folder {} is not touched.", ask.cwd) };
         match ask.act {
             Act::Rename => ("Rename session".into(), vec![format!("Type the new name of {named} and press Enter."), "An empty name takes the name away. At most 60 characters.".into(), "The host keeps the name: other windows and the command line show it too.".into()]),

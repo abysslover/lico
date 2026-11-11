@@ -59,7 +59,7 @@ impl App {
     }
 
     /// One request on a connection of its own, waiting at most `seconds` for the reply (the window stands still meanwhile).
-    fn host_call_within(&self, request: Value, seconds: u64) -> Value {
+    pub(crate) fn host_call_within(&self, request: Value, seconds: u64) -> Value {
         let Ok(mut conn) = UnixStream::connect(&self.socket) else { return json!({"ok": 0, "error": "host_unreachable"}) };
         conn.set_read_timeout(Some(Duration::from_secs(seconds))).ok();
         conn.set_write_timeout(Some(Duration::from_secs(seconds))).ok();
@@ -102,6 +102,7 @@ impl App {
     }
 
     pub(crate) fn panel_open(&mut self, step: Step) {
+        self.search_close();
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
@@ -208,7 +209,7 @@ impl App {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
                     "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
-                    "Page Up, Page Down, End  scroll the output", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
+                    "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
                     "Ctrl+Shift+S  send the input box, or the selected lines, to another session",
                 ].map(String::from));
                 "Keys".to_string()

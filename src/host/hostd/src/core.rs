@@ -22,6 +22,7 @@ pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
+    "folder.git", "session.search",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -300,15 +301,19 @@ fn stall_secs() -> u64 {
     *SECS.get_or_init(|| std::env::var("LICO_STALL_S").ok().and_then(|v| v.parse().ok()).filter(|n| *n > 0).unwrap_or(30))
 }
 
-fn status_entry(s: &Session) -> Value {
+fn status_entry(shared: &Shared, s: &Session) -> Value {
     let mut entry = json!({
         "session": s.id, "generation": s.generation, "seq": s.last_seq(), "producing": s.producing,
         "subscribers": s.subs.len(), "bytes_total": s.bytes_total, "oldest": s.oldest(), "state": state_name(s), "state_at": s.state_at,
     });
+    if s.finished_seq >= 0 {
+        entry["finished_seq"] = json!(s.finished_seq);
+    }
     if !s.provider.is_empty() {
         entry["provider"] = json!(s.provider);
         entry["mode"] = json!(s.mode);
         crate::folders::annotate(&mut entry, s);
+        crate::worktree::annotate(shared, &mut entry, s);
     }
     if let Some(model) = &s.model {
         entry["model"] = json!(model);
@@ -338,7 +343,7 @@ fn status_entry(s: &Session) -> Value {
 pub fn status(shared: &Shared) -> Reply {
     crate::pending::sweep_all(shared); // a request that has waited too long ends here, and its asker is told
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
-    let entries: Vec<Value> = list.iter().map(|s| status_entry(&s.lock().unwrap())).collect();
+    let entries: Vec<Value> = list.iter().map(|s| status_entry(shared, &s.lock().unwrap())).collect();
     Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared)})))
 }
 
@@ -422,7 +427,7 @@ const STOP_DEADLINE: Duration = Duration::from_millis(2400);
 pub fn session_one(shared: &Shared, session: &str) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     let s = found.lock().unwrap();
-    Ok(obj(status_entry(&s)))
+    Ok(obj(status_entry(shared, &s)))
 }
 
 pub fn session_list(shared: &Shared) -> Reply {
@@ -658,10 +663,15 @@ fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result
 /// Delete a session: end its process, remove its log and its workspace, and forget it. Nothing of
 /// another session is touched, and nothing of this one can be written again.
 pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {
+    session_purge_with(shared, session, generation, None, false)
+}
+
+pub fn session_purge_with(shared: &Arc<Shared>, session: &str, generation: i64, worktree: Option<&str>, force_dirty: bool) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let (id, subs, scratch) = {
+    let (id, subs, scratch, repo, remove_wt) = {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
+        let remove_wt = crate::worktree::check_before_remove(shared, &s, worktree, force_dirty)?;
         s.purged = true;
         s.set_state(State::Exited);
         s.input_tx = None;
@@ -671,7 +681,7 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
         s.stop_process();
         s.purge_log();
         let subs: Vec<Arc<Sub>> = s.subs.drain(..).collect();
-        (s.id.clone(), subs, s.settings.cwd.is_none())
+        (s.id.clone(), subs, s.settings.cwd.is_none(), s.settings.worktree_repo.clone(), remove_wt)
     };
     crate::tools::forget(&id); // its tool connection ends with it
     for sub in subs {
@@ -681,6 +691,9 @@ pub fn session_purge(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
     shared.sessions.write().unwrap().retain(|s| s.lock().unwrap().id != id);
     shared.views.lock().unwrap().retain(|_, v| v.session != id);
     crate::folders::remove_own(shared, &id, scratch); // a folder the person chose is never touched
+    if remove_wt {
+        crate::worktree::remove_checked(shared, repo.as_deref(), &id);
+    }
     crate::registry::save(shared);
     Ok(obj(json!({"session": id})))
 }
@@ -971,117 +984,5 @@ pub fn replay(session: &Arc<Mutex<Session>>, sub: &Arc<Sub>, id: &str, mut curso
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn provider() -> Child {
-        let mut command = Command::new("sleep");
-        command.arg("60");
-        unsafe {
-            command.pre_exec(|| {
-                setsid(); // its own group, like a provider
-                Ok(())
-            });
-        }
-        let child = command.spawn().expect("sleep");
-        note_provider(child.id());
-        child
-    }
-
-    #[test]
-    fn the_stop_returns_and_ends_the_providers_whatever_state_a_session_lock_is_in() {
-        let dir = std::env::temp_dir().join(format!("lico_core_stop_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let session = |id: &str| Arc::new(Mutex::new(Session::new(id.to_string(), false, &dir, 100, 100)));
-        let (held, poisoned, free) = (session("held"), session("poisoned"), session("free"));
-        let p = poisoned.clone();
-        let _ = thread::spawn(move || {
-            let _guard = p.lock().unwrap();
-            panic!("a session lock poisoned on purpose");
-        })
-        .join();
-        assert!(poisoned.is_poisoned());
-        let (h, held_now) = (held.clone(), mpsc::channel());
-        thread::spawn(move || {
-            let _guard = h.lock().unwrap(); // held for long, like the log's fsync under load
-            held_now.0.send(()).unwrap();
-            thread::sleep(Duration::from_secs(6));
-        });
-        held_now.1.recv().unwrap();
-        let mut providers = [provider(), provider(), provider()]; // none is a session's own pid: only the list outside the locks can reach them
-        let from = Instant::now();
-        end_providers(&[held, poisoned, free], Duration::from_millis(500));
-        assert!(from.elapsed() < Duration::from_secs(3), "the stop took {:?}", from.elapsed());
-        for provider in providers.iter_mut() {
-            let until = Instant::now() + Duration::from_secs(2);
-            while provider.try_wait().unwrap().is_none() {
-                assert!(Instant::now() < until, "a provider survived the stop");
-                thread::sleep(Duration::from_millis(10));
-            }
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn within_returns_by_the_budget_whatever_the_work_does() {
-        let from = Instant::now();
-        assert!(within(Duration::from_secs(2), || {}), "a quick job finishes inside the budget");
-        assert!(from.elapsed() < Duration::from_millis(500));
-        let from = Instant::now();
-        assert!(!within(Duration::from_millis(300), || thread::sleep(Duration::from_secs(3))), "a slow job is given up");
-        assert!(from.elapsed() >= Duration::from_millis(300) && from.elapsed() < Duration::from_millis(1500), "it took {:?}", from.elapsed());
-        let from = Instant::now();
-        assert!(!within(Duration::from_secs(2), || panic!("the work panicked on purpose")), "a panic is not a finished job");
-        assert!(from.elapsed() < Duration::from_millis(500), "a panic returns at once, it took {:?}", from.elapsed());
-        assert!(within(Duration::from_secs(2), || {}), "the caller is not poisoned by it");
-    }
-
-    const CHILD: &str = "LICO_STOP_REPLY_CHILD";
-
-    /// The stop ends the process it runs in, so this test runs itself again in a child process (the first half) and the child (the second half) asks
-    /// host_stop for a stop while one session lock is held for 8 s, then prints how long the reply took.
-    #[test]
-    fn the_stop_reply_does_not_wait_for_a_session_lock_that_is_held() {
-        if std::env::var(CHILD).is_err() {
-            let from = Instant::now();
-            let done = Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "core::tests::the_stop_reply_does_not_wait_for_a_session_lock_that_is_held", "--nocapture", "--test-threads=1"])
-                .env(CHILD, "1")
-                .output()
-                .unwrap();
-            let text = String::from_utf8_lossy(&done.stdout).to_string();
-            let reply = text.lines().find_map(|l| l.split("REPLY ms=").nth(1)).unwrap_or_else(|| panic!("the process ended without a reply: {text}"));
-            assert!(reply.ends_with("ok=true"), "the stop was refused: {reply}");
-            let reply: u64 = reply.split_whitespace().next().unwrap().parse().unwrap();
-            assert!(reply < 2000, "the reply took {reply} ms");
-            assert!(from.elapsed() < Duration::from_secs(7), "the process did not end by itself: {:?}", from.elapsed());
-            return;
-        }
-        let dir = std::env::temp_dir().join(format!("lico_core_reply_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let cfg = Config {
-            login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
-            queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
-            claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
-            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false, realistic_text: false,
-        };
-        let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
-        let shared = Arc::new(Shared {
-            cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
-            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(),
-        });
-        let held = Arc::new(Mutex::new(Session::new("held".to_string(), false, &dir, 100, 100)));
-        shared.sessions.write().unwrap().push(held.clone());
-        let (locked, now) = mpsc::channel();
-        thread::spawn(move || {
-            let _guard = held.lock().unwrap(); // held for long, like the log's fsync under load
-            locked.send(()).unwrap();
-            thread::sleep(Duration::from_secs(8));
-        });
-        now.recv().unwrap();
-        let from = Instant::now();
-        let reply = host_stop(&shared, true, None);
-        println!("REPLY ms={} ok={}", from.elapsed().as_millis(), reply.is_ok());
-        thread::sleep(Duration::from_secs(20)); // the stop ends this process long before
-    }
-}
+#[path = "core/tests.rs"]
+mod tests;

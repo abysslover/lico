@@ -22,7 +22,8 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
           "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed",
-          "xvfb_unavailable", "no_display")
+          "xvfb_unavailable", "no_display",
+          "worktree_needs_folder", "not_git_repo", "invalid_branch", "branch_exists", "worktree_failed", "worktree_dirty")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -59,6 +60,8 @@ INVENTORY = {
     "session.close": {"state": "host", "mutates": True},
     "transfer.send": {"state": "host", "mutates": True},
     "settings.set": {"state": "host", "mutates": True},
+    "folder.git": {"state": "host", "mutates": False},
+    "session.search": {"state": "host", "mutates": False},
     "display.ensure": {"state": "host", "mutates": True},
     "display.status": {"state": "host", "mutates": False},
     "display.stop": {"state": "host", "mutates": True},
@@ -100,6 +103,8 @@ REPLIES = {
         "optional": {"oldest": {"type": INT, "minimum": 0}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]},
                      "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "busy_since": {"type": INT, "minimum": 0}, "last_event_at": {"type": INT, "minimum": 0}, "stalled": {"type": BOOL}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
+                     "finished_seq": {"type": INT, "minimum": -1},
+                     "worktree": _obj({"repo": {"type": STR, "max_length": MAX_PATH}, "branch": {"type": STR, "max_length": 80}, "exists": {"type": BOOL}}),
                      "memory": MEMORY,   # of a running session, from the second status call on
                      "virtual_display": {"type": STR, "max_length": 16},
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
@@ -108,7 +113,7 @@ REPLIES = {
                          "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY,
-                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}}, "optional": {}},
+                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}, "optional": {}},
                    "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
@@ -184,8 +189,15 @@ REPLIES = {
                       {**COMMON_REPLY_OPTIONAL, "snapshot": SNAPSHOT_BODY, "missed": {"type": [INT, "null"]}}),
     "unsubscribe": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "seq": {"type": INT, "minimum": -1}},
                         COMMON_REPLY_OPTIONAL),
-    "settings.set": _obj({"v": _V, "ok": _OK, "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}}, "optional": {}}},
+    "settings.set": _obj({"v": _V, "ok": _OK, "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}, "optional": {}}},
                          COMMON_REPLY_OPTIONAL),
+    "folder.git": _obj({"v": _V, "ok": _OK, "is_git": {"type": BOOL}, "repo": {"type": [STR, "null"], "max_length": MAX_PATH}},
+                       {**COMMON_REPLY_OPTIONAL, "reason": {"type": STR, "max_length": 32}}),
+    "session.search": _obj({"v": _V, "ok": _OK, "query": {"type": STR, "max_length": 256}, "scope": {"type": STR, "enum": ["session", "all"]},
+                            "matches": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME},
+                                                                        "seq": {"type": INT, "minimum": 0}, "text": {"type": STR, "max_length": 240}})},
+                            "total": {"type": INT, "minimum": 0}, "truncated": {"type": BOOL}},
+                           COMMON_REPLY_OPTIONAL),
     "display.ensure": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "display": {"type": STR, "max_length": 16}, "geometry": {"type": STR, "max_length": 32}},
                            COMMON_REPLY_OPTIONAL),
     "display.status": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "running": {"type": BOOL}, "display": {"type": [STR, "null"], "max_length": 16}},
@@ -216,14 +228,17 @@ REQUESTS = {
                       {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "snapshot": {"type": BOOL}}),
     "unsubscribe": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "session.resume": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
-    "session.purge": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
-    "session.close": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}}, _COMMON_REQ),
+    "session.purge": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}},
+                          {**_COMMON_REQ, "worktree": {"type": STR, "enum": ["keep", "remove"]}, "force_dirty": {"type": BOOL}}),
+    "session.close": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1}},
+                          {**_COMMON_REQ, "worktree": {"type": STR, "enum": ["keep", "remove"]}, "force_dirty": {"type": BOOL}}),
     "session.create": _obj({"kind": {"type": STR, "enum": ["synthetic", "codex", "claude"]}},
                            {**_COMMON_REQ, "mode": {"type": STR, "enum": ["auto", "default"]}, "rate": {"type": INT, "minimum": 0, "maximum": 10000},
                             "history": {"type": INT, "minimum": 0, "maximum": 100000},
                             "payload": {"type": INT, "minimum": 1, "maximum": 4096},
                             "account": {"type": STR, "max_length": 64},
                             "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
+                            "worktree_branch": {"type": STR, "min_length": 1, "max_length": 80, "no_control": True, "no_hidden": True},
                             "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True, "no_blank": "trimmed"},
                             "model": {"type": STR, "min_length": 1, "max_length": 60, "charset": "model"},
                             "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"}}),
@@ -259,7 +274,10 @@ REQUESTS = {
                         {**_COMMON_REQ, "generation": {"type": INT, "minimum": 1}, "after": {"type": INT, "minimum": -1}}),
     "view.detach": _obj({"view": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "resources": _obj({}, _COMMON_REQ),
-    "settings.set": _obj({"clipboard_write": {"type": BOOL}}, _COMMON_REQ),
+    "settings.set": _obj({}, {**_COMMON_REQ, "clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}}),
+    "folder.git": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True}}, _COMMON_REQ),
+    "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
+                           {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
     "display.ensure": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.status": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.stop": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
@@ -359,6 +377,8 @@ def validate_request(op: str, message: dict) -> list[str]:
     validate_object(body, REQUESTS[op], "$", errors)
     if op == "transfer.send":
         errors += _transfer_shape(body)
+    if op == "settings.set" and "clipboard_write" not in body and "notifications" not in body:
+        errors.append("$.settings.set: at least one of clipboard_write or notifications required")
     return errors
 
 

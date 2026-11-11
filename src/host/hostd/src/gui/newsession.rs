@@ -21,6 +21,8 @@ pub enum Field {
     Account,
     Folder,
     Recent(usize),
+    Worktree,
+    Branch,
     Name,
     Model,
     Effort,
@@ -36,6 +38,8 @@ impl Field {
             Field::Account => "Account",
             Field::Folder => "Folder",
             Field::Recent(0) => "recent",
+            Field::Worktree => "Worktree",
+            Field::Branch => "Branch",
             Field::Name => "Name",
             Field::Model => "Model",
             Field::Effort => "Effort",
@@ -45,13 +49,18 @@ impl Field {
     }
 
     fn takes_text(self) -> bool {
-        matches!(self, Field::Folder | Field::Name)
+        matches!(self, Field::Folder | Field::Branch | Field::Name)
     }
 }
 
 pub struct Form {
     pub focus: Field,
-    pub folder: String, // the text of the two text rows while another row has the focus
+    pub folder: String, // the text of the text rows while another row has the focus
+    pub is_git: bool,
+    pub git_repo: String,
+    pub checked_folder: String,
+    pub worktree: bool,
+    pub branch: String,
     pub name: String,
     pub model: String, // "default" or one of `models`
     pub effort: String,
@@ -63,7 +72,14 @@ pub struct Form {
 impl Form {
     fn fields(&self) -> Vec<Field> {
         let mut rows = vec![Field::Provider, Field::Account, Field::Folder];
-        rows.extend((0..self.recent.len().min(RECENT_SHOWN)).map(Field::Recent));
+        let shown = if self.is_git && self.worktree { 3 } else if self.is_git { 4 } else { RECENT_SHOWN };
+        rows.extend((0..self.recent.len().min(shown)).map(Field::Recent));
+        if self.is_git {
+            rows.push(Field::Worktree);
+            if self.worktree {
+                rows.push(Field::Branch);
+            }
+        }
         rows.extend([Field::Name, Field::Model, Field::Effort, Field::Permission, Field::SignIn, Field::Start]);
         rows
     }
@@ -106,6 +122,9 @@ fn request_of(p: &Panel, f: &Form) -> Value {
             request[key] = json!(value);
         }
     }
+    if f.is_git && f.worktree && !f.branch.trim().is_empty() {
+        request["worktree_branch"] = json!(f.branch.trim());
+    }
     request
 }
 
@@ -117,6 +136,11 @@ fn refusal(code: &str) -> String {
         "folder_not_directory" => "That path is not a folder.".into(),
         "folder_unreadable" => "That folder cannot be read.".into(),
         "folder_protected" => "Lico keeps its own files there: choose another folder.".into(),
+        "worktree_needs_folder" => "Choose a git repository folder before asking for a worktree.".into(),
+        "not_git_repo" => "That folder is not a git repository.".into(),
+        "invalid_branch" => "Git refused that branch name.".into(),
+        "branch_exists" => "That branch already exists in the repository: choose a new branch name.".into(),
+        "worktree_failed" => "Git could not create the worktree there.".into(),
         "option_unavailable" => "The installed program does not offer that model or effort.".into(),
         "bad_request" => "The host does not understand this request: it is an older build.".into(),
         other => other.to_string(),
@@ -157,8 +181,50 @@ impl App {
             (true, Some(_)) => "The claude program's help was not recognised: only the default model and effort are offered.".into(),
             _ => String::new(),
         };
-        p.form = Some(Form { focus: Field::Folder, folder: last["cwd"].as_str().unwrap_or("").to_string(), name: String::new(), model, effort, models, efforts, recent: list("recent") });
+        p.form = Some(Form {
+            focus: Field::Folder,
+            folder: last["cwd"].as_str().unwrap_or("").to_string(),
+            is_git: false,
+            git_repo: String::new(),
+            checked_folder: "\x00".to_string(),
+            worktree: false,
+            branch: String::new(),
+            name: String::new(),
+            model,
+            effort,
+            models,
+            efforts,
+            recent: list("recent"),
+        });
+        self.form_check_git();
         self.form_resume();
+    }
+
+    /// Refreshes whether `f.folder` is inside a git repository when `f.folder` changed.
+    pub(crate) fn form_check_git(&mut self) {
+        let Some((folder, already)) = self.ui.panel.as_ref().and_then(|p| p.form.as_ref().map(|f| (f.folder.trim().to_string(), f.checked_folder.clone()))) else {
+            return;
+        };
+        if folder == already {
+            return;
+        }
+        let (is_git, repo) = if folder.is_empty() || !folder.starts_with('/') || !crate::folders::valid_path_shape(&folder) || self.socket.is_empty() {
+            (false, String::new())
+        } else {
+            let reply = self.host_call_within(json!({"op": "folder.git", "cwd": folder}), 2);
+            (reply["ok"] == json!(1) && reply["is_git"] == json!(true), reply["repo"].as_str().unwrap_or("").to_string())
+        };
+        self.with_form(|_, f| {
+            f.checked_folder = folder;
+            f.is_git = is_git;
+            f.git_repo = repo;
+            if !is_git {
+                f.worktree = false;
+                if matches!(f.focus, Field::Worktree | Field::Branch) {
+                    f.focus = Field::Folder;
+                }
+            }
+        });
     }
 
     fn with_form<R>(&mut self, act: impl FnOnce(&mut Panel, &mut Form) -> R) -> Option<R> {
@@ -174,6 +240,7 @@ impl App {
         match field {
             _ if f.focus == field && p.step == Step::NewSession => self.ed.text().to_string(),
             Field::Folder => f.folder.clone(),
+            Field::Branch => f.branch.clone(),
             Field::Name => f.name.clone(),
             _ => String::new(),
         }
@@ -182,10 +249,15 @@ impl App {
     /// Why the session cannot be started yet, from what the form can see.
     fn form_problem(&self, p: &Panel, f: &Form) -> Option<String> {
         let folder = self.live(p, f, Field::Folder);
+        let branch = self.live(p, f, Field::Branch);
         if p.chosen_account().is_none() {
             Some("add an account first (Enter on the Account row)".into())
         } else if !folder.trim().is_empty() && !(folder.trim().starts_with('/') && crate::folders::valid_path_shape(folder.trim())) {
             Some("the folder must be a full path that starts with /".into())
+        } else if f.is_git && f.worktree && branch.trim().is_empty() {
+            Some("enter a new branch name on the Branch row".into())
+        } else if f.is_git && f.worktree && !crate::worktree::valid_branch_shape(branch.trim()) {
+            Some("that branch name is not valid for git".into())
         } else if self.live(p, f, Field::Name).trim().chars().any(char::is_control) {
             Some("the name has a line break or another control character".into())
         } else if crate::folders::shows_nothing(self.live(p, f, Field::Name).trim()) {
@@ -213,6 +285,11 @@ impl App {
                         t => t,
                     },
                     Field::Recent(i) => f.recent[i].clone(),
+                    Field::Worktree => format!("< {} >", if f.worktree { "new worktree (isolated branch)" } else { "off (use folder directly)" }),
+                    Field::Branch => match self.live(p, f, Field::Branch) {
+                        t if t.is_empty() => "(required: new git branch name)".into(),
+                        t => t,
+                    },
                     Field::Model => format!("< {} >", f.model),
                     Field::Effort => format!("< {} >", f.effort),
                     Field::Permission => format!("< {} >", if p.mode == "auto" { "Skip agent prompts" } else { "Ask for approval" }),
@@ -237,7 +314,8 @@ impl App {
         let Some((p, f)) = self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))) else { return Value::Null };
         json!({
             "focus": format!("{:?}", f.focus), "rows": f.fields().iter().map(|x| format!("{x:?}")).collect::<Vec<_>>(), "provider": p.provider, "account": p.account,
-            "folder": self.live(p, f, Field::Folder), "name": self.live(p, f, Field::Name), "model": f.model, "effort": f.effort, "mode": p.mode,
+            "folder": self.live(p, f, Field::Folder), "is_git": f.is_git, "git_repo": f.git_repo, "worktree": f.worktree, "branch": self.live(p, f, Field::Branch),
+            "name": self.live(p, f, Field::Name), "model": f.model, "effort": f.effort, "mode": p.mode,
             "models": f.models, "efforts": f.efforts, "recent": f.recent, "problem": self.form_problem(p, f),
         })
     }
@@ -246,6 +324,7 @@ impl App {
     fn form_resume(&mut self) {
         let text = self.ui.panel.as_ref().and_then(|p| p.form.as_ref().map(|f| (f, f.focus))).map(|(f, focus)| match focus {
             Field::Folder => f.folder.clone(),
+            Field::Branch => f.branch.clone(),
             Field::Name => f.name.clone(),
             _ => String::new(),
         });
@@ -257,20 +336,29 @@ impl App {
     /// The input line gives its text back to the row it belongs to; before any other screen takes the line.
     fn form_store(&mut self) {
         let text = self.ed.take().text();
+        let was_folder = self.focused() == Some(Field::Folder);
         self.with_form(|_, f| match f.focus {
             Field::Folder => f.folder = text,
+            Field::Branch => f.branch = text,
             Field::Name => f.name = text,
             _ => {}
         });
+        if was_folder {
+            self.form_check_git();
+        }
     }
 
     fn form_focus(&mut self, to: Field) {
         self.form_store();
-        self.with_form(|_, f| f.focus = to);
+        self.with_form(|_, f| f.focus = if !f.is_git && matches!(to, Field::Worktree | Field::Branch) { Field::Folder } else { to });
         self.form_resume();
     }
 
     fn form_move(&mut self, by: isize) {
+        if self.focused() == Some(Field::Folder) {
+            self.form_store();
+            self.form_resume();
+        }
         let to = self.with_form(|_, f| {
             let rows = f.fields();
             let at = rows.iter().position(|x| *x == f.focus).unwrap_or(0) as isize;
@@ -297,6 +385,7 @@ impl App {
                 ids.push(String::new());
                 p.account = next(&ids, &p.account, by);
             }
+            Field::Worktree if f.is_git => f.worktree = !f.worktree,
             Field::Model => f.model = next(&p.model_choices(f, false), &f.model, by),
             Field::Effort => f.effort = next(&p.model_choices(f, true), &f.effort, by),
             Field::Permission => p.mode = if p.mode == "auto" { "default" } else { "auto" },
@@ -315,7 +404,7 @@ impl App {
             Some(Field::Recent(_)) => self.form_pick(),
             Some(Field::SignIn) => self.form_sign_in(),
             Some(Field::Start) => self.form_start(),
-            Some(Field::Provider | Field::Account | Field::Model | Field::Effort | Field::Permission) => self.form_cycle(1),
+            Some(Field::Provider | Field::Account | Field::Worktree | Field::Model | Field::Effort | Field::Permission) => self.form_cycle(1),
             _ => {}
         }
     }
@@ -347,6 +436,7 @@ impl App {
             f.folder = f.recent[i].clone();
             f.focus = Field::Folder;
         });
+        self.form_check_git();
         self.form_resume();
     }
 

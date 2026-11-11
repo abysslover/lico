@@ -195,9 +195,9 @@ fn set_clipboard_write_writes_atomically_mode_0600_preserves_other_keys_and_refu
     use std::os::unix::fs::MetadataExt;
     let d = Scratch::new("set_settings");
     let handoff = d.0.join("state").join("handoff");
-    assert_eq!(status_json(&handoff), serde_json::json!({"clipboard_write": false}));
+    assert_eq!(status_json(&handoff), serde_json::json!({"clipboard_write": false, "notifications": true}));
     let body = set_clipboard_write(&handoff, true).unwrap();
-    assert_eq!(body.get("settings"), Some(&serde_json::json!({"clipboard_write": true})));
+    assert_eq!(body.get("settings"), Some(&serde_json::json!({"clipboard_write": true, "notifications": true})));
     let path = settings_path(&handoff);
     assert!(clipboard_write_enabled(&path));
     assert_eq!(std::fs::symlink_metadata(&path).unwrap().mode() & 0o777, 0o600);

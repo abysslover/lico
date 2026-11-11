@@ -356,6 +356,33 @@ impl LogView {
         }
         Ok(out)
     }
+
+    /// Streams every record of this session one segment file at a time, stopping early when `visit` returns `false`.
+    pub fn scan_each(&self, mut visit: impl FnMut(i64, &[u8]) -> bool) -> std::io::Result<()> {
+        for (first, count) in &self.segments {
+            if *count == 0 {
+                continue;
+            }
+            let Ok(mut file) = File::open(Log::path(self, *first)) else {
+                continue;
+            };
+            let mut data = Vec::new();
+            file.read_to_end(&mut data)?;
+            let mut at = 0;
+            while at + HEADER <= data.len() {
+                let length = u32::from_le_bytes(data[at..at + 4].try_into().unwrap()) as usize;
+                let seq = u64::from_le_bytes(data[at + 4..at + 12].try_into().unwrap()) as i64;
+                if at + HEADER + length > data.len() {
+                    break;
+                }
+                if !visit(seq, &data[at + HEADER..at + HEADER + length]) {
+                    return Ok(());
+                }
+                at += HEADER + length;
+            }
+        }
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------- sessions
@@ -427,6 +454,7 @@ pub struct Session {
     pub hops_set_at: u64, // when `incoming_hops` was last set or raised (unix seconds; 0: long ago, a count made by hand in a test)
     pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
     pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
+    pub finished_seq: i64, // last sequence number at which a provider turn finished (`-1` until a turn finishes; `>> ` echo never updates it)
 }
 
 /// How long the count of steps in a row (`incoming_hops`) is held against a shallower text from another session, so that a third session cannot reset a chain
@@ -499,6 +527,13 @@ impl Session {
             hops_set_at: 0,
             pending: Default::default(),
             made_by: None,
+            finished_seq: -1,
+        }
+    }
+
+    pub fn mark_finished(&mut self) {
+        if self.last_seq() >= 0 {
+            self.finished_seq = self.last_seq();
         }
     }
 

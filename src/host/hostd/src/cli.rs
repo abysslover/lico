@@ -14,10 +14,12 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
   session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
-                 [--cwd DIR] [--name TEXT] [--model NAME] [--effort LEVEL]   (DIR: the folder it runs in; none = a scratch workspace)\n\
+                 [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL]\n\
+                 (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
-  session close ID               end a session's process and keep it, disconnected (`session resume` brings it back)\n\
+  session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
+                                 end a session's process and keep it, disconnected (`session resume` brings it back)\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   account create --provider codex|claude --label TEXT\n\
@@ -26,8 +28,11 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   account auth ID                whether the provider says the account is signed in (Codex only; Claude Code: null)\n\
   host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
+  search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
+  settings [--clipboard-write on|off] [--notifications on|off]   show or update host settings\n\
   session show ID                one session
-  session delete ID              delete a session: its process, log and workspace (a folder you chose is never touched; `purge` is the same)\n\
+  session delete ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
+                                 delete a session: its process, log and workspace (a folder you chose is never touched; `purge` is the same)\n\
   session send ID --conversation --from ID2   hand the whole conversation of Claude session ID2 to ID, as a file in its folder (the host reads the program's record)
   session send ID TEXT|- [--from ID2 | --request-id RID]
                                  send input (- reads it from standard input; at most 64 KiB, newlines and tabs allowed);
@@ -195,7 +200,7 @@ pub fn run(args: Vec<String>) {
             expect_ok(call(&mut connect(&socket), json!({"op": "session.list"})));
         }
         ["session", "create", ..] => {
-            let mut request = json!({"op": "session.create", "kind": flag(&args, "--kind").unwrap_or_else(|| "synthetic".to_string())});
+            let mut request = json!({"op": "session.create", "kind": flag(&args, "--kind").or_else(|| flag(&args, "--provider")).unwrap_or_else(|| "synthetic".to_string())});
             if let Some(account) = flag(&args, "--account") {
                 request["account"] = json!(account);
             }
@@ -216,6 +221,9 @@ pub fn run(args: Vec<String>) {
                 // the host takes absolute paths only: a relative one is relative to where this command runs
                 let absolute = std::env::current_dir().map(|here| here.join(&folder)).unwrap_or_else(|_| folder.clone().into());
                 request["cwd"] = json!(absolute.to_string_lossy());
+            }
+            if let Some(branch) = flag(&args, "--worktree") {
+                request["worktree_branch"] = json!(branch);
             }
             expect_ok(call(&mut connect(&socket), request));
         }
@@ -290,15 +298,64 @@ pub fn run(args: Vec<String>) {
             let before: i64 = before.parse().unwrap_or_else(|_| die(1, USAGE));
             expect_ok(call(&mut connect(&socket), json!({"op": "history", "session": id, "before": before, "limit": limit})));
         }
-        ["session", "purge" | "delete", id] => {
-            let mut conn = connect(&socket);
-            let generation = session_generation(&mut conn, id);
-            expect_ok(call(&mut conn, json!({"op": "session.purge", "session": id, "generation": generation})));
+        ["search", query, ..] => {
+            let mut request = json!({"op": "session.search", "query": query});
+            if let Some(id) = flag(&args, "--session") {
+                request["session"] = json!(id);
+            }
+            if let Some(v) = flag(&args, "--limit") {
+                request["limit"] = json!(v.parse::<i64>().unwrap_or_else(|_| die(1, USAGE)));
+            }
+            expect_ok(call(&mut connect(&socket), request));
         }
-        ["session", "close", id] => {
+        ["settings", rest @ ..] => {
+            if rest.is_empty() {
+                let status = quiet_ok(call(&mut connect(&socket), json!({"op": "status"})));
+                println!("{}", json!({"ok": 1, "settings": status["settings"]}));
+            } else {
+                let parse_on_off = |v: String| match v.as_str() {
+                    "on" | "true" | "1" => true,
+                    "off" | "false" | "0" => false,
+                    _ => die(1, USAGE),
+                };
+                let mut request = json!({"op": "settings.set"});
+                let mut any = false;
+                if let Some(v) = flag(&args, "--clipboard-write") {
+                    request["clipboard_write"] = json!(parse_on_off(v));
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--notifications") {
+                    request["notifications"] = json!(parse_on_off(v));
+                    any = true;
+                }
+                if !any {
+                    die(1, USAGE);
+                }
+                expect_ok(call(&mut connect(&socket), request));
+            }
+        }
+        ["session", op @ ("purge" | "delete" | "close"), id, rest @ ..] => {
+            let host_op = if *op == "close" { "session.close" } else { "session.purge" };
+            let mut wt_policy: Option<&str> = None;
+            let mut force_dirty = false;
+            for tok in rest {
+                match *tok {
+                    "--keep-worktree" if wt_policy.is_none() => wt_policy = Some("keep"),
+                    "--remove-worktree" if wt_policy.is_none() => wt_policy = Some("remove"),
+                    "--force-dirty" => force_dirty = true,
+                    _ => die(1, USAGE),
+                }
+            }
             let mut conn = connect(&socket);
             let generation = session_generation(&mut conn, id);
-            expect_ok(call(&mut conn, json!({"op": "session.close", "session": id, "generation": generation})));
+            let mut request = json!({"op": host_op, "session": id, "generation": generation});
+            if let Some(policy) = wt_policy {
+                request["worktree"] = json!(policy);
+            }
+            if force_dirty {
+                request["force_dirty"] = json!(true);
+            }
+            expect_ok(call(&mut conn, request));
         }
         ["session", "show", id] => {
             let mut conn = connect(&socket);

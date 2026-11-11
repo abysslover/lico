@@ -47,8 +47,9 @@ fn status_of(code: &str) -> u16 {
     match code {
         "bad_request" | "version_unsupported" | "option_unavailable" => 400,
         "folder_not_absolute" | "folder_missing" | "folder_not_directory" | "folder_unreadable" | "folder_protected" => 400,
+        "worktree_needs_folder" | "not_git_repo" | "invalid_branch" => 400,
         "unknown_op" | "unknown_session" | "unknown_view" | "unknown_request" | "unknown_approval" => 404,
-        "stale_generation" | "session_exited" => 409,
+        "stale_generation" | "session_exited" | "branch_exists" | "worktree_dirty" => 409,
         "too_large" => 413,
         _ => 503,
     }

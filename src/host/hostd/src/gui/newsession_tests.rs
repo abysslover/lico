@@ -193,3 +193,40 @@ fn a_name_that_reads_like_the_default_is_still_a_name_and_a_default_model_and_ef
     assert_eq!(request["name"], "default");
     assert!(request.get("model").is_none() && request.get("effort").is_none() && request.get("cwd").is_none(), "{request}");
 }
+
+#[test]
+fn git_worktree_rows_appear_only_for_git_folders_validate_branch_and_still_fit_600_pixels() {
+    let mut app = opened();
+    app.ed.put("/work/repo");
+    {
+        let f = app.ui.panel.as_mut().unwrap().form.as_mut().unwrap();
+        f.folder = "/work/repo".into();
+        f.checked_folder = "/work/repo".into();
+        f.is_git = true;
+        f.git_repo = "/work/repo".into();
+        f.recent = (0..10).map(|n| format!("/work/project_{n}")).collect();
+    }
+    let rows: Vec<String> = form(&app)["rows"].as_array().unwrap().iter().map(|r| r.as_str().unwrap().to_string()).collect();
+    assert!(rows.contains(&"Worktree".to_string()) && !rows.contains(&"Branch".to_string()), "{rows:?}");
+
+    let wt_idx = rows.iter().position(|r| r == "Worktree").unwrap();
+    assert!(app.form_click(wt_idx));
+    assert_eq!(form(&app)["worktree"], true);
+    assert!(form(&app)["problem"].as_str().unwrap().contains("branch name"), "{}", form(&app));
+
+    app.form_focus(Field::Branch);
+    app.ed.put("-bad");
+    assert!(form(&app)["problem"].as_str().unwrap().contains("not valid for git"), "{}", form(&app));
+
+    app.ed.clear();
+    app.ed.put("feat/clean-branch");
+    assert_eq!(form(&app)["problem"], json!(null));
+    app.form_focus(Field::Start);
+    let p = app.ui.panel.as_ref().unwrap();
+    let req = request_of(p, p.form.as_ref().unwrap());
+    assert_eq!((req["cwd"].as_str(), req["worktree_branch"].as_str()), (Some("/work/repo"), Some("feat/clean-branch")));
+
+    let (_, body) = app.panel_view().unwrap();
+    let total_rows = 1 + 1 + body.len() + 1;
+    assert!(total_rows * 18 + 22 + 24 <= 600, "{total_rows} rows: {body:?}");
+}

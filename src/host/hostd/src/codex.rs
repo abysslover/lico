@@ -313,12 +313,13 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         }
     });
     let reader_session = session.clone();
+    let reader_shared = shared.clone();
     let cwd = workspace.to_string_lossy().to_string();
     thread::spawn(move || {
         for line in lines::lines(stdout, MAX_PROVIDER_LINE) {
             match line {
                 Line::Text { text, bytes } => match serde_json::from_str::<Value>(&text) {
-                    Ok(message) => handle_message(&reader_session, pid, &message, &cwd),
+                    Ok(message) => handle_message(&reader_shared, &reader_session, pid, &message, &cwd),
                     Err(_) if bytes > MAX_PROVIDER_LINE => omitted(&reader_session, pid, bytes), // too long to hold, and what was held is not a whole message
                     Err(_) => {}
                 },
@@ -388,7 +389,7 @@ fn omitted(session: &Arc<Mutex<Session>>, pid: u32, bytes: usize) {
     }
 }
 
-fn handle_message(session: &Arc<Mutex<Session>>, pid: u32, message: &Value, cwd: &str) {
+fn handle_message(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Value, cwd: &str) {
     let mut s = session.lock().unwrap();
     if s.agent_pid != pid {
         return; // a close or a purge zeroed it and a resume may have put another process there: what a helper of the old one prints is read and ignored
@@ -399,11 +400,28 @@ fn handle_message(session: &Arc<Mutex<Session>>, pid: u32, message: &Value, cwd:
     if !message.get("id").map_or(true, |id| id.is_i64() || id.as_str().map_or(false, |s| s.len() <= 64)) {
         return;
     }
+    let mut notify_event: Option<(bool, String, Option<String>, Option<String>)> = None;
     match (method, message.get("id")) {
         (None, Some(id)) => response(&mut s, id, message, cwd),
-        (Some(method), Some(id)) => server_request(&mut s, id.clone(), method, message.get("params").unwrap_or(&Value::Null)),
-        (Some(method), None) => notification(&mut s, method, message.get("params").unwrap_or(&Value::Null)),
+        (Some(method), Some(id)) => {
+            if server_request(&mut s, id.clone(), method, message.get("params").unwrap_or(&Value::Null)) {
+                notify_event = Some((true, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
+            }
+        }
+        (Some(method), None) => {
+            if notification(&mut s, method, message.get("params").unwrap_or(&Value::Null)) {
+                notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
+            }
+        }
         _ => {}
+    }
+    drop(s);
+    if let Some((is_approval, id, name, cwd)) = notify_event {
+        if is_approval {
+            crate::notify::on_approval_needed(shared, &id, name.as_deref(), cwd.as_deref());
+        } else {
+            crate::notify::on_turn_finished(shared, &id, name.as_deref(), cwd.as_deref());
+        }
     }
 }
 
@@ -463,14 +481,14 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
     }
 }
 
-fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
-    let Some(link) = s.codex.as_mut() else { return };
+fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) -> bool {
+    let Some(link) = s.codex.as_mut() else { return false };
     let approval = matches!(method, "item/commandExecution/requestApproval" | "item/fileChange/requestApproval");
     if approval {
         if lines::has_cut(params) {
             // a person is never asked to approve what the reader had to cut
             let _ = send(link, json!({"id": id, "error": {"code": -32000, "message": "request too large"}}), None);
-            return;
+            return false;
         }
         let prompt = if method.ends_with("commandExecution/requestApproval") {
             format!("run: {}", params.get("command").and_then(Value::as_str).unwrap_or("a command"))
@@ -479,12 +497,12 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
             format!("change files{reason}")
         };
         if link.approval_map.values().any(|known| *known == id) {
-            return; // the provider repeated a request id: one approval, never two
+            return false; // the provider repeated a request id: one approval, never two
         }
         if s.approvals.len() >= MAX_APPROVALS {
             // more than a person can answer: refuse to the provider instead of holding it
             let _ = send(link, json!({"id": id, "error": {"code": -32000, "message": "too many pending approvals"}}), None);
-            return;
+            return false;
         }
         s.approval_counter += 1;
         let number = s.approval_counter;
@@ -492,9 +510,11 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) {
         let shown = sanitize(&prompt);
         let shown = if shown.chars().count() > MAX_PROMPT { format!("{}…", shown.chars().take(MAX_PROMPT - 1).collect::<String>()) } else { shown };
         s.add_approval(number, shown);
+        true
     } else {
         // tokens, tools, attestations, elicitations and permission grants are not supplied by this client
         let _ = send(link, json!({"id": id, "error": {"code": -32601, "message": "unsupported by this client"}}), None);
+        false
     }
 }
 
@@ -529,7 +549,7 @@ fn delta(s: &mut Session, item: &str, text: &str) {
     }
 }
 
-fn notification(s: &mut Session, method: &str, params: &Value) {
+fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
     let text = |p: &str| params.pointer(p).and_then(Value::as_str).unwrap_or("").to_string();
     match method {
         "item/agentMessage/delta" | "item/commandExecution/outputDelta" => delta(s, &text("/itemId"), &lines::shown(&text("/delta"))),
@@ -563,6 +583,8 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
             }
             s.set_busy(false);
             record(s, &format!("[turn {}]", text("/turn/status")));
+            s.mark_finished();
+            return true;
         }
         "error" => record_text(s, "[error] ", &text("/error/message")),
         "serverRequest/resolved" => {
@@ -576,6 +598,7 @@ fn notification(s: &mut Session, method: &str, params: &Value) {
         }
         _ => {} // thread state and everything else is not shown
     }
+    false
 }
 
 #[cfg(test)]

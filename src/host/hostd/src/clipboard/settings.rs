@@ -1,10 +1,7 @@
-//! The setting `clipboard_write` (plan M02-P04, S04b; SF-06): whether an AGENT may be given a tool that writes the clipboard.
-//!
-//! One place: the file `settings.json` in the host's state folder (the folder that holds `handoff`, `accounts` and `registry`; it is `--state-dir`, or the
-//! folder of the socket). The content is a JSON object; `{"clipboard_write": true}` switches the tool on. It is read fresh at each use, so switching it
-//! needs no restart. It fails CLOSED: a missing file, any value but the JSON boolean `true`, bad JSON, a file over 4 KiB, a link, a directory, a pipe, a
-//! file of another user, or a file that the group or others can write all mean OFF. The command `lico clipboard write` is not gated by it (a person runs
-//! that); the setting is for the agent tool of S07.
+//! Host settings in `settings.json` beside `handoff` in the state folder:
+//! - `clipboard_write` (M02-P04, S04b; SF-06): whether an AGENT may be offered `clipboard_write`; fails CLOSED (default `false`).
+//! - `notifications` (M02-P06, S02; NT-02): whether `lico-host` runs `notify-send` when a background session finishes or asks for approval; default `true`,
+//!   switched off when `settings.json` is a valid owner-only file with `"notifications": false`.
 
 use serde_json::{json, Map, Value};
 use std::io::{Read, Write};
@@ -14,7 +11,7 @@ use std::path::{Path, PathBuf};
 use super::open::open_regular;
 use crate::provider_record::O_NOFOLLOW;
 
-/// The most bytes of the settings file; a larger file is OFF.
+/// The most bytes of the settings file; a larger file is ignored.
 pub const MAX_SETTINGS_BYTES: u64 = 4096;
 
 /// The file name, in the state folder.
@@ -25,7 +22,7 @@ pub fn settings_path(handoff_dir: &Path) -> PathBuf {
     handoff_dir.parent().unwrap_or(Path::new(".")).join(FILE_NAME)
 }
 
-/// Reads the JSON object of `path` when it passes the fail-closed regular-file and permission check.
+/// Reads the JSON object of `path` when it passes the regular-file and permission check.
 pub fn read_object(path: &Path) -> Option<Map<String, Value>> {
     let opened = open_regular(path, 2, MAX_SETTINGS_BYTES).ok()?;
     if opened.file.metadata().map_or(true, |m| m.mode() & 0o022 != 0) {
@@ -46,13 +43,25 @@ pub fn clipboard_write_enabled(path: &Path) -> bool {
     read_object(path).is_some_and(|map| map.get("clipboard_write") == Some(&Value::Bool(true)))
 }
 
-/// The settings object reported in `status`.
-pub fn status_json(handoff_dir: &Path) -> Value {
-    json!({"clipboard_write": clipboard_write_enabled(&settings_path(handoff_dir))})
+/// Whether desktop notifications (`notify-send`) are on, judged now from `path`. Default `true`; `false` when set to boolean `false` in a valid file.
+pub fn notifications_enabled(path: &Path) -> bool {
+    read_object(path).map_or(true, |map| map.get("notifications") != Some(&Value::Bool(false)))
 }
 
-/// Updates `clipboard_write` in `settings.json` atomically (mode 0600, preserving other valid keys; refuses a link or folder at `settings.json`).
-pub fn set_clipboard_write(handoff_dir: &Path, enabled: bool) -> crate::core::Reply {
+/// The settings object reported in `status`.
+pub fn status_json(handoff_dir: &Path) -> Value {
+    let path = settings_path(handoff_dir);
+    json!({
+        "clipboard_write": clipboard_write_enabled(&path),
+        "notifications": notifications_enabled(&path),
+    })
+}
+
+/// Updates `clipboard_write` and/or `notifications` in `settings.json` atomically (mode 0600, preserving other valid keys; refuses a link or folder).
+pub fn set_settings(handoff_dir: &Path, clipboard_write: Option<bool>, notifications: Option<bool>) -> crate::core::Reply {
+    if clipboard_write.is_none() && notifications.is_none() {
+        return Err("bad_request");
+    }
     let path = settings_path(handoff_dir);
     let parent = path.parent().unwrap_or(Path::new("."));
     if let Ok(meta) = std::fs::symlink_metadata(&path) {
@@ -62,7 +71,12 @@ pub fn set_clipboard_write(handoff_dir: &Path, enabled: bool) -> crate::core::Re
     }
     std::fs::DirBuilder::new().recursive(true).mode(0o700).create(parent).map_err(|_| "settings_failed")?;
     let mut map = read_object(&path).unwrap_or_default();
-    map.insert("clipboard_write".into(), Value::Bool(enabled));
+    if let Some(enabled) = clipboard_write {
+        map.insert("clipboard_write".into(), Value::Bool(enabled));
+    }
+    if let Some(enabled) = notifications {
+        map.insert("notifications".into(), Value::Bool(enabled));
+    }
     let mut text = Value::Object(map).to_string();
     text.push('\n');
     if text.len() as u64 > MAX_SETTINGS_BYTES {
@@ -86,4 +100,9 @@ pub fn set_clipboard_write(handoff_dir: &Path, enabled: bool) -> crate::core::Re
         return Err("settings_failed");
     }
     Ok(crate::session::obj(json!({"settings": status_json(handoff_dir)})))
+}
+
+#[allow(dead_code)]
+pub fn set_clipboard_write(handoff_dir: &Path, enabled: bool) -> crate::core::Reply {
+    set_settings(handoff_dir, Some(enabled), None)
 }

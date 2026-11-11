@@ -293,12 +293,13 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
     });
     let reader_session = session.clone();
+    let reader_shared = shared.clone();
     let key = grant.key;
     thread::spawn(move || {
         for line in lines::lines(stdout, MAX_LINE) {
             match line {
                 Line::Text { text, bytes } => match serde_json::from_str::<Value>(&text) {
-                    Ok(message) => handle(&reader_session, pid, &message),
+                    Ok(message) => handle(&reader_shared, &reader_session, pid, &message),
                     Err(_) if bytes > MAX_LINE => omitted(&reader_session, pid, bytes), // too long to hold, and what was held is not a whole message
                     Err(_) => {}
                 },
@@ -363,12 +364,13 @@ fn approval_prompt(tool: &str, input: &Value) -> String {
     }
 }
 
-fn handle(session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
+fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
     let mut s = session.lock().unwrap();
     if s.agent_pid != pid {
         return; // a close or a purge zeroed it and a resume may have put another process there: what a helper of the old one prints is read and ignored
     }
     s.heard();
+    let mut notify_event: Option<(bool, String, Option<String>, Option<String>)> = None; // (is_approval, id, name, cwd)
     match message["type"].as_str() {
         Some("system") if message["subtype"] == "init" => {
             // the id is handed back as an argument on resume: letters, digits, dash and underscore only, never a leading dash
@@ -452,30 +454,46 @@ fn handle(session: &Arc<Mutex<Session>>, pid: u32, message: &Value) {
             } else {
                 record(&mut s, "[turn completed]");
             }
+            s.mark_finished();
+            notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
         }
-        Some("control_request") => control_request(&mut s, message),
+        Some("control_request") => {
+            if control_request(&mut s, message) {
+                notify_event = Some((true, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
+            }
+        }
         _ => {}
+    }
+    drop(s);
+    if let Some((is_approval, id, name, cwd)) = notify_event {
+        if is_approval {
+            crate::notify::on_approval_needed(shared, &id, name.as_deref(), cwd.as_deref());
+        } else {
+            crate::notify::on_turn_finished(shared, &id, name.as_deref(), cwd.as_deref());
+        }
     }
 }
 
-fn control_request(s: &mut Session, message: &Value) {
+fn control_request(s: &mut Session, message: &Value) -> bool {
     // the request id is echoed back to the provider, so it must stay small
-    let Some(request_id) = message["request_id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).map(str::to_string) else { return };
+    let Some(request_id) = message["request_id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).map(str::to_string) else { return false };
     let request = &message["request"];
     let refuse = |link: &Link, why: &str| {
         let _ = send(link, json!({"type": "control_response", "response": {"subtype": "error", "request_id": request_id, "error": why}}), None);
     };
     let approvals_pending = s.approvals.len();
-    let Some(link) = s.claude.as_mut() else { return };
+    let Some(link) = s.claude.as_mut() else { return false };
     if request["subtype"] != PERMISSION_SUBTYPE {
-        return refuse(link, "unsupported by this client");
+        refuse(link, "unsupported by this client");
+        return false;
     }
     let input = request["input"].clone();
     if link.approvals.values().any(|(known, _)| *known == request_id) {
-        return; // the provider repeated a request id: one approval, never two
+        return false; // the provider repeated a request id: one approval, never two
     }
     if approvals_pending >= MAX_APPROVALS || input.to_string().len() > MAX_REQUEST_INPUT || lines::has_cut(request) {
-        return refuse(link, "too many pending approvals or an input too large"); // a person is never asked to approve what the reader had to cut
+        refuse(link, "too many pending approvals or an input too large"); // a person is never asked to approve what the reader had to cut
+        return false;
     }
     s.approval_counter += 1;
     let number = s.approval_counter;
@@ -484,4 +502,5 @@ fn control_request(s: &mut Session, message: &Value) {
         link.approvals.insert(number, (request_id, input));
     }
     s.add_approval(number, prompt);
+    true
 }

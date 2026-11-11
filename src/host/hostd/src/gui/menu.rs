@@ -32,8 +32,11 @@ pub enum Cmd {
     Older,
     Newer,
     Newest,
+    FindConversation,
+    SearchAll,
     CaptureToInput,
     ToggleClipWrite,
+    ToggleNotifications,
     ToggleVirtualDisplay,
     StopRealScreen,
     Keys,
@@ -109,6 +112,8 @@ impl App {
                 v
             }
             2 => vec![
+                Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
+                Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
                 Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
                 Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
                 Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
@@ -117,6 +122,12 @@ impl App {
                     label: format!("Agent clipboard write: {}", if self.ui.clipboard_write { "on" } else { "off" }),
                     key: "",
                     cmd: Cmd::ToggleClipWrite,
+                    reason: panel_reason,
+                },
+                Entry {
+                    label: format!("Desktop notifications: {}", if self.ui.notifications_off { "off" } else { "on" }),
+                    key: "",
+                    cmd: Cmd::ToggleNotifications,
                     reason: panel_reason,
                 },
             ],
@@ -179,8 +190,11 @@ impl App {
                 let back = self.ui.scroll as isize;
                 self.scroll_by(-back);
             }
+            Cmd::FindConversation => self.open_search(false),
+            Cmd::SearchAll => self.open_search(true),
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
+            Cmd::ToggleNotifications => self.toggle_notifications(),
             Cmd::ToggleVirtualDisplay => self.toggle_virtual_display(),
             Cmd::StopRealScreen => self.stop_real_screen(),
             Cmd::Keys => self.panel_open(Step::Keys),
@@ -257,6 +271,22 @@ impl App {
             });
         } else {
             self.ui.flash = Some("Could not change the clipboard setting.".into());
+        }
+    }
+
+    fn toggle_notifications(&mut self) {
+        let next = self.ui.notifications_off;
+        let reply = self.host_call(serde_json::json!({"op": "settings.set", "notifications": next}));
+        if reply["ok"] == serde_json::json!(1) {
+            self.ui.notifications_off = reply["settings"]["notifications"] == serde_json::json!(false);
+            self.send("{\"op\":\"status\"}");
+            self.ui.flash = Some(if self.ui.notifications_off {
+                "Desktop notifications are off.".into()
+            } else {
+                "Desktop notifications are on (when no window is open).".into()
+            });
+        } else {
+            self.ui.flash = Some("Could not change the notification setting.".into());
         }
     }
 }
