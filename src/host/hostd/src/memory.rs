@@ -186,6 +186,10 @@ pub fn host_json() -> Value {
 
 /// Put the figure of a running session into its status entry (when there is one yet) and name its agent for the next look.
 pub fn annotate(entry: &mut Value, s: &Session) {
+    let vd = crate::vdisplay::info(&s.id);
+    if let Some((ref disp, _)) = vd {
+        entry["virtual_display"] = json!(disp);
+    }
     if s.state != State::Running || s.agent_pid == 0 {
         return;
     }
@@ -194,7 +198,12 @@ pub fn annotate(entry: &mut Value, s: &Session) {
         c.asked.insert(s.agent_pid);
         c.figures.get(&s.agent_pid).copied()
     };
-    if let Some(f) = figure {
+    if let Some(mut f) = figure {
+        if let Some((_, vf)) = vd {
+            f.private_kb += vf.private_kb;
+            f.rss_kb += vf.rss_kb;
+            f.processes += vf.processes;
+        }
         entry["memory"] = json_of(&f);
     }
 }

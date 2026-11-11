@@ -21,7 +21,8 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "session_exited", "session_disconnected", "unknown_request", "unknown_approval", "unknown_view", "busy",
           "unknown_account", "credential_store_unavailable", "build_changed", "stopping",
           "folder_not_absolute", "folder_missing", "folder_not_directory", "folder_unreadable", "folder_protected", "option_unavailable",
-          "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed")
+          "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed",
+          "xvfb_unavailable", "no_display")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -58,6 +59,10 @@ INVENTORY = {
     "session.close": {"state": "host", "mutates": True},
     "transfer.send": {"state": "host", "mutates": True},
     "settings.set": {"state": "host", "mutates": True},
+    "display.ensure": {"state": "host", "mutates": True},
+    "display.status": {"state": "host", "mutates": False},
+    "display.stop": {"state": "host", "mutates": True},
+    "real_screen.stop": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -96,13 +101,15 @@ REPLIES = {
                      "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "busy_since": {"type": INT, "minimum": 0}, "last_event_at": {"type": INT, "minimum": 0}, "stalled": {"type": BOOL}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
                      "memory": MEMORY,   # of a running session, from the second status call on
+                     "virtual_display": {"type": STR, "max_length": 16},
                      "chosen_model": {"type": STR, "max_length": 60}, "chosen_effort": {"type": STR, "max_length": 16},
                      "approvals": {"type": "array", "items": {"type": "object", "required": {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
-                         "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write"]}}}},    # a question the host asks for an agent's request; the program's own has none
+                         "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY,
-                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}}, "optional": {}}}),
+                   "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}}, "optional": {}},
+                   "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            COMMON_REPLY_OPTIONAL),
     "session.rename": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "name": {"type": [STR, "null"], "max_length": MAX_NAME}}, COMMON_REPLY_OPTIONAL),
@@ -179,6 +186,12 @@ REPLIES = {
                         COMMON_REPLY_OPTIONAL),
     "settings.set": _obj({"v": _V, "ok": _OK, "settings": {"type": "object", "required": {"clipboard_write": {"type": BOOL}}, "optional": {}}},
                          COMMON_REPLY_OPTIONAL),
+    "display.ensure": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "display": {"type": STR, "max_length": 16}, "geometry": {"type": STR, "max_length": 32}},
+                           COMMON_REPLY_OPTIONAL),
+    "display.status": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "running": {"type": BOOL}, "display": {"type": [STR, "null"], "max_length": 16}},
+                           {**COMMON_REPLY_OPTIONAL, "geometry": {"type": STR, "max_length": 32}, "memory": MEMORY}),
+    "display.stop": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "stopped": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
+    "real_screen.stop": _obj({"v": _V, "ok": _OK, "stopped": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
 }
 ERROR_REPLY = _obj({"v": _V, "ok": {"type": INT, "enum": [0]}, "error": {"type": STR, "enum": list(ERRORS)}},
                    COMMON_REPLY_OPTIONAL)
@@ -190,7 +203,7 @@ EVENTS = {
     "input": _obj({"v": _V, "ev": {"type": STR, "enum": ["input"]}, "session": {"type": STR},
                    "request_id": {"type": STR}, "state": {"type": STR, "enum": ["submitted", "observed", "failed"]}}),
     "approval": _obj({"v": _V, "ev": {"type": STR, "enum": ["approval"]}, "session": {"type": STR},
-                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}, {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write"]}}),
+                      "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}}, {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}),
 }
 
 _COMMON_REQ = {"v": _V, "id": {"type": STR, "max_length": 64}}
@@ -247,6 +260,10 @@ REQUESTS = {
     "view.detach": _obj({"view": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "resources": _obj({}, _COMMON_REQ),
     "settings.set": _obj({"clipboard_write": {"type": BOOL}}, _COMMON_REQ),
+    "display.ensure": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
+    "display.status": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
+    "display.stop": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
+    "real_screen.stop": _obj({}, {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}}),
 }
 
 

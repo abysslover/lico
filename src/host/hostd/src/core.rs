@@ -21,7 +21,7 @@ pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-
 pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
-    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set",
+    "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -339,7 +339,7 @@ pub fn status(shared: &Shared) -> Reply {
     crate::pending::sweep_all(shared); // a request that has waited too long ends here, and its asker is told
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(&s.lock().unwrap())).collect();
-    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir)})))
+    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared)})))
 }
 
 /// Which executable this process runs: a hash of its own file as it was started (a replaced file on disk does not change it), so a window and a host

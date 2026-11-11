@@ -46,6 +46,9 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   clipboard write (--text STRING | --text-file FILE | --image FILE) [--timeout-ms N]\n\
           put a text (at most 64 KiB) or a PNG picture (at most 3 MiB, 8000 px a side) on the clipboard through the window; one JSON line;\n\
           the host and a window must run (the window owns the selection)\n\
+  display [--session ID] [--json] | display status [--session ID] | display stop [--session ID] | display run [--session ID] [--] CMD [ARGS...]\n\
+          start, inspect, stop, or run a program on a session's private virtual display\n\
+  real-screen stop [--session ID]  immediately revoke time-bounded real-screen control\n\
   view attach SESSION [--kind gui|cli]\n\
   view detach VIEW\n\
 The socket defaults to $LICO_SOCKET, then to $XDG_RUNTIME_DIR/lico/host.sock.";
@@ -98,6 +101,14 @@ fn expect_ok(reply: Value) -> Value {
         println!("{reply}");
         std::process::exit(2);
     }
+}
+
+pub(crate) fn call_once(socket: &str, request: Value) -> Value {
+    call(&mut connect(socket), request)
+}
+
+pub(crate) fn expect_ok_pub(reply: Value) -> Value {
+    expect_ok(reply)
 }
 
 /// Like `expect_ok` but prints nothing: for the repeated polls of a login.
@@ -162,6 +173,12 @@ pub fn run(args: Vec<String>) {
     if args.first().map(String::as_str) == Some("clipboard") {
         // `read`: the selection is read by this process, not by the host, so no socket is needed. `write`: a client of the host (the window owns the selection)
         crate::clipboard::job::cli(&args[1..], &socket);
+    }
+    if args.first().map(String::as_str) == Some("display") {
+        crate::vdisplay::cli(&args[1..], &socket);
+    }
+    if args.first().map(String::as_str) == Some("real-screen") {
+        crate::computer::real::cli(&args[1..], &socket);
     }
     if socket.is_empty() || args.is_empty() {
         die(1, USAGE);

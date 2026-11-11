@@ -12,7 +12,7 @@
 //!   takes the grant BEFORE the work starts and does the work in the helper process (`work`). A different target needs its own yes.
 
 pub mod grants;
-mod work;
+pub(crate) mod work;
 #[cfg(test)]
 mod tests;
 
@@ -36,7 +36,7 @@ pub const TEXT_MAX: usize = 64 * 1024;
 
 /// Whether `tool` is one whose yes allows a later call instead of doing the thing (the words of the notice differ).
 pub fn is_tool(tool: &str) -> bool {
-    matches!(tool, "capture" | "clipboard_read" | "clipboard_write")
+    matches!(tool, "capture" | "clipboard_read" | "clipboard_write" | "computer")
 }
 
 /// What a call asks for, after its arguments were checked.

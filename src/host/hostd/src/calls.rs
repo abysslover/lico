@@ -163,6 +163,7 @@ pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, id: i64, tool: &str, t
         "create" => crate::create::perform(shared, caller, target, text),
         "history" => crate::history::perform(shared, caller, target, text),
         "capture" | "clipboard_read" | "clipboard_write" => crate::screentools::perform(shared, caller, id, tool, target, who, text),
+        "computer" => crate::computer::perform(shared, caller),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
             Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
             Err(code) => Err(refusal(shared, caller, code)),

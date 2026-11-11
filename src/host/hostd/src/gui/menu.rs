@@ -34,6 +34,8 @@ pub enum Cmd {
     Newest,
     CaptureToInput,
     ToggleClipWrite,
+    ToggleVirtualDisplay,
+    StopRealScreen,
     Keys,
     About,
 }
@@ -93,6 +95,17 @@ impl App {
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
                 v.push(Self::entry("Copy selected lines", "Ctrl+Shift+C", Cmd::Copy, if self.ui.sel.is_some() { None } else { Some("nothing is selected") }));
                 v.push(Self::entry("Paste", "Ctrl+V", Cmd::Paste, if self.paste_allowed() { None } else { Some("no text line to paste into") }));
+                let vd_label = match self.selected_row().filter(|r| !r.virtual_display.is_empty()) {
+                    Some(r) => format!("Virtual display: stop ({})", r.virtual_display),
+                    None => "Virtual display: start".into(),
+                };
+                v.push(Entry { label: vd_label, key: "", cmd: Cmd::ToggleVirtualDisplay, reason: panel_reason.or(self.virtual_display_reason()) });
+                v.push(Self::entry(
+                    "Stop real-screen control",
+                    "Ctrl+Alt+Esc",
+                    Cmd::StopRealScreen,
+                    if self.ui.real_screen.is_empty() { Some("not active") } else { None },
+                ));
                 v
             }
             2 => vec![
@@ -168,6 +181,8 @@ impl App {
             }
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
+            Cmd::ToggleVirtualDisplay => self.toggle_virtual_display(),
+            Cmd::StopRealScreen => self.stop_real_screen(),
             Cmd::Keys => self.panel_open(Step::Keys),
             Cmd::About => self.panel_open(Step::About),
         }

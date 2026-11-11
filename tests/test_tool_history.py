@@ -98,11 +98,11 @@ def test_the_list_names_history_with_a_session_and_a_count_and_read_handoff_with
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read", "computer"]
     history, handoff = tools["history"]["inputSchema"], tools["read_handoff"]["inputSchema"]
     assert history["required"] == ["session"] and sorted(history["properties"]) == ["last_n", "session"], history           # no `from`, no folder
     assert handoff["required"] == ["path"] and sorted(handoff["properties"]) == ["limit", "offset", "path"], handoff
-    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 4096
+    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
 
 
 def test_a_history_waits_for_the_person_and_one_yes_hands_the_records_with_their_numbers_to_the_caller_and_the_log_of_the_host_has_no_text(world):

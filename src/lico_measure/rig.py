@@ -80,7 +80,7 @@ class Xvfb:
     def __init__(self, geometry: str = "1200x800x24") -> None:
         read_end, write_end = os.pipe()
         self.proc = subprocess.Popen(
-            ["Xvfb", "-displayfd", str(write_end), "-screen", "0", geometry, "-nolisten", "tcp"],
+            ["Xvfb", "-displayfd", str(write_end), "-screen", "0", geometry, "-nolisten", "tcp", "-noreset"],
             pass_fds=(write_end,), stderr=subprocess.DEVNULL,
         )
         os.close(write_end)

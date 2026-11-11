@@ -18,6 +18,7 @@ pub enum Action {
     Session(String),
     Allow,
     Deny,
+    StopRealScreen,
 }
 
 pub struct Hit {

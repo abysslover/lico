@@ -105,6 +105,7 @@ pub struct UiState {
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
+    pub real_screen: Vec<super::realbar::RealEntry>, // active time-bounded real-screen grants
 }
 
 fn display_cols(text: &str) -> usize {
@@ -131,6 +132,11 @@ impl App {
         self.ui.rows = rows;
         self.ui.mem.read(&value);
         self.ui.clipboard_write = value["settings"]["clipboard_write"] == json!(true);
+        let real_next: Vec<super::realbar::RealEntry> = value["real_screen"].as_array().into_iter().flatten().filter_map(super::realbar::RealEntry::of_json).collect();
+        if real_next != self.ui.real_screen {
+            self.ui.real_screen = real_next;
+            self.dirty = true;
+        }
         if let Some(row) = self.ui.rows.iter().find(|r| r.session == self.session) {
             self.generation = row.generation; // the target's generation, so an input or an answer is never aimed at a stale one
         }
@@ -393,6 +399,7 @@ impl App {
                             Some(Action::Session(id)) => self.row_click(id),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
+                            Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
                             None => match self.line_at(y) {
@@ -422,7 +429,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 self.ui.flash = None;
-                if self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
@@ -648,6 +655,7 @@ impl App {
             .map(|r| json!({
                 "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
                 "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
+                "virtual_display": if r.virtual_display.is_empty() { Value::Null } else { json!(r.virtual_display) },
                 "selected": r.session == self.session,
             }))
             .collect();
@@ -662,7 +670,7 @@ impl App {
             "panel": self.panel_json(),
             "menu": self.menu_json(),
             "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write}), "input": self.shown_input(), "editor": self.editor_json(),
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
                 "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
@@ -717,7 +725,8 @@ impl App {
         let list_w = (LIST_W as f32 * s) as usize;
         let lh = LINE_HEIGHT as f32 * s;
         let bar_h = if self.ui.menu { lh + 4.0 * s } else { 0.0 };
-        let top = bar_h; // the text area and the list start below the bar
+        let real_entries = self.ui.real_screen.clone();
+        let top = bar_h + super::realbar::height_px(&real_entries, s); // the text area and the list start below the bar and any real-screen warning
         let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
@@ -966,6 +975,7 @@ impl App {
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
         controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
         memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
+        super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h);
         // the menu bar, and the open menu on top of everything
         self.ui.menu_geom.titles.clear();
         self.ui.menu_geom.items.clear();

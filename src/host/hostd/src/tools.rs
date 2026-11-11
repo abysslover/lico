@@ -232,6 +232,9 @@ pub fn forget(session: &str) {
     if let Some(dir) = state.dir.clone() {
         state.table.forget(&dir, session);
     }
+    drop(state);
+    crate::vdisplay::stop(session);
+    crate::computer::real::revoke(session);
 }
 
 /// The host stops: no key and no config file is left.
@@ -240,6 +243,9 @@ pub fn clear() {
     if let Some(dir) = state.dir.clone() {
         state.table.clear(&dir);
     }
+    drop(state);
+    crate::vdisplay::stop_all();
+    crate::computer::real::stop_all();
 }
 
 /// The caller of a credential, when it is still the live process of its session: the session exists, is not deleted, and is of the generation the key was made for.
@@ -295,6 +301,7 @@ fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, V
         "capture" => crate::screentools::capture(shared, caller, arguments),
         "clipboard_read" => crate::screentools::clipboard_read(shared, caller, arguments),
         "clipboard_write" => crate::screentools::clipboard_write(shared, caller, arguments),
+        "computer" => crate::computer::computer(shared, caller, arguments),
         _ => Err("unknown tool".into()),
     }
 }

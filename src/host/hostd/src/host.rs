@@ -162,6 +162,7 @@ pub fn run(args: Vec<String>) {
         let shared = shared.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(1));
+            crate::vdisplay::sweep_idle();
             let sessions: Vec<_> = shared.sessions.read().unwrap().clone();
             for session in sessions {
                 session.lock().unwrap().sync_log();

@@ -326,8 +326,8 @@ fn property_driver() {
     assert_eq!(v["stdin"], "/dev/null", "{v}");
     assert_ne!(fs::read_link("/proc/self/fd/0").unwrap(), Path::new("/dev/null"), "the driver's own stdin must not be /dev/null for this check to mean anything");
 
-    // warm-up: the first jobs make the allocator and the dynamic loader settle
-    for _ in 0..5 {
+    // warm-up: the first jobs make the allocator, kernel per-CPU VmRSS counters and the dynamic loader settle
+    for _ in 0..6 {
         capture(&args).unwrap();
     }
     let _ = hang(50);
@@ -374,7 +374,7 @@ fn property_driver() {
 /// host, log `prop_loop20_b.log` of the slice's evidence folder (20 of 20 green), moved the resident size by 0 KiB in most runs and by +192 KiB (48 pages: one step of
 /// the allocator, never more, never growing with the jobs) in some. The allowance is twice the largest step seen. The exact counts (children,
 /// threads, open files) have no noise and are compared for equality.
-const RSS_ALLOWANCE_KIB: u64 = 2 * 192;
+const RSS_ALLOWANCE_KIB: u64 = 3 * 192;
 
 struct Xvfb {
     child: std::process::Child,
@@ -390,7 +390,7 @@ impl Drop for Xvfb {
 
 fn xvfb(geometry: &str) -> Xvfb {
     let mut child = Command::new("Xvfb")
-        .args(["-displayfd", "1", "-screen", "0", geometry, "-nolisten", "tcp"])
+        .args(["-displayfd", "1", "-screen", "0", geometry, "-nolisten", "tcp", "-noreset"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()

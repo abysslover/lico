@@ -57,7 +57,7 @@ pub fn prepare(handoff_dir: &Path) -> std::io::Result<()> {
 }
 
 /// The files of one work: removed when this is dropped.
-struct Files {
+pub(crate) struct Files {
     dir: PathBuf,
     stem: String,
     pub full: PathBuf,
@@ -65,7 +65,7 @@ struct Files {
 
 impl Files {
     /// A name for the work, in the folder (made if it is not there). `busy` when `MAX_FILES` are there already after the old leftovers are removed.
-    fn new(dir: PathBuf) -> Result<Files, String> {
+    pub(crate) fn new(dir: PathBuf) -> Result<Files, String> {
         ensure_dir(&dir).map_err(|e| format!("write_failed: the host cannot use its folder for pictures ({e})"))?;
         let now = crate::session::now_secs();
         for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
@@ -81,11 +81,11 @@ impl Files {
         Ok(Files { dir, stem, full })
     }
 
-    fn agent(&self) -> PathBuf {
+    pub(crate) fn agent(&self) -> PathBuf {
         agent_path_of(&self.full)
     }
 
-    fn full_arg(&self) -> String {
+    pub(crate) fn full_arg(&self) -> String {
         self.full.to_string_lossy().into_owned()
     }
 }

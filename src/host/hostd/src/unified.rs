@@ -12,6 +12,7 @@ mod cli;
 mod clipboard;
 mod clipwrite;
 mod codex;
+mod computer;
 mod core;
 mod create;
 mod credcmd;
@@ -46,6 +47,7 @@ mod registry;
 mod session;
 mod tools;
 mod transfer;
+mod vdisplay;
 mod xjob;
 
 const LICENSE: &str = include_str!("../../../../LICENSE");

@@ -566,6 +566,7 @@ fn a_capital_s_that_comes_without_shift_is_typing_and_shift_s_answers_in_the_lis
         app.socket = path;
         assert!(app.answer_key("V"));
         host.join().unwrap();
+        let _ = std::fs::remove_file(&app.socket);
         app.ui.mods = mods;
         app.card_key(key.chars().next().unwrap());
         let said = app.ui.panel.as_ref().map(|p| p.notice.clone()).unwrap_or_default();

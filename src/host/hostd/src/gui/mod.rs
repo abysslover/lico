@@ -8,6 +8,7 @@ mod fonts;
 mod menu;
 mod panel;
 mod picture;
+mod realbar;
 mod scroll;
 #[cfg(test)]
 mod scroll_oracle;

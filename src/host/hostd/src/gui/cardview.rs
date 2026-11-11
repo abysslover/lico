@@ -86,6 +86,7 @@ pub(crate) enum Asks {
     Send,
     Make,
     Read,
+    RealScreen,
 }
 
 impl Asks {
@@ -95,13 +96,20 @@ impl Asks {
             Asks::Send => "sent",
             Asks::Make => "made",
             Asks::Read => "read",
+            Asks::RealScreen => "granted",
         }
+    }
+    fn no_keep(self) -> bool {
+        matches!(self, Asks::Make | Asks::RealScreen)
     }
 }
 
 /// What the person is told of an answer that the host took.
 fn answered_words(reply: &Value, keep: bool, asks: Asks) -> String {
     match (reply["outcome"].as_str(), reply["reason"].as_str()) {
+        (Some("done"), _) if asks == Asks::RealScreen => "Allowed: real-screen control is active for 15 minutes (Ctrl+Alt+Esc stops).".into(),
+        (Some("declined"), _) if asks == Asks::RealScreen => "Declined: real-screen control stays off.".into(),
+        (Some("not_done"), reason) if asks == Asks::RealScreen => format!("Allowed, but real-screen control did not start: {}.", failure(reason.unwrap_or("bad_request"))),
         (Some("done"), _) if asks == Asks::Make => "Allowed: the session was made and is working on its first prompt.".into(),
         (Some("declined"), _) if asks == Asks::Make => "Declined: no session was made.".into(),
         (Some("not_done"), reason) if asks == Asks::Make => format!("Allowed, but no session was made: {}.", failure(reason.unwrap_or("bad_request"))),
@@ -197,9 +205,9 @@ impl App {
         }
     }
 
-    /// Whether the first request of the open session asks for a session to be made.
+    /// Whether the first request of the open session has no session-long `Shift+S` allowance (`create` or real-screen `computer`).
     fn makes_card(&self) -> bool {
-        self.lico_card().is_some_and(|id| self.card_asks(id) == Asks::Make)
+        self.lico_card().is_some_and(|id| self.card_asks(id).no_keep())
     }
 
     /// What request `id` of the open session asks for.
@@ -207,6 +215,7 @@ impl App {
         match self.selected_row() {
             Some(r) if r.makes.contains(&id) => Asks::Make,
             Some(r) if r.reads.contains(&id) => Asks::Read,
+            Some(r) if r.real_screens.contains(&id) => Asks::RealScreen,
             _ => Asks::Send,
         }
     }
@@ -283,7 +292,7 @@ impl App {
         let generation = self.selected_row().map_or(1, |r| r.generation);
         let asks = self.card_asks(id);
         let mut request = json!({"op": "approval.answer", "session": self.session, "generation": generation, "approval_id": id, "answer": if allow { "allow" } else { "deny" }});
-        if keep && asks != Asks::Make {
+        if keep && !asks.no_keep() {
             request["keep"] = json!(true);
         }
         let reply = self.host_call(request);
@@ -318,6 +327,7 @@ impl App {
             row.asks.retain(|a| *a != id);
             row.makes.retain(|a| *a != id);
             row.reads.retain(|a| *a != id);
+            row.real_screens.retain(|a| *a != id);
         }
         if self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Card) {
             self.panel_close();
@@ -376,7 +386,7 @@ impl App {
         let mut lines = vec![v.card.clone(), format!("bytes {} to {} of {} (page {} of {})", v.start, v.end, v.total, v.earlier.len() + 1, Self::pages(v)), String::new()];
         lines.extend(v.lines.iter().skip(v.top).take(SHOWN).cloned());
         lines.push(String::new());
-        let keys = if self.card_asks(v.id) == Asks::Make { KEYS_MAKE } else { KEYS };
+        let keys = if self.card_asks(v.id).no_keep() { KEYS_MAKE } else { KEYS };
         lines.push(format!("{keys}   Up Down PgUp PgDn Home End  move"));
         (format!("Request {}", v.id), lines)
     }
@@ -387,7 +397,7 @@ impl App {
         match key {
             'y' | 'Y' => self.answer_id(id, true, false),
             'n' | 'N' => self.answer_id(id, false, false),
-            'S' if self.ui.mods.shift_key() && self.card_asks(id) != Asks::Make => self.answer_id(id, true, true),
+            'S' if self.ui.mods.shift_key() && !self.card_asks(id).no_keep() => self.answer_id(id, true, true),
             _ => {}
         }
     }

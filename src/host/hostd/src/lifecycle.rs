@@ -25,6 +25,8 @@ pub fn session_close(shared: &Arc<Shared>, session: &str, generation: i64) -> Re
             // the same steps as the provider reader takes when the process ends by itself, here taken first and by the host
             s.stop_process();
             crate::tools::forget(&s.id); // the tool connection of the process that ended is dead at once, not when its reader notices
+            crate::vdisplay::stop(&s.id);
+            crate::computer::real::revoke(&s.id);
             s.set_state(State::Disconnected);
             s.set_busy(false);
             s.input_tx = None;

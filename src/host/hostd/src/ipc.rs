@@ -93,7 +93,7 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" => &[],
+        "hello" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" => &[],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
         "session.rebind" => &["session", "generation", "account"],
@@ -105,7 +105,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         "account.remove" => &["account", "sessions"],
         "account.login.start" | "account.login.cancel" | "account.login.status" => &["account"],
         "account.login.input" => &["account", "code"],
-        "snapshot" | "unsubscribe" => &["session"],
+        "snapshot" | "unsubscribe" | "display.ensure" | "display.status" | "display.stop" => &["session"],
         "subscribe" => &["session", "after"],
         "session.create" => &["kind"],
         "input" => &["session", "generation", "request_id", "text"],
@@ -124,7 +124,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             (_, "op") => true,
             (_, "v") => value.as_i64() == Some(1),
             (_, "id") => valid_str(value, 64),
-            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history", "session") => valid_str(value, 64),
+            ("snapshot" | "subscribe" | "unsubscribe" | "input" | "input.status" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind" | "session.rename" | "history" | "display.ensure" | "display.status" | "display.stop" | "real_screen.stop", "session") => valid_str(value, 64),
             ("subscribe" | "view.attach", "after") => in_range(value, -1, i64::MAX),
             ("snapshot" | "subscribe" | "input" | "approval.answer" | "approval.text" | "view.attach" | "session.resume" | "session.purge" | "session.close" | "session.rebind", "generation") => in_range(value, 1, i64::MAX),
             ("subscribe", "snapshot") => value.is_boolean(),
@@ -270,6 +270,10 @@ fn handle(shared: &Arc<Shared>, sub: &Arc<Sub>, raw: &[u8]) {
         "clipboard.write" => crate::clipwrite::write(shared, &request),
         "clipboard.done" => crate::clipwrite::done(shared, sub, &request),
         "settings.set" => crate::clipboard::settings::set_clipboard_write(&shared.cfg.handoff_dir, request.get("clipboard_write").and_then(Value::as_bool).unwrap_or(false)),
+        "display.ensure" => crate::vdisplay::ensure(shared, &session),
+        "display.status" => crate::vdisplay::status_op(shared, &session),
+        "display.stop" => crate::vdisplay::stop_op(shared, &session),
+        "real_screen.stop" => crate::computer::real::stop_op(shared, request.get("session").and_then(Value::as_str)),
         "view.detach" => core::view_detach(shared, text(&request, "view")),
         _ => return stream_op(shared, sub, &request, &op, &rid),
     };

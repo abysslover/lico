@@ -98,10 +98,10 @@ def test_the_list_names_send_with_both_of_its_arguments_and_no_other(world):
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read", "computer"]
     schema = tools["send"]["inputSchema"]
     assert schema["required"] == ["to", "text"] and sorted(schema["properties"]) == ["text", "to"], schema          # `from` is never a parameter
-    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 4096
+    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
 
 
 def test_a_send_waits_for_the_person_and_reaches_the_other_session_as_the_caller_when_the_card_is_allowed(world):

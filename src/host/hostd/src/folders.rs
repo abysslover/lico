@@ -189,6 +189,8 @@ pub fn remove_scratch(shared: &Shared, id: &str, scratch: bool) {
 
 /// Everything the host made for a session that is deleted: its scratch workspace (if it had no chosen folder) and its inbox of received files.
 pub fn remove_own(shared: &Shared, id: &str, scratch: bool) {
+    crate::vdisplay::stop(id);
+    crate::computer::real::revoke(id);
     remove_scratch(shared, id, scratch);
     crate::handoff::remove_inbox(&shared.cfg.handoff_dir, id);
 }

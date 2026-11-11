@@ -18,7 +18,7 @@ struct Xvfb {
 impl Xvfb {
     fn start() -> Xvfb {
         let mut child = Command::new("Xvfb")
-            .args(["-displayfd", "1", "-screen", "0", "320x200x24", "-nolisten", "tcp"])
+            .args(["-displayfd", "1", "-screen", "0", "320x200x24", "-nolisten", "tcp", "-noreset"])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
