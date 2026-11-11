@@ -54,7 +54,11 @@ fn notify_bin_from(override_bin: Option<OsString>, dbus_addr: Option<OsString>) 
 }
 
 fn notify_bin() -> Option<OsString> {
-    notify_bin_from(std::env::var_os("LICO_NOTIFY_BIN"), std::env::var_os("DBUS_SESSION_BUS_ADDRESS"))
+    let override_bin = std::env::var_os("LICO_NOTIFY_BIN");
+    if cfg!(test) && override_bin.is_none() {
+        return None; // Rust unit tests (`cargo test`) never touch the developer's desktop notification daemon
+    }
+    notify_bin_from(override_bin, std::env::var_os("DBUS_SESSION_BUS_ADDRESS"))
 }
 
 pub fn fire(handoff_dir: &Path, session_id: &str, name: Option<&str>, cwd: Option<&str>, event: &'static str) {
