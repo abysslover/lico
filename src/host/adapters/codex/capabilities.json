@@ -3,18 +3,18 @@
  "provider": "codex",
  "path": "codex app-server over standard input and output (JSON lines)",
  "version": {
-  "cli": "0.164.0",
+  "cli": "0.167.0",
   "pinned": true,
-  "checked": "2026-10-24",
+  "checked": "2026-11-11",
   "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
-  "fixtures_recorded_with": "0.163.0 (still valid against the 0.164.0 schema, checked by the contract test)"
+  "fixtures_recorded_with": "0.163.0 (still valid against the 0.167.0 schema, checked by the contract test)"
  },
  "protocol_schema": {
   "generated_with": "codex app-server generate-json-schema",
   "sha256": {
-   "ClientRequest.json": "9b89e2459362d20cec67a429ef9430fe6b0e9fb8bd87d445d4c9a6acccd87450",
-   "ServerRequest.json": "f339be472737a0003efa25fba2e6e6c9237e621cd065b6d6995c51256e9dc1fb",
-   "ServerNotification.json": "0352806952c06bf4b802b45966ca8d6f6442464aeebd816db74158da784d3c1c",
+   "ClientRequest.json": "94074a415950787a25e09ae3b4d9de312cc264eb0f021633dfca921d300cd42a",
+   "ServerRequest.json": "58df585160941977d6e7a0ce458750b0c0d37987ce326fc4c880bf1dfbd3802f",
+   "ServerNotification.json": "6371619bc83dd2c7a3ff348704d514c5be9f0d8e992275a1fa592cf51bfd2c1f",
    "ClientNotification.json": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a"
   },
   "client_requests": 106,
@@ -30,7 +30,7 @@
    "item/tool/requestUserInput",
    "mcpServer/elicitation/request"
   ],
-  "server_notifications": 85
+  "server_notifications": 86
  },
  "handshake": [
   "initialize",

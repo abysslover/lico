@@ -17,7 +17,7 @@ from lico_protocol.codex_mapping import Mapper
 FIXTURES = REPO / "tests" / "fixtures" / "codex_app_server"
 
 
-PINNED = "0.164.0"      # the version the capability record describes; a new installed version must fail this test until re-recorded
+PINNED = "0.167.0"      # the version the capability record describes; a new installed version must fail this test until re-recorded
 
 
 def test_adapter_capabilities_pin_the_version_and_mark_unverified():
