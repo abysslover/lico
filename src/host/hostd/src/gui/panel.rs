@@ -352,6 +352,12 @@ impl App {
                         }
                         return true;
                     }
+                    "e" if self.ui.mods.shift_key() => {
+                        if !event.repeat {
+                            self.toggle_show_events();
+                        }
+                        return true;
+                    }
                     "=" | "+" if !self.ui.mods.alt_key() => {
                         if !event.repeat {
                             self.step_font_px(1);

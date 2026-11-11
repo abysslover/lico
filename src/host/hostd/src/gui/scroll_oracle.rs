@@ -435,3 +435,30 @@ fn a_scripted_session_draws_the_same_pixels_with_the_scroll_step_as_with_a_full_
 fn a_scripted_session_draws_the_same_pixels_with_the_scroll_step_as_with_a_full_repaint_at_scale_one_and_a_quarter() {
     script(1.25);
 }
+
+#[test]
+fn user_prompt_backgrounds_role_colors_and_hidden_control_events_match_full_repaint_across_scales() {
+    for scale in [1.0, 1.25, 2.0] {
+        let mut p = Pair::new((1000, 620), scale);
+        p.full("first", Cause::First);
+        for turn in 0..16 {
+            p.push(&[
+                format!(">> user prompt {turn} 한글 🙂"),
+                "[turn started]".into(),
+                "[session started] model=claude-sonnet-4-5".into(),
+                format!("Agent answer {turn} with details and wrapped prose."),
+                "$ cargo test --quiet".into(),
+                "> test result: ok.".into(),
+                "[exit 0]".into(),
+                if turn % 5 == 4 { "[error] transient warning".into() } else { "[turn completed]".into() },
+            ]);
+            p.step(&format!("turn {turn}"));
+        }
+        p.both(|app| app.toggle_show_events());
+        p.step("toggle events shown");
+        p.push(&[">> follow-up prompt".into(), "[turn started]".into(), "Reply while events shown".into(), "[turn completed]".into()]);
+        p.step("turn while events shown");
+        p.both(|app| app.toggle_show_events());
+        p.step("toggle events hidden");
+    }
+}

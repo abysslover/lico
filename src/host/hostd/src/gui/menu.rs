@@ -40,6 +40,7 @@ pub enum Cmd {
     SearchAll,
     CaptureToInput,
     ToggleGroupBy,
+    ToggleEvents,
     FontLarger,
     FontSmaller,
     FontReset,
@@ -139,6 +140,12 @@ impl App {
                         label: format!("Group sessions: {}", if self.ui.group_by_workspace { "workspace" } else { "account" }),
                         key: "Ctrl+Shift+G",
                         cmd: Cmd::ToggleGroupBy,
+                        reason: panel_reason,
+                    },
+                    Entry {
+                        label: format!("Internal events: {}", if self.ui.show_events { "shown" } else { "hidden" }),
+                        key: "Ctrl+Shift+E",
+                        cmd: Cmd::ToggleEvents,
                         reason: panel_reason,
                     },
                     Self::entry(
@@ -249,6 +256,7 @@ impl App {
             Cmd::SearchAll => self.open_search(true),
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleGroupBy => self.toggle_group_by(),
+            Cmd::ToggleEvents => self.toggle_show_events(),
             Cmd::FontLarger => self.step_font_px(1),
             Cmd::FontSmaller => self.step_font_px(-1),
             Cmd::FontReset => self.step_font_px(0),

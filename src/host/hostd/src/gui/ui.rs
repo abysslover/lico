@@ -110,7 +110,8 @@ pub struct UiState {
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
-    pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, // view settings from host `settings.json`
+    pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, // view settings
+    pub tx_range: std::ops::Range<usize>, // buffer line slice shaped with transcript role colors
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
@@ -310,12 +311,11 @@ impl App {
         let (a, b) = self.ui.sel?;
         let view = self.view.as_ref()?;
         let (lo, hi) = (a.min(b), a.max(b));
-        let lines: Vec<&str> = (lo..=hi).filter_map(|i| view.lines.get(i).map(|l| l.1.as_str())).collect();
-        if lines.is_empty() {
-            None
-        } else {
-            Some(lines.join("\n"))
-        }
+        let lines: Vec<&str> = (lo..=hi)
+            .filter_map(|i| view.lines.get(i).map(|l| l.1.as_str()))
+            .filter(|t| self.ui.show_events || !super::transcript::is_hidden_control(t))
+            .collect();
+        if lines.is_empty() { None } else { Some(lines.join("\n")) }
     }
 
     /// Put text on the clipboard: the result of a person's own key, or of the host forwarding the `lico clipboard write` that the person ran (`clip::on_clip_line`; a picture too). Nothing else writes it; an agent tool (S07) must ask the person first.
@@ -612,13 +612,14 @@ impl App {
             "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
             "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
         });
-        let settings = json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64});
+        let settings = json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
+        let shown_lines = self.shown_lines_dump();
         let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
         let dump = json!({
             "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
             "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
             "card_seen": self.ui.card_seen.is_some(), "card_ready": self.card_ready(),
-            "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
+            "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()), "shown_lines": shown_lines,
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "frame": frame,
@@ -713,16 +714,25 @@ impl App {
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
         let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + n_prompt - 1);
-        let fs = self.font_system.as_mut()?;
-        let lines: Vec<(i64, String)> = match &panel_view {
-            Some((_, body)) => body.iter().enumerate().map(|(i, l)| (i as i64, l.clone())).collect(),
-            None => self.view.as_ref().map(|v| v.lines.iter().cloned().collect()).unwrap_or_default(),
+        let is_tx = panel_view.is_none();
+        let (lines, raw_end): (Vec<(usize, i64, String)>, usize) = match &panel_view {
+            Some((_, body)) => {
+                let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone())).collect();
+                let n = v.len();
+                (v, n)
+            }
+            None => {
+                let total_raw = self.view.as_ref().map_or(0, |v| v.lines.len());
+                let re = total_raw.saturating_sub(self.ui.scroll.min(total_raw));
+                (self.visible_transcript_lines(re), re)
+            }
         };
-        let end = lines.len().saturating_sub(if panel_view.is_some() { 0 } else { self.ui.scroll.min(lines.len()) });
+        let fs = self.font_system.as_mut()?;
+        let end = lines.len();
         let mut first = end;
         let mut used = 0;
         while first > 0 {
-            let rows = (display_cols(&lines[first - 1].1).max(1) + cols - 1) / cols;
+            let rows = (display_cols(&lines[first - 1].2).max(1) + cols - 1) / cols;
             if used + rows > rows_avail {
                 break;
             }
@@ -740,18 +750,25 @@ impl App {
         let base = 1 + bar.is_some() as usize + search_bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
+        let mut prev_tx = std::mem::take(&mut self.ui.tx_range);
         let faces = &mut self.ui.faces;
         let mut build = |first: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
-            let mut pool: HashMap<String, Vec<BufferLine>> = HashMap::new();
-            for line in std::mem::take(&mut buffer.lines) {
-                pool.entry(line.text().to_string()).or_default().push(line);
+            let mut pool: HashMap<(bool, String), Vec<BufferLine>> = HashMap::new();
+            for (idx, line) in std::mem::take(&mut buffer.lines).into_iter().enumerate() {
+                pool.entry((prev_tx.contains(&idx), line.text().to_string())).or_default().push(line);
             }
-            let mut wanted: Vec<&str> = text.split('\n').collect();
-            wanted.extend(lines[first..end].iter().map(|l| l.1.as_str()));
-            wanted.extend(status.as_deref());
-            wanted.extend(pv.rows.iter().chain(&pv.note).map(String::as_str));
-            for line_text in wanted {
-                let line = pool.get_mut(line_text).and_then(Vec::pop).unwrap_or_else(|| BufferLine::new(line_text, LineEnding::None, faces.line(fs, line_text), Shaping::Advanced));
+            let mut wanted: Vec<(bool, &str)> = text.split('\n').map(|s| (false, s)).collect();
+            let tx_start = wanted.len();
+            wanted.extend(lines[first..end].iter().map(|l| (is_tx, l.2.as_str())));
+            prev_tx = if is_tx { tx_start..wanted.len() } else { 0..0 };
+            wanted.extend(status.as_deref().map(|s| (false, s)));
+            wanted.extend(pv.rows.iter().chain(&pv.note).map(|s| (false, s.as_str())));
+            for (tx, line_text) in wanted {
+                let line = pool.get_mut(&(tx, line_text.to_string())).and_then(Vec::pop).unwrap_or_else(|| {
+                    let attrs = faces.line(fs, line_text);
+                    let attrs = if tx { super::transcript::tint(attrs, line_text) } else { attrs };
+                    BufferLine::new(line_text, LineEnding::None, attrs, Shaping::Advanced)
+                });
                 buffer.lines.push(line);
             }
             buffer.set_scroll(Scroll::default());
@@ -778,7 +795,8 @@ impl App {
             first += 1;
             build(first, &mut text, &mut view.buffer, fs);
         }
-        self.ui.window_span = (first, end);
+        self.ui.tx_range = prev_tx;
+        self.ui.window_span = (lines.get(first).map_or(raw_end, |l| l.0), raw_end);
         let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();
@@ -794,10 +812,10 @@ impl App {
                 search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
             if run.line_i >= base && first + (run.line_i - base) < end {
-                let idx = first + (run.line_i - base);
+                let raw_idx = lines[first + (run.line_i - base)].0;
                 match self.ui.hit_lines.last_mut() {
-                    Some(last) if last.2 == idx => last.1 = run.line_top + run.line_height + top,
-                    _ => self.ui.hit_lines.push((run.line_top + top, run.line_top + run.line_height + top, idx)),
+                    Some(last) if last.2 == raw_idx => last.1 = run.line_top + run.line_height + top,
+                    _ => self.ui.hit_lines.push((run.line_top + top, run.line_top + run.line_height + top, raw_idx)),
                 }
             }
         }
@@ -812,7 +830,7 @@ impl App {
                 } else if status.is_some() && i + n_prompt + 1 == line_count {
                     scroll::Key::Status
                 } else if i >= base && first + (i - base) < end {
-                    scroll::Key::Transcript(lines[first + (i - base)].0)
+                    scroll::Key::Transcript(lines[first + (i - base)].1)
                 } else {
                     scroll::Key::Header
                 };
@@ -882,12 +900,15 @@ impl App {
                 *px = 0xFF30_3840;
             }
         }
+        if is_tx {
+            super::transcript::paint_user_backgrounds(&mut buf, width, height, list_w, oy, hint_row, &self.ui.hit_lines, &view.lines, plan.is_ok().then_some(cleared.as_slice()));
+        }
         if let Some((sy0, sy1)) = search_y {
             rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
         }
-        if panel_view.is_none() && self.ui.search.open {
+        if is_tx && self.ui.search.open {
             for (y0, y1, idx) in &self.ui.hit_lines {
-                if let Some(active) = lines.get(*idx).and_then(|(seq, _)| self.ui.search.line_kind(&session_sel, *seq)) {
+                if let Some(active) = view.lines.get(*idx).and_then(|(seq, _)| self.ui.search.line_kind(&session_sel, *seq)) {
                     let bg = if active { 0xFF5A_4314 } else { 0xFF2B_2412 };
                     rect(&mut buf, width, height, list_w as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, bg);
                 }
@@ -1083,7 +1104,7 @@ fn blend(dst: &mut u32, r: u32, g: u32, b: u32, alpha: u32) {
     } else {
         let mix = |s: u32, shift: u32| {
             let d = (*dst >> shift) & 0xFF;
-            (d + (s.wrapping_sub(d) as i32 * alpha as i32 / 255) as u32) & 0xFF
+            ((d as i32 + (s as i32 - d as i32) * alpha as i32 / 255) as u32) & 0xFF
         };
         0xFF00_0000 | mix(r, 16) << 16 | mix(g, 8) << 8 | mix(b, 0)
     };

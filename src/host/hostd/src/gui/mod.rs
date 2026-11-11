@@ -12,6 +12,7 @@ mod realbar;
 mod scroll;
 #[cfg(test)]
 mod scroll_oracle;
+mod transcript;
 mod ui;
 mod update;
 mod wire;

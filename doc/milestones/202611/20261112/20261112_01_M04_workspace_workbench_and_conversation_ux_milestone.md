@@ -74,7 +74,7 @@ desktop workbench experience before the separate Windows milestone.
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M04-P01 | Direct session switching from panels, derived titles, active reverse-chronological sorting, and clickable toolbar | [Plan](../../../plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | [Report](../../../reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | `00001_M04-P01_session_nav_and_toolbar/` | — | in_review |
-| M04-P02 | Clean conversation view: default-hidden internal control markers and user/agent color differentiation | [Plan](../../../plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | pending | pending | — | in_progress |
+| M04-P02 | Clean conversation view: default-hidden internal control markers and user/agent color differentiation | [Plan](../../../plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | [Report](../../../reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | `00002_M04-P02_clean_conversation_view/` | — | in_review |
 | M04-P03 | Provider weekly quota telemetry (`7d` remaining) and working-directory context display | pending | pending | pending | — | not_started |
 | M04-P04 | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass | pending | pending | pending | — | not_started |
 

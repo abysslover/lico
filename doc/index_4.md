@@ -20,6 +20,7 @@
 | [M04 milestone](milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md) | Workspace workbench, clean conversation UX, weekly quota visibility, and on-demand directory file viewer (`M04-P01` to `M04-P04`, `0.2.0`); G1 and G2 approved 2026-11-12 |
 | [M04-P01 plan](plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | Direct session switching from panels, derived session titles, active reverse-chronological sorting, and clickable toolbar; in_review 2026-11-12 |
 | [M04-P01 report](reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | Direct sidebar session switching while panels are open, `auto_title` + `last_active_at` active-recency sorting, `dir:` header context, and clickable Toolbar; in_review 2026-11-12 |
-| [M04-P02 plan](plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | Clean conversation view hiding internal control markers by default and differentiating user, agent, tool, and error lines by color; G2 approved 2026-11-12 |
+| [M04-P02 plan](plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | Clean conversation view hiding internal control markers by default and differentiating user, agent, tool, and error lines by color; in_review 2026-11-12 |
+| [M04-P02 report](reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | Default-hidden control markers (`Ctrl+Shift+E` toggle), user/agent/tool/error colors + `>> ` row background tint, and pixel-exact `scroll::Shift`; in_review 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
