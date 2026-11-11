@@ -1,12 +1,12 @@
 # M01 — Measured Linux foundation
 
-- Status: in_review
+- Status: done
 - Approved: 2026-10-23 (G1, as written in the proposal; M01-P08 G2 approved 2026-11-11)
 - Project: Lico
-- Updated: 2026-11-11
-- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a are accepted at G3 and merged on `main` at G4 (2026-11-11); M01-P08 (acceptance pack, test-suite optimization, and `lico 0.1.0`) is built and reported on `phase/M01-P08-acceptance-pack`
-- Next gate: Owner G3 inspection acceptance and G4 merge approval for M01-P08 to close M01 (`milestone/M01-measured-linux-foundation`)
-- Milestone branch: `milestone/M01-measured-linux-foundation`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
+- Updated: 2026-11-12
+- Implementation: M01-P01 to M01-P08 (including M01-P07a) are built, reported, accepted by the owner at G3 (2026-11-11 and 2026-11-12), and merged and published on `main` at G4 (2026-11-12)
+- Next gate: None (milestone achieved and closed on 2026-11-12)
+- Milestone branch: `milestone/M01-measured-linux-foundation` (created at the closing commit on `main`; the phase branches are kept)
 
 ## Goal
 
@@ -58,7 +58,7 @@ informs this division; it does not establish runtime compatibility.
 | M01-P06 | Session creation, accounts and provider sign-in inside the window | [Plan](../../../plans/202610/20261024/20261024_03_M01-P06_in_window_login_and_session_creation_plan.md) | [Report](../../../reports/202610/20261025/20261025_01_M01-P06_in_window_login_and_session_creation_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 | M01-P07 | The window shows its first view and every panel, and the documented keys act (fixes the blank window after Ctrl+N) | [Plan](../../../plans/202610/20261025/20261025_01_M01-P07_window_first_view_and_keys_plan.md) | [Report](../../../reports/202610/20261025/20261025_02_M01-P07_window_first_view_and_keys_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
 | M01-P07a | Comparison of lightweight Rust UI toolkits (egui, iced, Slint) against the hand-drawn client on the unchanged 50 MiB budget | [Plan](../../../plans/202610/20261025/20261025_02_M01-P07a_ui_toolkit_comparison_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M01-P07a_ui_toolkit_comparison_report.md) | Owner G3: accept (2026-11-11) | Fast-forward `main` | done |
-| M01-P08 | Acceptance pack: a clean public clone rebuilds the package; one index maps every "Done when" item of this milestone to its evidence; test-suite optimization and `0.1.0` version bump | [Plan](../../../plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | [Report](../../../reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md) | Bundle `00006` (pending G3) | `phase/M01-P08-acceptance-pack` | in_review |
+| M01-P08 | Acceptance pack: a clean public clone rebuilds the package; one index maps every "Done when" item of this milestone to its evidence; test-suite optimization and `0.1.0` version bump | [Plan](../../../plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | [Report](../../../reports/202611/20261111/20261111_05_M01-P08_acceptance_pack_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
 
 Phases run sequentially. Future plans are written from earlier evidence and need
 separate approval. A later provider that cannot meet storage or isolation rules
@@ -70,8 +70,8 @@ is gated as unsupported, rather than advertised through simulated behavior.
 |---|---|---|
 | G1 milestone approval | Approved 2026-10-23 | Milestone scope as written |
 | G2 phase plan approval | Approved for M01-P01 to M01-P08 (M01-P08 approved 2026-11-11) | Implementation and experiments of those phases as written |
-| G3 inspection acceptance | Approved 2026-11-11 for M01-P01 to M01-P07a; pending for M01-P08 | Owner accepted M01-P01 to M01-P07a on 2026-11-11; M01-P08 report and bundle `00006` await G3 |
-| G4 merge approval | Approved 2026-10-25, 2026-10-27 and 2026-11-11 for M01-P01 to M01-P07a (merged and published); pending for M01-P08 | `main` fast-forwarded and published through M02-P07 on 2026-11-11 |
+| G3 inspection acceptance | Approved 2026-11-11 and 2026-11-12 (all phases M01-P01 to M01-P08) | Owner accepted M01-P01 to M01-P07a on 2026-11-11 and M01-P08 on 2026-11-12 |
+| G4 merge approval | Approved 2026-10-25, 2026-10-27, 2026-11-11 and 2026-11-12 (merged and published) | `main` fast-forwarded, `milestone/M01-measured-linux-foundation` created, and published on 2026-11-12 |
 
 G1 and G2 were approved together on 2026-10-23, and M01-P08 G2 was approved on
 2026-11-11. Setup/publication permission is not phase or merge approval, and
@@ -80,7 +80,7 @@ inherited.
 
 ## Blocked on
 
-- M01-P08: awaits the owner's G3 inspection acceptance and G4 merge approval to close M01 (`milestone/M01-measured-linux-foundation`).
+None. M01 achieved and closed on 2026-11-12.
 
 ## Out of scope
 
@@ -92,4 +92,5 @@ real credentials are required for the architecture experiment.
 
 ## When done
 
-Not filled: M01-P01 to M01-P07 and M01-P07a have reports that wait for the owner's inspection (G3); M01-P08 (acceptance pack) is not started, and the account owner's first real sign-in and end-to-end use are still to come. When the milestone is achieved, the branch `milestone/M01-measured-linux-foundation` is created at its closing commit and named here.
+Closed on 2026-11-12 at branch `milestone/M01-measured-linux-foundation` after the owner's G3 inspection acceptance and G4 merge and publication approval:
+- **Delivered (`5/5` M01 "Done when" items verified across `M01-P01` to `M01-P08`):** measured architecture and toolkit comparisons (`M01-P01` and `M01-P07a`), persistent session host and snapshot/cursor continuity (`M01-P02`), official Claude Code and Codex adapters with OS-keyring-only credentials and per-session account isolation (`M01-P03`, `M01-P04`, `M01-P06`), first-view window rendering (`M01-P07`), single self-contained `lico 0.1.0` executable verified byte-for-byte identical across two clean public clones (`M01-P05` and `M01-P08`), and cold test-suite speedup (`167.7 s -> 92.9 s`).

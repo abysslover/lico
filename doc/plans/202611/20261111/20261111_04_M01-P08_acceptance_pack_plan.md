@@ -1,6 +1,6 @@
 # M01-P08 Plan: Acceptance pack, test-suite bottleneck optimization, and 0.1.0 release version
 
-- Status: in_review
+- Status: done
 - Version: 1.0.1
 - Date: 2026-11-11
 - Milestone: [M01 — Measured Linux foundation](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)

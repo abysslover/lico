@@ -1,7 +1,7 @@
 # M01-P08 report — acceptance pack, test-suite optimization, and `lico 0.1.0`
 
 - Version: 1.0.0
-- Status: in_review (awaiting owner G3 inspection and G4 merge to close `M01`)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Date: 2026-11-11
 - Plan: [M01-P08](../../../plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) (version 1.0.0, G2 approved by the owner on 2026-11-11)
 - Milestone: [M01 — Measured Linux foundation](../../../milestones/202610/20261023/20261023_01_M01_measured_linux_foundation_milestone.md)

@@ -1,6 +1,6 @@
 # M03-P01 Plan: In-window account rename, session rebind, and live permission-mode control
 
-- Status: in_review
+- Status: done
 - Version: 1.0.0
 - Date: 2026-11-11
 - Milestone: [M03 — Linux administrator GUI completeness and control-surface parity](../../../milestones/202611/20261111/20261111_01_M03_admin_gui_and_control_parity_milestone.md)

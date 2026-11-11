@@ -1,7 +1,7 @@
 # M03-P03 report — prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow
 
 - Version: 1.0.0
-- Status: in_review (awaiting owner G3 inspection and G4 merge)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Date: 2026-11-11
 - Plan: [M03-P03](../../../plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) (version 1.0.0, G2 approved by the owner on 2026-11-11)
 - Milestone: [M03 — Linux administrator GUI completeness and control-surface parity](../../../milestones/202611/20261111/20261111_01_M03_admin_gui_and_control_parity_milestone.md)

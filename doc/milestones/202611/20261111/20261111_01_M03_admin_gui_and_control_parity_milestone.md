@@ -1,11 +1,12 @@
 # M03 — Linux administrator GUI completeness and control-surface parity
 
-- Status: in_review
+- Status: done
 - Approved: 2026-11-11 (G1 and G2 Option A approved by the owner)
 - Project: Lico
-- Updated: 2026-11-11
-- Implementation: M03-P01 to M03-P04 built and verified on `phase/M03-P04-control-parity-and-review` (`lico 0.1.0`)
-- Next gate: G3 inspection acceptance and G4 merge approval after M03-P04
+- Updated: 2026-11-12
+- Implementation: M03-P01 to M03-P04 built, verified, accepted by the owner at G3 (2026-11-12), and merged and published on `main` at G4 (`lico 0.1.0`, 2026-11-12)
+- Next gate: None (milestone achieved and closed on 2026-11-12)
+- Milestone branch: `milestone/M03-admin-gui-and-control-parity` (created at the closing commit of M03 on `main`; the phase branches are kept)
 
 ## Goal
 
@@ -63,7 +64,25 @@ serve agents and scripts.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M03-P01 | In-window account rename, session rebind, and live permission-mode control | [Plan](../../../plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | [Report](../../../reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | pending | — | in_review |
-| M03-P02 | Persistent workspace-grouped session navigator and adjustable text size | [Plan](../../../plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | [Report](../../../reports/202611/20261111/20261111_07_M03-P02_workspace_navigator_report.md) | pending | — | in_review |
-| M03-P03 | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow | [Plan](../../../plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | [Report](../../../reports/202611/20261111/20261111_08_M03-P03_editor_and_reflow_report.md) | pending | — | in_review |
-| M03-P04 | Control-surface capabilities parity, loopback HTTP completion, full memory pass, and binary install | [Plan](../../../plans/202611/20261111/20261111_08_M03-P04_control_parity_and_review_plan.md) | [Report](../../../reports/202611/20261111/20261111_09_M03-P04_control_parity_and_review_report.md) | pending | — | in_review |
+| M03-P01 | In-window account rename, session rebind, and live permission-mode control | [Plan](../../../plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | [Report](../../../reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M03-P02 | Persistent workspace-grouped session navigator and adjustable text size | [Plan](../../../plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | [Report](../../../reports/202611/20261111/20261111_07_M03-P02_workspace_navigator_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M03-P03 | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow | [Plan](../../../plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | [Report](../../../reports/202611/20261111/20261111_08_M03-P03_editor_and_reflow_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M03-P04 | Control-surface capabilities parity, loopback HTTP completion, full memory pass, and binary install | [Plan](../../../plans/202611/20261111/20261111_08_M03-P04_control_parity_and_review_plan.md) | [Report](../../../reports/202611/20261111/20261111_09_M03-P04_control_parity_and_review_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+
+## Gates
+
+| Gate | State | Boundary |
+|---|---|---|
+| G1 milestone approval | Approved 2026-11-11 | Scope and phases M03-P01 to M03-P04 |
+| G2 phase plan approval | Approved 2026-11-11 | Option A approved across M03-P01 to M03-P04 |
+| G3 inspection acceptance | Approved 2026-11-12 | Owner accepted M03-P01 to M03-P04 and bundles `00007`..`00010` |
+| G4 merge approval | Approved 2026-11-12 | Fast-forward merge into `main`, milestone branch `milestone/M03-admin-gui-and-control-parity`, and publication to `origin` |
+
+## Blocked on
+
+None. M03 achieved and closed on 2026-11-12.
+
+## When done
+
+Closed on 2026-11-12 at branch `milestone/M03-admin-gui-and-control-parity` (`lico 0.1.0`):
+- **Delivered (`4/4` M03 phases):** in-window account rename, session rebind, and live `auto`/`default` permission-mode toggle (`M03-P01`); persistent workspace-grouped session navigation rolling git worktrees under parent repos and `12..=20` px font scaling (`M03-P02`); modularized `gui/editor` (`<= 703` lines, `ui.rs` `1,115` lines) with mouse/keyboard selection, `Ctrl+C`/`Ctrl+X`, undo/redo, and resize reflow (`M03-P03`); and `capabilities` + loopback HTTP parity (`POST /v1` and REST routes) verified within `< 50.0 MiB` idle RSS (`24.21` / `35.38 MiB`), `+0.37 MiB` hidden growth, `94.9 s` cold 458-test suite, and two-clone reproducible `0.1.0` build (`M03-P04`).
