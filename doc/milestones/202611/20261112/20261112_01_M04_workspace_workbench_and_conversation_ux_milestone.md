@@ -4,7 +4,7 @@
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for immediate continuous execution through `lico 0.2.0`)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: In progress starting with `M04-P01` (`phase/M04-P01-session-nav-and-toolbar`)
+- Implementation: In progress in `M04-P04` (`phase/M04-P04-workspace-file-viewer`)
 - Next gate: G3 inspection acceptance and G4 merge approval after `M04-P04` (`lico 0.2.0`)
 
 ## Goal
@@ -76,7 +76,7 @@ desktop workbench experience before the separate Windows milestone.
 | M04-P01 | Direct session switching from panels, derived titles, active reverse-chronological sorting, and clickable toolbar | [Plan](../../../plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | [Report](../../../reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | `00001_M04-P01_session_nav_and_toolbar/` | — | in_review |
 | M04-P02 | Clean conversation view: default-hidden internal control markers and user/agent color differentiation | [Plan](../../../plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | [Report](../../../reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | `00002_M04-P02_clean_conversation_view/` | — | in_review |
 | M04-P03 | Provider weekly quota telemetry (`7d` remaining) and working-directory context display | [Plan](../../../plans/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_report.md) | `00003_M04-P03_quota_and_context_bar/` | — | in_review |
-| M04-P04 | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass | pending | pending | pending | — | not_started |
+| M04-P04 | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass | [Plan](../../../plans/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_plan.md) | pending | pending | — | in_progress |
 
 ## Gates
 
