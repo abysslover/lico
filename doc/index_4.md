@@ -11,5 +11,6 @@
 | [M03 milestone](milestones/202611/20261111/20261111_01_M03_admin_gui_and_control_parity_milestone.md) | Linux administrator GUI completeness and control-surface parity (`M03-P01` to `M03-P04`); G1 and G2 Option A approved 2026-11-11 |
 | [M03-P01 plan](plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | In-window account rename, session rebind, and live permission-mode control; G2 approved 2026-11-11 |
 | [M03-P01 report](reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | `account.rename`, `session.mode`, and in-window `session.rebind` across GUI, CLI, IPC, and HTTP; awaiting owner G3/G4 |
+| [M03-P02 plan](plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | Persistent workspace-grouped session navigator and adjustable text size (`12..=20` px); G2 approved 2026-11-11 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
