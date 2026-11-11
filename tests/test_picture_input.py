@@ -229,6 +229,7 @@ def test_every_refusal_has_its_word_removes_the_file_and_sends_nothing(world):
         reply = send(world, bad)
         assert reply["ok"] == 0 and reply["error"] == "bad_request", (bad, reply)
     assert send(world, 7)["error"] == "bad_request" and send(world, None)["ok"] == 1 and send(world, ["x"])["error"] == "bad_request"
+    wait_for(lambda: len(sent_users(world.received)) == before + 1)
     plain = len(sent_users(world.received))
     # the files
     case("empty", "bad_image", lambda p: None)

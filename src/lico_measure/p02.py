@@ -172,7 +172,7 @@ def gui_kill(name: str) -> dict:
 
 def view_switch(name: str) -> dict:
     """A view switched in the middle of a Korean composition, through a real input method."""
-    from .ime import InputMethod, _focus
+    from .ime import InputMethod, _focus_when_mapped
 
     def keys(display: str, *names: str) -> None:
         subprocess.run(["xdotool", "key", "--delay", "60", *names], env=dict(os.environ, DISPLAY=display), check=True)
@@ -188,7 +188,7 @@ def view_switch(name: str) -> dict:
             client.send(f"show {s1}")
             client.expect("state", "subscribed")
             time.sleep(1.0)
-            _focus(xvfb.display)
+            _focus_when_mapped(xvfb.display)
             time.sleep(0.5)
             keys(xvfb.display, "shift+space")
             time.sleep(0.5)
@@ -197,14 +197,14 @@ def view_switch(name: str) -> dict:
             client.send(f"show {s2}")                              # the switch, mid-composition
             client.expect("state", "subscribed")
             time.sleep(0.8)
-            _focus(xvfb.display)
+            _focus_when_mapped(xvfb.display)
             time.sleep(0.8)
             keys(xvfb.display, "g", "k", "Return")                 # 하, sent from the second session
             time.sleep(1.0)
             client.send(f"show {s1}")
             client.expect("state", "subscribed")
             time.sleep(0.8)
-            _focus(xvfb.display)
+            _focus_when_mapped(xvfb.display)
             time.sleep(0.8)
             keys(xvfb.display, "Return")                           # sends the restored draft of the first
             time.sleep(1.5)

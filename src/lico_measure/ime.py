@@ -72,11 +72,12 @@ class InputMethod:
         deadline = time.monotonic() + 20
         while True:
             done = subprocess.run(["ibus", "engine", "hangul"], env=self.env, capture_output=True)
-            if done.returncode == 0:
+            xim = subprocess.run(["xprop", "-root", "XIM_SERVERS"], env=self.env, capture_output=True, text=True)
+            if done.returncode == 0 and "ibus" in xim.stdout:
                 break
             if time.monotonic() > deadline:
-                raise RuntimeError("the Hangul engine did not start")
-            time.sleep(0.3)
+                raise RuntimeError("the Hangul engine or XIM server did not start")
+            time.sleep(0.2)
         self.client_env = {"DBUS_SESSION_BUS_ADDRESS": address, "GTK_IM_MODULE": "ibus",
                            "QT_IM_MODULE": "ibus", "XMODIFIERS": "@im=ibus"}
 

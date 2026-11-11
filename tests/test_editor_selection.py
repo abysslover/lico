@@ -166,32 +166,45 @@ def test_window_resize_reflows_wrapped_lines_and_preserves_scroll_anchor():
 
             long_block = "\n".join(f"line-{i:02d}: " + ("wrapsegment " * 14) for i in range(45))
             conn.call(op="input", session=s1, generation=1, request_id="r1", text=long_block)
-            wait_for(lambda: ui(client)["lines_buffered"] >= 45)
+            ui(client, lambda u: u["lines_buffered"] >= 45 and bool(u["rows"]) and u["rows"][0]["state_text"] == "idle")
 
             xdo(display, "type", "--delay", "15", "draft across resize")
             ui(client, lambda u: u["editor"]["text"] == "draft across resize")
 
             xdo(display, "key", "Page_Up")
-            before = ui(client, lambda u: u["scroll"] > 0 and bool(u["layout"]["lines"]))
+            before = ui(
+                client,
+                lambda u: u["scroll"] > 0
+                and bool(u["layout"]["lines"])
+                and u["visible"][1] == u["lines_buffered"] - u["scroll"],
+            )
             anchor_end = before["visible"][1]
             scroll_before = before["scroll"]
             wide_heights = [ln[1] - ln[0] for ln in before["layout"]["lines"]]
+            frames_before_narrow = before["frame"]["frames"]
 
             xdo(display, "windowsize", wid, "860", "640")
             narrow = ui(
                 client,
-                lambda u: u["layout"]["window_size"] == [860, 640] and bool(u["layout"]["lines"]),
+                lambda u: u["layout"]["window_size"] == [860, 640]
+                and u["frame"]["frames"] > frames_before_narrow
+                and bool(u["layout"]["lines"])
+                and max(ln[1] - ln[0] for ln in u["layout"]["lines"]) > max(wide_heights),
             )
             narrow_heights = [ln[1] - ln[0] for ln in narrow["layout"]["lines"]]
             assert narrow["scroll"] == scroll_before
             assert narrow["visible"][1] == anchor_end
             assert narrow["editor"]["text"] == "draft across resize"
-            assert max(narrow_heights) >= max(wide_heights)
+            assert max(narrow_heights) > max(wide_heights)
+            frames_before_restore = narrow["frame"]["frames"]
 
             xdo(display, "windowsize", wid, "1200", "800")
             restored = ui(
                 client,
-                lambda u: u["layout"]["window_size"] == [1200, 800] and bool(u["layout"]["lines"]),
+                lambda u: u["layout"]["window_size"] == [1200, 800]
+                and u["frame"]["frames"] > frames_before_restore
+                and bool(u["layout"]["lines"])
+                and max(ln[1] - ln[0] for ln in u["layout"]["lines"]) == max(wide_heights),
             )
             assert restored["scroll"] == scroll_before
             assert restored["visible"][1] == anchor_end
