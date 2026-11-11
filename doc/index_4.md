@@ -29,5 +29,6 @@
 | [M05 milestone](milestones/202611/20261112/20261112_02_M05_workspace_continuity_and_file_navigation_milestone.md) | Working-directory restore across restarts, paged directory navigation, and unified file opening (`M05-P01` to `M05-P03`, `0.2.1`); G1 and G2 approved 2026-11-12 |
 | [M05-P01 plan](plans/202611/20261112/20261112_05_M05-P01_restore_working_directory_plan.md) | Persist and restore previous working directory and workspace view across `lico` restarts; done 2026-11-12 |
 | [M05-P01 report](reports/202611/20261112/20261112_05_M05-P01_restore_working_directory_report.md) | `last_cwd`, `last_view`, and `last_session` in `0600` `settings.json` + `recent_folders.json`, CLI/socket/HTTP parity, and automatic `lico gui` workspace restore across window and host restarts; awaiting G3/G4 after `M05-P03` |
+| [M05-P02 plan](plans/202611/20261112/20261112_06_M05-P02_directory_pagination_plan.md) | Top-anchored panel layout, large-directory listing (`<= 10,000`), and page/wheel navigation (`Page X / Y`, `< Prev` / `Next >`); in_progress 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

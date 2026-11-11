@@ -4,7 +4,7 @@
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; patch version bump `0.2.0` -> `0.2.1` on completion)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: `M05-P01` done; continuing directly into `M05-P02` (`phase/M05-P02-directory-pagination`)
+- Implementation: In progress in `M05-P02` (`phase/M05-P02-directory-pagination`)
 - Next gate: G3 inspection acceptance and G4 merge approval after `M05-P03` (`lico 0.2.1`)
 
 ## Goal
@@ -59,7 +59,7 @@ makes workspace browsing seamless.
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M05-P01 | Persist and restore previous working directory and workspace view across `lico` restarts | [Plan](../../../plans/202611/20261112/20261112_05_M05-P01_restore_working_directory_plan.md) | [Report](../../../reports/202611/20261112/20261112_05_M05-P01_restore_working_directory_report.md) | Captured (awaits G3) | — | in_review |
-| M05-P02 | Top-anchored panel layout, large-directory listing, and page/wheel navigation (`Page X / Y`, `< Prev` / `Next >`) | pending | pending | pending | — | planned |
+| M05-P02 | Top-anchored panel layout, large-directory listing, and page/wheel navigation (`Page X / Y`, `< Prev` / `Next >`) | [Plan](../../../plans/202611/20261112/20261112_06_M05-P02_directory_pagination_plan.md) | pending | pending | — | in_progress |
 | M05-P03 | Unified file activation (direct text preview vs system default `xdg-open`), remove `V` shortcut, and `0.2.1` patch release | pending | pending | pending | — | planned |
 
 ## Gates
