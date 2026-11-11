@@ -28,8 +28,8 @@ The current work is the second, [M02 Agentic-coding basics](doc/milestones/20261
 sessions that run in a real folder, sending between sessions, Lico tools that an agent can call, screen capture and clipboard, computer use,
 and the memory of every session shown in the window, followed by a memory pass against the limit of an idle window under 50 MiB.
 Its [planning set](doc/product/202610/20261026/00001_agentic_basics_plan/planning.md) gives the scope and the order, and the
-[roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) shows where each milestone stands. Reports exist for M01-P01 to M01-P07, M01-P07a, and M02-P01 to M02-P06 on local `main`, and each waits for the owner's
-inspection (G3); M02-P07 follows, and M01-P08 is not started.
+[roadmap](doc/product/202610/20261025/00001_roadmap/roadmap.md) shows where each milestone stands. Reports exist for M01-P01 to M01-P07, M01-P07a, and M02-P01 to M02-P07 on local `main`, and each waits for the owner's
+inspection (G3); M01-P08 is not started.
 
 The program is one executable, `lico`; its build is described in [src/host/README.md](src/host/README.md). No release exists, and the
 acceptance pack that shows a clean public clone rebuilding it (M01-P08) is not started. The build must work from a public clone with

@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: 1.6.6 (1.6.5 plus the state rows of P06 and the G4 move of local `main`), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 to P06 are built, reported and merged on local `main` on the owner's G4 (2026-10-27 and 2026-11-11), with their inspection (G3) still pending. Numbers in this document are **design targets** unless they are marked *measured*.
+Status: 1.6.7 (1.6.6 plus the state row and measured memory figures of P07 and the G4 move of local `main`), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). All seven phases P01 to P07 are built, reported and merged on local `main` on the owner's G4 (2026-10-27 and 2026-11-11), with their inspection (G3) pending. Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
@@ -11,8 +11,8 @@ Related documents: [requirements](requirements.md) · [screens](screens.md) · [
 | Goal | Give Lico the basics of an agentic-coding tool: sessions in a real folder, sending between sessions, Lico tools the agent can call, screen capture and copy/paste, computer use, and the memory of each session shown in the window |
 | Order | **Define the features (this document), build them (P02 to P06), then optimise memory (P07).** The original philosophy stays as a hard limit: the idle window stays under 50 MiB |
 | Done first | **POC-0** (finished 2026-10-26 03:20): a throwaway proof of concept, no product code, that ran the four features roughly and measured memory (see "POC-0" below). Option A, approved 2026-10-26, started 01:05 |
-| Now | P01 is finished (menu bar, fonts, scroll speed, activity indicator, test cleanup S05: whole suite 596 s to 112 s). P02 is finished (steps S01 to S07, the phase report, and the fixes of its independent review, checked again). P03 is finished on its branch (sending between sessions and the tool channel: the report, and four rounds of an independent verifier with their fix rounds) and waits for the owner's G4 |
-| Owner's next step | G1 is approved (2026-10-26). The **inspection (G3) of P01 and P02** is pending: a Korean page, a one-line try-it script and the review result. Their merge (G4) was given on 2026-10-27 for one move of `main`; from now on G4 is asked for each finished phase on its own. G4 for P03 is asked for its exact tip once the owner has tried the build; the G3 of P03 is due with P04 |
+| Now | P01 to P07 are all built, verified, reported and merged on local `main` (standalone release installed to `~/bin/lico`): idle window 24.01..24.18 / 35.14..35.23 MiB at scale 1 / 2 (*measured*), 10-minute hidden drift +0.56 MiB (*measured*), warm `--cold` suite 449 tests in 167.7 s (*measured*) |
+| Owner's next step | G1 is approved (2026-10-26), and G4 local merges to `main` are done through P07 (2026-10-27 and 2026-11-11). The **inspection (G3) of P01 to P07 and M02** is pending; nothing is published without a separate push approval |
 
 ## Why the order changes
 
@@ -43,7 +43,7 @@ Milestone **M02 "Agentic-coding basics"**. It replaces P02 to P06 of the earlier
 | **P04** screen, copy/paste | Capture screen, window or region; clipboard (text, image) read and write; image paste; middle-button paste | temporary +6 MiB at most, returned afterwards (+4.1 to +5.1 MiB *measured*) | in review |
 | **P05** computer use | Click, type, keys, scroll; a private virtual display for the agent; the real screen only when allowed | only for the session that asks, ended with the session; virtual display ~33-39 MiB private, helper +7.23 MiB extra `VmHWM` (*measured*) | in review |
 | **P06** everyday comfort | git worktree sessions, attention indicator and notifications, conversation search | per item: host search +0 KiB resident index (0.28 ms median), window search +0.19 MiB while open (*measured*) | in review |
-| **P07** memory pass | Re-measure the 50 MiB limit and the +10 MiB hidden growth with every feature on, reduce, review the whole milestone | limit 50 MiB kept | planned |
+| **P07** memory pass | Re-measure the 50 MiB limit and the +10 MiB hidden growth with every feature on, reduce, review the whole milestone | limit 50 MiB kept: idle window 24.01..24.18 / 35.14..35.23 MiB, 10-min hidden drift +0.56 MiB, PNG chip Escape reclaims 2,100 KiB (*measured*) | in review |
 
 Details and checks are in the [requirements](requirements.md); the look of each screen is in [screens](screens.md).
 

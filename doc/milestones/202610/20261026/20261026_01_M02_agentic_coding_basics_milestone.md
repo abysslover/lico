@@ -4,8 +4,8 @@
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
 - Updated: 2026-11-11
-- Implementation: M02-P01 to M02-P06 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished; M02-P07 follows
-- Next gate: G3 inspection for M02-P01 + M02-P02, for M02-P03 + M02-P04, and for M02-P05 + M02-P06; G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 to P06); nothing is published
+- Implementation: M02-P01 to M02-P07 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished
+- Next gate: G3 inspection for M02-P01 + M02-P02, for M02-P03 + M02-P04, for M02-P05 + M02-P06, and for M02-P07 + the whole M02 milestone; G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 to P07); nothing is published
 - Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -80,7 +80,7 @@ items that are not part of this milestone are listed as M03 candidates in the
 | M02-P04 | Screen capture, clipboard read and write, image paste | [Plan](../../../plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | [Report](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | Local bundle, verdict pending (with M02-P03) | None | in_review |
 | M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | [Plan](../../../plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | [Report](../../../reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | Local bundle, verdict pending (with M02-P06) | None | in_review |
 | M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | [Plan](../../../plans/202611/20261111/20261111_02_M02-P06_everyday_comfort_plan.md) | [Report](../../../reports/202611/20261111/20261111_03_M02-P06_everyday_comfort_report.md) | Local bundle, verdict pending (with M02-P05) | None | in_review |
-| M02-P07 | Memory pass with every feature on, and review of the whole milestone | Written as the phase's first step | Not produced | Not produced | None | not_started |
+| M02-P07 | Memory pass with every feature on, and review of the whole milestone | [Plan](../../../plans/202611/20261111/20261111_03_M02-P07_memory_pass_plan.md) | [Report](../../../reports/202611/20261111/20261111_04_M02-P07_memory_pass_report.md) | Local bundle, verdict pending (M02-P07 and M02) | None | in_review |
 
 Phases run in this order. The plan of each phase is written as its first step,
 reviewed independently, and records any deviation from the planning set. POC-0 is
@@ -95,7 +95,7 @@ change.
 | G1 milestone approval | Approved 2026-10-26 | Scope, order, phases M02-P01 to M02-P07 and the approval rhythm, as written in the planning set |
 | G2 phase plan approval | Approved 2026-10-26 together with G1 for M02-P02 to M02-P07 (M02-P01 was approved on 2026-10-25) | One plan note per phase, written as the phase's first step; included in the milestone approval and not asked separately |
 | G3 inspection acceptance | Pending | The owner looks at the real window and the report at the end of M02-P02 (with M02-P01), M02-P04, M02-P06 and M02-P07 |
-| G4 merge approval | Approved 2026-10-27 for one move, otherwise pending | The move of `main` to the finished work up to M02-P02 (a fast-forward, G3 still pending); every later phase is asked for on its own when it is finished and verified (CONTRIBUTING.md), with the state of its G3 stated on the request |
+| G4 merge approval | Approved 2026-10-27 and 2026-11-11 for local `main` moves up to M02-P07, otherwise pending | Local `main` fast-forward moves up to M02-P02 (2026-10-27) and M02-P03 to M02-P07 (2026-11-11), each with G3 still pending; nothing is pushed without separate publication approval |
 
 Publication (push) of any branch needs the owner's explicit yes for the exact
 list of what is published. Approving this milestone is not a push approval, and
@@ -103,10 +103,8 @@ approval of one gate does not carry to the next.
 
 ## Blocked on
 
-- G3 for M02-P01 and M02-P02 together: both reports are written; the owner's inspection is pending. Their G4 was given on 2026-10-27 for the move of `main`, without G3.
-- G4 for M02-P03: the phase is built, reported and checked in four rounds by an independent verifier; the owner's G4 for its exact tip is asked on its own after the owner has tried the build, and its G3 is due with M02-P04. Nothing is published.
+- G3 inspection verdicts from the owner for M02-P01 + M02-P02, M02-P03 + M02-P04, M02-P05 + M02-P06, and M02-P07 + the whole M02 milestone (all seven phase reports and local inspection bundles are ready).
 - Tests with a real provider sign-in need an account of the owner; they are run once at the end of a phase and the installed provider version is recorded.
-- POC-0 measurements may change a working assumption (inline size, how the agent calls Lico, how memory is counted); a changed value is written in the planning set with its date.
 
 ## Out of scope
 
@@ -119,4 +117,4 @@ did, REST parity, accessibility, release hygiene) are M03 candidates.
 
 ## When done
 
-Not filled: M02-P01, M02-P02 and M02-P03 are reported and wait for inspection (M02-P03 also waits for G4); no later phase has started. When the milestone is achieved, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.
+Not filled yet: M02-P01 to M02-P07 are built, reported and merged to local `main`, and wait for the owner's G3 inspection verdict. When the owner accepts G3 for the milestone, the branch `milestone/M02-agentic-coding-basics` is created at its closing commit and named here.
