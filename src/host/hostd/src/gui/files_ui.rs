@@ -156,8 +156,16 @@ impl Explorer {
 
 impl App {
     fn initial_files_cwd(&self) -> String {
-        if let Some(cwd) = self.selected_row().filter(|r| !r.cwd.is_empty()).map(|r| r.cwd.clone()) {
-            return cwd;
+        if let Some(row) = self.selected_row() {
+            if !row.worktree_repo.is_empty() {
+                return row.worktree_repo.clone();
+            }
+            if !row.cwd.is_empty() {
+                return row.cwd.clone();
+            }
+        }
+        if !self.ui.saved_cwd.is_empty() {
+            return self.ui.saved_cwd.clone();
         }
         let opts = self.host_call_within(json!({"op": "session.options"}), 3);
         if let Some(cwd) = opts["last"]["cwd"]
@@ -194,6 +202,27 @@ impl App {
         }
     }
 
+    pub(crate) fn files_open_at(&mut self, dir: &str) {
+        self.panel_open(Step::Files);
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.files = Some(Explorer {
+                cwd: dir.to_string(),
+                parent: None,
+                entries: Vec::new(),
+                truncated: false,
+                cursor: 0,
+                preview: None,
+                load_count: 0,
+                refresh_count: 0,
+                last_opened: None,
+            });
+        }
+        if !self.files_load_dir(dir, false) {
+            self.panel_close();
+            self.persist_workspace(Some(""), Some("start"), None);
+        }
+    }
+
     fn files_load_dir(&mut self, dir: &str, keep_cursor: bool) -> bool {
         let reply = self.host_call_within(json!({"op": "folder.list", "cwd": dir}), 4);
         let Some(p) = self.ui.panel.as_mut() else { return false };
@@ -215,8 +244,9 @@ impl App {
                 is_html: e["is_html"] == json!(true),
             })
             .collect();
+        let canon = reply["cwd"].as_str().unwrap_or(dir).to_string();
         if let Some(ex) = p.files.as_mut() {
-            ex.cwd = reply["cwd"].as_str().unwrap_or(dir).to_string();
+            ex.cwd = canon.clone();
             ex.parent = reply["parent"].as_str().map(str::to_string);
             ex.entries = entries;
             ex.truncated = reply["truncated"] == json!(true);
@@ -227,6 +257,7 @@ impl App {
         }
         p.last_error.clear();
         p.notice.clear();
+        self.persist_workspace(Some(&canon), Some("files"), None);
         self.dirty = true;
         true
     }
@@ -508,7 +539,10 @@ impl App {
         }
 
         match &event.logical_key {
-            Key::Named(NamedKey::Escape) if !event.repeat => self.panel_close(),
+            Key::Named(NamedKey::Escape) if !event.repeat => {
+                self.panel_close();
+                self.sync_view_after_panel_close();
+            }
             Key::Named(NamedKey::Backspace) if !event.repeat => {
                 if let Some(parent) = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).and_then(|ex| ex.parent.clone()) {
                     let _ = self.files_load_dir(&parent, false);

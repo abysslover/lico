@@ -155,6 +155,11 @@ impl App {
         let options = self.host_call_within(json!({"op": "session.options"}), 5);
         let list = |key: &str| -> Vec<String> { options[key].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect() };
         let last = &options["last"];
+        let default_folder = if !self.ui.saved_cwd.is_empty() {
+            self.ui.saved_cwd.clone()
+        } else {
+            last["cwd"].as_str().unwrap_or("").to_string()
+        };
         let Some(p) = self.ui.panel.as_mut() else { return };
         let kind = match last["kind"].as_str() {
             Some(k) if PROVIDERS.contains(&k) => k,
@@ -183,7 +188,7 @@ impl App {
         };
         p.form = Some(Form {
             focus: Field::Folder,
-            folder: last["cwd"].as_str().unwrap_or("").to_string(),
+            folder: default_folder,
             is_git: false,
             git_repo: String::new(),
             checked_folder: "\x00".to_string(),
@@ -522,6 +527,7 @@ impl App {
             }
             return;
         }
+        let created_cwd = request.get("cwd").and_then(Value::as_str).map(str::to_string);
         let reply = self.host_call(request);
         if reply["ok"] == json!(1) {
             let id = reply["session"].as_str().unwrap_or("").to_string();
@@ -529,6 +535,7 @@ impl App {
             self.send("{\"op\":\"status\"}");
             self.ui.scroll = 0;
             self.show(&id, None);
+            self.persist_workspace(created_cwd.as_deref(), Some("session"), Some(&id));
         } else if let Some(p) = self.ui.panel.as_mut() {
             p.notice = format!("The session was not started. {}", refusal(reply["error"].as_str().unwrap_or("unknown")));
         }

@@ -380,24 +380,53 @@ fn parse_record(text: &str) -> (Vec<String>, Map<String, Value>) {
     (folders, last)
 }
 
+static RECENT_LOCK: Mutex<()> = Mutex::new(());
+
+fn write_recent(shared: &Shared, list: &[String], last: &Map<String, Value>) {
+    let dir = &shared.cfg.registry_dir;
+    let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+    let temporary = dir.join(format!(".recent.{}.tmp", crate::core::random_hex(8)));
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(crate::provider_record::O_NOFOLLOW)
+        .open(&temporary)
+        .and_then(|mut out| {
+            out.write_all(json!({"folders": list, "last": last}).to_string().as_bytes())?;
+            out.sync_all()
+        })
+        .and_then(|_| std::fs::rename(&temporary, recent_path(shared)));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+}
+
 /// Keep what a session was started with, and its folder first in the list (the list holds ten, each once). The record is
 /// replaced atomically with mode 0600.
 pub fn remember(shared: &Shared, last: Map<String, Value>) {
-    static WRITING: Mutex<()> = Mutex::new(());
-    let _one = WRITING.lock().unwrap_or_else(|e| e.into_inner());
+    let _one = RECENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut list = stored(shared).0;
     if let Some(folder) = last.get("cwd").and_then(Value::as_str) {
         list.retain(|f| f != folder);
         list.insert(0, folder.to_string());
         list.truncate(RECENT);
     }
-    let dir = &shared.cfg.registry_dir;
-    let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
-    let temporary = dir.join(format!(".recent.{}.tmp", std::process::id()));
-    let _ = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&temporary).and_then(|mut out| {
-        out.write_all(json!({"folders": list, "last": last}).to_string().as_bytes())?;
-        out.sync_all()
-    }).and_then(|_| std::fs::rename(&temporary, recent_path(shared)));
+    write_recent(shared, &list, &last);
+}
+
+/// Record a validated working directory (`check_folder`) at the front of `recent_folders.json` and update `last.cwd`
+/// while preserving the other `last` session fields (`kind`, `account`, `mode`, `model`, `effort`).
+pub fn remember_cwd(shared: &Shared, cwd: &str) -> Result<String, &'static str> {
+    let canon = check_folder(shared, cwd)?;
+    let _one = RECENT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut list, mut last) = stored(shared);
+    list.retain(|f| f != &canon);
+    list.insert(0, canon.clone());
+    list.truncate(RECENT);
+    last.insert("cwd".to_string(), json!(canon));
+    write_recent(shared, &list, &last);
+    Ok(canon)
 }
 
 // ----------------------------------------------------------------- what the program offers

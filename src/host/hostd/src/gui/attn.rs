@@ -110,6 +110,121 @@ impl App {
         if let Some(px) = settings["font_px"].as_i64().filter(|n| (MIN_FONT_PX..=MAX_FONT_PX).contains(n)) {
             self.apply_font_px(px as u8);
         }
+        self.ui.saved_cwd = settings["last_cwd"].as_str().unwrap_or("").to_string();
+        self.ui.saved_view = settings["last_view"].as_str().unwrap_or("start").to_string();
+        self.ui.saved_session = settings["last_session"].as_str().unwrap_or("").to_string();
+    }
+
+    /// Persist `last_cwd`, `last_view`, and/or `last_session` to the host (`settings.set`) when running as `lico gui`.
+    pub(crate) fn persist_workspace(&mut self, cwd: Option<&str>, view: Option<&str>, session: Option<&str>) {
+        let mut req = json!({"op": "settings.set"});
+        let mut changed = false;
+        if let Some(c) = cwd {
+            if c != self.ui.saved_cwd {
+                self.ui.saved_cwd = c.to_string();
+                req["last_cwd"] = json!(c);
+                changed = true;
+            }
+        }
+        if let Some(v) = view {
+            let cur = if self.ui.saved_view.is_empty() { "start" } else { self.ui.saved_view.as_str() };
+            if v != cur {
+                self.ui.saved_view = v.to_string();
+                req["last_view"] = json!(v);
+                changed = true;
+            }
+        }
+        if let Some(s) = session {
+            if s != self.ui.saved_session {
+                self.ui.saved_session = s.to_string();
+                req["last_session"] = json!(s);
+                changed = true;
+            }
+        }
+        if changed && !self.ui.markers && !self.socket.is_empty() {
+            let reply = self.host_call_within(req, 2);
+            if reply["ok"] == json!(1) {
+                self.sync_settings(&reply["settings"]);
+            }
+        }
+    }
+
+    pub(crate) fn remember_session_view(&mut self, id: &str) {
+        let cwd = self.ui.rows.iter().find(|r| r.session == id).and_then(|r| {
+            if !r.worktree_repo.is_empty() {
+                Some(r.worktree_repo.clone())
+            } else if !r.cwd.is_empty() {
+                Some(r.cwd.clone())
+            } else {
+                None
+            }
+        });
+        self.persist_workspace(cwd.as_deref(), Some("session"), Some(id));
+    }
+
+    pub(crate) fn remember_start_view(&mut self) {
+        self.persist_workspace(None, Some("start"), Some(""));
+    }
+
+    pub(crate) fn sync_view_after_panel_close(&mut self) {
+        if !self.session.is_empty() {
+            let sid = self.session.clone();
+            self.remember_session_view(&sid);
+        } else {
+            self.remember_start_view();
+        }
+    }
+
+    pub(crate) fn flush_workspace_state(&mut self) {
+        if let Some(cwd) = self
+            .ui
+            .panel
+            .as_ref()
+            .filter(|p| p.step == super::super::panel::Step::Files)
+            .and_then(|p| p.files.as_ref())
+            .map(|ex| ex.cwd.clone())
+            .filter(|c| !c.is_empty())
+        {
+            self.persist_workspace(Some(&cwd), Some("files"), None);
+        } else if !self.session.is_empty() {
+            let sid = self.session.clone();
+            self.remember_session_view(&sid);
+        }
+    }
+
+    /// Restore the last working directory or active session once on initial `status` load in `lico gui`.
+    pub(crate) fn maybe_restore_workspace(&mut self) {
+        if self.ui.restored_once || self.updating {
+            return;
+        }
+        self.ui.restored_once = true;
+        if self.ui.markers || self.pending_show.is_some() || !self.session.is_empty() || self.ui.panel.is_some() {
+            return;
+        }
+        match self.ui.saved_view.as_str() {
+            "files" if !self.ui.saved_cwd.is_empty() => {
+                let dir = self.ui.saved_cwd.clone();
+                self.files_open_at(&dir);
+            }
+            "session" => {
+                let sid = self.ui.saved_session.clone();
+                if !sid.is_empty() && self.ui.rows.iter().any(|r| r.session == sid) {
+                    self.switch_to(&sid);
+                } else if !self.ui.saved_cwd.is_empty() {
+                    let dir = self.ui.saved_cwd.clone();
+                    self.files_open_at(&dir);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn workspace_state_json(&self) -> Value {
+        json!({
+            "last_cwd": if self.ui.saved_cwd.is_empty() { Value::Null } else { json!(self.ui.saved_cwd) },
+            "last_view": if self.ui.saved_view.is_empty() { "start" } else { self.ui.saved_view.as_str() },
+            "last_session": if self.ui.saved_session.is_empty() { Value::Null } else { json!(self.ui.saved_session) },
+        })
     }
 
     /// Toggle persistent session-list grouping (`account` <-> `workspace`).

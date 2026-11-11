@@ -279,7 +279,11 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             many = ["ANCIENT_NEEDLE_42"] + [f"padding line {i}" for i in range(55)]
             assert conn.call(op="input", session=s_front, generation=g_front, request_id="f1", text="say:" + json.dumps(many))["ok"] == 1
             assert conn.call(op="input", session=s_back, generation=g_back, request_id="b2", text="CROSS_SESSION_77")["ok"] == 1
-            wait_for(lambda: status_of(conn, s_front)["seq"] >= 56 and status_of(conn, s_back)["activity"] == "idle")
+            wait_for(
+                lambda: status_of(conn, s_front)["seq"] >= 56
+                and status_of(conn, s_front)["activity"] == "idle"
+                and status_of(conn, s_back)["activity"] == "idle"
+            )
 
             # Protocol v1 search validation + CLI `lico search`
             sr = conn.call(op="session.search", query="CROSS_SESSION_77")

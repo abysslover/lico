@@ -117,6 +117,7 @@ pub struct UiState {
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
     pub real_screen: Vec<super::realbar::RealEntry>, // active time-bounded real-screen grants
+    pub saved_cwd: String, pub saved_view: String, pub saved_session: String, pub restored_once: bool, // M05-P01 workspace continuity
 }
 
 fn display_cols(text: &str) -> usize {
@@ -157,6 +158,7 @@ impl App {
             self.generation = row.generation; // the target's generation, so an input or an answer is never aimed at a stale one
         }
         self.refresh_list();
+        self.maybe_restore_workspace();
     }
 
     pub(crate) fn ui_accounts(&mut self, line: &str) {
@@ -453,6 +455,7 @@ impl App {
         self.ui.behind = false;
         self.ui.history_pending = false;
         self.show(id, None);
+        self.remember_session_view(id);
         if self.ui.search.open && !self.ui.search.scope_all && self.ui.search.pending_jump.is_none() && !self.ui.search.query.is_empty() {
             self.run_search();
         }
@@ -466,6 +469,7 @@ impl App {
         self.ui.behind = false;
         self.ui.history_pending = false;
         self.hide();
+        self.remember_start_view();
         self.dirty = true;
     }
 
@@ -519,7 +523,10 @@ impl App {
 
     /// What the start screen says while no session is shown.
     pub(crate) fn start_lines(&self) -> Vec<String> {
-        let mut lines = vec!["No session is open.".to_string(), "Ctrl+N  new session".to_string(), "Ctrl+A  accounts and sign-in".to_string()];
+        let mut lines = vec!["No session is open.".to_string(), "Ctrl+N  new session".to_string(), "Ctrl+A  accounts and sign-in".to_string(), "Ctrl+E  working directory files".to_string()];
+        if !self.ui.saved_cwd.is_empty() {
+            lines.push(format!("Working directory: {}   (Ctrl+E or Files to open)", self.ui.saved_cwd));
+        }
         if !self.ui.numbered.is_empty() {
             lines.push("Alt+1 to Alt+9, Ctrl+Tab or a click on the list opens a session; they keep running when you leave them.".to_string());
         }
@@ -613,7 +620,7 @@ impl App {
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "frame": frame,
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
-            "search": self.search_json(), "memory": memory, "settings": settings, "real_screen": self.real_screen_json(),
+            "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,

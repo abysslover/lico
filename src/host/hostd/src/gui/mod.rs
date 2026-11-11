@@ -484,7 +484,10 @@ impl App {
             }
             Some("load") => self.send("{\"op\":\"status\"}"),
             Some("clock") => self.card_clock(words.next(), words.next()), // tests only
-            Some("quit") => event_loop.exit(),
+            Some("quit") => {
+                if self.ui.enabled { self.flush_workspace_state(); }
+                event_loop.exit();
+            }
             _ => {}
         }
     }
@@ -578,7 +581,10 @@ impl ApplicationHandler<Ev> for App {
             return;
         }
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if self.ui.enabled { self.flush_workspace_state(); }
+                event_loop.exit();
+            }
             WindowEvent::RedrawRequested => self.draw(),
             WindowEvent::Resized(_) => {
                 if let Some(w) = &self.window {
@@ -626,6 +632,7 @@ impl ApplicationHandler<Ev> for App {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         event_loop.set_control_flow(ControlFlow::Wait);
         if self.quit {
+            if self.ui.enabled { self.flush_workspace_state(); }
             event_loop.exit();
         }
         if self.dirty {

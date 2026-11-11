@@ -34,6 +34,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
   files [DIR] | files --read FILE   list a working directory or read up to 64 KiB of a regular file (on demand)\n\
   settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
+           [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
                                  show or update host and window settings\n\
   session show ID                one session
   session delete ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -365,6 +366,27 @@ pub fn run(args: Vec<String>) {
                 if let Some(v) = flag(&args, "--font-size") {
                     let px: i64 = v.parse().unwrap_or_else(|_| die(1, USAGE));
                     request["font_px"] = json!(px);
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--last-cwd") {
+                    if v.is_empty() {
+                        request["last_cwd"] = json!("");
+                    } else {
+                        let p = std::path::Path::new(&v);
+                        let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
+                        request["last_cwd"] = json!(abs.to_string_lossy());
+                    }
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--last-view") {
+                    if !matches!(v.as_str(), "start" | "files" | "session") {
+                        die(1, USAGE);
+                    }
+                    request["last_view"] = json!(v);
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--last-session") {
+                    request["last_session"] = json!(v);
                     any = true;
                 }
                 if !any {

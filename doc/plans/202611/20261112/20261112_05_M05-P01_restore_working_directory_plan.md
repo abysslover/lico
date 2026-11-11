@@ -1,6 +1,6 @@
 # M05-P01 Plan — Persist and restore previous working directory and workspace view across `lico` restarts
 
-- Status: in_progress
+- Status: done
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M05 — Working-directory restore across restarts, paged directory navigation, and unified file opening (`lico 0.2.1`)](../../../milestones/202611/20261112/20261112_02_M05_workspace_continuity_and_file_navigation_milestone.md)

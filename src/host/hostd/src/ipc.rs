@@ -182,6 +182,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("settings.set", "clipboard_write" | "notifications") => value.is_boolean(),
             ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
             ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
+            ("settings.set", "last_cwd") => matches!(value, Value::String(s) if s.is_empty() || crate::folders::valid_path_shape(s)),
+            ("settings.set", "last_view") => matches!(value.as_str(), Some("start" | "files" | "session")),
+            ("settings.set", "last_session") => matches!(value, Value::String(s) if s.is_empty() || crate::clipboard::settings::valid_session_ref(s)),
             ("folder.git", "cwd") => valid_str(value, 1024),
             ("folder.list", "cwd") | ("folder.read", "path") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
             ("session.search", "query") => crate::search::valid_query(value),
@@ -195,7 +198,10 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     required.iter().all(|key| request.contains_key(*key))
         && (op != "transfer.send" || transfer_shape(request))
         && (op != "clipboard.write" || clipboard_shape(request))
-        && (op != "settings.set" || ["clipboard_write", "notifications", "group_by", "font_px"].iter().any(|k| request.contains_key(*k)))
+        && (op != "settings.set"
+            || ["clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session"]
+                .iter()
+                .any(|k| request.contains_key(*k)))
 }
 
 /// A text write has `text` and no `path`; a picture write has `path` and no `text`.
@@ -267,13 +273,16 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "input.status" => core::input_status(shared, session, text(request, "request_id")),
         "approval.text" => crate::pending::text_page(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), int(request, "offset").unwrap_or(0) as usize, int(request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), text(request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
-        "settings.set" => crate::clipboard::settings::update_settings(
-            &shared.cfg.handoff_dir,
+        "settings.set" => crate::clipboard::settings::apply_settings(
+            shared,
             crate::clipboard::settings::Patch {
                 clipboard_write: request.get("clipboard_write").and_then(Value::as_bool),
                 notifications: request.get("notifications").and_then(Value::as_bool),
                 group_by: request.get("group_by").and_then(Value::as_str),
                 font_px: int(request, "font_px"),
+                last_cwd: request.get("last_cwd").and_then(Value::as_str),
+                last_view: request.get("last_view").and_then(Value::as_str),
+                last_session: request.get("last_session").and_then(Value::as_str),
             },
         ),
         "folder.git" => crate::worktree::folder_git_op(shared, text(request, "cwd")),

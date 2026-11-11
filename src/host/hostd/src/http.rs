@@ -300,13 +300,16 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 if !valid_request("settings.set", &map) {
                     return Err(bad("bad_request"));
                 }
-                crate::clipboard::settings::update_settings(
-                    &shared.cfg.handoff_dir,
+                crate::clipboard::settings::apply_settings(
+                    shared,
                     crate::clipboard::settings::Patch {
                         clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
                         notifications: map.get("notifications").and_then(Value::as_bool),
                         group_by: map.get("group_by").and_then(Value::as_str),
                         font_px: int(&map, "font_px"),
+                        last_cwd: map.get("last_cwd").and_then(Value::as_str),
+                        last_view: map.get("last_view").and_then(Value::as_str),
+                        last_session: map.get("last_session").and_then(Value::as_str),
                     },
                 )
             }
