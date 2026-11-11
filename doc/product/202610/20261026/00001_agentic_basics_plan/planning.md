@@ -1,6 +1,6 @@
 # Lico agentic-coding basics: what is built, and how far
 
-Status: 1.6.5 (1.6.4 plus the state rows of P05 and the G4 move of local `main`), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 to P05 are built, reported and merged on local `main` on the owner's G4 (2026-10-27 and 2026-11-11), with their inspection (G3) still pending. Numbers in this document are **design targets** unless they are marked *measured*.
+Status: 1.6.6 (1.6.5 plus the state rows of P06 and the G4 move of local `main`), 1.0.0 approved by the owner at G1 on 2026-10-26 (scope, order and the phase plans, G2). P01 to P06 are built, reported and merged on local `main` on the owner's G4 (2026-10-27 and 2026-11-11), with their inspection (G3) still pending. Numbers in this document are **design targets** unless they are marked *measured*.
 
 Related documents: [requirements](requirements.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md) · [milestone M02](../../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md).
 
@@ -42,7 +42,7 @@ Milestone **M02 "Agentic-coding basics"**. It replaces P02 to P06 of the earlier
 | **P03** between sessions, tool channel | Send text, selected lines or a whole conversation from session A to B (long content goes by file path); Lico tools the agent can call (list, send, read, create) | window 0, no new process per session | in review |
 | **P04** screen, copy/paste | Capture screen, window or region; clipboard (text, image) read and write; image paste; middle-button paste | temporary +6 MiB at most, returned afterwards (+4.1 to +5.1 MiB *measured*) | in review |
 | **P05** computer use | Click, type, keys, scroll; a private virtual display for the agent; the real screen only when allowed | only for the session that asks, ended with the session; virtual display ~33-39 MiB private, helper +7.23 MiB extra `VmHWM` (*measured*) | in review |
-| **P06** everyday comfort | git worktree sessions, attention indicator and notifications, conversation search | per item | planned |
+| **P06** everyday comfort | git worktree sessions, attention indicator and notifications, conversation search | per item: host search +0 KiB resident index (0.28 ms median), window search +0.19 MiB while open (*measured*) | in review |
 | **P07** memory pass | Re-measure the 50 MiB limit and the +10 MiB hidden growth with every feature on, reduce, review the whole milestone | limit 50 MiB kept | planned |
 
 Details and checks are in the [requirements](requirements.md); the look of each screen is in [screens](screens.md).

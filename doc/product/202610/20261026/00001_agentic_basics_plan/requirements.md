@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: 1.6.5 (1.6.2 plus XF-01 to XF-08 and CU-01 to CU-08 marked measured at P04/P05 close), 1.0.0 approved by the owner at G1 on 2026-10-26. Each item has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: 1.6.6 (1.6.5 plus WT-01..02, NT-01..02 and SR-01..02 marked measured at P06 close), 1.0.0 approved by the owner at G1 on 2026-10-26. Each item has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -130,12 +130,12 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| WT-01 | After choosing a repository folder, "start in a new git worktree" can be chosen: give a new branch name and the worktree is created and the session starts in that folder. | E, P | P06 | planned |
-| WT-02 | When a session is closed or deleted the user is asked whether to keep or remove the worktree. With uncommitted changes there is one more confirmation before removal. The branch is kept. | E | P06 | planned |
-| NT-01 | When a background session has finished or waits for an approval, its list row shows an attention mark (a dot) and the window title carries a hint. Input echo records (they start with `>> `) are not new output and never raise it. | W | P06 | planned |
-| NT-02 | Desktop notifications use `notify-send` when it exists (no new dependency). There is a setting to turn them off. | E | P06 | planned |
-| SR-01 | Search inside the current conversation (proposal: Ctrl+F): next and previous with highlighting. | W | P06 | planned |
-| SR-02 | Search across all sessions: choosing a result goes to that line of that session. No index stays resident; the records are scanned when needed. | P, W | P06 | planned |
+| WT-01 | After choosing a repository folder, "start in a new git worktree" can be chosen: give a new branch name and the worktree is created and the session starts in that folder. | E, P | P06 | measured |
+| WT-02 | When a session is closed or deleted the user is asked whether to keep or remove the worktree. With uncommitted changes there is one more confirmation before removal. The branch is kept. | E | P06 | measured |
+| NT-01 | When a background session has finished or waits for an approval, its list row shows an attention mark (a dot) and the window title carries a hint. Input echo records (they start with `>> `) are not new output and never raise it. | W | P06 | measured |
+| NT-02 | Desktop notifications use `notify-send` when it exists (no new dependency). There is a setting to turn them off. | E | P06 | measured |
+| SR-01 | Search inside the current conversation (proposal: Ctrl+F): next and previous with highlighting. | W | P06 | measured |
+| SR-02 | Search across all sessions: choosing a result goes to that line of that session. No index stays resident; the records are scanned when needed. | P, W | P06 | measured |
 
 ## SF: safety (all phases)
 

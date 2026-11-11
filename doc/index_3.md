@@ -25,5 +25,7 @@
 | [M02-P04 report](reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | What was built, tests and 175 mutations, S08 memory/latency/X11 measurements, S07b live canary rows, combined P03+P04 G3 try-it list; inspection verdict pending |
 | [M02-P05 plan](plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | Private per-session virtual display, XTEST computer helper, coordinate scaling and 15-minute gated real-screen control |
 | [M02-P05 report](reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | What was built, live Chrome CU-07 (4/4) and WM-less focus CU-08 (5/5), memory/latency measurements and captures; inspection verdict pending (with M02-P06) |
+| [M02-P06 plan](plans/202611/20261111/20261111_02_M02-P06_everyday_comfort_plan.md) | Git worktree sessions, two-step dirty removal, attention marks, notify-send notifications and on-demand conversation search |
+| [M02-P06 report](reports/202611/20261111/20261111_03_M02-P06_everyday_comfort_report.md) | What was built, zero-resident-index search measurements (+0 KiB host RSS delta, 0.28 ms median), 5 captures and combined P05+P06 G3 try-it guide; inspection verdict pending |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).
