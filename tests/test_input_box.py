@@ -108,7 +108,7 @@ def run_box(scale, keys):
                 key("Return")
                 wait_for(lambda: sent_users(received))
                 assert [user_text(m) for m in sent_users(received)] == [text]            # the same bytes, whole
-                e = box(client, lambda e: e["text"] == "" and e["sent"] == 1)
+                e = box(client, lambda e: e["text"] == "" and e["sent"] == 1 and e["rows"] == 1 and abs(height(e) - one) <= 2)
                 assert height(e) == one
 
                 def echoed():

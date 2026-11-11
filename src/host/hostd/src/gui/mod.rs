@@ -558,6 +558,8 @@ impl ApplicationHandler<Ev> for App {
         }
         self.window = Some(window);
         if self.ui.enabled {
+            self.send("{\"op\":\"status\"}");
+            self.send("{\"op\":\"account.list\"}");
             self.dirty = true;
         } else {
             self.present_neutral();

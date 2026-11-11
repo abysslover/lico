@@ -30,10 +30,10 @@ def test_a_working_turn_says_since_when_it_works_and_when_the_provider_last_spok
             idle = status_of(conn, sid)
             assert idle["activity"] == "idle" and "busy_since" not in idle and "last_event_at" not in idle and "stalled" not in idle
             before = int(time.time())
-            begin(conn, sid, generation, "quiet:30")
+            begin(conn, sid, generation, "quiet:12")
             working = wait_for(lambda: (lambda e: e if e.get("activity") == "working" else None)(status_of(conn, sid)))
             assert before <= working["busy_since"] <= int(time.time()) and working["busy_since"] <= working["last_event_at"]
-            assert working["stalled"] is False                                    # three seconds of quiet is thinking
+            assert working["stalled"] is False                                    # a second of quiet is thinking
             assert v1.validate_response("status", conn.call(op="status")) == []   # the three fields of an open turn are in the schema (a status taken while a session works did not conform)
             wait_for(lambda: completed(log, sid) == 1, timeout=15)
             done = status_of(conn, sid)
@@ -50,14 +50,14 @@ def test_a_provider_that_says_nothing_for_the_stall_time_is_reported_as_stalled_
         try:
             conn = Conn(host.socket)
             sid, generation = new_claude(conn)
-            begin(conn, sid, generation, "slow:40")                                # a line every 100 ms for four seconds
+            begin(conn, sid, generation, "slow:26")                                # a line every 100 ms for 2.6 seconds
             wait_for(lambda: status_of(conn, sid).get("activity") == "working")
-            end = time.monotonic() + 3
+            end = time.monotonic() + 2.2
             while time.monotonic() < end:
                 assert status_of(conn, sid).get("stalled") is False, "a provider that keeps writing is not stalled"
-                time.sleep(0.1)
+                time.sleep(0.08)
             wait_for(lambda: completed(log, sid) == 1, timeout=15)
-            begin(conn, sid, generation, "quiet:50", "u")                          # five seconds of silence
+            begin(conn, sid, generation, "quiet:30", "u")                          # three seconds of silence
             stalled = wait_for(lambda: (lambda e: e if e.get("stalled") else None)(status_of(conn, sid)), timeout=4)
             assert stalled["activity"] == "working" and stalled["last_event_at"] < int(time.time())
             wait_for(lambda: completed(log, sid) == 2, timeout=15)
@@ -74,7 +74,7 @@ def test_a_session_that_waits_for_a_person_is_not_stalled():
             sid, generation = new_claude(conn, mode="default")
             begin(conn, sid, generation, "fixture")
             wait_for(lambda: status_of(conn, sid).get("approvals"))
-            time.sleep(2.5)
+            time.sleep(1.6)
             waiting = status_of(conn, sid)
             assert waiting["approvals"] and waiting["stalled"] is False            # the provider waits for an answer; that is not a hang
         finally:
@@ -119,12 +119,13 @@ def test_the_window_shows_a_clock_that_runs_while_nothing_arrives_and_it_goes_wi
             show(client, sid, 3)
             state = ui(client)
             assert clock(state["header"]) is None and state["activity_line"] == ""     # nothing runs: no clock
-            begin(conn, sid, generation, "quiet:70", "q")                           # seven seconds without a word: long enough to see the clock run for three
+            begin(conn, sid, generation, "quiet:42", "q")                           # 4.2 seconds without a word: long enough to see the clock run for two
             first = ui(client, lambda u: clock(u["header"]) is not None)
-            time.sleep(0.8)
+            settle(client, quiet=0.12)
             shot_a = pixels(xvfb.display)
             frames_a = first["frame"]["frames"]
-            time.sleep(1.8)
+            second = ui(client, lambda u: (clock(u["header"]) or 0) >= clock(first["header"]) + 2)
+            settle(client, quiet=0.12)
             shot_b = pixels(xvfb.display)
             second = ui(client)
             assert clock(second["header"]) >= clock(first["header"]) + 2, (first["header"], second["header"])
@@ -140,9 +141,9 @@ def test_the_window_shows_a_clock_that_runs_while_nothing_arrives_and_it_goes_wi
             wait_for(lambda: completed(log, sid) == 2, timeout=15)
             gone = ui(client, lambda u: u["activity_line"] == "" and clock(u["header"]) is None)
             assert "idle" in gone["header"] and "working" not in gone["list_text"]
-            settle(client)                                                        # the frame that removes the line has been drawn
+            settle(client, quiet=0.15)                                            # the frame that removes the line has been drawn
             still_a = pixels(xvfb.display)
-            time.sleep(1.3)                                                       # longer than the second a clock would need to tick
+            time.sleep(1.15)                                                      # longer than the second a clock would need to tick
             assert not differing_rows(still_a, pixels(xvfb.display)), "nothing works and nothing arrives, yet the screen moves"
         finally:
             if client and client.proc.poll() is None:
@@ -162,7 +163,7 @@ def test_the_window_says_that_a_working_session_has_been_silent():
             sid, generation = new_claude(conn)
             client = client_on(host, xvfb.display)
             show(client, sid, 0)
-            begin(conn, sid, generation, "quiet:90")
+            begin(conn, sid, generation, "quiet:35")
             quiet = ui(client, lambda u: "no output for" in u["header"], timeout=15)
             assert re.search(r"no output for \d+ s", quiet["header"]) and "no output for" in quiet["activity_line"]
             assert re.search(r"silent \d+s", quiet["list_text"]), quiet["list_text"]

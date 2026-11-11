@@ -5,10 +5,11 @@
     pri-heavy --label lico --cap 5G --wait 3600 -- python -m lico_measure.suite acceptance
     pri-heavy --label lico --cap 5G --wait 3600 -- python -m lico_measure.suite legacy        # the retired prototypes: never in `run`
 
-`run` builds the product once (not when the hash of its sources is the one the binary was built from), then runs the test files
-on up to 3 workers, a file at a time, the longest first. Each worker has its own client home; every test already has its own
-socket, run directory and display. The summary names the tests over their budget (tests/budget.toml); a run that goes over a
-budget, over the cold-run limit or over the memory bound exits 3, a run with a failing test exits 1.
+`run` builds the product once (not when the hash of its sources is the one the binary was built from), pre-builds the Rust unit
+test binary when cargo tests are selected, and then runs the test files on up to 4 workers, a file at a time, the longest first.
+Each worker has its own client home; every test already has its own socket, run directory and display. The summary names the tests
+over their budget (tests/budget.toml); a run that goes over a budget, over the cold-run limit or over the memory bound exits 3, a
+run with a failing test exits 1.
 Exit: 0 all passed, 1 a test failed, 2 the run could not start, 3 a guard (budget, cold-run limit, memory) was broken.
 A receipt is recorded for a passing file only when the guards were not broken: after an exit 3 the next run runs the file again."""
 import argparse
@@ -78,6 +79,19 @@ def ensure_build(files):
         raise SystemExit(f"the build failed:\n{done.stderr[-3000:]}")
     stamp.write_text(json.dumps({"tree": current, "lico": receipts.digest(binary)}) + "\n")
     return f"build: {seconds:.1f} s", seconds
+
+
+def ensure_cargo_test_build():
+    """Compile `cargo test --bin lico --no-run` before worker threads start so rustc memory never overlaps GUI workers."""
+    env = dict(os.environ, CARGO_HOME=str(REPO / "private" / "cargo-home"), CARGO_TARGET_DIR=str(receipts.build_root() / "host_hostd_test"),
+               CARGO_NET_OFFLINE="true", CARGO_BUILD_JOBS=COMPILE_JOBS)
+    began = time.monotonic()
+    done = subprocess.run(["cargo", "test", "--bin", "lico", "--no-run", "--locked", "--offline", "--manifest-path", "src/host/hostd/Cargo.toml"],
+                          cwd=REPO, env=env, capture_output=True, text=True)
+    seconds = time.monotonic() - began
+    if done.returncode:
+        raise SystemExit(f"the cargo test build failed:\n{done.stderr[-3000:]}")
+    return seconds
 
 
 # --- one job --------------------------------------------------------------------------------------------------
@@ -201,6 +215,10 @@ def run(args):
             cargo_skipped = True
             print("skipped (receipt) cargo test --bin lico", flush=True)
         else:
+            test_build_s = ensure_cargo_test_build()
+            build_s += test_build_s
+            if test_build_s >= 0.5:
+                build_line = f"{build_line} (+ {test_build_s:.1f} s test build)"
             jobs.insert(0, cargo_job([] if cargo_filters is None else cargo_filters, out))
     if not jobs:
         stop.set()
@@ -333,12 +351,12 @@ def select(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m lico_measure.suite", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    runner = sub.add_parser("run", help="build once, run the tests on up to 3 workers")
+    runner = sub.add_parser("run", help="build once, run the tests on up to 4 workers")
     runner.add_argument("paths", nargs="*", help="test files; none: the whole suite")
     runner.add_argument("--changed", nargs="?", const="", default=None, metavar="BASE", help="only what the changes since BASE (default HEAD: staged, unstaged, new) need")
     runner.add_argument("--receipts", action="store_true", help="skip a test file whose receipt is current (it says: skipped (receipt))")
     runner.add_argument("--cold", action="store_true", help="ignore receipts")
-    runner.add_argument("--workers", type=int, default=3)
+    runner.add_argument("--workers", type=int, default=4)
     runner.add_argument("--ledger", help="write the per-test time and peak memory of the run to this file")
     chooser = sub.add_parser("select", help="print the tests a change needs")
     chooser.add_argument("--changed", nargs="?", const="", default="", metavar="BASE")

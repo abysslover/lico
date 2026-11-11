@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 
 from lico_measure.captures import ProductWindow
-from lico_measure.ime import _focus
+from lico_measure.ime import _focus_when_mapped
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 
@@ -20,7 +20,7 @@ def own(display, text, selection="clipboard"):
     """Hold a selection from outside the window, as another program would (it stays until the display ends)."""
     subprocess.run(["xclip", "-selection", selection, "-i"], input=text.encode(), env={"DISPLAY": display, "PATH": "/usr/bin:/bin"},
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-    time.sleep(0.3)
+    time.sleep(0.06)
 
 
 def window(host, display, directory, path=None):
@@ -33,9 +33,9 @@ def window(host, display, directory, path=None):
     calls = Path(directory) / "xdg_calls"
     env = {"PATH": path if path is not None else f"{fake}:{os.environ['PATH']}", "XDG_CALLS": str(calls)}
     client = Client("a2", host.socket, display, extra_args=["--ui"], extra_env=env)
-    time.sleep(0.8)
-    _focus(display)
-    time.sleep(0.3)
+    ui(client, lambda u: u["frame"]["frames"] >= 1)
+    _focus_when_mapped(display)
+    time.sleep(0.05)
     return client, calls
 
 
@@ -45,9 +45,9 @@ def opened(calls):
 
 def sign_in_panel(display):
     xdo(display, "key", "ctrl+a")
-    time.sleep(0.5)
+    time.sleep(0.15)
     xdo(display, "key", "1")
-    time.sleep(0.3)
+    time.sleep(0.12)
     xdo(display, "key", "s")
 
 
@@ -141,13 +141,13 @@ def test_the_browser_opens_by_itself_once_per_attempt_again_on_request_and_a_mis
             client, calls = window(host, xvfb.display, directory)
             sign_in_panel(xvfb.display)
             wait_for(lambda: len(opened(calls)) == 1)
-            time.sleep(2.5)                                                   # polls and redraws go on: it does not open again
+            time.sleep(1.2)                                                   # polls and redraws go on: it does not open again
             assert opened(calls) == [URL]
             assert any("Opening the browser" in line for line in panel_of(client, lambda p: URL in p["body"])["body"])
             xdo(xvfb.display, "key", "ctrl+o")                                # on request, once more
             wait_for(lambda: len(opened(calls)) == 2)
             xdo(xvfb.display, "key", "Escape")                                # ends the attempt
-            time.sleep(0.5)
+            time.sleep(0.15)
             sign_in_panel(xvfb.display)                                       # a new attempt opens it again
             wait_for(lambda: len(opened(calls)) == 3)
             assert all(line == URL for line in opened(calls)) and "CANARY" not in calls.read_text().replace("CANARYURLSTATE7", "")

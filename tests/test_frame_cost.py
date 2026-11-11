@@ -7,7 +7,7 @@ import time
 import pytest
 
 from lico_measure.captures import TEXT_X
-from lico_measure.ime import _focus
+from lico_measure.ime import _focus_when_mapped
 from lico_measure.p02 import start
 from lico_measure.report import build_measurement
 from lico_measure.rig import Client, Xvfb, private_dir
@@ -17,15 +17,27 @@ from tests.test_first_view import click, ui, xdo
 SCOPE = {"candidate": "a2", "workload": "noisy", "process_scope": "gui tree", "interval_s": 60}
 
 
+def settle_frames(client, quiet=0.08, limit=3.0):
+    end, last, since = time.monotonic() + limit, None, time.monotonic()
+    while time.monotonic() < end:
+        frames = ui(client)["frame"]["frames"]
+        if frames != last:
+            last, since = frames, time.monotonic()
+        elif time.monotonic() - since >= quiet:
+            return
+        time.sleep(0.02)
+
+
 def client_on(host, display, *args):
     client = Client("a2", host.socket, display, extra_args=["--ui", *args], extra_env={"LICO_NO_AUTO_OPEN": "1"})
-    time.sleep(0.8)
-    _focus(display)                                  # no window manager here: the keyboard goes where the focus is put
-    time.sleep(0.3)
+    ui(client, lambda u: u["frame"]["frames"] >= 1)
+    _focus_when_mapped(display)                      # no window manager here: the keyboard goes where the focus is put
+    settle_frames(client, quiet=0.05)
     return client
 
 
 def show(client, sid, at_least):
+    before = ui(client)["frame"]["frames"]
     client.send(f"show {sid}")
     client.expect("state", "subscribed")
     end = time.monotonic() + 15
@@ -34,8 +46,10 @@ def show(client, sid, at_least):
         if len(client.expect("lines")["lines"]) >= at_least:
             break
         assert time.monotonic() < end
-        time.sleep(0.3)
-    time.sleep(1.0)                                  # the frame that carries them
+        time.sleep(0.04)
+    if at_least > 0:
+        ui(client, lambda u: u["frame"]["frames"] > before and u["frame"]["lines_shaped"] > 0)
+    settle_frames(client, quiet=0.08)                # the frame that carries them
 
 
 def pixels(display):
@@ -58,7 +72,7 @@ def test_an_unchanged_frame_shapes_no_line_and_probes_no_character():
             assert 0 < first["layout_us"] <= first["total_us"] and first["paint_us"] > 0              # and the dump says what it cost
             for _ in range(3):
                 client.send("redraw")
-                time.sleep(0.4)
+                time.sleep(0.08)
                 totals.append(ui(client)["memory"]["total"])
             state = ui(client, until=lambda s: s["frame"]["frames"] >= first["frames"] + 3)
             again = state["frame"]
@@ -94,7 +108,7 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
                 shots[name] = (pixels(xvfb.display), frame)
                 client.send("quit")
                 client.proc.wait(timeout=10)
-                time.sleep(0.5)
+                time.sleep(0.05)
             fast, plain = shots["fast"][1], shots["plain"][1]
             assert fast["probes"] > 0, "the picture must come from the shortcut"
             assert plain["probes"] == 0, "--plain-fonts keeps the old search"
@@ -151,18 +165,19 @@ def test_a_flowing_stream_drawn_by_scroll_steps_looks_like_a_full_repaint_on_the
             host, _ = start(directory, extra=["--realistic-text", "--payload", "110"], sessions=1, producing=1, history=60)
             client = client_on(host, xvfb.display, "--menu")
             show(client, host.sessions[0], 35)
-            time.sleep(4)                                    # about 40 frames of a tail that follows
-            flowing = ui(client)["frame"]
+            flowing = ui(client, lambda u: u["frame"]["causes"]["shift"] >= 12)["frame"]
             click(xvfb.display, 50, 10)                      # the first menu title (after the marker squares)
-            time.sleep(1.5)                                  # output flows behind the open menu
+            ui(client, lambda u: u["frame"]["causes"]["menu"] >= 1)
+            time.sleep(0.25)                                 # output flows behind the open menu
             xdo(xvfb.display, "key", "Escape")
-            time.sleep(3)
+            ui(client, lambda u: u["frame"]["causes"]["menu"] >= 2 and u["frame"]["causes"]["shift"] > flowing["causes"]["shift"] + 3)
             host.proc.send_signal(signal.SIGSTOP)            # nothing new arrives from here on
-            time.sleep(1.5)
+            settle_frames(client, quiet=0.15)
             state = ui(client)["frame"]
             stepped = pixels(xvfb.display)
             client.send("repaint")
-            time.sleep(1.0)
+            ui(client, lambda u: u["frame"]["causes"]["first"] >= state["causes"]["first"] + 1)
+            settle_frames(client, quiet=0.10)
             repainted = pixels(xvfb.display)
             after = ui(client)["frame"]
             causes = state["causes"]
@@ -194,8 +209,7 @@ def test_with_the_scroll_step_off_every_frame_is_a_full_repaint():
             host, _ = start(directory, extra=["--realistic-text", "--payload", "110"], sessions=1, producing=1, history=60)
             client = client_on(host, xvfb.display, "--menu", "--no-scroll-step")
             show(client, host.sessions[0], 35)
-            time.sleep(3)
-            frame = ui(client)["frame"]
+            frame = ui(client, lambda u: u["frame"]["frames"] >= 12)["frame"]
             assert frame["scroll_step"] is False and frame["kept_rows"] == 0
             assert frame["causes"]["shift"] == 0 and frame["causes"]["disabled"] == frame["frames"], frame["causes"]
         finally:

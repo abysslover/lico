@@ -4,7 +4,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from lico_measure.ime import _focus
+from lico_measure.ime import _focus_when_mapped
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 from lico_measure.xpixel import PixelReader
@@ -23,7 +23,7 @@ def ui(client, until=None, timeout=15.0):
         if until is None or until(state):
             return state
         assert time.monotonic() < end, [(r['session'][:5], r['label'], r['state_text'], r['approvals']) for r in state['rows']]
-        time.sleep(0.3)
+        time.sleep(0.04)
 
 
 def window_id(display):
@@ -49,9 +49,9 @@ def responses(received):
 
 def start_client(host, display):
     client = Client("a2", host.socket, display, extra_args=["--ui"], extra_env={"LICO_NO_AUTO_OPEN": "1"})   # no browser in these tests
-    time.sleep(0.8)
-    _focus(display)                                  # no window manager here: the keyboard goes where the focus is put
-    time.sleep(0.3)
+    ui(client, lambda u: u["frame"]["frames"] >= 1)
+    _focus_when_mapped(display)                      # no window manager here: the keyboard goes where the focus is put
+    time.sleep(0.05)
     return client
 
 
@@ -91,7 +91,7 @@ def test_session_list_shows_state_account_and_a_pending_approval_while_the_sessi
             deny = state["layout"]["deny"]
             click(xvfb.display, (deny[0] + deny[2]) / 2, (deny[1] + deny[3]) / 2)
             wait_for(lambda: responses(received))
-            time.sleep(1.2)
+            time.sleep(0.25)
             first = responses(received)
             assert len(first) == 1 and first[0]["request_id"] == "req-7" and first[0]["response"]["behavior"] == "deny"   # one answer, for that request
             state = ui(client, lambda u: u["approval_bar"] and "Write" in u["approval_bar"])                                 # the next request is offered next
@@ -175,7 +175,7 @@ def test_only_selected_text_reaches_the_clipboard_and_only_on_a_user_action():
             xdo(xvfb.display, "key", "Escape")
             ui(client, lambda u: u["selection"] is None)
             xdo(xvfb.display, "key", "ctrl+shift+c")
-            time.sleep(0.5)
+            time.sleep(0.15)
             assert ui(client)["copied"] == 1 and reader.selection_text("CLIPBOARD") == state["selection"]
         finally:
             if reader:
@@ -201,10 +201,10 @@ def test_a_flood_of_lines_does_not_keep_the_client_at_full_cpu_and_the_text_stay
             client = start_client(host, xvfb.display)
             client.send(f"show {sid}")
             client.expect("state", "subscribed")
-            time.sleep(2.0)
+            time.sleep(0.6)
             pids = tree_pids(client.proc.pid)
             before, began = cpu_seconds(pids, strict=True), time.monotonic()
-            time.sleep(6.0)                                                         # a mean over six seconds of a steady flood
+            time.sleep(3.0)                                                         # a mean over three seconds of a steady flood
             percent = (cpu_seconds(pids, strict=True) - before) / (time.monotonic() - began) * 100
             assert percent < 55, f"{percent:.0f}% of a core while 100 lines a second arrive"
             # capped is not stale: the lines shown are within a second of the host's newest

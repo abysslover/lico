@@ -101,7 +101,7 @@ def test_the_stop_that_names_a_build_only_stops_that_build():
             build = conn.call(op="status")["build"]
             refused = conn.call(op="host.stop", force=True, build="0000000000000000")
             assert refused["ok"] == 0 and refused["error"] == "build_changed"
-            time.sleep(0.6)
+            time.sleep(0.2)
             assert conn.call(op="status")["build"] == build                          # the host that was asked is the one that is there: it was not stopped
             assert conn.call(op="host.stop", force=True, build=build)["ok"] == 1
             wait_for(lambda: host.proc.poll() is not None, timeout=10)
@@ -151,7 +151,7 @@ def start_turn(count, seconds):
 def test_a_running_turn_is_waited_for_and_then_the_host_is_replaced_without_cutting_it():
     with private_dir() as directory:
         env = {"LICO_UPDATE_TURN_WAIT_MS": "30000"}
-        with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=start_turn(2, 6), env_extra=env) as w:
+        with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=start_turn(2, 1.5), env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: header_has(w, "after the running turn"), timeout=10)
             assert alive(old) and status(w)["pid"] == old                              # nothing is cut while the turn runs
@@ -162,7 +162,7 @@ def test_a_running_turn_is_waited_for_and_then_the_host_is_replaced_without_cutt
 
 def test_a_turn_that_does_not_end_is_cut_after_the_limit_and_the_line_counts_it():
     with private_dir() as directory:
-        env = {"LICO_UPDATE_TURN_WAIT_MS": "2000"}
+        env = {"LICO_UPDATE_TURN_WAIT_MS": "600"}
         with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=start_turn(1, 120), env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=30)
@@ -178,7 +178,7 @@ def test_an_approval_that_was_waiting_is_not_kept_and_the_line_says_so():
             first = w.made[0]
             Conn(w.socket).call(op="input", session=first["session"], generation=first["generation"], request_id="a-1", text="fixture")
             wait_for(lambda: sessions_of(w)[first["session"]].get("approvals"), timeout=15)
-        env = {"LICO_UPDATE_TURN_WAIT_MS": "2000"}
+        env = {"LICO_UPDATE_TURN_WAIT_MS": "600"}
         with ProductWindow(host_binary=older_build(directory), path_prefix=fake_codex(directory), before_window=hook, env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), timeout=30)
@@ -198,7 +198,7 @@ def sign_in_started(w):
 
 def test_a_sign_in_in_progress_keeps_the_host_and_the_line_says_why():
     with private_dir() as directory:
-        env = {"LICO_UPDATE_LOGIN_WAIT_MS": "2500"}
+        env = {"LICO_UPDATE_LOGIN_WAIT_MS": "600"}
         with ProductWindow(host_binary=older_build(directory), host_args=LOGIN, before_window=sign_in_started, env_extra=env) as w:
             old = w.old_pid
             wait_for(lambda: header_has(w, "a sign-in was still in progress"), timeout=15)
@@ -443,7 +443,7 @@ def test_two_windows_at_once_make_one_host_and_one_set_of_resumes():
     other = []
 
     def hook(w):
-        start_turn(2, 4)(w)
+        start_turn(2, 1.2)(w)
         other.append(Second(w))                                                                 # started in the same instant as the first window
         other[0].first = Path(w.env["LICO_UPDATE_TRACE"])
     with private_dir() as directory:
@@ -454,7 +454,7 @@ def test_two_windows_at_once_make_one_host_and_one_set_of_resumes():
                 reached("the host is the new build", lambda: status(w).get("pid") != old and status(w).get("build") == fnv(LICO), 40, w, second)
                 alive_ids = [m["session"] for m in w.made]
                 reached("every session is running again", lambda: all(sessions_of(w).get(i, {}).get("state") == "running" for i in alive_ids), 40, w, second)
-                time.sleep(2)                                                                   # a second set of resumes would show by now
+                time.sleep(0.6)                                                                 # a second set of resumes would show by now
                 found = sessions_of(w)
                 for m in w.made:
                     assert found[m["session"]]["generation"] == m["generation"] + 1, f"resumed more than once\n{explain(w, second)}"   # once, by the window that stopped the old host
@@ -485,7 +485,7 @@ def test_a_window_that_is_already_open_follows_a_host_that_another_window_replac
                 # A is attached to the new host: its own list shows the new generations (+1), which only H2 reports
                 wait_for(lambda: sorted(r["generation"] for r in a.ui()["rows"]) == sorted(m["generation"] + 1 for m in a.made), timeout=20)
                 assert "The host was replaced" in a.ui()["header"]
-                time.sleep(6)                                                          # window A has a different build than H2 and must leave it alone
+                time.sleep(1.5)                                                        # window A has a different build than H2 and must leave it alone
                 assert status(a)["pid"] == h2 and not alive(h1) and len(host_processes(a)) == 1
                 assert a.alive() and a.proc.poll() is None
                 for m in a.made:

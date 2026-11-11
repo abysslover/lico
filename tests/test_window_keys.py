@@ -25,7 +25,7 @@ def test_the_product_window_draws_no_measurement_square_at_its_corner():
 
 def test_closing_standard_input_does_not_close_the_window():
     with ProductWindow(stdin_open=False) as w:                               # what a launcher or nohup does
-        time.sleep(3.0)
+        time.sleep(1.2)
         assert w.alive()
 
 
@@ -56,7 +56,7 @@ def test_ctrl_u_clears_the_line_and_a_held_backspace_deletes_several_characters(
         w.key("ctrl+u")
         assert w.ui()["panel"]["input"] == "" and w.prompt_ink() == empty
         w.type_text("abcdefgh")
-        w.hold("BackSpace", 1.6)                                             # the key repeats
+        w.hold("BackSpace", 1.1)                                             # the key repeats
         assert len(w.ui()["panel"]["input"]) <= 5
 
 

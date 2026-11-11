@@ -14,7 +14,7 @@ The suite needs Python 3.11 or newer: `requires-python = ">=3.11"` in `pyproject
 
 | | |
 |---|---|
-| `python -m lico_measure.suite run` | build once (not when the sources hash to the one the binary was built from), then every test file on up to 3 workers |
+| `python -m lico_measure.suite run` | build once (not when the sources hash to the one the binary was built from), then every test file on up to 4 workers |
 | `… run --changed [BASE]` | only what `git diff` needs (staged, unstaged, new, and committed since BASE) |
 | `… run --receipts` | skip a file whose receipt is current: it prints `skipped (receipt)`; a file that failed last time always runs |
 | `… run --cold` | ignore receipts (the cold run is the whole suite with none skipped) |

@@ -363,6 +363,7 @@ impl App {
                 if *state == ElementState::Pressed {
                     self.ui.flash = None;
                     let hit = self.ui.controls.hit_at(x, y);
+                    if !matches!(&hit, Some(Action::Session(_))) { self.ui.clicked = None; }
                     if let Some(open) = self.ui.menu_open {
                         match hit {
                             Some(Action::Item(m, i)) => self.menu_run(m, i),
@@ -390,9 +391,7 @@ impl App {
                         }
                     }
                     self.dirty = true;
-                } else {
-                    self.ui.dragging = false;
-                }
+                } else { self.ui.dragging = false; }
                 true
             }
             WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
@@ -405,7 +404,7 @@ impl App {
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                self.ui.flash = None;
+                (self.ui.flash, self.ui.clicked) = (None, None);
                 if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }

@@ -144,8 +144,10 @@ def test_no_glyph_is_cut_at_the_right_edge_of_the_output_or_the_left_edge_of_the
                 client.send(f"show {sid}")
                 client.expect("state", "subscribed")
                 ui(client, lambda u: u["lines_buffered"] > 0)
+                before = ui(client)["frame"]["frames"]
                 subprocess.run(["xdotool", "windowsize", window_id(xvfb.display), str(width), "800"], env={"DISPLAY": xvfb.display, "PATH": "/usr/bin:/bin"}, check=True)
-                time.sleep(1.5)
+                ui(client, lambda u: u["frame"]["frames"] > before)
+                time.sleep(0.15)
                 path = window_shot(xvfb.display, directory, f"w{scale}_{width}")
                 list_w = 330 * scale                                                                 # LIST_W in gui/ui.rs
                 _, right, w, h = bright_columns(path, list_w + 4, 100000)

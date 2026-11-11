@@ -96,13 +96,14 @@ class ProductWindow:
         if self.stdin_open:
             self._first_frame()
         else:
-            time.sleep(0.8)
+            time.sleep(0.5)
         if self.proc.poll() is not None:
             return
         from .ime import _focus      # no window manager here: the keyboard goes where the focus is put
 
+        since = self.frames()
         _focus(self.xvfb.display)
-        self.settle(self.frames(), 0.4)
+        self.settle(since, 0.4 if self.ime else 0.08)
 
     def alive(self) -> bool:
         return self.proc.poll() is None
@@ -114,7 +115,7 @@ class ProductWindow:
     def _first_frame(self, timeout: float = 5.0) -> None:
         end = time.monotonic() + timeout
         while time.monotonic() < end and self.alive() and self.frames() < 1:
-            time.sleep(0.03)
+            time.sleep(0.02)
 
     def settle(self, since: int, upto: float) -> bool:
         """Wait until the window has drawn after `since` frames and then drawn nothing for a moment (longer with an input method, whose answer comes
@@ -122,8 +123,8 @@ class ProductWindow:
         if not self.stdin_open:
             time.sleep(upto)
             return False
-        quiet = 0.3 if self.ime else 0.10
-        step = 0.03 if self.ime else 0.02
+        quiet = 0.3 if self.ime else 0.04
+        step = 0.03 if self.ime else 0.015
         end = time.monotonic() + upto
         last, changed = since, None
         while time.monotonic() < end:
@@ -141,13 +142,13 @@ class ProductWindow:
     def key(self, *keys: str) -> None:
         since = self.frames()
         subprocess.run(["xdotool", "key", *keys], env=self.env, check=True)
-        self.settle(since, 0.9 if self.ime else 0.4)
+        self.settle(since, 0.9 if self.ime else 0.20)
 
     def type_text(self, text: str) -> None:
         since = self.frames()
         delay = "40" if self.ime else "5"
         subprocess.run(["xdotool", "type", "--delay", delay, text], env=self.env, check=True)
-        self.settle(since, 0.9 if self.ime else 0.4)
+        self.settle(since, 0.9 if self.ime else 0.20)
 
     def hold(self, key: str, seconds: float) -> None:
         since = self.frames()
@@ -183,14 +184,14 @@ class ProductWindow:
         since = self.frames()
         click_args = ["click", str(button)] if times == 1 else ["click", "--repeat", str(times), "--delay", "80", str(button)]
         subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), *click_args], env=self.env, check=True)
-        self.settle(since, 0.7 if self.ime else 0.4)
+        self.settle(since, 0.7 if self.ime else 0.20)
 
     def move(self, x: float, y: float) -> None:
         """Put the pointer at (x, y) in the window without a click, and wait for the frame it causes."""
         wid = self.window_id()
         since = self.frames()
         subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y))], env=self.env, check=True)
-        self.settle(since, 0.7 if self.ime else 0.35)
+        self.settle(since, 0.7 if self.ime else 0.16)
 
     def ui(self) -> dict:
         self.proc.stdin.write("ui\n")
