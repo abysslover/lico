@@ -16,5 +16,6 @@
 | [M03-P03 plan](plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow; G2 approved 2026-11-11 |
 | [M03-P03 report](reports/202611/20261111/20261111_08_M03-P03_editor_and_reflow_report.md) | Split `gui/editor` into 4 modules (`ui.rs` down to `1,115` lines), mouse/keyboard selection, `Ctrl+C`/`Ctrl+X`, per-session undo/redo, and resize reflow; awaiting owner G3/G4 |
 | [M03-P04 plan](plans/202611/20261111/20261111_08_M03-P04_control_parity_and_review_plan.md) | Control-surface `capabilities`, loopback HTTP parity (`POST /v1` + REST routes), full memory pass, and `0.1.0` release review; G2 approved 2026-11-11 |
+| [M03-P04 report](reports/202611/20261111/20261111_09_M03-P04_control_parity_and_review_report.md) | `capabilities` across CLI/socket/HTTP, `POST /v1` + REST parity, `458/458` cold suite (`94.9 s`), `24.21`/`35.38 MiB` idle RSS, `+0.37 MiB` hidden growth, two-clone `0.1.0` match, and `~/bin/lico` install; awaiting owner G3/G4 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
