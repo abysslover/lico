@@ -31,5 +31,6 @@
 | [M05-P01 report](reports/202611/20261112/20261112_05_M05-P01_restore_working_directory_report.md) | `last_cwd`, `last_view`, and `last_session` in `0600` `settings.json` + `recent_folders.json`, CLI/socket/HTTP parity, and automatic `lico gui` workspace restore across window and host restarts; awaiting G3/G4 after `M05-P03` |
 | [M05-P02 plan](plans/202611/20261112/20261112_06_M05-P02_directory_pagination_plan.md) | Top-anchored panel layout, large-directory listing (`<= 10,000`), and page/wheel navigation (`Page X / Y`, `< Prev` / `Next >`); done 2026-11-12 |
 | [M05-P02 report](reports/202611/20261112/20261112_06_M05-P02_directory_pagination_report.md) | Top-anchored panel layout in `compose()`, `10,000`-entry `folder.list`, viewport-sized `Page X / Y` pagination, `< Prev`/`Next >` toolbar controls, `PgUp`/`PgDn`/`[`/`]`, and mouse wheel; awaiting G3/G4 after `M05-P03` |
+| [M05-P03 plan](plans/202611/20261112/20261112_07_M05-P03_smart_file_open_and_0_2_1_plan.md) | Unified file activation (direct text preview vs system default `xdg-open`), remove `V` shortcut, and `0.2.1` patch release; in_progress 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
