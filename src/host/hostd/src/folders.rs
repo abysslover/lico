@@ -60,6 +60,34 @@ pub fn valid_name(text: &str) -> bool {
     name_shape(text) && !shows_nothing(text.trim())
 }
 
+/// Derive a short, sanitized title from the first meaningful line of a user prompt (`<= 44` characters).
+pub fn derive_auto_title(text: &str) -> Option<String> {
+    const LIMIT: usize = 44;
+    for raw in text.lines() {
+        let cleaned: String = raw.chars().filter(|c| !refused_char(*c)).collect();
+        let trimmed = cleaned.trim();
+        if trimmed.is_empty() || trimmed.starts_with("[from session ") || trimmed.starts_with("[a long line ") {
+            continue;
+        }
+        let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+        if compact.is_empty() || shows_nothing(&compact) {
+            continue;
+        }
+        let count = compact.chars().count();
+        let out = if count <= LIMIT {
+            compact
+        } else {
+            let mut head: String = compact.chars().take(LIMIT - 1).collect();
+            head.push('…');
+            head
+        };
+        if valid_name(&out) {
+            return Some(out);
+        }
+    }
+    None
+}
+
 pub fn valid_model(text: &str) -> bool {
     // the first character is a letter or digit, so a value can never read as an option of the program (`-x`)
     text.len() <= 60 && text.bytes().next().is_some_and(|b| b.is_ascii_alphanumeric()) && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_' || b == b'-')
@@ -284,7 +312,8 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
 /// What the status entry of a session says about its choices.
 pub fn annotate(entry: &mut Value, s: &Session) {
     entry["scratch"] = json!(s.settings.cwd.is_none());
-    for (key, value) in [("cwd", &s.settings.cwd), ("name", &s.settings.name), ("chosen_model", &s.settings.model), ("chosen_effort", &s.settings.effort)] {
+    entry["last_active_at"] = json!(s.last_active_at);
+    for (key, value) in [("cwd", &s.settings.cwd), ("name", &s.settings.name), ("auto_title", &s.auto_title), ("chosen_model", &s.settings.model), ("chosen_effort", &s.settings.effort)] {
         if let Some(value) = value {
             entry[key] = json!(value);
         }

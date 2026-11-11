@@ -375,6 +375,9 @@ impl App {
             }
             return false;
         }
+        if self.nav_key(event) {
+            return true;
+        }
         if self.form_key(event) {
             return true;
         }

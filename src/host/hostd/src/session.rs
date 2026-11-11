@@ -420,6 +420,8 @@ pub struct Session {
     pub producing: bool,
     pub state: State,
     pub state_at: u64, // when the state last changed (unix seconds); kept after a disconnect
+    pub last_active_at: u64, // when the session last received input, provider output, or state change
+    pub auto_title: Option<String>, // derived from the first user prompt (`>> `) when unnamed
     pub codex: Option<crate::codex::Link>,
     pub claude: Option<crate::claude::Link>,
     pub mode: &'static str, // "auto" (permissions skipped, the default of a new session) or "default" (the provider asks for what needs approval)
@@ -486,6 +488,7 @@ pub fn rec_line(session: &str, generation: u64, seq: i64, data: &[u8], text: boo
 impl Session {
     pub fn new(id: String, producing: bool, dir: &Path, retain: usize, window_cap: usize) -> Session {
         let log = Log::new(dir, &id, retain);
+        let now = now_secs();
         Session {
             id,
             text_mode: false,
@@ -499,7 +502,9 @@ impl Session {
             codex_thread: None,
             producing,
             state: State::Running,
-            state_at: now_secs(),
+            state_at: now,
+            last_active_at: now,
+            auto_title: None,
             window: VecDeque::new(),
             window_cap,
             next_seq: 0,
@@ -535,6 +540,7 @@ impl Session {
         if self.last_seq() >= 0 {
             self.finished_seq = self.last_seq();
         }
+        self.last_active_at = now_secs().max(self.last_active_at);
     }
 
     /// Change the state and remember when (the last known state keeps its time after a disconnect).
@@ -543,19 +549,24 @@ impl Session {
         if busy && !self.busy {
             self.busy_since = now_secs();
             self.last_event_at = self.busy_since;
+            self.last_active_at = self.busy_since.max(self.last_active_at);
         }
         self.busy = busy;
     }
 
     /// The provider said something (any message, whether or not it became a line).
     pub fn heard(&mut self) {
-        self.last_event_at = now_secs();
+        let now = now_secs();
+        self.last_event_at = now;
+        self.last_active_at = now.max(self.last_active_at);
     }
 
     pub fn set_state(&mut self, state: State) {
         if self.state != state {
+            let now = now_secs();
             self.state = state;
-            self.state_at = now_secs();
+            self.state_at = now;
+            self.last_active_at = now.max(self.last_active_at);
             if state == State::Exited {
                 self.drop_requests(); // nobody is left to tell what became of them
             }
@@ -580,9 +591,26 @@ impl Session {
         s.credential_generation = entry.credential_generation;
         s.state = State::Disconnected;
         s.state_at = if entry.state_at > 0 { entry.state_at } else { now_secs() };
+        s.last_active_at = entry.last_active_at.max(s.state_at);
+        s.auto_title = entry.auto_title.clone();
         let from = (next - window_cap as i64).max(0);
         if let Ok(records) = s.log.view().read(from, next, window_cap) {
             s.window = records.into_iter().collect();
+        }
+        if s.auto_title.is_none() {
+            let mut derived = None;
+            let _ = s.log.view().scan_each(|_, bytes| {
+                if let Some(rest) = std::str::from_utf8(bytes).ok().and_then(|t| t.strip_prefix(">> ")) {
+                    if !rest.starts_with('[') {
+                        derived = crate::folders::derive_auto_title(rest);
+                        if derived.is_some() {
+                            return false;
+                        }
+                    }
+                }
+                true
+            });
+            s.auto_title = derived;
         }
         (s, report)
     }
@@ -676,6 +704,13 @@ impl Session {
 
     pub fn record_input(&mut self, request_id: &str, text: &str, origin: Origin, now: u64) {
         self.count_hops(origin, now);
+        self.last_active_at = now.max(self.last_active_at);
+        if origin == Origin::Person && self.auto_title.is_none() {
+            if let Some(title) = crate::folders::derive_auto_title(text) {
+                self.auto_title = Some(title);
+                crate::registry::mark_dirty();
+            }
+        }
         crate::echo::append(self, text, origin != Origin::Person);
         let key = self.key(request_id);
         self.inputs.insert(key, InputState::Accepted);

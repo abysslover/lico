@@ -31,6 +31,8 @@ pub struct Entry {
     pub credential_generation: u64,
     pub provider_session: Option<String>,
     pub state_at: u64,
+    pub last_active_at: u64,
+    pub auto_title: Option<String>,
     pub mode: &'static str,
     pub account_removed: bool, // the account it was bound to was removed with its sessions detached
     pub settings: crate::folders::Settings,
@@ -87,9 +89,14 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
             return Err(format!("sessions.json has an invalid provider session id for {session}"));
         }
         let settings = crate::folders::Settings::from_record(&value, &session)?;
+        let auto_title = value["auto_title"]
+            .as_str()
+            .and_then(crate::folders::derive_auto_title);
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
-            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0), account_removed, settings,
+            provider_session, state_at: value["state_at"].as_u64().unwrap_or(0),
+            last_active_at: value["last_active_at"].as_u64().unwrap_or(0),
+            auto_title, account_removed, settings,
             mode: if value["mode"] == "default" { "default" } else { "auto" },
         });
     }
@@ -111,8 +118,12 @@ pub fn save(shared: &Shared) {
             }
             let mut record = crate::session::obj(json!({
                 "session": s.id, "provider": s.provider, "generation": s.generation, "account": s.account,
-                "credential_generation": s.credential_generation, "provider_session": s.codex_thread, "state_at": s.state_at, "mode": s.mode,
+                "credential_generation": s.credential_generation, "provider_session": s.codex_thread,
+                "state_at": s.state_at, "last_active_at": s.last_active_at, "mode": s.mode,
             }));
+            if let Some(title) = &s.auto_title {
+                record.insert("auto_title".into(), json!(title));
+            }
             record.extend(s.settings.record_fields());
             Some(Value::Object(record))
         })

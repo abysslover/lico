@@ -30,6 +30,8 @@ pub struct Row {
     pub stalled: bool,      // the host's own judgement: working, nothing to answer, and silent for its stall time
     pub cwd: String,        // the folder the person chose, empty for a scratch workspace
     pub name: String,       // the name the person gave it, or empty
+    pub auto_title: String, // derived from the first user prompt when unnamed, or empty
+    pub last_active_at: u64, // last input, provider output, or state transition timestamp
     pub finished_seq: Option<i64>, // sequence number of the last completed turn in this host run, if any
     pub worktree_branch: String,   // git branch when started in a Lico worktree, else empty
     pub worktree_repo: String,     // parent git repository root when started in a Lico worktree
@@ -77,12 +79,14 @@ impl Row {
         let makes = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "create").filter_map(|a| a["approval_id"].as_i64()).collect();
         let reads = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "history").filter_map(|a| a["approval_id"].as_i64()).collect();
         let real_screens = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "computer").filter_map(|a| a["approval_id"].as_i64()).collect();
+        let state_at = number("state_at");
+        let last_active_at = entry["last_active_at"].as_u64().unwrap_or(state_at).max(state_at);
         Some(Row {
-            session: text("session"), provider: text("provider"), account: text("account"), model: clean(&text("model")), state: text("state"), state_at: number("state_at"),
+            session: text("session"), provider: text("provider"), account: text("account"), model: clean(&text("model")), state: text("state"), state_at,
             activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, asks, makes, reads, real_screens,
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
-            cwd: clean(&text("cwd")), name: clean(&text("name")),
+            cwd: clean(&text("cwd")), name: clean(&text("name")), auto_title: clean(&text("auto_title")), last_active_at,
             finished_seq: entry["finished_seq"].as_i64().filter(|&n| n >= 0),
             worktree_branch: clean(entry["worktree"]["branch"].as_str().unwrap_or("")),
             worktree_repo: clean(entry["worktree"]["repo"].as_str().unwrap_or("")),
@@ -91,11 +95,31 @@ impl Row {
         })
     }
 
-    /// What a session is called: its name, else the last part of its parent repo (for a worktree) or folder, else the start of its id.
+    /// Explicit user name if set, else derived conversation title (`auto_title`), else empty.
+    pub fn display_title(&self) -> &str {
+        if !self.name.is_empty() {
+            self.name.as_str()
+        } else {
+            self.auto_title.as_str()
+        }
+    }
+
+    /// Working directory or `repo@branch` summary for the session header; empty for scratch sessions.
+    pub fn workspace_label(&self) -> String {
+        if !self.worktree_branch.is_empty() {
+            let repo = self.worktree_repo.trim_end_matches('/').rsplit('/').next().unwrap_or(self.worktree_repo.as_str());
+            if !repo.is_empty() {
+                return format!("{repo}@{}", self.worktree_branch);
+            }
+        }
+        self.cwd.clone()
+    }
+
+    /// What a session is called: its explicit name, else its derived first-prompt title, else the last part of its parent repo or folder, else the start of its id.
     pub fn name(&self) -> String {
         let base = if !self.worktree_repo.is_empty() { self.worktree_repo.as_str() } else { self.cwd.as_str() };
         let folder = base.trim_end_matches('/').rsplit('/').next().unwrap_or("");
-        [self.name.as_str(), folder].into_iter().find(|t| !t.is_empty()).map_or_else(|| self.session.chars().take(7).collect(), str::to_string)
+        [self.name.as_str(), self.auto_title.as_str(), folder].into_iter().find(|t| !t.is_empty()).map_or_else(|| self.session.chars().take(7).collect(), str::to_string)
     }
 
     /// What the narrow list calls the session: its name, else the last part of its folder, else the start of its id; cut to `room`
@@ -190,8 +214,13 @@ mod tests {
         assert_eq!(shown[4], "한글이름…");
         assert_eq!(shown[5], "s012345  ", "a folder that is the root has no name to show");
         assert!(shown.iter().all(|t| columns(t) == 9), "{shown:?}");
-        let wt = Row { session: "s0123456789abcdef".into(), cwd: "/var/worktrees/s0123456789abcdef".into(), worktree_repo: "/work/lico".into(), ..Default::default() };
+        let wt = Row { session: "s0123456789abcdef".into(), cwd: "/var/worktrees/s0123456789abcdef".into(), worktree_repo: "/work/lico".into(), worktree_branch: "feat/nav".into(), ..Default::default() };
         assert_eq!(wt.name(), "lico");
+        assert_eq!(wt.workspace_label(), "lico@feat/nav");
+        let auto = Row { session: "s0123456789abcdef".into(), cwd: "/work/lico".into(), auto_title: "fix sidebar click".into(), ..Default::default() };
+        assert_eq!(auto.name(), "fix sidebar click");
+        let named = Row { name: "explicit".into(), ..auto };
+        assert_eq!(named.name(), "explicit");
     }
 
     #[test]

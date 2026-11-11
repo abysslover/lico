@@ -6,6 +6,7 @@ use winit::keyboard::{Key, NamedKey};
 
 use super::panel::confirm::Act;
 use super::panel::Step;
+use super::ui::Row;
 use super::App;
 
 pub const TITLES: [&str; 4] = ["File", "Session", "View", "Help"];
@@ -82,7 +83,7 @@ impl App {
                 Self::entry("Quit", "Ctrl+Q", Cmd::Quit, None),
             ],
             1 => {
-                let two = if sessions >= 2 { panel_reason } else { Some("needs two sessions") };
+                let two = if sessions >= 2 { None } else { Some("needs two sessions") };
                 let mut v = vec![
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
@@ -90,9 +91,9 @@ impl App {
                 ];
                 for (i, id) in self.ui.numbered.iter().enumerate().take(9) {
                     let row = self.ui.rows.iter().find(|r| &r.session == id);
+                    let title = row.map_or_else(|| id.chars().take(7).collect(), Row::name);
                     let what = row.map_or(String::new(), |r| format!("{} / {}", r.provider, self.label_of(&r.account)));
-                    let short: String = id.chars().take(7).collect();
-                    v.push(Entry { label: format!("Session {}  {what}  {short}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: panel_reason });
+                    v.push(Entry { label: format!("Session {}  {title}  {what}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: None });
                 }
                 let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
                 let mode_label = match self.selected_row().map(|r| r.mode.as_str()) {
@@ -206,11 +207,18 @@ impl App {
             Cmd::NewSession => self.form_open(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
-            Cmd::Next => self.step_session(1),
-            Cmd::Prev => self.step_session(-1),
+            Cmd::Next => {
+                self.panel_close();
+                self.step_session(1);
+            }
+            Cmd::Prev => {
+                self.panel_close();
+                self.step_session(-1);
+            }
             Cmd::Start => self.go_start(),
             Cmd::GoTo(i) => {
                 if let Some(id) = self.ui.numbered.get(i).cloned() {
+                    self.panel_close();
                     if id != self.session {
                         self.switch_to(&id);
                     }

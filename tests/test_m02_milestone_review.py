@@ -63,6 +63,11 @@ def test_m02_milestone_review_labels_search_cause_and_heap_trim():
             conn = Conn(w.socket)
             sid_wt, sid_peer = made["wt"], made["peer"]
 
+            # R3 (before prompt): GUI list row shows 'myrepo' (and '(wt)'), never the raw session id prefix
+            reload_status(w)
+            ui_pre = wait_for(lambda: (u := w.ui()) and len(u["rows"]) == 2 and u)
+            assert "myrepo" in ui_pre["list_text"] and "(wt)" in ui_pre["list_text"] and sid_wt[:7] not in ui_pre["list_text"], ui_pre["list_text"]
+
             assert conn.call(op="input", session=sid_wt, generation=1, request_id="seed-wt", text="worktree_unique_needle")["ok"] == 1
             wait_for(lambda: status_of(conn, sid_wt).get("activity") == "idle" and status_of(conn, sid_wt).get("seq", 0) >= 2 or None)
 
@@ -76,9 +81,9 @@ def test_m02_milestone_review_labels_search_cause_and_heap_trim():
             wait_for(lambda: any("[from session 'myrepo'" in ln for ln in records(log_dir, sid_peer)) or None)
 
             reload_status(w)
-            ui0 = wait_for(lambda: (u := w.ui()) and len(u["rows"]) == 2 and u)
-            # R3: GUI list row shows 'myrepo' (and '(wt)'), never the raw session id prefix
-            assert "myrepo" in ui0["list_text"] and "(wt)" in ui0["list_text"], ui0["list_text"]
+            ui0 = wait_for(lambda: (u := w.ui()) and any(r["session"] == sid_wt and r["auto_title"] == "worktree_unique_needle" for r in u["rows"]) and u)
+            # R3 (after prompt): derived auto_title replaces generic folder name while keeping '(wt)', never raw session id prefix
+            assert "worktree\u2026" in ui0["list_text"] and "(wt)" in ui0["list_text"] and sid_wt[:7] not in ui0["list_text"], ui0["list_text"]
 
             # Select peer session
             w.click(*row_centre(w, sid_peer))

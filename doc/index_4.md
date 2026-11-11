@@ -18,6 +18,7 @@
 | [M03-P04 plan](plans/202611/20261111/20261111_08_M03-P04_control_parity_and_review_plan.md) | Control-surface `capabilities`, loopback HTTP parity (`POST /v1` + REST routes), full memory pass, and `0.1.0` release review; done 2026-11-12 |
 | [M03-P04 report](reports/202611/20261111/20261111_09_M03-P04_control_parity_and_review_report.md) | `capabilities` across CLI/socket/HTTP, `POST /v1` + REST parity, `458/458` cold suite (`94.9 s`), `24.21`/`35.38 MiB` idle RSS, `+0.37 MiB` hidden growth, two-clone `0.1.0` match, and `~/bin/lico` install; accepted at G3 and merged 2026-11-12 |
 | [M04 milestone](milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md) | Workspace workbench, clean conversation UX, weekly quota visibility, and on-demand directory file viewer (`M04-P01` to `M04-P04`, `0.2.0`); G1 and G2 approved 2026-11-12 |
-| [M04-P01 plan](plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | Direct session switching from panels, derived session titles, active reverse-chronological sorting, and clickable toolbar; G2 approved 2026-11-12 |
+| [M04-P01 plan](plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | Direct session switching from panels, derived session titles, active reverse-chronological sorting, and clickable toolbar; in_review 2026-11-12 |
+| [M04-P01 report](reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | Direct sidebar session switching while panels are open, `auto_title` + `last_active_at` active-recency sorting, `dir:` header context, and clickable Toolbar; in_review 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

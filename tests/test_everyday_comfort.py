@@ -235,8 +235,10 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             s_front, g_front = new_claude(conn, account=made["account"], mode="auto", name="front")
             s_back, g_back = new_claude(conn, account=made["account"], mode="auto", name="back")
             reload_status(w)
-            wait_for(lambda: len(w.ui()["rows"]) == 3)
-            fast_key(w, "alt+2")  # switch to s_front (1 is closed gui-wt, 2 is front, 3 is back)
+            u_init = wait_for(lambda: (u := w.ui()) and len(u["layout"]["rows"]) == 3 and u)
+            front_idx = [r[2] for r in u_init["layout"]["rows"]].index(s_front) + 1
+            assert front_idx in (1, 2)  # running sessions sort ahead of closed gui-wt (#3)
+            fast_key(w, f"alt+{front_idx}")
             wait_for(lambda: w.ui()["selected"] == s_front)
 
             # `stall` in s_back writes `>> stall` echo + `"stalling"` WITHOUT finishing the turn -> NOT unread!
@@ -255,12 +257,13 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             wait_for(lambda: status_of(conn, s_back)["activity"] == "idle")
             reload_status(w)
             attn_ui = wait_for(lambda: (u := w.ui()) and next(r for r in u["rows"] if r["session"] == s_back)["unread"] and u)
-            assert "\u20223 back" in attn_ui["list_text"], attn_ui["list_text"]
+            back_idx = [r[2] for r in attn_ui["layout"]["rows"]].index(s_back) + 1
+            assert f"\u2022{back_idx} back" in attn_ui["list_text"], attn_ui["list_text"]
             title_now = wait_for(lambda: (t := w.title()) and t.endswith(" [finished]") and t)
             assert title_now.startswith("Lico "), title_now
 
             # Switching to s_back clears unread mark and restores base window title
-            fast_key(w, "alt+3")
+            fast_key(w, f"alt+{back_idx}")
             cleared_ui = wait_for(lambda: (u := w.ui())["selected"] == s_back and not next(r for r in u["rows"] if r["session"] == s_back)["unread"] and u)
             assert "\u2022" not in cleared_ui["list_text"]
             wait_for(lambda: not w.title().endswith(" [finished]"))
@@ -285,7 +288,9 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             assert cli_sr.returncode == 0 and "ANCIENT_NEEDLE_42" in cli_sr.stdout
 
             # Open s_front, type a draft, press Ctrl+F, search ANCIENT_NEEDLE_42 (scrolled > 50 lines back!)
-            fast_key(w, "alt+2")
+            reload_status(w)
+            front_idx2 = [r[2] for r in w.ui()["layout"]["rows"]].index(s_front) + 1
+            fast_key(w, f"alt+{front_idx2}")
             wait_for(lambda: w.ui()["selected"] == s_front)
             fast_type(w, "keep my draft")
             wait_for(lambda: w.ui()["input"] == "keep my draft")

@@ -28,6 +28,8 @@ pub(crate) use row::{clock_text, memrow, Row};
 pub(super) mod clip;
 #[path = "search.rs"]
 mod search;
+#[path = "toolbar.rs"]
+mod toolbar;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
@@ -85,6 +87,7 @@ pub struct UiState {
     pub menu_open: Option<usize>,
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
+    pub toolbar_geom: toolbar::ToolbarGeom,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -230,7 +233,16 @@ impl App {
                     "default" => " | mode: asks for approval",
                     _ => "",
                 };
-                format!("{} | {} | {} | {}{mode}{issue}", r.provider, self.label_of(&r.account), model, r.state_with_clock(self.clock_now()))
+                let extra = if self.ui.menu {
+                    let title = r.display_title();
+                    let title_part = if title.is_empty() { String::new() } else { format!(" | {title}") };
+                    let ws = r.workspace_label();
+                    let dir_part = if ws.is_empty() { String::new() } else { format!(" | dir: {ws}") };
+                    format!("{title_part}{dir_part}")
+                } else {
+                    String::new()
+                };
+                format!("{} | {} | {} | {}{mode}{issue}{extra}", r.provider, self.label_of(&r.account), model, r.state_with_clock(self.clock_now()))
             }
             None if self.session.is_empty() => "select a session".into(),
             None => format!("{} | not listed", self.session),
@@ -372,6 +384,7 @@ impl App {
                     } else {
                         match hit {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
+                            Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id)) => self.row_click(id),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
@@ -470,13 +483,14 @@ impl App {
 
     /// Ctrl+Tab and Ctrl+Shift+Tab: next and previous session of the list (wrapping); Alt+1..9: the session with that number.
     pub(crate) fn nav_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        if self.ui.panel.is_some() || self.ui.numbered.is_empty() {
+        if self.ui.numbered.is_empty() {
             return false;
         }
         let ids = self.ui.numbered.clone();
         let target = match &event.logical_key {
             Key::Named(NamedKey::Tab) if self.ui.mods.control_key() => {
                 if !event.repeat {
+                    self.panel_close();
                     self.step_session(if self.ui.mods.shift_key() { -1 } else { 1 });
                 }
                 return true;
@@ -486,6 +500,7 @@ impl App {
         };
         match target {
             Some(i) if !event.repeat => {
+                self.panel_close();
                 if ids[i] != self.session {
                     self.switch_to(&ids[i]);
                 }
@@ -572,6 +587,7 @@ impl App {
             .iter()
             .map(|r| json!({
                 "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
+                "display_name": r.name(), "auto_title": if r.auto_title.is_empty() { Value::Null } else { json!(r.auto_title) }, "last_active_at": r.last_active_at,
                 "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
                 "virtual_display": if r.virtual_display.is_empty() { Value::Null } else { json!(r.virtual_display) },
                 "unread": self.row_unread(r),
@@ -580,6 +596,24 @@ impl App {
             }))
             .collect();
         let view = self.view.as_ref();
+        let causes: serde_json::Map<String, Value> = Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect();
+        let frame = json!({
+            "frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us,
+            "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact,
+            "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows,
+            "scroll_step": !self.ui.no_scroll_step, "causes": causes,
+        });
+        let layout = json!({
+            "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize,
+            "window_size": self.window.as_ref().map(|w| [w.inner_size().width, w.inner_size().height]),
+            "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
+            "dim": self.ui.controls.dimmed,
+            "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect),
+            "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
+            "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
+        });
+        let settings = json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64});
+        let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
         let dump = json!({
             "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
             "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
@@ -587,16 +621,12 @@ impl App {
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()),
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
-            "panel": self.panel_json(),
-            "menu": self.menu_json(),
-            "frame": {"frames": self.ui.stats.frames, "total_us": self.ui.stats.total_us, "layout_us": self.ui.stats.layout_us, "paint_us": self.ui.stats.paint_us, "present_us": self.ui.stats.present_us, "last_us": self.ui.stats.last_us, "lines_shaped": self.ui.faces.lines, "lines_exact": self.ui.faces.exact, "words_exact": self.ui.faces.w_old, "probes": self.ui.faces.probes, "label_shapes": self.ui.controls.shapes, "kept_rows": self.ui.stats.kept_rows, "scroll_step": !self.ui.no_scroll_step, "causes": Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect::<serde_json::Map<String, Value>>()},
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(), "search": self.search_json(), "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
+            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "frame": frame,
+            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
+            "search": self.search_json(), "memory": memory, "settings": settings, "real_screen": self.real_screen_json(),
+            "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
-            "layout": {
-                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "window_size": self.window.as_ref().map(|w| [w.inner_size().width, w.inner_size().height]), "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
-                "dim": self.ui.controls.dimmed, "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect), "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
-                "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
-            },
+            "layout": layout,
         });
         println!("{dump}");
         let _ = std::io::stdout().flush();
@@ -645,7 +675,7 @@ impl App {
         let list_w = (LIST_W as f32 * s) as usize;
         let (fp, line_h) = (self.font_px(), self.line_h());
         let lh = line_h * s;
-        let bar_h = if self.ui.menu { lh + 4.0 * s } else { 0.0 };
+        let (menu_h, bar_h) = toolbar::bar_heights(self.ui.menu, s, line_h);
         let real_entries = self.ui.real_screen.clone();
         let top = bar_h + super::realbar::height_px_with(&real_entries, s, line_h);
         let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
@@ -668,6 +698,7 @@ impl App {
         let menu_open = self.ui.menu_open;
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
+        let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
         let list_items = self.ui.list_items.clone();
         let total = memrow::total(&self.ui.rows, &self.ui.mem);
         let session_sel = self.session.clone();
@@ -872,7 +903,6 @@ impl App {
         }
         for &r in &self.ed.sel_rects { controls::fill(&mut buf, width, height, r, 0xFF2A_4A7A); }
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
-        let dim = super::panel::sendto::DIM;
         let hint_ink = Color::rgb(0x9A, 0xA4, 0xB0);
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
@@ -920,58 +950,7 @@ impl App {
         controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
         memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
         super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h);
-        // the menu bar, and the open menu on top of everything
-        self.ui.menu_geom.titles.clear();
-        self.ui.menu_geom.items.clear();
-        if self.ui.menu {
-            let x0 = if self.ui.markers { 36.0 } else { 0.0 }; // the measurement markers keep the corner
-            controls::fill(&mut buf, width, height, [x0, 0.0, width as f32, bar_h], 0xFF1C_2430);
-            let mut x = x0 + 4.0 * s;
-            for (i, title) in TITLES.iter().enumerate() {
-                let w = controls.width(fs, title) + 16.0 * s;
-                let r = [x, 0.0, x + w, bar_h];
-                if menu_open == Some(i) {
-                    controls::fill(&mut buf, width, height, r, 0xFF2C_4A78);
-                }
-                controls.text(fs, swash, &mut buf, width, height, x + 8.0 * s, 2.0 * s, r[2] as i32, title, ink);
-                controls.target(r, Action::Menu(i));
-                self.ui.menu_geom.titles.push(r);
-                x += w;
-            }
-            if let Some(m) = menu_open {
-                let (ih, pad) = (lh + 2.0 * s, 8.0 * s);
-                let mut inner = 0.0f32;
-                let mut lefts = Vec::new();
-                for e in &menu_entries {
-                    let left = match e.reason {
-                        Some(reason) => format!("{}   ({reason})", e.label),
-                        None => e.label.clone(),
-                    };
-                    let key_w = if e.key.is_empty() { 0.0 } else { controls.width(fs, e.key) };
-                    inner = inner.max(controls.width(fs, &left) + 24.0 * s + key_w);
-                    lefts.push(left);
-                }
-                let w = inner + 2.0 * pad;
-                let x = self.ui.menu_geom.titles[m][0].min(width as f32 - 4.0 * s - w).max(4.0 * s);
-                let panel = [x, bar_h, x + w, bar_h + ih * menu_entries.len() as f32 + 4.0 * s];
-                controls::fill(&mut buf, width, height, [panel[0] - 1.0, panel[1], panel[2] + 1.0, panel[3] + 1.0], 0xFF3A_4A60);
-                controls::fill(&mut buf, width, height, panel, 0xFF1C_2430);
-                for (i, e) in menu_entries.iter().enumerate() {
-                    let r = [x, bar_h + 2.0 * s + ih * i as f32, x + w, bar_h + 2.0 * s + ih * (i + 1) as f32];
-                    if i == menu_sel && e.reason.is_none() {
-                        controls::fill(&mut buf, width, height, r, 0xFF2C_4A78);
-                    }
-                    let colour = if e.reason.is_none() { ink } else { dim };
-                    controls.text(fs, swash, &mut buf, width, height, x + pad, r[1] + s, r[2] as i32, &lefts[i], colour);
-                    if !e.key.is_empty() {
-                        let key_w = controls.width(fs, e.key);
-                        controls.text(fs, swash, &mut buf, width, height, r[2] - pad - key_w, r[1] + s, r[2] as i32, e.key, colour);
-                    }
-                    controls.target(r, Action::Item(m, i));
-                    self.ui.menu_geom.items.push(r);
-                }
-            }
-        }
+        self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);
         Some((laid_out, painted))

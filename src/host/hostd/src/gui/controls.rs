@@ -15,6 +15,7 @@ pub type Rect = [f32; 4]; // x0, y0, x1, y1 in window pixels
 pub enum Action {
     Menu(usize),
     Item(usize, usize),
+    Toolbar(usize),
     Session(String),
     Allow,
     Deny,

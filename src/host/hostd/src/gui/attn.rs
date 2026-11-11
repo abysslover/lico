@@ -14,6 +14,10 @@ use crate::clipboard::settings::{DEFAULT_FONT_PX, MAX_FONT_PX, MIN_FONT_PX};
 use super::super::{App, FONT_PX};
 use super::{memrow, ListItem, Row};
 
+fn row_sort_key(row: &Row) -> (u8, std::cmp::Reverse<u64>) {
+    (u8::from(row.state != "running"), std::cmp::Reverse(row.last_active_at))
+}
+
 fn workspace_root(row: &Row) -> &str {
     let raw = if !row.worktree_repo.is_empty() { row.worktree_repo.as_str() } else { row.cwd.as_str() };
     let trimmed = raw.trim_end_matches('/');
@@ -198,25 +202,35 @@ impl App {
                     roots.push(root);
                 }
             }
+            roots.sort_by_key(|root| {
+                self.ui.rows.iter().filter(|r| workspace_root(r) == root.as_str()).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
+            });
             for root in &roots {
                 items.push(ListItem::Heading(workspace_heading(root, &roots)));
-                for row in self.ui.rows.iter().filter(|r| workspace_root(r) == root.as_str()) {
+                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| workspace_root(r) == root.as_str()).collect();
+                group_rows.sort_by_key(|r| row_sort_key(r));
+                for row in group_rows {
                     number += 1;
                     self.ui.numbered.push(row.session.clone());
                     self.push_list_row(row, number, now, &mut items);
                 }
             }
         } else {
-            let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account) in order of first appearance
+            let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account)
             for row in &self.ui.rows {
                 let key = (row.provider.clone(), row.account.clone());
                 if !groups.contains(&key) {
                     groups.push(key);
                 }
             }
+            groups.sort_by_key(|(provider, account)| {
+                self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
+            });
             for (provider, account) in &groups {
                 items.push(ListItem::Heading(format!("{provider} / {}", self.label_of(account))));
-                for row in self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account) {
+                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).collect();
+                group_rows.sort_by_key(|r| row_sort_key(r));
+                for row in group_rows {
                     number += 1;
                     self.ui.numbered.push(row.session.clone());
                     self.push_list_row(row, number, now, &mut items);
@@ -319,5 +333,23 @@ mod tests {
         );
         assert_eq!(a.ui.numbered, vec!["s1", "s2", "s3", "s4"]);
         assert!(a.ui.list_sig.contains("wt-feat   idle (wt)"));
+    }
+
+    #[test]
+    fn active_sessions_sort_ahead_of_closed_ones_and_most_recent_activity_comes_first() {
+        let mut a = app(1.0, false);
+        let mut closed_recent = sample_row("s_closed", "closed", None);
+        closed_recent.state = "disconnected".into();
+        closed_recent.last_active_at = 9_999;
+
+        let mut old_active = sample_row("s_old", "older", None);
+        old_active.last_active_at = 1_000;
+
+        let mut new_active = sample_row("s_new", "newest", None);
+        new_active.last_active_at = 5_000;
+
+        a.ui.rows = vec![closed_recent, old_active, new_active];
+        a.refresh_list();
+        assert_eq!(a.ui.numbered, vec!["s_new", "s_old", "s_closed"]);
     }
 }

@@ -178,3 +178,31 @@ fn closing_or_deleting_a_worktree_session_asks_keep_or_remove_and_dirty_worktree
     app.confirm_key('n');
     assert!(app.ui.panel.is_none() && app.ed.text() == "my draft");
 }
+
+#[test]
+fn clicking_a_row_while_about_or_rename_is_open_closes_the_panel_enters_that_session_and_never_leaks_panel_text() {
+    let mut app = open("running", "idle", "/work/api");
+    app.session = "session-s0".into();
+    app.ui.rows.push(Row { session: "session-s1".into(), provider: "claude".into(), state: "running".into(), activity: "idle".into(), generation: 1, cwd: "/work/web".into(), name: "web".into(), ..Default::default() });
+    app.ui.numbered.push("session-s1".into());
+
+    // 1) Open About Lico, then click the already-selected session-s0 -> About closes and session-s0 is shown with its draft intact.
+    app.run_cmd(Cmd::About);
+    assert_eq!(step(&app), Some(Step::About));
+    app.row_click("session-s0".into());
+    assert!(app.ui.panel.is_none() && app.session == "session-s0" && app.ed.text() == "my draft");
+
+    // 2) Open About Lico again, then click session-s1 -> About closes and session-s1 is queued/entered immediately.
+    app.run_cmd(Cmd::About);
+    app.row_click("session-s1".into());
+    assert!(app.ui.panel.is_none() && app.pending_show == Some(("session-s1".into(), None)));
+
+    // 3) Open Rename on session-s0, type HALF, then click session-s1 -> Rename closes cleanly, restores session-s0's draft before switching, and never leaks HALF.
+    app.pending_show = None;
+    assert_eq!(app.ed.text(), "my draft");
+    app.run_cmd(Cmd::Rename);
+    app.ed.put(HALF);
+    app.row_click("session-s1".into());
+    assert!(app.ui.panel.is_none() && app.pending_show == Some(("session-s1".into(), None)));
+    assert_eq!(app.ed.text(), "my draft", "{HALF} must never leak into drafts");
+}

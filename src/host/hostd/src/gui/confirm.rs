@@ -74,13 +74,19 @@ impl App {
         true
     }
 
-    /// A click on a row of the list: it opens the session, and a second click on it soon after asks for its new name.
+    /// A click on a row of the list: closes any open panel (giving back any parked draft first), opens the session,
+    /// and on a second click soon after (when no panel was just closed) asks for its new name.
     pub(crate) fn row_click(&mut self, id: String) {
-        if self.ui.panel.is_some() {
-            return; // a panel owns the input line: leaving for another session would carry its text along
+        let closed_panel = self.ui.panel.is_some();
+        if closed_panel {
+            self.panel_close();
         }
         if id != self.session {
             self.switch_to(&id);
+        }
+        if closed_panel {
+            self.ui.clicked = Some((std::time::Instant::now(), id));
+            return;
         }
         let double = matches!(&self.ui.clicked, Some((at, last)) if *last == id && at.elapsed() < DOUBLE_CLICK);
         self.ui.clicked = if double { None } else { Some((std::time::Instant::now(), id)) };
