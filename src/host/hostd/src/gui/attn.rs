@@ -47,6 +47,22 @@ fn workspace_heading(root: &str, all_roots: &[String]) -> String {
 }
 
 impl App {
+    pub(crate) fn sync_accounts_value(&mut self, value: &Value) {
+        let arr = value["accounts"].as_array().into_iter().flatten();
+        let mut labels = std::collections::HashMap::new();
+        let mut quotas = std::collections::HashMap::new();
+        for a in arr {
+            if let (Some(id), Some(lbl)) = (a["account"].as_str(), a["label"].as_str()) {
+                labels.insert(id.to_string(), super::super::clean(lbl));
+                if let Some(q) = super::row::parse_usage_pair(&a["usage"]) {
+                    quotas.insert(id.to_string(), q);
+                }
+            }
+        }
+        self.ui.labels = labels;
+        self.ui.quotas = quotas;
+    }
+
     /// Logical text size in `lico gui` (`12.0..=20.0`, default `14.0`).
     pub(crate) fn font_px(&self) -> f32 {
         if self.ui.font_px == 0 { FONT_PX } else { self.ui.font_px as f32 }
@@ -227,7 +243,8 @@ impl App {
                 self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
             });
             for (provider, account) in &groups {
-                items.push(ListItem::Heading(format!("{provider} / {}", self.label_of(account))));
+                let qtag = self.ui.quotas.get(account).map(|&(w, s)| super::row::format_quota_list_tag(w, s)).unwrap_or_default();
+                items.push(ListItem::Heading(format!("{provider} / {}{qtag}", self.label_of(account))));
                 let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {

@@ -28,6 +28,7 @@ enum Pending {
     Init,
     ThreadStart,
     ThreadResume,
+    RateLimits,
     Turn(String),
     Steer(String, String), // request id and its text: a refused steer starts a turn instead
 }
@@ -449,6 +450,15 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
                 }
                 if let Some(link) = s.codex.as_mut() {
                     link.ready = true;
+                    let _ = rpc(link, "account/rateLimits/read", json!({"excludeResetCreditDetails": true}), Pending::RateLimits, None);
+                }
+            }
+        }
+        Pending::RateLimits => {
+            if failed.is_none() {
+                if let Some(res) = message.get("result") {
+                    let key = crate::quota::session_key(s.provider, s.account.as_deref());
+                    crate::quota::observe_codex(&key, res);
                 }
             }
         }
@@ -580,11 +590,16 @@ fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
         "turn/completed" => {
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = None;
+                let _ = rpc(link, "account/rateLimits/read", json!({"excludeResetCreditDetails": true}), Pending::RateLimits, None);
             }
             s.set_busy(false);
             record(s, &format!("[turn {}]", text("/turn/status")));
             s.mark_finished();
             return true;
+        }
+        "account/rateLimits/updated" => {
+            let key = crate::quota::session_key(s.provider, s.account.as_deref());
+            crate::quota::observe_codex(&key, params);
         }
         "error" => record_text(s, "[error] ", &text("/error/message")),
         "serverRequest/resolved" => {

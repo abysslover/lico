@@ -83,6 +83,18 @@ def _obj(required: dict, optional: dict | None = None) -> dict:
 MEMORY = {"type": "object", "required": {"private_kb": {"type": INT, "minimum": 0}, "rss_kb": {"type": INT, "minimum": 0}, "processes": {"type": INT, "minimum": 1}},
           "optional": {}}
 
+USAGE = {
+    "type": "object",
+    "required": {"updated_at": {"type": INT, "minimum": 0}},
+    "optional": {
+        "weekly_remaining_pct": {"type": INT, "minimum": 0, "maximum": 100},
+        "weekly_resets_at": {"type": INT, "minimum": 0},
+        "short_remaining_pct": {"type": INT, "minimum": 0, "maximum": 100},
+        "short_resets_at": {"type": INT, "minimum": 0},
+    },
+}
+USAGE_OR_NULL = {**USAGE, "type": ["object", "null"]}
+
 COMMON_REPLY_OPTIONAL = {"id": {"type": STR, "max_length": 64}}
 _V = {"type": INT, "enum": [PROTOCOL]}
 _OK = {"type": INT, "enum": [1]}
@@ -127,6 +139,7 @@ REPLIES = {
                      "account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "busy_since": {"type": INT, "minimum": 0}, "last_event_at": {"type": INT, "minimum": 0}, "stalled": {"type": BOOL}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
                      "auto_title": {"type": STR, "max_length": MAX_NAME}, "last_active_at": {"type": INT, "minimum": 0},
+                     "account_usage": USAGE,
                      "finished_seq": {"type": INT, "minimum": -1},
                      "worktree": _obj({"repo": {"type": STR, "max_length": MAX_PATH}, "branch": {"type": STR, "max_length": 80}, "exists": {"type": BOOL}}),
                      "memory": MEMORY,   # of a running session, from the second status call on
@@ -199,7 +212,7 @@ REPLIES = {
         "required": {"account": {"type": STR}, "provider": {"type": STR, "enum": ["codex", "claude"]},
                      "label": {"type": STR, "max_length": 40}, "default": {"type": BOOL},
                      "credential_generation": {"type": INT, "minimum": 1}, "has_credential": {"type": BOOL},
-                     "usage": {"type": "null"}},
+                     "usage": USAGE_OR_NULL},
         "optional": {"issue": {"type": STR}, "issue_sessions": {"type": "array", "items": {"type": STR}}}}}}, COMMON_REPLY_OPTIONAL),
     "account.affected": _obj({"v": _V, "ok": _OK, "account": {"type": STR}, "sessions": {"type": "array", "items": {
         "type": "object", "required": {"session": {"type": STR}, "state": {"type": STR, "enum": ["running", "exited", "disconnected"]}},
@@ -378,7 +391,7 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
         for index, item in enumerate(value):
             if "items" in spec:
                 _check(item, spec["items"], f"{path}[{index}]", errors)
-    if isinstance(value, dict) and spec["type"] == "object":
+    if isinstance(value, dict) and "object" in kinds:
         validate_object(value, spec, path, errors)
 
 

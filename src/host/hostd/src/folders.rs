@@ -313,6 +313,11 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
 pub fn annotate(entry: &mut Value, s: &Session) {
     entry["scratch"] = json!(s.settings.cwd.is_none());
     entry["last_active_at"] = json!(s.last_active_at);
+    let qkey = crate::quota::session_key(s.provider, s.account.as_deref());
+    let usage = crate::quota::usage_json(&qkey);
+    if !usage.is_null() {
+        entry["account_usage"] = usage;
+    }
     for (key, value) in [("cwd", &s.settings.cwd), ("name", &s.settings.name), ("auto_title", &s.auto_title), ("chosen_model", &s.settings.model), ("chosen_effort", &s.settings.effort)] {
         if let Some(value) = value {
             entry[key] = json!(value);

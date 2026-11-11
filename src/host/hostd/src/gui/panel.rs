@@ -88,6 +88,7 @@ impl App {
 
     fn load_accounts(&mut self) {
         let reply = self.host_call(json!({"op": "account.list"}));
+        self.sync_accounts_value(&reply);
         let list: Vec<(String, String, String, bool)> = reply["accounts"]
             .as_array()
             .into_iter()
@@ -189,7 +190,8 @@ impl App {
             }
             Step::Accounts => {
                 for (i, a) in p.accounts.iter().enumerate() {
-                    body.push(format!("{}  {} / {}{}", i + 1, a.1, a.2, if a.3 { "  (default)" } else { "" }));
+                    let q = self.ui.quotas.get(&a.0).map(|&(w, s)| super::ui::row::format_quota_detail(w, s)).filter(|s| !s.is_empty()).map(|s| format!("  [{s}]")).unwrap_or_default();
+                    body.push(format!("{}  {} / {}{}{q}", i + 1, a.1, a.2, if a.3 { "  (default)" } else { "" }));
                 }
                 if p.accounts.is_empty() {
                     body.push("No account yet: Ctrl+N creates one with a session.".into());
@@ -241,6 +243,12 @@ impl App {
                     body.push(format!("provider says: {}", if s { "signed in" } else { "not signed in" }));
                 } else if p.login.get("signed_in").is_some() {
                     body.push("provider says: unknown (no status command)".into());
+                }
+                if let Some(&(w, s)) = self.ui.quotas.get(&p.account) {
+                    let q = super::ui::row::format_quota_detail(w, s);
+                    if !q.is_empty() {
+                        body.push(format!("quota: {q}"));
+                    }
                 }
                 format!("Account: {}", Self::account_name(p))
             }

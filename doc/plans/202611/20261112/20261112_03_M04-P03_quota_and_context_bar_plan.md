@@ -1,6 +1,6 @@
 # M04-P03 Plan: Provider weekly quota telemetry (`7d` remaining) and working-directory context display
 
-- Status: in_progress
+- Status: in_review
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer](../../../milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md)

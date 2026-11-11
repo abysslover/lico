@@ -20,7 +20,7 @@ use super::controls::{self, Action, Controls};
 #[path = "attn.rs"]
 mod attn;
 #[path = "row.rs"]
-mod row;
+pub(crate) mod row;
 #[path = "reconnect.rs"]
 pub(super) mod reconnect;
 pub(crate) use row::{clock_text, memrow, Row};
@@ -67,6 +67,7 @@ pub struct UiState {
     pub markers: bool,
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>,
+    pub quotas: HashMap<String, (Option<u8>, Option<u8>)>,
     pub list_sig: String,
     pub list_swash: Option<SwashCache>,
     pub surface: Option<Surface<Arc<Window>, Arc<Window>>>,
@@ -137,7 +138,12 @@ impl App {
     // ------------------------------------------------------------------ what the host says
     pub(crate) fn ui_status(&mut self, line: &str) {
         let Ok(value) = serde_json::from_str::<Value>(line) else { return };
-        let rows = value["sessions"].as_array().into_iter().flatten().filter_map(Row::of_status).collect(); // synthetic sessions are not shown in this view
+        let rows: Vec<Row> = value["sessions"].as_array().into_iter().flatten().filter_map(Row::of_status).collect(); // synthetic sessions are not shown in this view
+        for r in &rows {
+            if !r.account.is_empty() && (r.weekly_remaining_pct.is_some() || r.short_remaining_pct.is_some()) {
+                self.ui.quotas.insert(r.account.clone(), (r.weekly_remaining_pct, r.short_remaining_pct));
+            }
+        }
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
         self.ui.rows = rows;
         self.ui.mem.read(&value);
@@ -155,7 +161,7 @@ impl App {
 
     pub(crate) fn ui_accounts(&mut self, line: &str) {
         let Ok(value) = serde_json::from_str::<Value>(line) else { return };
-        self.ui.labels = value["accounts"].as_array().into_iter().flatten().filter_map(|a| Some((a["account"].as_str()?.to_string(), clean(a["label"].as_str()?)))).collect();
+        self.sync_accounts_value(&value);
         self.refresh_list();
     }
 
@@ -226,25 +232,7 @@ impl App {
 
     fn header_base(&self) -> String {
         match self.selected_row() {
-            Some(r) => {
-                let model = if r.model.is_empty() { "model not reported".to_string() } else { r.model.clone() };
-                let issue = if r.issue.is_empty() { String::new() } else { format!(" | account issue: {}", r.issue) };
-                let mode = match r.mode.as_str() {
-                    "auto" => " | mode: auto (permissions skipped)",
-                    "default" => " | mode: asks for approval",
-                    _ => "",
-                };
-                let extra = if self.ui.menu {
-                    let title = r.display_title();
-                    let title_part = if title.is_empty() { String::new() } else { format!(" | {title}") };
-                    let ws = r.workspace_label();
-                    let dir_part = if ws.is_empty() { String::new() } else { format!(" | dir: {ws}") };
-                    format!("{title_part}{dir_part}")
-                } else {
-                    String::new()
-                };
-                format!("{} | {} | {} | {}{mode}{issue}{extra}", r.provider, self.label_of(&r.account), model, r.state_with_clock(self.clock_now()))
-            }
+            Some(r) => r.header_line(&self.label_of(&r.account), self.clock_now(), self.ui.menu, self.ui.quotas.get(&r.account).copied()),
             None if self.session.is_empty() => "select a session".into(),
             None => format!("{} | not listed", self.session),
         }
@@ -588,6 +576,7 @@ impl App {
             .map(|r| json!({
                 "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
                 "display_name": r.name(), "auto_title": if r.auto_title.is_empty() { Value::Null } else { json!(r.auto_title) }, "last_active_at": r.last_active_at,
+                "weekly_remaining_pct": r.weekly_remaining_pct, "short_remaining_pct": r.short_remaining_pct,
                 "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
                 "virtual_display": if r.virtual_display.is_empty() { Value::Null } else { json!(r.virtual_display) },
                 "unread": self.row_unread(r),

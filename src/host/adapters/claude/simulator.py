@@ -319,6 +319,19 @@ def turn(message):
         subprocess.Popen([sys.executable, "-I", "-c", program, count, *extra], start_new_session=True)
         say("echo: " + text)
         out(result())
+    elif text.startswith("ratelimit:"):
+        parts = text[len("ratelimit:"):].split(":")
+        u7_raw = float(parts[0])
+        u7_frac = u7_raw if u7_raw <= 1.0 else u7_raw / 100.0
+        out({"type": "rate_limit_event", "uuid": str(uuid.uuid4()), "session_id": session,
+             "rate_limit_info": {"status": "allowed" if u7_frac < 0.8 else "allowed_warning", "rateLimitType": "seven_day", "utilization": u7_frac, "resetsAt": 1794950000}})
+        if len(parts) > 1 and parts[1]:
+            u5_raw = float(parts[1])
+            u5_frac = u5_raw if u5_raw <= 1.0 else u5_raw / 100.0
+            out({"type": "rate_limit_event", "uuid": str(uuid.uuid4()), "session_id": session,
+                 "rate_limit_info": {"status": "allowed", "rateLimitType": "five_hour", "utilization": u5_frac, "resetsAt": 1794400000}})
+        say(f"quota updated: 7d used {int(round(u7_frac * 100))}%")
+        out(result())
     elif text == "stall":
         say("stalling")
         while not os.path.exists(f"{args.received}.end"):

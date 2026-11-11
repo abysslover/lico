@@ -143,6 +143,18 @@ def handle(message):
             for k in range(count):
                 scheduled.append((now + 0.1 * (k + 1), ("delta", f"tick {k}\n")))
             scheduled.append((now + 0.1 * (count + 1), ("done", None)))
+        elif text.startswith("ratelimit:"):
+            parts = text[len("ratelimit:"):].split(":")
+            u7 = int(parts[0])
+            u5 = int(parts[1]) if len(parts) > 1 and parts[1] else 10
+            active["rate_limits"] = {
+                "primary": {"usedPercent": u5, "windowDurationMins": 300, "resetsAt": 1794400000},
+                "secondary": {"usedPercent": u7, "windowDurationMins": 10080, "resetsAt": 1794950000},
+            }
+            notify("account/rateLimits/updated", {"rateLimits": active["rate_limits"]})
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "rl", "delta": f"quota updated: 7d used {u7}%\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text == "stall":
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "stall", "delta": "stalling\n"})
             while not os.path.exists(f"{args.received}.end"):
@@ -237,6 +249,8 @@ def handle(message):
         notify("turn/completed", {"threadId": active["thread"], "turn": {"id": active["turn"], "items": [], "status": "interrupted"}})
         scheduled.clear()
         active["turn"] = None
+    elif method == "account/rateLimits/read":
+        out({"id": rid, "result": {"rateLimits": active.get("rate_limits") or {}}})
     elif rid is not None:
         out({"id": rid, "error": {"code": -32601, "message": "unknown method"}})
 

@@ -511,7 +511,7 @@ pub fn account_list(shared: &Shared) -> Reply {
             entry["issue"] = json!(issue);
             entry["issue_sessions"] = json!(affected.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>());
         }
-        entry["usage"] = Value::Null; // no provider source reports usage yet: unknown is not zero
+        entry["usage"] = crate::quota::usage_json(&id); // null until provider rate-limit telemetry is observed
     }
     Ok(obj(json!({"accounts": entries})))
 }

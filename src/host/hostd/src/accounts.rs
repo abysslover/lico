@@ -152,6 +152,7 @@ impl Accounts {
         if !keep_home {
             let _ = std::fs::remove_dir_all(self.dir.join(id));
         }
+        crate::quota::forget(id);
         Ok(())
     }
 

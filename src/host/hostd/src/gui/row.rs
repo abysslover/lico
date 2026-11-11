@@ -39,6 +39,47 @@ pub struct Row {
     pub memory_kb: u64,     // what the agent and all its descendants hold of their own (RssAnon + RssShmem), 0 until the host says
     pub rss_kb: u64,        // the same processes' VmRSS
     pub processes: u32,
+    pub weekly_remaining_pct: Option<u8>, // observed 7d allowance remaining (0..=100), None when unreported
+    pub short_remaining_pct: Option<u8>,  // observed short-window (e.g. 5h) allowance remaining, None when unreported
+}
+
+pub fn parse_usage_pair(usage: &Value) -> Option<(Option<u8>, Option<u8>)> {
+    if !usage.is_object() {
+        return None;
+    }
+    let w = usage["weekly_remaining_pct"].as_u64().map(|n| n.min(100) as u8);
+    let s = usage["short_remaining_pct"].as_u64().map(|n| n.min(100) as u8);
+    (w.is_some() || s.is_some()).then_some((w, s))
+}
+
+pub fn format_quota_badge(weekly: Option<u8>, short: Option<u8>) -> String {
+    match (weekly, short) {
+        (Some(w), _) if w < 5 => format!("7d CRITICAL {w}% left"),
+        (Some(w), _) if w < 20 => format!("7d LOW {w}% left"),
+        (Some(w), _) => format!("7d {w}% left"),
+        (None, Some(s)) => format!("5h {s}% left"),
+        (None, None) => String::new(),
+    }
+}
+
+pub fn format_quota_detail(weekly: Option<u8>, short: Option<u8>) -> String {
+    let mut parts = Vec::new();
+    if let Some(w) = weekly {
+        parts.push(if w < 5 { format!("7d CRITICAL {w}% left") } else if w < 20 { format!("7d LOW {w}% left") } else { format!("7d {w}% left") });
+    }
+    if let Some(s) = short {
+        parts.push(format!("5h {s}% left"));
+    }
+    parts.join(" · ")
+}
+
+pub fn format_quota_list_tag(weekly: Option<u8>, short: Option<u8>) -> String {
+    match (weekly, short) {
+        (Some(w), _) if w < 20 => format!("  7d {w}%!"),
+        (Some(w), _) => format!("  7d {w}%"),
+        (None, Some(s)) => format!("  5h {s}%"),
+        (None, None) => String::new(),
+    }
 }
 
 pub(crate) fn ago(now: u64, then: u64) -> String {
@@ -92,7 +133,35 @@ impl Row {
             worktree_repo: clean(entry["worktree"]["repo"].as_str().unwrap_or("")),
             worktree_exists: entry["worktree"]["exists"].as_bool().unwrap_or(false),
             memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,
+            weekly_remaining_pct: entry["account_usage"]["weekly_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
+            short_remaining_pct: entry["account_usage"]["short_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
         })
+    }
+
+    pub fn header_line(&self, label: &str, now: u64, menu: bool, fallback_quota: Option<(Option<u8>, Option<u8>)>) -> String {
+        let model = if self.model.is_empty() { "model not reported".to_string() } else { self.model.clone() };
+        let issue = if self.issue.is_empty() { String::new() } else { format!(" | account issue: {}", self.issue) };
+        let mode = match self.mode.as_str() {
+            "auto" => " | mode: auto (permissions skipped)",
+            "default" => " | mode: asks for approval",
+            _ => "",
+        };
+        let extra = if menu {
+            let title = self.display_title();
+            let title_part = if title.is_empty() { String::new() } else { format!(" | {title}") };
+            let ws = self.workspace_label();
+            let dir_part = if ws.is_empty() { String::new() } else { format!(" | dir: {ws}") };
+            let (w, s) = (
+                self.weekly_remaining_pct.or_else(|| fallback_quota.and_then(|q| q.0)),
+                self.short_remaining_pct.or_else(|| fallback_quota.and_then(|q| q.1)),
+            );
+            let badge = format_quota_badge(w, s);
+            let quota_part = if badge.is_empty() { String::new() } else { format!(" | {badge}") };
+            format!("{title_part}{dir_part}{quota_part}")
+        } else {
+            String::new()
+        };
+        format!("{} | {label} | {model} | {}{mode}{issue}{extra}", self.provider, self.state_with_clock(now))
     }
 
     /// Explicit user name if set, else derived conversation title (`auto_title`), else empty.
@@ -283,5 +352,30 @@ mod tests {
         let mut unreported = working(0, 0, false); // the host said working but gave no start: no clock is made up
         unreported.busy_since = 0;
         assert_eq!(unreported.working_for(9), None);
+    }
+
+    #[test]
+    fn quota_badges_and_header_lines_show_reported_allowance_and_omit_unknown_usage() {
+        assert_eq!(format_quota_badge(None, None), "");
+        assert_eq!(format_quota_badge(Some(68), Some(91)), "7d 68% left");
+        assert_eq!(format_quota_badge(Some(14), Some(80)), "7d LOW 14% left");
+        assert_eq!(format_quota_badge(Some(3), None), "7d CRITICAL 3% left");
+        assert_eq!(format_quota_badge(None, Some(85)), "5h 85% left");
+        assert_eq!(format_quota_detail(Some(68), Some(91)), "7d 68% left · 5h 91% left");
+
+        let mut r = Row::of_status(&serde_json::json!({
+            "session": "s1", "provider": "claude", "account": "a1", "model": "sonnet",
+            "state": "running", "activity": "idle", "mode": "auto", "cwd": "/work/lico",
+            "auto_title": "Check weekly allowance",
+            "account_usage": {"updated_at": 100, "weekly_remaining_pct": 68, "short_remaining_pct": 91}
+        })).unwrap();
+        assert_eq!(r.weekly_remaining_pct, Some(68));
+        let h = r.header_line("Work", 200, true, None);
+        assert!(h.contains("dir: /work/lico") && h.contains("7d 68% left"), "{h}");
+        let bare = r.header_line("Work", 200, false, None);
+        assert_eq!(bare, "claude | Work | sonnet | idle | mode: auto (permissions skipped)");
+        r.weekly_remaining_pct = None;
+        r.short_remaining_pct = None;
+        assert!(!r.header_line("Work", 200, true, None).contains("left"));
     }
 }

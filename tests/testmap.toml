@@ -97,6 +97,7 @@
 "tests/test_workspace_navigator.py" = ["cli", "gui", "host"]
 "tests/test_toolbar_and_nav.py" = ["cli", "gui", "host"]
 "tests/test_conversation_view.py" = ["cli", "gui", "host"]
+"tests/test_quota_display.py" = ["cli", "gui", "host"]
 
 [rust.modules]
 # The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
@@ -144,6 +145,7 @@ payload = ["host"]
 pending = ["host"]
 png = ["host"]
 provider_record = ["host"]
+quota = ["host"]
 registry = ["host"]
 search = ["host"]
 session = ["host"]

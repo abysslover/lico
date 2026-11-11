@@ -475,6 +475,10 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
                 notify_event = Some((true, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
             }
         }
+        Some("rate_limit_event") => {
+            let key = crate::quota::session_key(s.provider, s.account.as_deref());
+            crate::quota::observe_claude(&key, message);
+        }
         _ => {}
     }
     drop(s);
