@@ -14,7 +14,7 @@ use crate::core::{Reply, Shared};
 use crate::provider_record::{O_NOFOLLOW, O_NONBLOCK};
 use crate::session::obj;
 
-pub const MAX_ENTRIES: usize = 500;
+pub const MAX_ENTRIES: usize = 10_000;
 pub const MAX_PREVIEW_BYTES: usize = 64 * 1024;
 
 struct EntryItem {
@@ -333,5 +333,20 @@ mod tests {
         assert_eq!(r_big["binary"], json!(false));
         assert_eq!(r_big["truncated"], json!(true));
         assert_eq!(r_big["text"].as_str().unwrap().len(), MAX_PREVIEW_BYTES - 1);
+    }
+
+    #[test]
+    fn folder_list_returns_over_500_entries_without_truncating() {
+        let tree = TempTree::new();
+        let state = tree.0.join("state");
+        let shared = dummy_shared(&state);
+        let work = tree.0.join("large");
+        std::fs::create_dir_all(&work).unwrap();
+        for i in 0..620 {
+            std::fs::write(work.join(format!("item_{i:04}.txt")), b"x").unwrap();
+        }
+        let res = folder_list(&shared, work.to_str().unwrap()).expect("large folder_list");
+        assert_eq!(res["truncated"], json!(false));
+        assert_eq!(res["entries"].as_array().unwrap().len(), 620);
     }
 }

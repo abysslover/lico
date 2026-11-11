@@ -1,6 +1,6 @@
 # M05-P02 Plan — Top-anchored panel layout, large-directory listing, and page/wheel navigation
 
-- Status: in_progress
+- Status: done
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M05 — Working-directory restore across restarts, paged directory navigation, and unified file opening (`lico 0.2.1`)](../../../milestones/202611/20261112/20261112_02_M05_workspace_continuity_and_file_navigation_milestone.md)

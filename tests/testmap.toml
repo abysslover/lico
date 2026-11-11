@@ -39,6 +39,7 @@
 "tests/test_conversation.py" = ["host"]
 "tests/test_credential_store.py" = ["cred"]
 "tests/test_decision.py" = []
+"tests/test_directory_pagination.py" = ["gui", "host"]
 "tests/test_editor_selection.py" = ["gui", "host"]
 "tests/test_first_view.py" = ["gui", "host", "synth"]
 "tests/test_no_hidden_characters.py" = []

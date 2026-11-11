@@ -1,9 +1,9 @@
-//! In-window Working Directory File Viewer (`M04-P04`).
+//! In-window Working Directory File Viewer (`M04-P04`, paged navigation `M05-P02`).
 //!
 //! Opens a working directory strictly on demand (`Files` toolbar button, `View > Working directory files`, `Ctrl+E`),
 //! refreshes only on explicit `F5` or toolbar `Refresh`, starts a new session directly in the viewed directory
-//! (`+ New here` / `N`), previews regular UTF-8 files (`<= 64 KiB`), and launches `.html`/`.htm` files in the
-//! external browser (`xdg-open`, respecting `LICO_OPEN_CMD` and `LICO_NO_AUTO_OPEN`).
+//! (`+ New here` / `N`), navigates multi-page directories and UTF-8 file previews via `< Prev` / `Next >`,
+//! `PgUp`/`PgDn`, `[`/`]`, and mouse wheel, and launches `.html`/`.htm` files in the external browser.
 
 use std::process::{Command, Stdio};
 
@@ -15,7 +15,7 @@ use super::super::editor::{hidden, wide};
 use super::super::App;
 use super::Step;
 
-const SHOWN: usize = 14;
+const DEFAULT_PAGE_SIZE: usize = 18;
 const WIDE: usize = 96;
 
 #[derive(Clone, Debug)]
@@ -49,6 +49,36 @@ pub struct Explorer {
     pub last_opened: Option<String>,
 }
 
+fn calc_page_size(panel_rows: usize, in_preview: bool) -> usize {
+    if panel_rows == 0 {
+        return DEFAULT_PAGE_SIZE;
+    }
+    let reserve = if in_preview { 9 } else { 7 };
+    panel_rows.saturating_sub(reserve).clamp(5, 36)
+}
+
+fn clip_cols(text: &str, max_cols: usize) -> String {
+    if max_cols < 20 {
+        return text.to_string();
+    }
+    let total: usize = text.chars().map(|c| if wide(c) { 2 } else { 1 }).sum();
+    if total <= max_cols {
+        return text.to_string();
+    }
+    let budget = max_cols.saturating_sub(1);
+    let (mut out, mut used) = (String::new(), 0);
+    for c in text.chars() {
+        let w = if wide(c) { 2 } else { 1 };
+        if used + w > budget {
+            break;
+        }
+        out.push(c);
+        used += w;
+    }
+    out.push('…');
+    out
+}
+
 fn format_bytes(bytes: u64) -> String {
     if bytes < 1024 {
         format!("{bytes} B")
@@ -59,7 +89,8 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
-fn wrap_preview(text: &str) -> Vec<String> {
+fn wrap_preview(text: &str, max_cols: usize) -> Vec<String> {
+    let limit = if max_cols >= 32 { max_cols.min(WIDE) } else { WIDE };
     let mut parts: Vec<&str> = text.split('\n').collect();
     if parts.len() > 1 && parts.last() == Some(&"") {
         parts.pop();
@@ -72,7 +103,7 @@ fn wrap_preview(text: &str) -> Vec<String> {
                 continue;
             }
             let w = if wide(c) { 2 } else { 1 };
-            if cols + w > WIDE {
+            if cols + w > limit {
                 out.push(std::mem::take(&mut line));
                 cols = 0;
             }
@@ -120,32 +151,37 @@ impl Explorer {
         1 + usize::from(self.parent.is_some()) + self.entries.len()
     }
 
-    fn window(&self) -> (usize, usize) {
+    fn page_window(&self, page_size: usize) -> (usize, usize, usize, usize) {
+        let ps = page_size.max(1);
         let total = self.nav_len();
-        let max_start = total.saturating_sub(SHOWN);
-        let start = self.cursor.saturating_sub(SHOWN / 2).min(max_start);
-        (start, (start + SHOWN).min(total))
+        let total_pages = total.div_ceil(ps).max(1);
+        let page_idx = (self.cursor / ps).min(total_pages - 1);
+        let start = page_idx * ps;
+        let end = (start + ps).min(total);
+        (start, end, page_idx, total_pages)
     }
 
-    fn row_label(&self, nav_idx: usize) -> String {
+    fn row_label(&self, nav_idx: usize, max_cols: usize) -> String {
         let mark = if nav_idx == self.cursor { '>' } else { ' ' };
-        if nav_idx == 0 {
-            return format!("{mark} [+ New session in this directory]   (N or click)");
-        }
-        let mut rest = nav_idx - 1;
-        if self.parent.is_some() {
-            if rest == 0 {
-                return format!("{mark} [..]  (parent directory)");
+        let raw = if nav_idx == 0 {
+            format!("{mark} [+ New session in this directory]   (N or click)")
+        } else {
+            let mut rest = nav_idx - 1;
+            if self.parent.is_some() {
+                if rest == 0 {
+                    return clip_cols(&format!("{mark} [..]  (parent directory)"), max_cols);
+                }
+                rest -= 1;
             }
-            rest -= 1;
-        }
-        let Some(item) = self.entries.get(rest) else { return String::new() };
-        match item.kind.as_str() {
-            "dir" => format!("{mark} [dir]   {}/", item.name),
-            "link" => format!("{mark} [link]  {}  (symlink)", item.name),
-            _ if item.is_html => format!("{mark} [html]  {}  ({})  [open in browser]", item.name, format_bytes(item.size)),
-            _ => format!("{mark} [file]  {}  ({})", item.name, format_bytes(item.size)),
-        }
+            let Some(item) = self.entries.get(rest) else { return String::new() };
+            match item.kind.as_str() {
+                "dir" => format!("{mark} [dir]   {}/", item.name),
+                "link" => format!("{mark} [link]  {}  (symlink)", item.name),
+                _ if item.is_html => format!("{mark} [html]  {}  ({})  [open in browser]", item.name, format_bytes(item.size)),
+                _ => format!("{mark} [file]  {}  ({})", item.name, format_bytes(item.size)),
+            }
+        };
+        clip_cols(&raw, max_cols)
     }
 
     fn selected_entry(&self) -> Option<&FileItem> {
@@ -155,6 +191,81 @@ impl Explorer {
 }
 
 impl App {
+    fn files_row_cols(&self) -> usize {
+        if self.ui.panel_cols >= 24 {
+            self.ui.panel_cols.saturating_sub(2)
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn files_page_nav_state(&self) -> (bool, bool) {
+        let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
+            return (false, false);
+        };
+        if let Some(pv) = &ex.preview {
+            let ps = calc_page_size(self.ui.panel_rows, true);
+            return (pv.top > 0, pv.top + ps < pv.lines.len());
+        }
+        let ps = calc_page_size(self.ui.panel_rows, false);
+        let (_, _, page_idx, total_pages) = ex.page_window(ps);
+        (page_idx > 0, page_idx + 1 < total_pages)
+    }
+
+    pub(crate) fn files_step_page(&mut self, dir: isize) {
+        let panel_rows = self.ui.panel_rows;
+        let Some(ex) = self
+            .ui
+            .panel
+            .as_mut()
+            .filter(|p| p.step == Step::Files)
+            .and_then(|p| p.files.as_mut())
+        else {
+            return;
+        };
+        if let Some(pv) = ex.preview.as_mut() {
+            let ps = calc_page_size(panel_rows, true);
+            let max_top = pv.lines.len().saturating_sub(ps) as isize;
+            pv.top = (pv.top as isize).saturating_add(dir.saturating_mul(ps as isize)).clamp(0, max_top) as usize;
+            self.dirty = true;
+            return;
+        }
+        let ps = calc_page_size(panel_rows, false);
+        let (_, _, page_idx, total_pages) = ex.page_window(ps);
+        let max_idx = ex.nav_len().saturating_sub(1);
+        if dir > 0 {
+            if page_idx + 1 < total_pages {
+                ex.cursor = ((page_idx + 1) * ps).min(max_idx);
+            } else {
+                ex.cursor = max_idx;
+            }
+        } else if page_idx > 0 {
+            ex.cursor = (page_idx - 1) * ps;
+        } else {
+            ex.cursor = 0;
+        }
+        self.dirty = true;
+    }
+
+    pub(crate) fn files_wheel(&mut self, lines: isize) -> bool {
+        let is_files = self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Files);
+        if !is_files {
+            return false;
+        }
+        if lines == 0 {
+            return true;
+        }
+        // In winit, wheel-up yields `lines > 0` (`Older`); in top-down file lists that moves toward index 0 (`-lines`).
+        let step = -lines;
+        let in_preview = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).is_some_and(|ex| ex.preview.is_some());
+        if in_preview {
+            self.files_scroll_preview(step);
+        } else {
+            self.files_move_cursor(step);
+        }
+        true
+    }
+
     fn initial_files_cwd(&self) -> String {
         if let Some(row) = self.selected_row() {
             if !row.worktree_repo.is_empty() {
@@ -264,6 +375,8 @@ impl App {
 
     fn files_load_preview(&mut self, path: &str) -> bool {
         let reply = self.host_call_within(json!({"op": "folder.read", "path": path}), 4);
+        let max_cols = self.files_row_cols();
+        let ps = calc_page_size(self.ui.panel_rows, true);
         let Some(p) = self.ui.panel.as_mut() else { return false };
         if reply["ok"] != json!(1) {
             let err = reply["error"].as_str().unwrap_or("unknown").to_string();
@@ -276,11 +389,11 @@ impl App {
         let lines = if binary {
             Vec::new()
         } else {
-            wrap_preview(reply["text"].as_str().unwrap_or(""))
+            wrap_preview(reply["text"].as_str().unwrap_or(""), max_cols)
         };
         if let Some(ex) = p.files.as_mut() {
             let prev_top = ex.preview.as_ref().filter(|pv| pv.path == path).map_or(0, |pv| pv.top);
-            let max_top = lines.len().saturating_sub(SHOWN);
+            let max_top = lines.len().saturating_sub(ps);
             ex.preview = Some(FilePreview {
                 path: reply["path"].as_str().unwrap_or(path).to_string(),
                 name: reply["name"].as_str().unwrap_or("").to_string(),
@@ -402,36 +515,53 @@ impl App {
         let Some(ex) = p.files.as_ref() else {
             return ("Files".into(), Vec::new());
         };
+        let max_cols = self.files_row_cols();
         if let Some(pv) = &ex.preview {
+            let ps = calc_page_size(self.ui.panel_rows, true);
             let mut body = vec!["[<- Back to directory]   (Backspace or Esc)".into(), String::new()];
             if pv.binary {
                 body.push("(binary file — text preview is shown only for UTF-8 files)".into());
             } else if pv.lines.is_empty() || (pv.lines.len() == 1 && pv.lines[0].is_empty()) {
                 body.push("(empty file)".into());
             } else {
-                let end = (pv.top + SHOWN).min(pv.lines.len());
-                body.extend(pv.lines[pv.top..end].iter().cloned());
+                let total_pages = pv.lines.len().div_ceil(ps).max(1);
+                let page_num = (pv.top / ps).min(total_pages - 1) + 1;
+                let end = (pv.top + ps).min(pv.lines.len());
+                body.extend(pv.lines[pv.top..end].iter().map(|l| clip_cols(l, max_cols)));
                 body.push(String::new());
-                body.push(format!(
-                    "lines {}-{} of {}{}   |   Up/Down/PgUp/PgDn scroll   F5 refresh   N new session here",
-                    pv.top + 1,
-                    end,
-                    pv.lines.len(),
-                    if pv.truncated { " (first 64 KiB)" } else { "" }
+                body.push(clip_cols(
+                    &format!(
+                        "Page {page_num} / {total_pages}  (lines {}-{} of {}{})   |   PgUp/PgDn or [/] or wheel   F5 refresh   N new session",
+                        pv.top + 1,
+                        end,
+                        pv.lines.len(),
+                        if pv.truncated { ", first 64 KiB" } else { "" }
+                    ),
+                    max_cols,
                 ));
             }
             return (format!("File: {}  ({})", pv.path, format_bytes(pv.size)), body);
         }
 
-        let (start, end) = ex.window();
-        let mut body: Vec<String> = (start..end).map(|i| ex.row_label(i)).collect();
+        let ps = calc_page_size(self.ui.panel_rows, false);
+        let (start, end, page_idx, total_pages) = ex.page_window(ps);
+        let mut body: Vec<String> = (start..end).map(|i| ex.row_label(i, max_cols)).collect();
         body.push(String::new());
-        body.push(format!(
-            "{} entries{}   |   F5 refresh   N new session here   Enter open   V view HTML source",
-            ex.entries.len(),
-            if ex.truncated { " (first 500 shown)" } else { "" }
+        body.push(clip_cols(
+            &format!(
+                "Page {} / {total_pages}  ({} entries{})   |   PgUp/PgDn or [/] or wheel   F5 refresh   N new session   Enter open   V view HTML source",
+                page_idx + 1,
+                ex.entries.len(),
+                if ex.truncated { ", first 10000 shown" } else { "" }
+            ),
+            max_cols,
         ));
-        (format!("Files: {}", ex.cwd), body)
+        let heading = if total_pages > 1 {
+            format!("Files: {}  [Page {} / {total_pages}]", ex.cwd, page_idx + 1)
+        } else {
+            format!("Files: {}", ex.cwd)
+        };
+        (heading, body)
     }
 
     pub(crate) fn files_json(&self) -> Value {
@@ -441,8 +571,19 @@ impl App {
         let entries: Vec<Value> = ex
             .entries
             .iter()
+            .take(1000)
             .map(|e| json!({"name": e.name, "kind": e.kind, "size": e.size, "is_html": e.is_html}))
             .collect();
+        let (page, total_pages, page_size, vis_start, vis_end) = if let Some(pv) = &ex.preview {
+            let ps = calc_page_size(self.ui.panel_rows, true);
+            let tp = pv.lines.len().div_ceil(ps).max(1);
+            let pg = (pv.top / ps).min(tp - 1) + 1;
+            (pg, tp, ps, pv.top, (pv.top + ps).min(pv.lines.len()))
+        } else {
+            let ps = calc_page_size(self.ui.panel_rows, false);
+            let (s, e, p_idx, tp) = ex.page_window(ps);
+            (p_idx + 1, tp, ps, s, e)
+        };
         let preview = ex.preview.as_ref().map(|pv| {
             json!({
                 "path": pv.path,
@@ -459,17 +600,22 @@ impl App {
             "parent": ex.parent,
             "mode": if ex.preview.is_some() { "preview" } else { "dir" },
             "cursor": ex.cursor,
+            "page": page,
+            "total_pages": total_pages,
+            "page_size": page_size,
+            "visible_range": [vis_start, vis_end],
             "entry_count": ex.entries.len(),
             "entries": entries,
             "truncated": ex.truncated,
             "load_count": ex.load_count,
-            "refresh_count": ex.refresh_count,
+            "refresh_count": refresh_count_val(ex),
             "last_opened": ex.last_opened,
             "preview": preview,
         })
     }
 
     pub(crate) fn files_click(&mut self, line: usize) -> bool {
+        let ps = calc_page_size(self.ui.panel_rows, false);
         let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
             return false;
         };
@@ -486,7 +632,7 @@ impl App {
             }
             return false;
         }
-        let (start, end) = ex.window();
+        let (start, end, _, _) = ex.page_window(ps);
         if line >= end.saturating_sub(start) {
             return false;
         }
@@ -528,11 +674,16 @@ impl App {
                 }
                 Key::Named(NamedKey::ArrowUp) => self.files_scroll_preview(-1),
                 Key::Named(NamedKey::ArrowDown) => self.files_scroll_preview(1),
-                Key::Named(NamedKey::PageUp) => self.files_scroll_preview(-(SHOWN as isize)),
-                Key::Named(NamedKey::PageDown) => self.files_scroll_preview(SHOWN as isize),
+                Key::Named(NamedKey::PageUp) => self.files_step_page(-1),
+                Key::Named(NamedKey::PageDown) => self.files_step_page(1),
                 Key::Named(NamedKey::Home) => self.files_scroll_preview(isize::MIN / 2),
                 Key::Named(NamedKey::End) => self.files_scroll_preview(isize::MAX / 2),
-                Key::Character(c) if !event.repeat && c.eq_ignore_ascii_case("n") => self.files_new_session_here(),
+                Key::Character(c) if !event.repeat => match c.as_str() {
+                    "[" => self.files_step_page(-1),
+                    "]" => self.files_step_page(1),
+                    _ if c.eq_ignore_ascii_case("n") => self.files_new_session_here(),
+                    _ => {}
+                },
                 _ => {}
             }
             return true;
@@ -551,11 +702,13 @@ impl App {
             Key::Named(NamedKey::Enter) if !event.repeat => self.files_activate(false),
             Key::Named(NamedKey::ArrowUp) => self.files_move_cursor(-1),
             Key::Named(NamedKey::ArrowDown) => self.files_move_cursor(1),
-            Key::Named(NamedKey::PageUp) => self.files_move_cursor(-(SHOWN as isize)),
-            Key::Named(NamedKey::PageDown) => self.files_move_cursor(SHOWN as isize),
+            Key::Named(NamedKey::PageUp) => self.files_step_page(-1),
+            Key::Named(NamedKey::PageDown) => self.files_step_page(1),
             Key::Named(NamedKey::Home) => self.files_move_cursor(isize::MIN / 2),
             Key::Named(NamedKey::End) => self.files_move_cursor(isize::MAX / 2),
             Key::Character(c) if !event.repeat => match c.to_ascii_lowercase().as_str() {
+                "[" => self.files_step_page(-1),
+                "]" => self.files_step_page(1),
                 "n" => self.files_new_session_here(),
                 "v" => self.files_activate(true),
                 "o" => {
@@ -588,10 +741,15 @@ impl App {
     }
 
     fn files_scroll_preview(&mut self, delta: isize) {
+        let ps = calc_page_size(self.ui.panel_rows, true);
         if let Some(pv) = self.ui.panel.as_mut().and_then(|p| p.files.as_mut()).and_then(|ex| ex.preview.as_mut()) {
-            let max_top = pv.lines.len().saturating_sub(SHOWN) as isize;
+            let max_top = pv.lines.len().saturating_sub(ps) as isize;
             pv.top = (pv.top as isize).saturating_add(delta).clamp(0, max_top) as usize;
             self.dirty = true;
         }
     }
+}
+
+fn refresh_count_val(ex: &Explorer) -> u64 {
+    ex.refresh_count
 }

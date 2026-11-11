@@ -117,7 +117,7 @@ pub struct UiState {
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
     pub real_screen: Vec<super::realbar::RealEntry>, // active time-bounded real-screen grants
-    pub saved_cwd: String, pub saved_view: String, pub saved_session: String, pub restored_once: bool, // M05-P01 workspace continuity
+    pub saved_cwd: String, pub saved_view: String, pub saved_session: String, pub restored_once: bool, pub panel_rows: usize, pub panel_cols: usize, // M05 workspace state
 }
 
 fn display_cols(text: &str) -> usize {
@@ -405,7 +405,7 @@ impl App {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
                     MouseScrollDelta::PixelDelta(p) => (p.y / (self.line_h() * self.ui.scale.max(1.0)) as f64) as isize,
                 };
-                self.scroll_by(lines);
+                if !self.files_wheel(lines) { self.scroll_by(lines); }
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
@@ -682,6 +682,12 @@ impl App {
         let row = self.selected_row().cloned();
         let hint = self.hint_text(width, s);
         let live = self.answers_live();
+        let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
+        let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
+        let area_rows = ((height as f32 - top) / lh) as usize;
+        let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
+        let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
+        if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(3 + n_prompt), cols); }
         let panel_view = self.panel_view();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
         if panel_view.is_some() {
@@ -704,11 +710,6 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
-        let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
-        let area_rows = ((height as f32 - top) / lh) as usize;
-        let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
-        let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
         let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + n_prompt - 1);
         let is_tx = panel_view.is_none();
         let (lines, raw_end): (Vec<(usize, i64, String)>, usize) = match &panel_view {
@@ -724,16 +725,19 @@ impl App {
             }
         };
         let fs = self.font_system.as_mut()?;
-        let end = lines.len();
-        let mut first = end;
-        let mut used = 0;
-        while first > 0 {
-            let rows = (display_cols(&lines[first - 1].2).max(1) + cols - 1) / cols;
-            if used + rows > rows_avail {
-                break;
+        let (mut first, mut end, mut used) = if is_tx { (lines.len(), lines.len(), 0) } else { (0, 0, 0) };
+        if is_tx {
+            while first > 0 {
+                let rows = (display_cols(&lines[first - 1].2).max(1) + cols - 1) / cols;
+                if used + rows > rows_avail { break; }
+                (used, first) = (used + rows, first - 1);
             }
-            used += rows;
-            first -= 1;
+        } else {
+            while end < lines.len() {
+                let rows = (display_cols(&lines[end].2).max(1) + cols - 1) / cols;
+                if used + rows > rows_avail { break; }
+                (used, end) = (used + rows, end + 1);
+            }
         }
         let mut text = header;
         if let Some(b) = &bar {
@@ -748,7 +752,7 @@ impl App {
         // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
         let mut prev_tx = std::mem::take(&mut self.ui.tx_range);
         let faces = &mut self.ui.faces;
-        let mut build = |first: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
+        let mut build = |first: usize, end: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
             let mut pool: HashMap<(bool, String), Vec<BufferLine>> = HashMap::new();
             for (idx, line) in std::mem::take(&mut buffer.lines).into_iter().enumerate() {
                 pool.entry((prev_tx.contains(&idx), line.text().to_string())).or_default().push(line);
@@ -781,18 +785,18 @@ impl App {
             let buffer = Buffer::new(fs, Metrics::new(fp * s, lh));
             super::View { lines: Default::default(), surface: None, buffer, swash: SwashCache::new(), session_rgb: 0xFF00_0000, seq_rgb: 0xFF00_0000 }
         });
-        build(first, &mut text, &mut view.buffer, fs);
-        // the estimate of wrapped rows can be short: if the layout is taller than the area, drop the oldest line and lay out again
+        build(first, end, &mut text, &mut view.buffer, fs);
+        // the estimate of wrapped rows can be short: if the layout is taller than the area, drop the trailing (panel) or oldest (transcript) line
         for _ in 0..6 {
             let runs = view.buffer.layout_runs().count();
             if runs <= rows_avail + base + n_prompt + status.is_some() as usize || first >= end {
                 break;
             }
-            first += 1;
-            build(first, &mut text, &mut view.buffer, fs);
+            if is_tx { first += 1; } else { end -= 1; }
+            build(first, end, &mut text, &mut view.buffer, fs);
         }
         self.ui.tx_range = prev_tx;
-        self.ui.window_span = (lines.get(first).map_or(raw_end, |l| l.0), raw_end);
+        self.ui.window_span = (lines.get(first).map_or(raw_end, |l| l.0), if is_tx { raw_end } else { end });
         let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();

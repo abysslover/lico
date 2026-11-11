@@ -188,6 +188,8 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
                 "files",
                 "new_here",
                 "refresh_files",
+                "prev_page",
+                "next_page",
                 "toggle_group",
             ]
             assert _tool_btn(u_files, "files")["active"] is True
