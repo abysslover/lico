@@ -292,6 +292,24 @@ mod tests {
 
     #[test]
     fn trim_heap_returns_dropped_large_buffer_pages_to_the_kernel() {
+        if std::env::var_os("LICO_TEST_TRIM_SUBPROC").is_none() {
+            let out = std::process::Command::new(std::env::current_exe().unwrap())
+                .env("LICO_TEST_TRIM_SUBPROC", "1")
+                .args([
+                    "--exact",
+                    "memory::tests::trim_heap_returns_dropped_large_buffer_pages_to_the_kernel",
+                    "--nocapture",
+                ])
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "isolated trim_heap probe failed: {}\n{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            return;
+        }
         init_allocator();
         let baseline = own().private_kb;
         let buf = std::thread::spawn(|| {

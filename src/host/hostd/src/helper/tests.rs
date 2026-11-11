@@ -303,8 +303,15 @@ struct Snap {
     rss_kib: u64,
 }
 
+fn smaps_anon_kib() -> Option<u64> {
+    let text = fs::read_to_string("/proc/self/smaps_rollup").ok()?;
+    let line = text.lines().find(|l| l.starts_with("Anonymous:"))?;
+    line["Anonymous:".len()..].split_whitespace().next()?.parse().ok()
+}
+
 fn snap() -> Snap {
-    Snap { children: proc_children().len(), threads: status_field("Threads"), fds: fs::read_dir("/proc/self/fd").unwrap().count(), rss_kib: status_field("VmRSS") }
+    let rss_kib = smaps_anon_kib().unwrap_or_else(|| status_field("RssAnon") + status_field("RssShmem"));
+    Snap { children: proc_children().len(), threads: status_field("Threads"), fds: fs::read_dir("/proc/self/fd").unwrap().count(), rss_kib }
 }
 
 /// The driver: runs only when the test below starts this binary again with the environment set (it is `ignore`d otherwise). It is the "host":

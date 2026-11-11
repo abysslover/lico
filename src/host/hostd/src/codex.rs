@@ -277,7 +277,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     };
     let (tx, rx) = mpsc::sync_channel::<(String, Option<String>)>(1024);
     let mut link = Link { tx, active_turn: None, next_rpc: 0, pending: HashMap::new(), approval_map: HashMap::new(), buffers: HashMap::new(), ready: false };
-    let init = json!({"clientInfo": {"name": "lico", "title": "Lico", "version": "0.0.0"}, "capabilities": {}});
+    let init = json!({"clientInfo": {"name": "lico", "title": "Lico", "version": env!("CARGO_PKG_VERSION")}, "capabilities": {}});
     if rpc(&mut link, "initialize", init, Pending::Init, None).is_err() {
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
