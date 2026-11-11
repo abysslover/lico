@@ -4,8 +4,8 @@
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
 - Updated: 2026-11-11
-- Implementation: M02-P01 to M02-P04 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished; M02-P05 to M02-P07 follow
-- Next gate: G3 inspection for M02-P01 + M02-P02 and for M02-P03 + M02-P04; G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 and P04); nothing is published
+- Implementation: M02-P01 to M02-P05 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished; M02-P06 and M02-P07 follow
+- Next gate: G3 inspection for M02-P01 + M02-P02, for M02-P03 + M02-P04, and for M02-P05 + M02-P06 (at the end of P06); G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 to P05); nothing is published
 - Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -78,7 +78,7 @@ items that are not part of this milestone are listed as M03 candidates in the
 | M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | [Plan](../../../plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | [Report](../../../reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | Local bundle, verdict pending | None | in_review |
 | M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | [Plan](../../../plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | [Report](../../../reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | Local bundle, verdict pending (with M02-P04) | None | in_review |
 | M02-P04 | Screen capture, clipboard read and write, image paste | [Plan](../../../plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | [Report](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | Local bundle, verdict pending (with M02-P03) | None | in_review |
-| M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | Written as the phase's first step | Not produced | Not produced | None | not_started |
+| M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | [Plan](../../../plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | [Report](../../../reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | Local bundle, verdict pending (with M02-P06) | None | in_review |
 | M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P07 | Memory pass with every feature on, and review of the whole milestone | Written as the phase's first step | Not produced | Not produced | None | not_started |
 

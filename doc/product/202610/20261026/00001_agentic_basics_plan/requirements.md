@@ -1,6 +1,6 @@
 # Requirements: what is built and how it is checked
 
-Status: 1.6.2 (1.6.1 plus no change in this document, the set moved to 1.6.2 for the owner's rule of 2026-10-27 recorded in the planning document and the changes; 1.6.1 was 1.6.0 plus the SF-10 correction; 1.6.0 was 1.5.0 plus the result of the independent P02 review: SF-09 also covers Codex, SF-10 is new, SF-08, SC-10 and IN-08 carry one clause each), 1.0.0 approved by the owner at G1 on 2026-10-26. All requirements below are *planned* (P01 items excepted). Each one has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
+Status: 1.6.5 (1.6.2 plus XF-01 to XF-08 and CU-01 to CU-08 marked measured at P04/P05 close), 1.0.0 approved by the owner at G1 on 2026-10-26. Each item has a **check** and the **phase** it belongs to; the status changes in these tables as phases proceed.
 
 Related documents: [planning](planning.md) · [screens](screens.md) · [test plan](test_plan.md) · [changes](changes.md).
 
@@ -104,27 +104,27 @@ Out of scope: selection, placing the cursor with the mouse, undo (M03 candidates
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| XF-01 | X11 only (Wayland is out of scope). The X server and version tested are written in the report. | L | P04 | planned |
-| XF-02 | Capture: the whole screen, a window or a region, saved as PNG with its path and size returned. The tool for agents also returns a copy shrunk to at most 1568 px on the long side (image tokens grow with width x height / 750 plus about 200, not with file size; 1568 is better for text-heavy windows, *measured*). A region capture also returns its **offset and scale** (in POC-0 a click missed because a region's coordinates were read as full-screen ones). | E, U | P04 | planned |
-| XF-03 | Capture is read in bands (a few rows at a time) and shrunk on the way, so no large buffer is built at once. The target is at most 6 MiB extra, temporarily, at 1080p. | M | P04 | planned |
-| XF-04 | Clipboard read and write (text, image). The window owns the clipboard. With no window it fails with a reason. | E, P | P04 | planned |
-| XF-05 | Image paste: Ctrl+V of an image in the input box attaches it to the next message and it reaches the agent. There is a size limit and a notice. | W, E | P04 | planned |
-| XF-06 | Middle-button paste (the selection) is supported. | E | P04 | planned |
-| XF-07 | X work is done by a short-lived helper process of the same executable that disappears when the job ends (standing cost 0). | M | P04 | planned |
-| XF-08 | **A screenshot never vanishes from the record without a trace.** When one provider line is over 256 KiB (real window captures mostly are), the host today drops the whole line and leaves nothing (*measured*, 6 of 6). After the fix the record says "image N KiB omitted". The line is read as a stream that keeps its first 8 KiB or so and discards the rest, so no large buffer is built. The record holds `[image]` and not the provider's folder path. | U, P | P04 | planned |
+| XF-01 | X11 only (Wayland is out of scope). The X server and version tested are written in the report. | L | P04 | measured |
+| XF-02 | Capture: the whole screen, a window or a region, saved as PNG with its path and size returned. The tool for agents also returns a copy shrunk to at most 1568 px on the long side (image tokens grow with width x height / 750 plus about 200, not with file size; 1568 is better for text-heavy windows, *measured*). A region capture also returns its **offset and scale** (in POC-0 a click missed because a region's coordinates were read as full-screen ones). | E, U | P04 | measured |
+| XF-03 | Capture is read in bands (a few rows at a time) and shrunk on the way, so no large buffer is built at once. The target is at most 6 MiB extra, temporarily, at 1080p. | M | P04 | measured |
+| XF-04 | Clipboard read and write (text, image). The window owns the clipboard. With no window it fails with a reason. | E, P | P04 | measured |
+| XF-05 | Image paste: Ctrl+V of an image in the input box attaches it to the next message and it reaches the agent. There is a size limit and a notice. | W, E | P04 | measured |
+| XF-06 | Middle-button paste (the selection) is supported. | E | P04 | measured |
+| XF-07 | X work is done by a short-lived helper process of the same executable that disappears when the job ends (standing cost 0). | M | P04 | measured |
+| XF-08 | **A screenshot never vanishes from the record without a trace.** When one provider line is over 256 KiB (real window captures mostly are), the host today drops the whole line and leaves nothing (*measured*, 6 of 6). After the fix the record says "image N KiB omitted". The line is read as a stream that keeps its first 8 KiB or so and discards the rest, so no large buffer is built. The record holds `[image]` and not the provider's folder path. | U, P | P04 | measured |
 
 ## CU: computer use (P05)
 
 | ID | Requirement | Check | Phase | Status |
 |---|---|---|---|---|
-| CU-01 | `lico display` starts a per-session **virtual display** (Xvfb, 1280x800 by default) on first call and returns its name (DISPLAY). It is stopped when the session ends or after 10 idle minutes. | E | P05 | planned |
-| CU-02 | Actions: click (left, right, middle, double), move, drag, type text, key combinations, scroll, wait, look at the screen. Done through XTEST. | E | P05 | planned |
-| CU-03 | After an action a shrunk screen is returned. Coordinates are in the shrunk image; the scale conversion is documented. | U, E | P05 | planned |
-| CU-04 | The agent can start programs on the virtual display (`DISPLAY=$(lico display) command` or `lico display run`). | E | P05 | planned |
-| CU-05 | The **real screen** is used only when the user allows it per session. While on there is a conspicuous bar in the window, it expires automatically after 15 minutes, there is a key that stops it at once, and each action is logged (the screen contents are not logged). | W, E | P05 | planned |
-| CU-06 | Real-screen permission is per session and is released when the host restarts. The default is off. | P | P05 | planned |
-| CU-07 | **The first step (P05-S01) is a test:** have the agent do a simple task on the virtual display (open a browser, read the title) and record the success rate. Small tasks in Lico's own window passed in POC-0 (Haiku, six tasks, 8 of 8 each, *measured*). The success rate on a real X program such as a browser is not yet known. | M | P05 | planned |
-| CU-08 | The virtual display has no window manager, so keys are ignored until focus is given by hand (*measured*). Whether a real X program (a browser, a dialog) needs a tiny window manager, and its memory (RSS), is **decided by P05 after measuring** (no guess is built in). | M | P05 | planned |
+| CU-01 | `lico display` starts a per-session **virtual display** (Xvfb, 1280x800 by default) on first call and returns its name (DISPLAY). It is stopped when the session ends or after 10 idle minutes. | E | P05 | measured |
+| CU-02 | Actions: click (left, right, middle, double), move, drag, type text, key combinations, scroll, wait, look at the screen. Done through XTEST. | E | P05 | measured |
+| CU-03 | After an action a shrunk screen is returned. Coordinates are in the shrunk image; the scale conversion is documented. | U, E | P05 | measured |
+| CU-04 | The agent can start programs on the virtual display (`DISPLAY=$(lico display) command` or `lico display run`). | E | P05 | measured |
+| CU-05 | The **real screen** is used only when the user allows it per session. While on there is a conspicuous bar in the window, it expires automatically after 15 minutes, there is a key that stops it at once, and each action is logged (the screen contents are not logged). | W, E | P05 | measured |
+| CU-06 | Real-screen permission is per session and is released when the host restarts. The default is off. | P | P05 | measured |
+| CU-07 | **The first step (P05-S01) is a test:** have the agent do a simple task on the virtual display (open a browser, read the title) and record the success rate. Small tasks in Lico's own window passed in POC-0 (Haiku, six tasks, 8 of 8 each, *measured*). The success rate on a real X program such as a browser is not yet known. | M | P05 | measured |
+| CU-08 | The virtual display has no window manager, so keys are ignored until focus is given by hand (*measured*). Whether a real X program (a browser, a dialog) needs a tiny window manager, and its memory (RSS), is **decided by P05 after measuring** (no guess is built in). | M | P05 | measured |
 
 ## WT, NT, SR: everyday comfort (P06)
 

@@ -14,7 +14,7 @@ several accounts per provider, observable resource use. Budgets stay proposed ta
 | Milestone | Scope | State |
 |---|---|---|
 | M01 Measured Linux foundation | P01 to P07 and P07a have plans and reports on local `main` (all `in_review`, inspection pending); P08 (acceptance pack) is not started | G3 pending for every phase; G4 given for local `main` moves (2026-10-25, 2026-10-27 and 2026-11-11) |
-| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, memory per session, then a memory pass; P01 to P07 below | G1 approved 2026-10-26; P01 to P04 are reported and merged on local `main` (`in_review`, G3 pending); P05 to P07 follow |
+| M02 Agentic-coding basics | Sessions in a real folder, sending between sessions, Lico tools for the agent, screen capture and clipboard, computer use, memory per session, then a memory pass; P01 to P07 below | G1 approved 2026-10-26; P01 to P05 are reported and merged on local `main` (`in_review`, G3 pending); P06 and P07 follow |
 | M03 and later | Windows backend (own credential, windowing and measured acceptance) and the candidates pushed out of the earlier M02 proposal | not planned in detail |
 
 M01 "Done when" items still open: item 3 needs an installed official provider path exercised with real sign-in evidence (the account owner's first

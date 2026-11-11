@@ -23,5 +23,7 @@
 | [M02-P03 report](reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | What was built, tests and mutations, memory and traffic numbers, real-program checks, security limits, try-it list, carry lists; checked in four rounds by an independent verifier; the owner's try and inspection pending |
 | [M02-P04 plan](plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | Screen capture, clipboard read and write, image paste, middle-button paste, short-lived X helper and agent screen/clipboard tools |
 | [M02-P04 report](reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | What was built, tests and 175 mutations, S08 memory/latency/X11 measurements, S07b live canary rows, combined P03+P04 G3 try-it list; inspection verdict pending |
+| [M02-P05 plan](plans/202611/20261111/20261111_01_M02-P05_computer_use_plan.md) | Private per-session virtual display, XTEST computer helper, coordinate scaling and 15-minute gated real-screen control |
+| [M02-P05 report](reports/202611/20261111/20261111_02_M02-P05_computer_use_report.md) | What was built, live Chrome CU-07 (4/4) and WM-less focus CU-08 (5/5), memory/latency measurements and captures; inspection verdict pending (with M02-P06) |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).
