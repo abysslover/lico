@@ -3,9 +3,9 @@
 - Status: in_progress
 - Approved: 2026-10-23 (G1, as written in the proposal)
 - Project: Lico
-- Updated: 2026-10-27
-- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a have reports (all `in_review`, inspection verdicts pending); M01-P08 (acceptance pack) is not started
-- Next gate: G3 inspection of the M01 reports and bundles (G4 was given for two moves of `main`, on 2026-10-25 and 2026-10-27, each without G3; since 2026-10-27 G4 is asked for each finished phase on its own); the account owner's first real sign-in and end-to-end use are still to come
+- Updated: 2026-11-11
+- Implementation: M01-P01 to M01-P07 and the comparison M01-P07a have reports and are merged on local `main` (all `in_review`, inspection verdicts pending); M01-P08 (acceptance pack) is not started
+- Next gate: G3 inspection of the M01 reports and bundles (G4 was given for local `main` moves on 2026-10-25, 2026-10-27 and 2026-11-11, each without G3); the account owner's first real sign-in and end-to-end use are still to come
 - Milestone branch: `milestone/M01-measured-linux-foundation`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal

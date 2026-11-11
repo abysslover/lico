@@ -21,5 +21,7 @@
 | [Daily run cost note](plans/202610/20261026/20261026_02_daily_run_cost_note.md) | What one changed line in the big Rust files costs the daily run, three options and a pick; for the owner at the P02 gate |
 | [M02-P03 plan](plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | Sending text between sessions (inline up to 4 KiB, longer as a file in the receiver's own folder) and a tool connection for Claude agents with approvals |
 | [M02-P03 report](reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | What was built, tests and mutations, memory and traffic numbers, real-program checks, security limits, try-it list, carry lists; checked in four rounds by an independent verifier; the owner's try and inspection pending |
+| [M02-P04 plan](plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | Screen capture, clipboard read and write, image paste, middle-button paste, short-lived X helper and agent screen/clipboard tools |
+| [M02-P04 report](reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | What was built, tests and 175 mutations, S08 memory/latency/X11 measurements, S07b live canary rows, combined P03+P04 G3 try-it list; inspection verdict pending |
 
 Back to the [first index page](README.md) or the [second](index_2.md). More documents: [page 4](index_4.md).

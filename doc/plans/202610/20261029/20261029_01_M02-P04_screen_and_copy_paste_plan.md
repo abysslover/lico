@@ -1,12 +1,12 @@
 # M02-P04 - Screen capture, clipboard and image paste (2026-10-29)
 
-> Status: in_progress
+> Status: reported
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.1.2
-> Branch: `phase/M02-P04-screen-and-copy-paste`, cut at `ffc18ad` (the tip of `phase/M02-P03-agent-to-agent`, report 0.1.7) on the same chain, so `main` can later be moved forward in one step; nothing is pushed.
-> Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of this phase and covers P03 and P04 together. G4 for P03 (`ffc18ad`) waits for the owner; G4 for this phase will be asked for its exact tip.
+> Version: 1.1.3
+> Branch: `phase/M02-P04-screen-and-copy-paste`, rebased cleanly onto `main` `5cdb79f`; nothing is pushed.
+> Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of this phase and covers P03 and P04 together. G4 local merge to `main` was given by the owner on 2026-11-11.
 
-**Version 1.1.2** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.2) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
+**Version 1.1.3** (major.minor.patch). Requirements are XF-01 to XF-08, SF-04, SF-06 and MB-03 as they touch this phase (planning set 1.6.4) and are not re-opened; where I differ or refine, see "Deviations" and "Where this meets the code". Numbers marked *measured* come from POC-0, from the planning set or from this repository; everything else is a design target.
 
 ## Goal
 
@@ -75,6 +75,7 @@ A person can capture the screen, a window or a region, copy and paste text and a
 ## S08 - measurement and report
 
 - The memory of the helper at 1080p (MB-03), the window with an attachment, the host before and after a capture (standing cost 0), the time of a capture, the size of the PNGs, the whole suite and the usual run (TST-10), the X server name and version. Report 0.1.0 and the try-it text that covers P03 and P04 together, because the owner's G3 falls at the end of this phase.
+- **Built, S08 (1.1.3):** Codex capability record refreshed to `0.167.0` (`a367019`), warm `--cold` suite passed `441/441` in `178.0 s` (`< 180 s`, peak `1,826.5 MiB`), Rust unit tests passed `546/546` under `umask 022` and `077`, window idle RSS measured `23.93-24.14 MiB` (scale 1) and `35.04-35.10 MiB` (scale 2), helper 1080p extra `VmHWM` `+4.10` to `+4.85 MiB` (`<= 6 MiB`), host standing X11 cost `0` after 20 jobs, inspection bundle `00001_M02-P04_screen_and_copy_paste` assembled, and [report 0.1.0](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) written with combined P03+P04 G3 try-it steps.
 
 ## Deviations (for decision)
 
@@ -110,6 +111,7 @@ Wayland; capture of a covered window (Composite); several screens as separate im
 
 ## Changes
 
+- 1.1.3: S08 is built (`codex` capability pin refreshed to `0.167.0`, warm `--cold` suite `178.0 s` for 441 tests, Rust `546` tests under `umask 022` and `077`, S08 memory/latency/X11 measurements, inspection bundle `00001_M02-P04_screen_and_copy_paste`, and report 0.1.0 with combined P03+P04 G3 guide).
 - 1.1.2: S07c is built (`View` menu toggle `Agent clipboard write: off/on` via local-socket `settings.set` and `status` `"settings"`, `View` menu `Capture screen to input` / `Ctrl+Shift+P` via in-memory `capture::screen_png`, unit tests for invisible `clipboard_write` text and `captures/` 4-file `busy` + stale sweep, `src/host/README.md` updated, `gui/ui_tests.rs` split out, and `size_allowlist.toml` lowered).
 - 1.1.1: S07b is built (`real_program_canary.py` 1.2.0 `--screen` rows `R1` to `R5` and two judge mutations on `claude` 2.1.322 `haiku`, README 1.2.0, `protocol_v1.md` `clipboard_write` sentence updated, S07 bullet rewritten to the `target`/`kind`/setting-gated shape built in S07a); measured that MCP `tool_result` carries base64 once (~1.33x PNG, so 298.6 KiB triggers `[image 298.6 KiB omitted]` while the model still sees the image) and that `haiku` occasionally makes one `already_pending` check before ending turn 1; no new deviation.
 - 1.1.0: S07a is built (the agent tools `capture`, `clipboard_read` and `clipboard_write` on the tool connection, with the person's approval: `screentools`, the grants of the two-call form, `mcp::Answer`); new Deviation D13 (the approval path comes first in it).

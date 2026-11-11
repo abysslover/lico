@@ -3,9 +3,9 @@
 - Status: in_progress
 - Approved: 2026-10-26 (G1, with the phase plans of G2 included, as written in the [planning set](../../../product/202610/20261026/00001_agentic_basics_plan/planning.md))
 - Project: Lico
-- Updated: 2026-10-28
-- Implementation: M02-P01 is built and reported (menu bar, fonts, scroll speed, activity indicator and the test cleanup: the whole suite went from 596 s to 112 s). A throwaway proof of concept without product code (POC-0) is finished (D1 to D4); its figures are in the planning set. M02-P02 (sessions in a real folder) is built and reported after an independent review and its fix rounds. Both reports are `in_review` with the inspection verdict pending. M02-P03 (sending between sessions and the tool channel) is built and reported on its own branch after four rounds of an independent verifier and their fix rounds; its report is `in_review` too and `main` is not moved to it yet
-- Next gate: G3 inspection for M02-P01 and M02-P02 together; both reports are written and the owner has not yet inspected them. Their G4 was given on 2026-10-27 for the move of `main`, without G3; from now on G4 is asked for each finished phase on its own (G4 for M02-P03 is asked for its exact tip, with its G3 stated as due with M02-P04)
+- Updated: 2026-11-11
+- Implementation: M02-P01 to M02-P04 are built, reported and merged to local `main` on the owner's G4 (all `in_review`, G3 inspection pending). POC-0 (D1 to D4, no product code) is finished; M02-P05 to M02-P07 follow
+- Next gate: G3 inspection for M02-P01 + M02-P02 and for M02-P03 + M02-P04; G4 local merges to `main` were authorized on 2026-10-27 (up to P02) and 2026-11-11 (P03 and P04); nothing is published
 - Milestone branch: `milestone/M02-agentic-coding-basics`, created at the closing commit when the milestone is achieved (not yet; the phase branches are kept)
 
 ## Goal
@@ -77,7 +77,7 @@ items that are not part of this milestone are listed as M03 candidates in the
 | M02-P01 | Menu bar and shared controls, font and scroll speed, activity indicator, and the test cleanup (S05) | [Plan](../../../plans/202610/20261025/20261025_02_M02-P01_menu_bar_and_shared_controls_plan.md) | [Report](../../../reports/202610/20261025/20261025_03_M02-P01_menu_bar_and_shared_controls_report.md) | Local bundle, verdict pending (with M02-P02) | None | in_review |
 | M02-P02 | Sessions in a real folder: new-session screen, close, rename, delete, memory per session, input-box basics, input echo | [Plan](../../../plans/202610/20261026/20261026_01_M02-P02_folder_sessions_plan.md) | [Report](../../../reports/202610/20261026/20261026_01_M02-P02_folder_sessions_report.md) | Local bundle, verdict pending | None | in_review |
 | M02-P03 | Sending between sessions (long content by file path) and the Lico tool channel for agents | [Plan](../../../plans/202610/20261026/20261026_03_M02-P03_sending_between_sessions_plan.md) | [Report](../../../reports/202610/20261027/20261027_01_M02-P03_sending_between_sessions_report.md) | Local bundle, verdict pending (with M02-P04) | None | in_review |
-| M02-P04 | Screen capture, clipboard read and write, image paste | Written as the phase's first step | Not produced | Not produced | None | not_started |
+| M02-P04 | Screen capture, clipboard read and write, image paste | [Plan](../../../plans/202610/20261029/20261029_01_M02-P04_screen_and_copy_paste_plan.md) | [Report](../../../reports/202611/20261111/20261111_01_M02-P04_screen_and_copy_paste_report.md) | Local bundle, verdict pending (with M02-P03) | None | in_review |
 | M02-P05 | Computer use on a private virtual display; the real screen only by per-session permission | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P06 | Everyday comfort: git worktree sessions, attention marks and notifications, conversation search | Written as the phase's first step | Not produced | Not produced | None | not_started |
 | M02-P07 | Memory pass with every feature on, and review of the whole milestone | Written as the phase's first step | Not produced | Not produced | None | not_started |
