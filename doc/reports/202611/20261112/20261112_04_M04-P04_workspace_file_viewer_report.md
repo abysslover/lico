@@ -1,7 +1,7 @@
 # M04-P04 Report — On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass
 
 - Version: 1.0.0
-- Status: in_review (awaiting owner G3 acceptance and G4 merge approval at M04 milestone boundary)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Date: 2026-11-12
 - Plan: [M04-P04](../../../plans/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_plan.md) (G1 and G2 approved by the owner on 2026-11-12)
 - Milestone: [M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer](../../../milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md)
@@ -42,4 +42,4 @@
 
 ## Gate status
 
-All four phases of Milestone `M04` (`M04-P01` through `M04-P04`, `lico 0.2.0`) are complete on a linear fast-forward branch chain (`main` -> `phase/M04-P01-session-nav-and-toolbar` -> `phase/M04-P02-clean-conversation-view` -> `phase/M04-P03-quota-and-context-bar` -> `phase/M04-P04-workspace-file-viewer`) and await owner G3 inspection acceptance and G4 merge/publication approval.
+All four phases of Milestone `M04` (`M04-P01` through `M04-P04`, `lico 0.2.0`) were accepted by the owner at G3 and fast-forward merged and published on `main` (`milestone/M04-workspace-workbench-and-conversation-ux`) at G4 on 2026-11-12.

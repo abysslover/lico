@@ -1,6 +1,6 @@
 # M04-P04 Plan — On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass
 
-- Status: in_review
+- Status: done
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution through `lico 0.2.0`)
 - Project: Lico
 - Milestone: [M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer](../../../milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md)

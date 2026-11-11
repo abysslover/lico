@@ -1,11 +1,12 @@
 # M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer
 
-- Status: in_review
+- Status: done
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for immediate continuous execution through `lico 0.2.0`)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: Implemented across `M04-P01` to `M04-P04` (`phase/M04-P04-workspace-file-viewer`, `lico 0.2.0`); awaiting owner G3 and G4
-- Next gate: G3 inspection acceptance and G4 merge approval for `M04` (`lico 0.2.0`)
+- Implementation: M04-P01 to M04-P04 built, verified, accepted by the owner at G3 (2026-11-12), and merged and published on `main` at G4 (`lico 0.2.0`, 2026-11-12)
+- Next gate: None (milestone achieved and closed on 2026-11-12)
+- Milestone branch: `milestone/M04-workspace-workbench-and-conversation-ux` (created at the closing commit of M04 on `main`; the phase branches are kept)
 
 ## Goal
 
@@ -73,10 +74,10 @@ desktop workbench experience before the separate Windows milestone.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M04-P01 | Direct session switching from panels, derived titles, active reverse-chronological sorting, and clickable toolbar | [Plan](../../../plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | [Report](../../../reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | `00001_M04-P01_session_nav_and_toolbar/` | — | in_review |
-| M04-P02 | Clean conversation view: default-hidden internal control markers and user/agent color differentiation | [Plan](../../../plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | [Report](../../../reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | `00002_M04-P02_clean_conversation_view/` | — | in_review |
-| M04-P03 | Provider weekly quota telemetry (`7d` remaining) and working-directory context display | [Plan](../../../plans/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_report.md) | `00003_M04-P03_quota_and_context_bar/` | — | in_review |
-| M04-P04 | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass | [Plan](../../../plans/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_plan.md) | [Report](../../../reports/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_report.md) | `00005_M04-P04_workspace_file_viewer/` | — | in_review |
+| M04-P01 | Direct session switching from panels, derived titles, active reverse-chronological sorting, and clickable toolbar | [Plan](../../../plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) | [Report](../../../reports/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M04-P02 | Clean conversation view: default-hidden internal control markers and user/agent color differentiation | [Plan](../../../plans/202611/20261112/20261112_02_M04-P02_clean_conversation_view_plan.md) | [Report](../../../reports/202611/20261112/20261112_02_M04-P02_clean_conversation_view_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M04-P03 | Provider weekly quota telemetry (`7d` remaining) and working-directory context display | [Plan](../../../plans/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
+| M04-P04 | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass | [Plan](../../../plans/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_plan.md) | [Report](../../../reports/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_report.md) | Owner G3: accept (2026-11-12) | Fast-forward `main` | done |
 
 ## Gates
 
@@ -84,5 +85,14 @@ desktop workbench experience before the separate Windows milestone.
 |---|---|---|
 | G1 milestone approval | Approved 2026-11-12 | Scope and phases `M04-P01` to `M04-P04`, minor version bump `0.1.0` -> `0.2.0` on completion |
 | G2 phase plan approval | Approved 2026-11-12 | Immediate continuous implementation across `M04-P01` to `M04-P04` |
-| G3 inspection acceptance | Pending | Awaits owner inspection after `M04-P04` |
-| G4 merge approval | Pending | Awaits explicit owner approval after `M04-P04` |
+| G3 inspection acceptance | Approved 2026-11-12 | Owner accepted `M04-P01` to `M04-P04` and bundles `00001`, `00002`, `00003`, and `00005` |
+| G4 merge approval | Approved 2026-11-12 | Fast-forward merge into `main`, milestone branch `milestone/M04-workspace-workbench-and-conversation-ux`, and publication to `origin` |
+
+## Blocked on
+
+None. M04 achieved and closed on 2026-11-12.
+
+## When done
+
+Closed on 2026-11-12 at branch `milestone/M04-workspace-workbench-and-conversation-ux` (`lico 0.2.0`):
+- **Delivered (`4/4` M04 phases):** direct left-sidebar session switching from open panels, derived `auto_title`, active-first reverse-chronological sorting (`last_active_at`), and clickable action toolbar (`M04-P01`); default-hidden internal control markers (`Ctrl+Shift+E` toggle) and user/agent/tool/error color differentiation (`M04-P02`); provider weekly (`7d`) and short-window (`5h`) quota telemetry alongside working-directory context (`M04-P03`); and an on-demand (`F5`-refreshed) working-directory file viewer with `+ New here` and external `.html` browser launch, verified within `< 50.0 MiB` idle RSS (`24.42` / `35.50 MiB`), `+0.38 MiB` hidden growth, `96.7 s` cold 463-test suite, and two-clone reproducible `0.2.0` build (`M04-P04`).

@@ -1,7 +1,7 @@
 # M04-P01 report — direct session switching from panels, derived titles, active reverse-chronological sorting, and clickable toolbar
 
 - Version: 1.0.0
-- Status: in_review (awaiting owner G3 acceptance at M04 milestone boundary)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Date: 2026-11-12
 - Plan: [M04-P01](../../../plans/202611/20261112/20261112_01_M04-P01_session_nav_and_toolbar_plan.md) (version 1.0.0, G2 approved by the owner on 2026-11-12)
 - Milestone: [M04 — Workspace workbench, clean conversation UX, weekly quota visibility, and directory file viewer](../../../milestones/202611/20261112/20261112_01_M04_workspace_workbench_and_conversation_ux_milestone.md)
