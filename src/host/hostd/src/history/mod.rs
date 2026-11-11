@@ -84,7 +84,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
 fn described(shared: &Shared, id: &str) -> Option<(String, bool)> {
     let found = core::find(shared, id)?;
     let s = found.lock().unwrap();
-    (!s.purged).then(|| (transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect(), !s.provider.is_empty() && s.text_mode))
+    (!s.purged).then(|| (transfer::session_label(&s).chars().take(LABEL_CHARS).collect(), !s.provider.is_empty() && s.text_mode))
 }
 
 /// The card of a `history`: what is read, from whom, how much, and that it may hold what the session saw or what a person typed to it.
@@ -117,11 +117,12 @@ fn read(shared: &Shared, caller: &str, target: &str, wanted: usize) -> Result<St
         if s.purged || s.provider.is_empty() || !s.text_mode {
             return Err(gone());
         }
-        (s.log_view(), s.oldest(), s.last_seq(), transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect::<String>())
+        (s.log_view(), s.oldest(), s.last_seq(), transfer::session_label(&s).chars().take(LABEL_CHARS).collect::<String>())
     };
     let from = (last + 1 - wanted as i64).max(oldest);
     let records = if last >= from { view.read(from, last + 1, wanted).map_err(|_| busy())? } else { Vec::new() };
     let body = body_of(&label, target, oldest, &records).1;
+    drop(records);
     if body.len() <= transfer::INLINE_MAX {
         return Ok(body);
     }
@@ -131,9 +132,18 @@ fn read(shared: &Shared, caller: &str, target: &str, wanted: usize) -> Result<St
     let (date, time, when) = transfer::stamp();
     let sized = format!("{size}, {}", transfer::lines_word(transfer::line_count(&body)));
     let content = format!("# Handoff: history\nfrom: session '{label}' ({})\n{to}when: {when}\nkind: history\nsize: {sized}\n\n{body}", transfer::id7(target));
-    let path = crate::handoff::store(&shared.cfg.handoff_dir, caller, &date, &time, transfer::id7(target), "history", content.as_bytes()).map_err(|_| busy())?;
+    let stored = crate::handoff::store(&shared.cfg.handoff_dir, caller, &date, &time, transfer::id7(target), "history", content.as_bytes());
+    drop(content);
+    let Ok(path) = stored else {
+        drop(body);
+        crate::memory::trim_heap();
+        return Err(busy());
+    };
     crate::handoff::sweep(&shared.cfg.handoff_dir, crate::session::now_secs());
-    Ok(transfer::notice(&head, &path, &body, &size, "claude", true))
+    let out = transfer::notice(&head, &path, &body, &size, "claude", true);
+    drop(body);
+    crate::memory::trim_heap();
+    Ok(out)
 }
 
 /// The text of the records: the line that names the source and the range, the note, and a line a record, each with its number; the newest records that fit `BYTES` and `MOST` lines.

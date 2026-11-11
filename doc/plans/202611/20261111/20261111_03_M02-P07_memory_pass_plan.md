@@ -1,12 +1,12 @@
 # M02-P07 - Memory pass and full-milestone review with every feature switched on (2026-11-11)
 
-> Status: in_progress
+> Status: completed
 > Milestone: [M02](../../../milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md)
-> Version: 1.0.0
+> Version: 1.1.0
 > Branch: `phase/M02-P07-memory-pass`, cut at `main` `c98b11e`; nothing is pushed.
 > Approval: G2 for this phase is part of the M02 G1 of 2026-10-26 (milestone, gate row G2: one plan note per phase, written as the phase's first step). G3 falls at the end of M02-P07 for M02-P07 and the whole M02 milestone. G4 local merge to `main` was authorized by the owner on 2026-11-11.
 
-**Version 1.0.0.** Requirements are MB-01 to MB-06, SF-01 to SF-10, TST-01 to TST-11, and cross-feature review of WK, SX, MI, IN, SC, AC, XF, CU, WT, NT and SR (planning set 1.6.6). Numbers marked *measured* come from earlier M02 reports (`c98b11e`); everything else is a design target.
+**Version 1.1.0.** Requirements are MB-01 to MB-06, SF-01 to SF-10, TST-01 to TST-11, and cross-feature review of WK, SX, MI, IN, SC, AC, XF, CU, WT, NT and SR (planning set 1.6.6). Numbers marked *measured* come from earlier M02 reports (`c98b11e`); everything else is a design target.
 
 ## Goal
 
@@ -34,6 +34,7 @@ With every capability of M02 switched on (`M02-P01` through `M02-P06`), verify a
 ## Deviations and refinements
 
 - **D1 (targeted `malloc_trim(0)` only after large or lifecycle drops):** `trim_heap()` is called only on coarse lifecycle transitions (`hide`, `panel_close`, `search_close`, picture chip drop/send, search completion, attachment cleanup, file handoff, and HTTP/MCP responses `>= 64 KiB` after the response `String` is dropped), never on per-frame redraws or per-record streaming, preserving frame latency and CPU (`PERF-03`, `PERF-05`).
+- **D2 (`mallopt(M_MMAP_THRESHOLD, 128 * 1024)` + INCR `shrink_to_fit()` in `unified.rs`, `memory.rs`, `clipboard/mod.rs`):** end-to-end verification in `tests/test_m02_milestone_review.py` found that reading a ~2.3 MiB PNG in 256 KiB X11 INCR chunks on a background worker thread triggered glibc's dynamic `mmap_threshold` expansion, trapping ~4.8 MiB inside a secondary 64 MiB thread arena that `malloc_trim(0)` on `main_arena` left mapped. Pinning `M_MMAP_THRESHOLD` to `128 KiB` in `memory::init_allocator()` (called at startup in `unified.rs`) and shrinking the INCR `Collector` buffer on completion causes every `>= 128 KiB` buffer across all threads to be `munmap`ped back to the kernel immediately on drop.
 
 ## Verification plan
 

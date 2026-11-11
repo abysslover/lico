@@ -113,6 +113,11 @@ pub fn label(id: &str, name: Option<&str>, cwd: Option<&str>) -> String {
     chosen.chars().map(|c| if "'[]|()".contains(c) { '_' } else { c }).collect()
 }
 
+/// How `Session` is called everywhere in host headers, cards, search and real-screen banners (`worktree_repo` before `cwd`, so an unnamed worktree shows its repo name).
+pub fn session_label(s: &Session) -> String {
+    label(&s.id, s.settings.name.as_deref(), s.settings.worktree_repo.as_deref().or(s.settings.cwd.as_deref()))
+}
+
 pub fn id7(id: &str) -> &str {
     clip_chars(id, 7)
 }
@@ -232,7 +237,7 @@ fn party(shared: &Shared, id: &str) -> Result<Party, &'static str> {
     if s.purged {
         return Err("unknown_session");
     }
-    Ok(Party { id: s.id.clone(), label: label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), hops: s.incoming_hops })
+    Ok(Party { id: s.id.clone(), label: session_label(&s), hops: s.incoming_hops })
 }
 
 /// The receiver as a transfer needs it: what it is doing, how it is called and its provider; refused when it cannot take an input.
@@ -245,7 +250,7 @@ fn receiver_of(shared: &Shared, to: &str) -> Result<(&'static str, String, &'sta
         State::Exited => return Err("session_exited"),
         State::Running => {}
     }
-    Ok((receiver_state(&s), label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()), s.provider))
+    Ok((receiver_state(&s), session_label(&s), s.provider))
 }
 
 /// Send `text` from `from` (none: a person) to session `to`. `kind` is `text` or `lines`. Nothing is queued, stored or logged for a transfer that is refused.
@@ -299,13 +304,20 @@ fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str
     };
     let request_id = format!("x-{}", core::random_hex(8));
     let origin = if sender.is_some() { Origin::Session(hops) } else { Origin::Person };
-    if let Err(code) = core::input(shared, to, None, &request_id, &delivered, origin, None) {
-        if let Some((_, path)) = &stored {
+    let res = core::input(shared, to, None, &request_id, &delivered, origin, None);
+    let file_path = stored.map(|(_, path)| path);
+    drop(delivered);
+    drop(body);
+    if text.len() > INLINE_MAX || whole {
+        crate::memory::trim_heap();
+    }
+    if let Err(code) = res {
+        if let Some(path) = &file_path {
             let _ = std::fs::remove_file(path);
         }
         return Err(code);
     }
-    let delivery = if stored.is_some() { "file" } else { "inline" };
+    let delivery = if file_path.is_some() { "file" } else { "inline" };
     eprintln!("{}", log_line(from, to, kind, text.len(), delivery, hops));
     Ok(obj(json!({"to": to, "request_id": request_id, "kind": kind, "delivery": delivery, "size": text.len(), "receiver": receiver, "hops": hops})))
 }
@@ -360,7 +372,10 @@ pub(crate) fn hand_over_gated(shared: &Shared, from: &str, to: &str, gate: &Atom
     let reading = take(gate, READERS).ok_or("busy")?;
     let text = crate::provider_record::read(&home, &id, MAX_BODY).map_err(crate::provider_record::Fault::code)?;
     drop(reading);
-    deliver(shared, Some(from), to, "conversation", &text, By::Person, true)
+    let reply = deliver(shared, Some(from), to, "conversation", &text, By::Person, true);
+    drop(text);
+    crate::memory::trim_heap();
+    reply
 }
 
 #[cfg(test)]
@@ -754,5 +769,17 @@ pub(crate) mod tests {
             assert_eq!(got.split('\n').last(), Some(format!(" {forged}").as_str()), "{got:?}");
             assert_eq!(got.lines().filter(|l| l.starts_with("[from ")).count(), 1, "only the host's own header starts a record");
         }
+    }
+
+    #[test]
+    fn an_unnamed_worktree_session_uses_its_parent_repository_name_in_headers() {
+        let w = world(&[ONE, TWO]);
+        w.with(ONE, |s| {
+            s.settings.cwd = Some("/var/run/worktrees/s0123456789abcdef".into());
+            s.settings.worktree_repo = Some("/work/lico".into());
+        });
+        send(&w.shared, Some(ONE), TWO, "text", "hi", By::Person).unwrap();
+        let got = w.delivered(TWO).unwrap();
+        assert!(got.starts_with("[from session 'lico' (s012345) | "), "{got}");
     }
 }

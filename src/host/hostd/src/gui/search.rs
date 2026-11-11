@@ -66,6 +66,7 @@ impl App {
             return;
         }
         self.ui.search = SearchBar::default();
+        crate::memory::trim_heap();
         self.dirty = true;
     }
 

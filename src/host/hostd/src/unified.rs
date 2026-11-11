@@ -57,6 +57,7 @@ const LICENSE: &str = include_str!("../../../../LICENSE");
 const NOTICES: &str = include_str!("../NOTICES.txt");
 
 fn main() {
+    memory::init_allocator();
     let args: Vec<String> = std::env::args().collect();
     let name = std::path::Path::new(&args[0]).file_name().and_then(|n| n.to_str()).unwrap_or("lico").to_string();
     let shifted = |first: &str| -> Vec<String> { std::iter::once(first.to_string()).chain(args.iter().skip(2).cloned()).collect() };

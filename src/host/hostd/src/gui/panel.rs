@@ -115,12 +115,16 @@ impl App {
     }
 
     pub(crate) fn panel_close(&mut self) {
+        let closed = self.ui.panel.is_some();
         if let Some(p) = self.ui.panel.take() {
             if p.step == Step::Login && !p.account.is_empty() {
                 self.host_call(json!({"op": "account.login.cancel", "account": p.account})); // leaving the panel ends an unfinished sign-in
             }
             self.ed.restore(p.stash);
             self.preedit.clear();
+        }
+        if closed {
+            crate::memory::trim_heap();
         }
         self.sync_quiet();
         self.dirty = true;

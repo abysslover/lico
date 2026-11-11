@@ -91,9 +91,10 @@ impl Row {
         })
     }
 
-    /// What a session is called: its name, else the last part of its folder, else the start of its id.
+    /// What a session is called: its name, else the last part of its parent repo (for a worktree) or folder, else the start of its id.
     pub fn name(&self) -> String {
-        let folder = self.cwd.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+        let base = if !self.worktree_repo.is_empty() { self.worktree_repo.as_str() } else { self.cwd.as_str() };
+        let folder = base.trim_end_matches('/').rsplit('/').next().unwrap_or("");
         [self.name.as_str(), folder].into_iter().find(|t| !t.is_empty()).map_or_else(|| self.session.chars().take(7).collect(), str::to_string)
     }
 
@@ -189,6 +190,8 @@ mod tests {
         assert_eq!(shown[4], "한글이름…");
         assert_eq!(shown[5], "s012345  ", "a folder that is the root has no name to show");
         assert!(shown.iter().all(|t| columns(t) == 9), "{shown:?}");
+        let wt = Row { session: "s0123456789abcdef".into(), cwd: "/var/worktrees/s0123456789abcdef".into(), worktree_repo: "/work/lico".into(), ..Default::default() };
+        assert_eq!(wt.name(), "lico");
     }
 
     #[test]

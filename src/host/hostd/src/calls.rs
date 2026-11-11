@@ -126,7 +126,7 @@ fn receiver_label(shared: &Shared, caller: &str, to: &str) -> Result<String, &'s
         crate::session::State::Exited => return Err("session_exited"),
         crate::session::State::Running => {}
     }
-    Ok(transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect())
+    Ok(transfer::session_label(&s).chars().take(LABEL_CHARS).collect())
 }
 
 /// The line on the card of a send: to whom, how much, and the start of the text, in one line of at most `CARD_CHARS`.

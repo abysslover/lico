@@ -83,6 +83,34 @@ pub fn own() -> Figure {
     Figure { private_kb, rss_kb, processes: 1 }
 }
 
+/// Pin glibc's `M_MMAP_THRESHOLD` (`-3`) to `128 KiB` so large transient buffers (`>= 128 KiB`: pasted PNGs, INCR chunks, base64 payloads, file handoffs)
+/// are serviced by `mmap(2)` and returned to the kernel immediately via `munmap(2)` when dropped, even across short-lived worker threads (`MB-06`).
+pub fn init_allocator() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        const M_MMAP_THRESHOLD: i32 = -3;
+        extern "C" {
+            fn mallopt(param: i32, value: i32) -> i32;
+        }
+        unsafe {
+            let _ = mallopt(M_MMAP_THRESHOLD, 128 * 1024);
+        }
+    }
+}
+
+/// Ask the C allocator to return free heap and arena pages to the kernel after a large transient buffer or view is dropped (`MB-06`).
+pub fn trim_heap() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        extern "C" {
+            fn malloc_trim(pad: usize) -> i32;
+        }
+        unsafe {
+            let _ = malloc_trim(0);
+        }
+    }
+}
+
 pub fn json_of(f: &Figure) -> Value {
     json!({"private_kb": f.private_kb, "rss_kb": f.rss_kb, "processes": f.processes})
 }
@@ -260,5 +288,29 @@ mod tests {
         for k in &mut kids {
             let _ = (k.kill(), k.wait());
         }
+    }
+
+    #[test]
+    fn trim_heap_returns_dropped_large_buffer_pages_to_the_kernel() {
+        init_allocator();
+        let baseline = own().private_kb;
+        let buf = std::thread::spawn(|| {
+            let mut out = Vec::new();
+            let chunk = vec![0x5au8; 256 * 1024];
+            for _ in 0..12 {
+                out.extend_from_slice(&chunk);
+            }
+            out.shrink_to_fit();
+            out
+        })
+        .join()
+        .unwrap();
+        std::hint::black_box(&buf);
+        let peak = own().private_kb;
+        assert!(peak >= baseline + 2400, "baseline={baseline} kB, peak={peak} kB");
+        drop(buf);
+        trim_heap();
+        let after = own().private_kb;
+        assert!(peak.saturating_sub(after) >= 2000, "expected >= 2000 kB reclaimed across worker thread: baseline={baseline} kB, peak={peak} kB, after={after} kB");
     }
 }

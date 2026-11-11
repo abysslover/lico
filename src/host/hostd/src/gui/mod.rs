@@ -242,10 +242,13 @@ impl App {
         if self.view.take().is_some() && !self.ui.enabled {
             self.present_neutral(); // the dropped view released its surface, glyph cache and lines
         }
+        self.ui.composed = None;
+        self.ui.hit_lines = Vec::new();
         self.session.clear(); // nothing typed while no view is shown can be sent anywhere
         if self.ui.enabled {
             self.refresh_list();
         }
+        crate::memory::trim_heap();
     }
 
     fn show(&mut self, id: &str, after: Option<i64>) {

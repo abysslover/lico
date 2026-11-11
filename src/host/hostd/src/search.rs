@@ -29,7 +29,7 @@ fn target_of(s: &Session) -> Option<Target> {
     if s.purged || !s.text_mode || s.provider.is_empty() {
         return None;
     }
-    let name: String = crate::transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect();
+    let name: String = crate::transfer::session_label(s).chars().take(LABEL_CHARS).collect();
     Some(Target { id: s.id.clone(), name, view: s.log_view() })
 }
 
@@ -66,7 +66,7 @@ pub fn search_op(shared: &Shared, query: &str, target_session: Option<&str>, lim
             if !s.text_mode {
                 Vec::new()
             } else {
-                let name: String = crate::transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref()).chars().take(LABEL_CHARS).collect();
+                let name: String = crate::transfer::session_label(&s).chars().take(LABEL_CHARS).collect();
                 vec![Target { id: s.id.clone(), name, view: s.log_view() }]
             }
         }
@@ -96,13 +96,16 @@ pub fn search_op(shared: &Shared, query: &str, target_session: Option<&str>, lim
             true
         });
     }
-    Ok(obj(json!({
+    let reply = Ok(obj(json!({
         "query": query,
         "scope": if scoped.is_some() { "session" } else { "all" },
         "matches": matches,
         "total": total,
         "truncated": total > limit,
-    })))
+    })));
+    drop(targets);
+    crate::memory::trim_heap();
+    reply
 }
 
 #[cfg(test)]

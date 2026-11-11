@@ -176,7 +176,8 @@ impl Collector {
         self.bytes.extend_from_slice(chunk);
         Ok(())
     }
-    pub fn into_bytes(self) -> Vec<u8> {
+    pub fn into_bytes(mut self) -> Vec<u8> {
+        self.bytes.shrink_to_fit();
         self.bytes
     }
 }

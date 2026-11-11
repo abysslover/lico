@@ -125,6 +125,9 @@ pub fn with_cleanup(shared: &Shared, attachment: Option<&str>, run: impl FnOnce(
     if let Some(name) = attachment.filter(|n| valid_name(n)) {
         remove_entry(&pasted_dir(&shared.cfg.handoff_dir).join(name));
     }
+    if attachment.is_some() {
+        crate::memory::trim_heap();
+    }
     result
 }
 

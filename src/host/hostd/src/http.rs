@@ -77,7 +77,13 @@ fn respond(stream: &mut TcpStream, status: u16, body: Map<String, Value>, extra:
     for (key, value) in body {
         all.insert(key, value);
     }
-    write_response(stream, status, &String::from_utf8(encode(all).to_vec()).unwrap_or_default(), extra);
+    let text = String::from_utf8(encode(all).to_vec()).unwrap_or_default();
+    let big = text.len() >= 65_536;
+    write_response(stream, status, &text, extra);
+    drop(text);
+    if big {
+        crate::memory::trim_heap();
+    }
 }
 
 /// One response whose body is already JSON text (`respond` wraps a v1 body in it; the tool connection speaks JSON-RPC).

@@ -873,7 +873,7 @@ impl App {
             corner: if self.ui.markers { 16 } else { 0 },
             overlay: Overlay {
                 menu: menu_open.is_some(),
-                selection: self.ui.sel.is_some() || search_bar.is_some(),
+                selection: self.ui.sel.is_some(), search: self.ui.search.open || search_bar.is_some(),
                 panel: panel_view.is_some(),
                 approval: bar.is_some(),
                 preedit: !self.preedit.is_empty(),

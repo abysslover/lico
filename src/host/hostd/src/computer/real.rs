@@ -28,13 +28,14 @@ fn table() -> MutexGuard<'static, BTreeMap<String, Grant>> {
     TABLE.get_or_init(Mutex::default).lock().unwrap_or_else(|e| e.into_inner())
 }
 
-pub fn window_duration() -> Duration {
-    let secs = std::env::var("LICO_REAL_SCREEN_S")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
+fn clamp_window_secs(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
         .filter(|&s| s >= 1)
-        .unwrap_or(DEFAULT_SECS);
-    Duration::from_secs(secs)
+        .map_or(DEFAULT_SECS, |s| s.min(DEFAULT_SECS))
+}
+
+pub fn window_duration() -> Duration {
+    Duration::from_secs(clamp_window_secs(std::env::var("LICO_REAL_SCREEN_S").ok().as_deref()))
 }
 
 /// Grant `session` time-bounded real-screen control starting at `now`.
@@ -79,8 +80,9 @@ pub fn status_json(shared: &Shared) -> Value {
             revoke(&sid);
             continue;
         }
-        let name: String = transfer::label(&s.id, s.settings.name.as_deref(), s.settings.cwd.as_deref())
+        let name: String = transfer::session_label(&s)
             .chars()
+            .filter(|c| !c.is_control() && !crate::codex::dropped(*c as u32))
             .take(crate::folders::MAX_NAME)
             .collect();
         out.push(json!({"session": sid, "name": name, "seconds_left": secs}));
@@ -162,5 +164,14 @@ mod tests {
         grant_at(&sid, base, Duration::from_secs(60));
         assert!(revoke(&sid) && !revoke(&sid));
         assert_eq!(seconds_left_at(&sid, base + Duration::from_secs(1)), None);
+    }
+
+    #[test]
+    fn window_secs_clamps_to_at_most_fifteen_minutes_and_ignores_zero_or_invalid() {
+        assert_eq!(clamp_window_secs(None), DEFAULT_SECS);
+        assert_eq!(clamp_window_secs(Some("0")), DEFAULT_SECS);
+        assert_eq!(clamp_window_secs(Some("abc")), DEFAULT_SECS);
+        assert_eq!(clamp_window_secs(Some("45")), 45);
+        assert_eq!(clamp_window_secs(Some("999999")), DEFAULT_SECS);
     }
 }

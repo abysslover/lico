@@ -23,6 +23,7 @@ pub enum Cause {
     Fonts,
     Menu,
     Selection,
+    Search,
     Panel,
     Approval,
     Preedit,
@@ -35,9 +36,9 @@ pub enum Cause {
 }
 
 impl Cause {
-    pub const ALL: [Cause; 17] = [
-        Cause::Shift, Cause::First, Cause::BufferAge, Cause::Size, Cause::Scale, Cause::Fonts, Cause::Menu, Cause::Selection, Cause::Panel, Cause::Approval,
-        Cause::Preedit, Cause::Scrollback, Cause::LineChanged, Cause::NothingInCommon, Cause::RowHeight, Cause::Overhang, Cause::Disabled,
+    pub const ALL: [Cause; 18] = [
+        Cause::Shift, Cause::First, Cause::BufferAge, Cause::Size, Cause::Scale, Cause::Fonts, Cause::Menu, Cause::Selection, Cause::Search, Cause::Panel,
+        Cause::Approval, Cause::Preedit, Cause::Scrollback, Cause::LineChanged, Cause::NothingInCommon, Cause::RowHeight, Cause::Overhang, Cause::Disabled,
     ];
 
     pub fn name(self) -> &'static str {
@@ -50,6 +51,7 @@ impl Cause {
             Cause::Fonts => "fonts",
             Cause::Menu => "menu",
             Cause::Selection => "selection",
+            Cause::Search => "search",
             Cause::Panel => "panel",
             Cause::Approval => "approval",
             Cause::Preedit => "preedit",
@@ -123,6 +125,7 @@ pub struct LineRec {
 pub struct Overlay {
     pub menu: bool,
     pub selection: bool,
+    pub search: bool,
     pub panel: bool,
     pub approval: bool,
     pub preedit: bool,
@@ -137,6 +140,8 @@ impl Overlay {
             Some(Cause::Menu)
         } else if either(self.selection, prev.selection) {
             Some(Cause::Selection)
+        } else if either(self.search, prev.search) {
+            Some(Cause::Search)
         } else if either(self.panel, prev.panel) {
             Some(Cause::Panel)
         } else if either(self.approval, prev.approval) {
@@ -361,6 +366,7 @@ mod tests {
         for (set, cause) in [
             (Overlay { menu: true, ..Default::default() }, Cause::Menu),
             (Overlay { selection: true, ..Default::default() }, Cause::Selection),
+            (Overlay { search: true, ..Default::default() }, Cause::Search),
             (Overlay { panel: true, ..Default::default() }, Cause::Panel),
             (Overlay { approval: true, ..Default::default() }, Cause::Approval),
             (Overlay { preedit: true, ..Default::default() }, Cause::Preedit),

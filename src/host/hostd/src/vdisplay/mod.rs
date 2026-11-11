@@ -53,13 +53,14 @@ fn table() -> MutexGuard<'static, HashMap<String, Entry>> {
     TABLE.get_or_init(Mutex::default).lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn idle_limit() -> Duration {
-    let secs = std::env::var("LICO_DISPLAY_IDLE_S")
-        .ok()
-        .and_then(|v| v.parse::<u64>().ok())
+fn clamp_idle_secs(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.parse::<u64>().ok())
         .filter(|&s| s >= 1)
-        .unwrap_or(DEFAULT_IDLE_SECS);
-    Duration::from_secs(secs)
+        .map_or(DEFAULT_IDLE_SECS, |s| s.min(DEFAULT_IDLE_SECS))
+}
+
+fn idle_limit() -> Duration {
+    Duration::from_secs(clamp_idle_secs(std::env::var("LICO_DISPLAY_IDLE_S").ok().as_deref()))
 }
 
 fn xvfb_bin() -> String {
@@ -469,5 +470,14 @@ mod tests {
         assert!(info(&a).is_none());
         assert!(!std::path::Path::new(&format!("/proc/{pid_a}")).exists(), "Xvfb was reaped");
         assert!(stop(&b));
+    }
+
+    #[test]
+    fn idle_secs_clamps_to_at_most_ten_minutes_and_ignores_zero_or_invalid() {
+        assert_eq!(clamp_idle_secs(None), DEFAULT_IDLE_SECS);
+        assert_eq!(clamp_idle_secs(Some("0")), DEFAULT_IDLE_SECS);
+        assert_eq!(clamp_idle_secs(Some("bad")), DEFAULT_IDLE_SECS);
+        assert_eq!(clamp_idle_secs(Some("120")), 120);
+        assert_eq!(clamp_idle_secs(Some("86400")), DEFAULT_IDLE_SECS);
     }
 }

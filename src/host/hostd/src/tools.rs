@@ -362,10 +362,23 @@ fn serve_one(mut stream: TcpStream, shared: &Arc<Shared>, port: u16, limits: &Li
     };
     // the person's setting is read for each message, so that switching it needs no restart (SF-06)
     let writing = crate::clipboard::settings::clipboard_write_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir));
-    match mcp::handle_with(&request.body, writing, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
-        Outcome::Accepted => http::write_response(&mut stream, 202, "", ""),
-        Outcome::Reply(text) => http::write_response(&mut stream, 200, &text, ""),
-        Outcome::Malformed(text) => http::write_response(&mut stream, 400, &text, ""),
+    let big = match mcp::handle_with(&request.body, writing, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
+        Outcome::Accepted => {
+            http::write_response(&mut stream, 202, "", "");
+            false
+        }
+        Outcome::Reply(text) => {
+            let b = text.len() >= 65_536;
+            http::write_response(&mut stream, 200, &text, "");
+            b
+        }
+        Outcome::Malformed(text) => {
+            http::write_response(&mut stream, 400, &text, "");
+            false
+        }
+    };
+    if big {
+        crate::memory::trim_heap();
     }
 }
 

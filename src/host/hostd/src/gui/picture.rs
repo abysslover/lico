@@ -104,7 +104,12 @@ impl Pictures {
         if self.held() - old + picture.bytes.len() > MEMORY_MAX {
             return Put::Full;
         }
-        if self.chips.insert(session.to_string(), picture).is_some() { Put::Replaced } else { Put::Added }
+        if self.chips.insert(session.to_string(), picture).is_some() {
+            crate::memory::trim_heap();
+            Put::Replaced
+        } else {
+            Put::Added
+        }
     }
 
     pub(crate) fn has(&self, session: &str) -> bool {
@@ -113,13 +118,21 @@ impl Pictures {
 
     /// The chip of `session` removed (and its memory freed): true when there was one.
     pub(crate) fn remove(&mut self, session: &str) -> bool {
-        self.chips.remove(session).is_some()
+        let removed = self.chips.remove(session).is_some();
+        if removed {
+            crate::memory::trim_heap();
+        }
+        removed
     }
 
     /// The session is gone: its chip and its pictures on their way go with it.
     pub(crate) fn forget(&mut self, session: &str) {
-        self.chips.remove(session);
+        let had_chip = self.chips.remove(session).is_some();
+        let before = self.flying.len();
         self.flying.retain(|_, (owner, _)| owner != session);
+        if had_chip || self.flying.len() != before {
+            crate::memory::trim_heap();
+        }
     }
 
     /// The chip of `session` goes on its way under `id`.
@@ -148,6 +161,8 @@ impl Pictures {
     /// A refused picture goes back to its session; false (and the picture is dropped) when that session has a newer chip by now.
     pub(crate) fn restore(&mut self, session: &str, picture: Picture) -> bool {
         if self.chips.contains_key(session) {
+            drop(picture);
+            crate::memory::trim_heap();
             return false;
         }
         self.chips.insert(session.to_string(), picture);
@@ -156,7 +171,10 @@ impl Pictures {
 
     /// The host was replaced: what was on its way is let go (the host's own rules remove the files it was told about).
     pub(crate) fn let_go(&mut self) {
-        self.flying.clear();
+        if !self.flying.is_empty() {
+            self.flying.clear();
+            crate::memory::trim_heap();
+        }
     }
 
     /// The size as the host writes it in the transcript: whole KiB rounded to the nearest, at least 1.
@@ -345,7 +363,9 @@ impl App {
         let Some(id) = jstr(line, "id").filter(|id| id.starts_with("slot-")) else { return false };
         let id = id.to_string();
         let Some((session, text)) = self.pending_inputs.remove(&id) else {
-            self.ed.pictures.take_flying(&id); // the session was deleted, or the host replaced: nothing waits for this place
+            if self.ed.pictures.take_flying(&id).is_some() {
+                crate::memory::trim_heap(); // the session was deleted, or the host replaced: nothing waits for this place
+            }
             return true;
         };
         match self.place_picture(line, &id, &session) {
@@ -387,7 +407,9 @@ impl App {
     /// The `input` was taken: the picture it carried is dropped from memory (the host removed the file).
     pub(crate) fn input_taken(&mut self, id: &str) {
         self.pending_inputs.remove(id);
-        self.ed.pictures.take_flying(id);
+        if self.ed.pictures.take_flying(id).is_some() {
+            crate::memory::trim_heap();
+        }
     }
 
     /// The `input` was refused: what the person is told, and the picture it carried goes back to its session as its chip.
