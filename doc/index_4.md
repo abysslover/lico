@@ -26,5 +26,7 @@
 | [M04-P03 report](reports/202611/20261112/20261112_03_M04-P03_quota_and_context_bar_report.md) | `quota.rs` (`7d` + `5h` windows, `null` when unreported) + GUI header, sidebar heading, and `Accounts` quota breakdown; accepted at G3 and merged 2026-11-12 |
 | [M04-P04 plan](plans/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_plan.md) | On-demand working-directory file viewer (`F5` refresh, `+ New here`, `.html` external browser open) and `0.2.0` release pass; done 2026-11-12 |
 | [M04-P04 report](reports/202611/20261112/20261112_04_M04-P04_workspace_file_viewer_report.md) | `fsview.rs` + `files_ui.rs` (`F5` refresh, `+ New here`, `.html` external browser open), `463/463` cold suite (`96.7 s`), `24.42`/`35.50 MiB` idle RSS, `+0.38 MiB` hidden growth, two-clone `0.2.0` match, and `~/bin/lico` install; accepted at G3 and merged 2026-11-12 |
+| [M05 milestone](milestones/202611/20261112/20261112_02_M05_workspace_continuity_and_file_navigation_milestone.md) | Working-directory restore across restarts, paged directory navigation, and unified file opening (`M05-P01` to `M05-P03`, `0.2.1`); G1 and G2 approved 2026-11-12 |
+| [M05-P01 plan](plans/202611/20261112/20261112_05_M05-P01_restore_working_directory_plan.md) | Persist and restore previous working directory and workspace view across `lico` restarts; in_progress 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
