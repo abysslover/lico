@@ -309,10 +309,13 @@ impl App {
         }
     }
 
-    /// Copy is a user action: only a non-empty selection, only from the key chord.
+    /// Copy is a user action: only a non-empty selection, only from the key chord or menu.
     pub(crate) fn copy_selection(&mut self) {
         let Some(text) = self.selection_text() else { return };
+        let (n, before) = (text.bytes().filter(|&b| b == b'\n').count() + 1, self.ui.copied);
         self.copy_text(text);
+        self.ui.flash = Some(if self.ui.copied > before { format!("Copied {n} {}.", if n == 1 { "line" } else { "lines" }) } else { "Copy refused: more than 64 KiB selected.".into() });
+        self.dirty = true;
     }
 
     /// Put text on the clipboard: the result of a person's own key, or of the host forwarding the `lico clipboard write` that the person ran (`clip::on_clip_line`; a picture too). Nothing else writes it; an agent tool (S07) must ask the person first.
@@ -406,16 +409,19 @@ impl App {
                 if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
-                let chord = self.ui.mods.control_key() && self.ui.mods.shift_key();
+                let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
+                let chord = ctrl && self.ui.mods.shift_key();
                 match &event.logical_key {
-                    Key::Character(c) if chord && c.eq_ignore_ascii_case("c") => {
-                        self.copy_selection();
+                    Key::Character(c) if ctrl && c.eq_ignore_ascii_case("c") => {
+                        if !event.repeat { self.copy_selection(); }
+                        true
+                    }
+                    Key::Named(NamedKey::Insert) if ctrl && !self.ui.mods.shift_key() => {
+                        if !event.repeat { self.copy_selection(); }
                         true
                     }
                     Key::Character(c) if chord && c.eq_ignore_ascii_case("p") => {
-                        if !event.repeat {
-                            self.capture_to_input();
-                        }
+                        if !event.repeat { self.capture_to_input(); }
                         true
                     }
                     Key::Named(NamedKey::Escape) => {
@@ -427,19 +433,9 @@ impl App {
                         self.dirty = true;
                         true
                     }
-                    Key::Named(NamedKey::PageUp) => {
-                        self.scroll_by(20);
-                        true
-                    }
-                    Key::Named(NamedKey::PageDown) => {
-                        self.scroll_by(-20);
-                        true
-                    }
-                    Key::Named(NamedKey::End) => {
-                        let back = self.ui.scroll as isize;
-                        self.scroll_by(-back);
-                        true
-                    }
+                    Key::Named(NamedKey::PageUp) => { self.scroll_by(20); true }
+                    Key::Named(NamedKey::PageDown) => { self.scroll_by(-20); true }
+                    Key::Named(NamedKey::End) => { self.scroll_by(-(self.ui.scroll as isize)); true }
                     _ => false,
                 }
             }

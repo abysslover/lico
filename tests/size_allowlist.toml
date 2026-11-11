@@ -5,5 +5,5 @@
 limit = 800
 
 [files]
-"src/host/hostd/src/gui/ui.rs" = 1172
+"src/host/hostd/src/gui/ui.rs" = 1168
 "src/host/hostd/src/core.rs" = 988

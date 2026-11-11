@@ -176,7 +176,7 @@ impl App {
                 if let Some(url) = p.login["url"].as_str() {
                     body.push("Open this address and sign in:".into());
                     body.push(url.to_string());
-                    body.push(if auto_open_off() { "Ctrl+Shift+C  copy the address    Ctrl+O  open it in the browser" } else { "Opening the browser. Ctrl+O opens it again, Ctrl+Shift+C copies the address." }.into());
+                    body.push(if auto_open_off() { "Ctrl+C  copy the address    Ctrl+O  open it in the browser" } else { "Opening the browser. Ctrl+O opens it again, Ctrl+C copies the address." }.into());
                 }
                 if p.login["needs_code"] == json!(true) {
                     body.push("The provider asks for a code: paste it below and press Enter.".into());
@@ -212,7 +212,7 @@ impl App {
             Step::Keys => {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
-                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+Shift+C copy the selected lines   Ctrl+U clear the line",
+                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+C (or Ctrl+Shift+C) copy the selected lines   Ctrl+U clear the line",
                     "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
                     "Ctrl+Shift+S  send the input box, or the selected lines, to another session",
                 ].map(String::from));
@@ -335,9 +335,10 @@ impl App {
         }
         if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
             // chords work while the input line is taking a code
-            match (c.to_lowercase().as_str(), self.ui.mods.shift_key()) {
-                ("c", true) => self.login_address(true),
-                ("o", _) => self.login_address(false),
+            let on_login = self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Login);
+            match c.to_lowercase().as_str() {
+                "c" if on_login => self.login_address(true),
+                "o" if on_login => self.login_address(false),
                 _ => return false,
             }
             self.dirty = true;
@@ -459,7 +460,7 @@ impl App {
                 Err(_) => false,
             };
             if let (false, Some(p)) = (started, self.ui.panel.as_mut()) {
-                p.notice = "xdg-open is not available: copy the address (Ctrl+Shift+C) and open it yourself.".into();
+                p.notice = "xdg-open is not available: copy the address (Ctrl+C) and open it yourself.".into();
             }
         }
     }

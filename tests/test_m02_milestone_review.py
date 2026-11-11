@@ -1,6 +1,7 @@
-"""M02-P07: memory pass (`MB-02`, `MB-06`) and full-milestone review (`R1`..`R4`) regression checks."""
+"""M02-P07: memory pass (`MB-02`, `MB-06`) and full-milestone review (`R1`..`R5`) regression checks."""
 import os
 import struct
+import subprocess
 import zlib
 from pathlib import Path
 
@@ -92,6 +93,24 @@ def test_m02_milestone_review_labels_search_cause_and_heap_trim():
             assert ui_search["frame"]["causes"]["selection"] == causes_before["selection"], ui_search["frame"]["causes"]
             fast_key(w, "Escape")
             wait_for(lambda: (w.ui()["search"] is None) or None)
+
+            # R5: selecting conversation lines and pressing plain Ctrl+C copies them to CLIPBOARD and Ctrl+V pastes them
+            lines = wait_for(lambda: (ls := w.ui()["layout"]["lines"]) and len(ls) >= 2 and ls)
+            y0, y1 = (lines[0][0] + lines[0][1]) / 2, (lines[1][0] + lines[1][1]) / 2
+            wid = w.window_id()
+            subprocess.run(["xdotool", "mousemove", "--window", wid, "500", str(int(y0)), "mousedown", "1", "mousemove", "--window", wid, "500", str(int(y1)), "mouseup", "1"], env=w.env, check=True)
+            sel_text = wait_for(lambda: w.ui()["selection"] or None)
+            copied_before = w.ui()["copied"]
+            fast_key(w, "ctrl+c")
+            wait_for(lambda: w.ui()["copied"] > copied_before or None)
+            clip_out = subprocess.run(["xclip", "-o", "-selection", "clipboard"], env={"DISPLAY": w.xvfb.display, "PATH": "/usr/bin:/bin"}, capture_output=True, text=True, check=True).stdout
+            assert clip_out == sel_text and "Copied " in w.ui()["header"], (clip_out, sel_text, w.ui()["header"])
+            fast_key(w, "ctrl+v")
+            wait_for(lambda: w.ui()["editor"]["text"] == sel_text or None)
+            fast_key(w, "ctrl+u")
+            wait_for(lambda: w.ui()["editor"]["text"] == "" or None)
+            fast_key(w, "Escape")
+            wait_for(lambda: w.ui()["selection"] is None or None)
 
             # R4 / MB-06: pasting a ~2.3 MiB PNG chip increases GUI RssAnon, and Escape reclaims it immediately via malloc_trim(0)
             anon_before = rss_anon_kib(w.proc.pid)
