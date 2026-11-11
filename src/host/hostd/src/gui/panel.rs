@@ -25,6 +25,8 @@ pub enum Step {
     Confirm, // a question about a session that Y answers
     Send,    // text of the box or lines of the screen, for another session (sendto.rs)
     Card,    // the whole text behind a card of the host's own (cardview.rs)
+    AccountRename, // a new label for an account, on the input line (admin_ui.rs)
+    Rebind,        // choose another account of the same provider for a closed session (admin_ui.rs)
 }
 
 pub struct Panel {
@@ -131,7 +133,7 @@ impl App {
     }
 
     pub(crate) fn text_mode(&self) -> bool {
-        self.ui.panel.as_ref().map_or(false, |p| matches!(p.step, Step::Label | Step::Rename) || p.text_field() || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
+        self.ui.panel.as_ref().map_or(false, |p| matches!(p.step, Step::Label | Step::Rename | Step::AccountRename) || p.text_field() || (p.step == Step::Login && p.login["needs_code"] == json!(true)))
     }
 
     /// The sign-in code is being typed: it is drawn as stars and never put in the window's model.
@@ -209,11 +211,20 @@ impl App {
                 body.extend(lines);
                 heading
             }
+            Step::AccountRename => {
+                body.push("Type a new label for the account and press Enter.".into());
+                format!("Rename account: {}", Self::account_name(p))
+            }
+            Step::Rebind => {
+                let (heading, lines) = self.rebind_view(p);
+                body.extend(lines);
+                heading
+            }
             Step::Keys => {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
                     "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+C (or Ctrl+Shift+C) copy the selected lines   Ctrl+U clear the line",
-                    "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   the open session (the Session menu has them too)",
+                    "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions", "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   Ctrl+Shift+B rebind account   Ctrl+Shift+M toggle permission mode",
                     "Ctrl+Shift+S  send the input box, or the selected lines, to another session",
                 ].map(String::from));
                 "Keys".to_string()
@@ -223,7 +234,7 @@ impl App {
                 "About Lico".to_string()
             }
             Step::Actions => {
-                body.extend(["S  sign in".to_string(), "F  make it the default for its provider".to_string(), "D  remove it (its sessions stay, unbound)".to_string(), "E  remove it and end its sessions".to_string()]);
+                body.extend(["S  sign in".to_string(), "R  rename this account".to_string(), "F  make it the default for its provider".to_string(), "D  remove it (its sessions stay, unbound)".to_string(), "E  remove it and end its sessions".to_string()]);
                 if let Some(s) = p.login["signed_in"].as_bool() {
                     body.push(format!("provider says: {}", if s { "signed in" } else { "not signed in" }));
                 } else if p.login.get("signed_in").is_some() {
@@ -321,6 +332,18 @@ impl App {
                         }
                         return true;
                     }
+                    "b" if self.ui.mods.shift_key() => {
+                        if !event.repeat {
+                            self.open_rebind();
+                        }
+                        return true;
+                    }
+                    "m" if self.ui.mods.shift_key() => {
+                        if !event.repeat {
+                            self.toggle_session_mode();
+                        }
+                        return true;
+                    }
                     _ => {}
                 }
             }
@@ -349,6 +372,14 @@ impl App {
             Key::Named(NamedKey::Escape) => {
                 match step {
                     Step::Actions => self.panel_open(Step::Accounts),
+                    Step::AccountRename => {
+                        let _ = self.ed.take();
+                        self.preedit.clear();
+                        if let Some(p) = self.ui.panel.as_mut() {
+                            p.step = Step::Actions;
+                            p.notice.clear();
+                        }
+                    }
                     _ => self.panel_close(),
                 }
                 true
@@ -387,6 +418,7 @@ impl App {
         }
         match step {
             Step::Rename => self.rename_submit(text),
+            Step::AccountRename => self.account_rename_submit(text),
             Step::Label => {
                 let provider = self.ui.panel.as_ref().map(|p| p.provider.clone()).unwrap_or_default();
                 let reply = self.host_call(json!({"op": "account.create", "provider": provider, "label": text}));
@@ -440,6 +472,7 @@ impl App {
             Step::Confirm => self.confirm_key(key),
             Step::Send => self.send_key(key),
             Step::Card => self.card_key(key),
+            Step::Rebind => self.rebind_choice(key),
             _ => {}
         }
     }
@@ -476,6 +509,7 @@ impl App {
         }
         match key {
             's' => self.start_login("browser"),
+            'r' => self.account_rename_start(),
             'f' => {
                 let reply = self.host_call(json!({"op": "account.default", "account": account}));
                 self.load_accounts();
@@ -516,6 +550,8 @@ impl App {
     }
 }
 
+#[path = "admin_ui.rs"]
+mod admin_ui;
 #[path = "cardview.rs"]
 pub(super) mod cardview;
 #[path = "confirm.rs"]

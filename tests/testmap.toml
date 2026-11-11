@@ -18,6 +18,7 @@
 "tests/test_account_lifecycle.py" = ["cred", "host"]
 "tests/test_accounts.py" = ["cred", "host"]
 "tests/test_activity.py" = ["gui", "host"]
+"tests/test_admin_controls.py" = ["cli", "gui", "host"]
 "tests/test_adapter_contract.py" = []
 "tests/test_build_commit.py" = []
 "tests/test_capture_cli.py" = ["cli"]
@@ -95,6 +96,7 @@
 [rust.modules]
 # The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
 accounts = ["host"]
+admin = ["host"]
 bin = ["synth"]           # src/bin/synth_agent.rs: the agent test double
 broker = ["host"]
 calls = ["host"]

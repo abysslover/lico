@@ -147,6 +147,19 @@ pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(),
     Ok(())
 }
 
+/// Respawn a disconnected Claude session after an explicit host-side setting change (such as `session.mode`),
+/// passing `--resume` when `s.codex_thread` is already known, without adding `[provider reconnected]`.
+pub fn restart_after_change(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), &'static str> {
+    let provider_session = {
+        let s = session.lock().unwrap();
+        if s.state != State::Disconnected {
+            return Err("busy");
+        }
+        s.codex_thread.clone()
+    };
+    spawn(shared, session, provider_session)
+}
+
 fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
     if session.lock().unwrap().purged {
         return Err("busy"); // a deleted session gets no workspace and no process

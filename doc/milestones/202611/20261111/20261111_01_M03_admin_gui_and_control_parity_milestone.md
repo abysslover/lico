@@ -63,7 +63,7 @@ serve agents and scripts.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M03-P01 | In-window account rename, session rebind, and live permission-mode control | [Plan](../../../plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | — | pending | — | in_progress |
+| M03-P01 | In-window account rename, session rebind, and live permission-mode control | [Plan](../../../plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | [Report](../../../reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | pending | — | in_review |
 | M03-P02 | Persistent workspace-grouped session navigator and adjustable text size | — | — | pending | — | approved |
 | M03-P03 | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow | — | — | pending | — | approved |
 | M03-P04 | Control-surface capabilities parity, loopback HTTP completion, full memory pass, and binary install | — | — | pending | — | approved |

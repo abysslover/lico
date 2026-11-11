@@ -121,6 +121,17 @@ impl Accounts {
         self.save().map_err(|_| "busy")
     }
 
+    pub fn rename(&mut self, id: &str, label: &str) -> Result<Account, &'static str> {
+        let idx = self.list.iter().position(|a| a.id == id).ok_or("unknown_account")?;
+        let previous = self.list[idx].label.clone();
+        self.list[idx].label = label.to_string();
+        if self.save().is_err() {
+            self.list[idx].label = previous;
+            return Err("busy");
+        }
+        Ok(self.list[idx].clone())
+    }
+
     /// True when the provider has accounts: a session of that provider then never runs unbound.
     pub fn any_for(&self, provider: &str) -> bool {
         self.managed.contains(provider) || self.list.iter().any(|a| a.provider == provider)

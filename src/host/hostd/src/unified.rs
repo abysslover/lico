@@ -4,6 +4,7 @@
 //! the name the program is run under (`lico-host`, `lico-cred`, `lico-candidate-a2`).
 
 mod accounts;
+mod admin;
 mod broker;
 mod calls;
 mod capture;

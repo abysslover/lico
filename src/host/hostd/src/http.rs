@@ -48,7 +48,7 @@ fn status_of(code: &str) -> u16 {
         "bad_request" | "version_unsupported" | "option_unavailable" => 400,
         "folder_not_absolute" | "folder_missing" | "folder_not_directory" | "folder_unreadable" | "folder_protected" => 400,
         "worktree_needs_folder" | "not_git_repo" | "invalid_branch" => 400,
-        "unknown_op" | "unknown_session" | "unknown_view" | "unknown_request" | "unknown_approval" => 404,
+        "unknown_op" | "unknown_session" | "unknown_account" | "unknown_view" | "unknown_request" | "unknown_approval" => 404,
         "stale_generation" | "session_exited" | "branch_exists" | "worktree_dirty" => 409,
         "too_large" => 413,
         _ => 503,
@@ -246,6 +246,36 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 return Err(bad("bad_request"));
             }
             core::input(shared, id, Some(int(&map, "generation").unwrap_or(0)), crate::ipc::text(&map, "request_id"), crate::ipc::text(&map, "text"), crate::session::Origin::Person, None)
+        }
+        ["v1", "sessions", id, "mode"] if id_ok(id) => {
+            allowed(method == "POST")?;
+            let mut map = body_map(request).map_err(bad)?;
+            map.insert("op".into(), json!("session.mode"));
+            map.insert("session".into(), json!(id));
+            if !valid_request("session.mode", &map) {
+                return Err(bad("bad_request"));
+            }
+            crate::admin::session_mode(shared, id, int(&map, "generation").unwrap_or(0), crate::ipc::text(&map, "mode"))
+        }
+        ["v1", "sessions", id, "rebind"] if id_ok(id) => {
+            allowed(method == "POST")?;
+            let mut map = body_map(request).map_err(bad)?;
+            map.insert("op".into(), json!("session.rebind"));
+            map.insert("session".into(), json!(id));
+            if !valid_request("session.rebind", &map) {
+                return Err(bad("bad_request"));
+            }
+            core::session_rebind(shared, id, int(&map, "generation").unwrap_or(0), crate::ipc::text(&map, "account"))
+        }
+        ["v1", "accounts", id, "rename"] if id_ok(id) => {
+            allowed(method == "POST")?;
+            let mut map = body_map(request).map_err(bad)?;
+            map.insert("op".into(), json!("account.rename"));
+            map.insert("account".into(), json!(id));
+            if !valid_request("account.rename", &map) {
+                return Err(bad("bad_request"));
+            }
+            crate::admin::account_rename(shared, id, crate::ipc::text(&map, "label"))
         }
         ["v1", "approvals", number, "response"] => {
             allowed(method == "POST")?;
