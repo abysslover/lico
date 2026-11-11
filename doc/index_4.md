@@ -13,5 +13,6 @@
 | [M03-P01 report](reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | `account.rename`, `session.mode`, and in-window `session.rebind` across GUI, CLI, IPC, and HTTP; awaiting owner G3/G4 |
 | [M03-P02 plan](plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | Persistent workspace-grouped session navigator and adjustable text size (`12..=20` px); G2 approved 2026-11-11 |
 | [M03-P02 report](reports/202611/20261111/20261111_07_M03-P02_workspace_navigator_report.md) | Workspace grouping (rolling git worktrees under parent repos), `12..=20` px scaling, and `< 50 MiB` RSS at scales 1 & 2; awaiting owner G3/G4 |
+| [M03-P03 plan](plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow; G2 approved 2026-11-11 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
