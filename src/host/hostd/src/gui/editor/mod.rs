@@ -1,19 +1,19 @@
-//! The input box of a session: the draft as text plus a cursor, the draft of every other session, and what each session was sent before.
-//! A state machine with no window and no host in it: `mod.rs` and `ui.rs` hand it the keys and ask it for the rows to draw.
+//! The input box of a session: the draft as text plus a cursor and optional selection, the draft of every other session, and what each
+//! session was sent before. A state machine with no window and no host in it: `mod.rs` and `ui.rs` hand it keys/clicks and ask for rows.
 //!
 //! Limits. One input is at most `MAX_TEXT` bytes (the host's own limit). The recall history keeps 20 inputs per session and 256 KiB in all
-//! sessions together, the oldest dropped first (the transcript has what was sent). A draft is never dropped (a deleted session's goes with
-//! it: `forget`): one per session, and the box refuses what would take it past the limit; only a refused input that comes back into it can leave it over, and then it is kept
-//! and not sent, with the reason under the box.
+//! sessions together, the oldest dropped first (the transcript has what was sent). Undo/redo keeps at most 32 snapshots per session and
+//! 128 KiB across all sessions. A draft is never dropped (a deleted session's goes with it: `forget`).
+
+mod app;
+mod selection;
 
 use std::collections::{HashMap, VecDeque};
 
 use cosmic_text::Buffer;
 use serde_json::{json, Value};
-use winit::event::KeyEvent;
-use winit::keyboard::{Key, NamedKey};
 
-use super::{emit_ime, App};
+use selection::{place_layout, RowHit, Snap};
 
 pub(crate) const MAX_TEXT: usize = crate::ipc::MAX_INPUT_TEXT;
 pub(crate) const MAX_ROWS: usize = 8;
@@ -21,10 +21,10 @@ pub(crate) const MAX_ROWS: usize = 8;
 pub(crate) const PASTE_FETCH: usize = 4 * MAX_TEXT;
 const HISTORY_PER_SESSION: usize = 20;
 const HISTORY_BYTES: usize = 256 * 1024;
-const TAB_COLS: usize = 4;
+pub(super) const TAB_COLS: usize = 4;
 
 /// Marks that belong to the character before them: they take no column and go with it.
-fn attached(c: char) -> bool {
+pub(super) fn attached(c: char) -> bool {
     matches!(c as u32, 0x0300..=0x036F | 0x1160..=0x11FF | 0x1AB0..=0x1AFF | 0x1DC0..=0x1DFF | 0x200D | 0x20D0..=0x20FF | 0x3099..=0x309A | 0xFE00..=0xFE0F | 0xFE20..=0xFE2F | 0xE0100..=0xE01EF)
 }
 
@@ -69,7 +69,7 @@ fn class(c: char) -> Class {
 }
 
 /// The start of the character (with what is attached to it) that ends at `at`.
-fn prev_boundary(text: &str, at: usize) -> usize {
+pub(super) fn prev_boundary(text: &str, at: usize) -> usize {
     let mut i = at;
     loop {
         let Some(c) = text[..i].chars().next_back() else { return 0 };
@@ -81,7 +81,7 @@ fn prev_boundary(text: &str, at: usize) -> usize {
 }
 
 /// The end of the character (with what is attached to it) that starts at `at`.
-fn next_boundary(text: &str, at: usize) -> usize {
+pub(super) fn next_boundary(text: &str, at: usize) -> usize {
     let Some(first) = text[at..].chars().next() else { return at };
     let (mut end, mut prev) = (at + first.len_utf8(), first);
     while let Some(c) = text[end..].chars().next().filter(|c| attached(*c) || (prev == '\u{200D}' && *c != '\n')) {
@@ -164,18 +164,20 @@ fn expand(text: &str) -> String {
 
 /// A walk through what a session was sent before, started by Up. `stash` is the draft that was in the box when it began.
 #[derive(Clone)]
-struct Recall {
+pub(super) struct Recall {
     depth: usize,
     shown: String,
     stash: (String, usize),
 }
 
-/// A draft set aside: the text of the box, its cursor and the recall it was in.
+/// A draft set aside: the text of the box, its cursor, its recall state, and its per-session undo/redo history.
 #[derive(Clone, Default)]
 pub(crate) struct Parked {
     text: String,
     cursor: usize,
     recall: Option<Recall>,
+    undo: VecDeque<Snap>,
+    redo: Vec<Snap>,
 }
 
 impl Parked {
@@ -185,24 +187,31 @@ impl Parked {
 
     /// A text for the box to take up, with the cursor after it (the field of a form).
     pub(crate) fn typed(text: &str) -> Parked {
-        Parked { text: text.to_string(), cursor: text.len(), recall: None }
+        Parked { text: text.to_string(), cursor: text.len(), recall: None, undo: VecDeque::new(), redo: Vec::new() }
     }
 }
 
 #[derive(Default)]
 pub(crate) struct Editor {
-    text: String,
-    cursor: usize, // a byte index on a character boundary
-    goal: Option<usize>, // the column that Up and Down keep
-    first: usize, // the first row shown
-    cols: usize,
-    stamp: u64,
-    rows: Vec<(usize, usize)>,
+    pub(super) text: String,
+    pub(super) cursor: usize, // a byte index on a character boundary
+    pub(super) anchor: Option<usize>, // selection anchor byte index when selecting
+    pub(crate) selecting: bool, // left mouse drag in progress inside the prompt box
+    pub(super) goal: Option<usize>, // the column that Up and Down keep
+    pub(super) first: usize, // the first row shown
+    pub(super) cols: usize,
+    pub(super) stamp: u64,
+    pub(super) rows: Vec<(usize, usize)>,
     rows_for: (u64, usize),
-    note: Option<String>,
-    parked: HashMap<String, Parked>,
+    pub(super) note: Option<String>,
+    pub(super) parked: HashMap<String, Parked>,
     sent: VecDeque<(String, String)>,
-    recall: Option<Recall>,
+    pub(super) recall: Option<Recall>,
+    undo: VecDeque<Snap>,
+    redo: Vec<Snap>,
+    typing_run: bool,
+    row_hits: Vec<RowHit>,
+    pub(crate) sel_rects: Vec<[f32; 4]>,
     pub(crate) pictures: super::picture::Pictures, // the pasted pictures: one chip per session, and those on their way to the host
     pub(crate) rect: Option<[f32; 4]>, // the box on screen, as the last frame drew it
     pub(crate) caret: Option<[f32; 4]>,
@@ -235,10 +244,13 @@ impl Editor {
         }
     }
 
-    fn edited(&mut self) {
+    pub(super) fn edited(&mut self) {
         self.stamp += 1;
         self.goal = None;
         self.note = None;
+        self.anchor = None;
+        self.selecting = false;
+        self.typing_run = false;
     }
 
     /// The text replaced, the cursor at its end (the unit tests and the scroll oracle set a draft this way).
@@ -247,12 +259,20 @@ impl Editor {
         self.text = text;
         self.cursor = self.text.len();
         self.recall = None;
+        self.undo.clear();
+        self.redo.clear();
         self.edited();
     }
 
-    /// Everything the box holds, set aside for a panel.
+    /// Everything the box holds, set aside for a panel or another session.
     pub(crate) fn take(&mut self) -> Parked {
-        let parked = Parked { text: std::mem::take(&mut self.text), cursor: self.cursor, recall: self.recall.take() };
+        let parked = Parked {
+            text: std::mem::take(&mut self.text),
+            cursor: self.cursor,
+            recall: self.recall.take(),
+            undo: std::mem::take(&mut self.undo),
+            redo: std::mem::take(&mut self.redo),
+        };
         self.cursor = 0;
         self.edited();
         parked
@@ -262,15 +282,20 @@ impl Editor {
         self.text = parked.text;
         self.cursor = parked.cursor.min(self.text.len());
         self.recall = parked.recall;
+        self.undo = parked.undo;
+        self.redo = parked.redo;
         self.edited();
+        self.trim_undo_bytes();
     }
 
     /// The box is left for another session (or for none): what is in it, and a composition still open, stays with this one.
     pub(crate) fn park(&mut self, session: &str, preedit: &str) {
+        self.anchor = None;
         self.text.insert_str(self.cursor, preedit);
         self.cursor += preedit.len();
         let parked = self.take();
         self.parked.insert(session.to_string(), parked);
+        self.trim_undo_bytes();
     }
 
     pub(crate) fn resume(&mut self, session: &str) {
@@ -279,18 +304,32 @@ impl Editor {
         self.first = 0;
     }
 
-    /// Text at the cursor; false (and a line under the box) when it would take the input past the limit.
+    /// Text at the cursor (replacing any active selection); false when it would take the input past `MAX_TEXT`.
     pub(crate) fn put(&mut self, s: &str) -> bool {
         if s.is_empty() {
             return false;
         }
-        if self.text.len() + s.len() > MAX_TEXT {
+        let sel = self.selection_range();
+        let removed = sel.map_or(0, |(lo, hi)| hi - lo);
+        if self.text.len() - removed + s.len() > MAX_TEXT {
             self.say(format!("The box is full: one input holds at most {} KiB. That was not added.", MAX_TEXT / 1024));
             return false;
         }
-        self.text.insert_str(self.cursor, s);
-        self.cursor += s.len();
+        let single_char = sel.is_none() && s.chars().count() == 1 && s != "\n";
+        let prev_space = self.cursor > 0 && self.text[..self.cursor].chars().next_back().map_or(false, char::is_whitespace);
+        let cur_space = s.chars().next().map_or(false, char::is_whitespace);
+        if !(single_char && self.typing_run && self.redo.is_empty() && !(prev_space && !cur_space)) {
+            self.push_undo();
+        }
+        if let Some((lo, hi)) = sel {
+            self.text.replace_range(lo..hi, s);
+            self.cursor = lo + s.len();
+        } else {
+            self.text.insert_str(self.cursor, s);
+            self.cursor += s.len();
+        }
         self.edited();
+        self.typing_run = s.chars().count() == 1 && s != "\n";
         true
     }
 
@@ -302,22 +341,36 @@ impl Editor {
             self.say(if dropped > 0 { format!("Nothing to paste: {} left out.", left_out(dropped)) } else { "Nothing to paste.".to_string() });
             return;
         }
-        if self.text.len() + clean.len() > MAX_TEXT {
+        let removed = self.selection_range().map_or(0, |(lo, hi)| hi - lo);
+        if self.text.len() - removed + clean.len() > MAX_TEXT {
             self.say(format!(
                 "Paste refused: {} bytes added to the {} in the box would pass the limit of {} bytes ({} KiB) for one input. Nothing was added.",
-                clean.len(), self.text.len(), MAX_TEXT, MAX_TEXT / 1024
+                clean.len(),
+                self.text.len() - removed,
+                MAX_TEXT,
+                MAX_TEXT / 1024
             ));
             return;
         }
+        self.typing_run = false;
         if self.put(&clean) && dropped > 0 {
             self.say(format!("{} left out of the paste.", left_out(dropped)));
         }
+        self.typing_run = false;
     }
 
     pub(crate) fn backspace(&mut self) -> bool {
+        if let Some((lo, hi)) = self.selection_range() {
+            self.push_undo();
+            self.text.replace_range(lo..hi, "");
+            self.cursor = lo;
+            self.edited();
+            return true;
+        }
         if self.cursor == 0 {
             return false;
         }
+        self.push_undo();
         let from = prev_boundary(&self.text, self.cursor);
         self.text.replace_range(from..self.cursor, "");
         self.cursor = from;
@@ -326,15 +379,35 @@ impl Editor {
     }
 
     pub(crate) fn delete(&mut self) -> bool {
+        if let Some((lo, hi)) = self.selection_range() {
+            self.push_undo();
+            self.text.replace_range(lo..hi, "");
+            self.cursor = lo;
+            self.edited();
+            return true;
+        }
         let to = next_boundary(&self.text, self.cursor);
         self.cut(self.cursor, to)
     }
 
     pub(crate) fn delete_word_back(&mut self) -> bool {
+        if let Some((lo, hi)) = self.selection_range() {
+            self.push_undo();
+            self.text.replace_range(lo..hi, "");
+            self.cursor = lo;
+            self.edited();
+            return true;
+        }
         let from = word_left(&self.text, self.cursor);
         let to = self.cursor;
+        if from >= to {
+            return false;
+        }
+        self.push_undo();
         self.cursor = from;
-        self.cut(from, to)
+        self.text.replace_range(from..to, "");
+        self.edited();
+        true
     }
 
     /// Ctrl+K: from the cursor to the end of its line; at the end of a line, the line break.
@@ -348,6 +421,7 @@ impl Editor {
         if from >= to {
             return false;
         }
+        self.push_undo();
         self.text.replace_range(from..to, "");
         self.edited();
         true
@@ -356,6 +430,9 @@ impl Editor {
     /// Ctrl+U: the whole text.
     pub(crate) fn clear(&mut self) -> bool {
         let had = !self.text.is_empty();
+        if had {
+            self.push_undo();
+        }
         self.text.clear();
         self.cursor = 0;
         self.edited();
@@ -382,14 +459,14 @@ impl Editor {
         self.goal = None;
     }
 
-    fn fit(&mut self) {
+    pub(super) fn fit(&mut self) {
         if self.rows_for != (self.stamp, self.cols) || self.rows.is_empty() {
             self.rows = wrap(&self.text, if self.cols == 0 { 80 } else { self.cols });
             self.rows_for = (self.stamp, self.cols);
         }
     }
 
-    fn row_of(&self, at: usize) -> usize {
+    pub(super) fn row_of(&self, at: usize) -> usize {
         self.rows.iter().rposition(|r| r.0 <= at).unwrap_or(0)
     }
 
@@ -450,7 +527,6 @@ impl Editor {
         self.row_of(self.cursor) + 1 == self.rows.len()
     }
 
-    // ------------------------------------------------------------------ what was sent before
     /// The text of the box, ready to send: none when there is nothing to send, or when it is over the limit (kept, and a line says why).
     pub(crate) fn prepare_send(&mut self, session: &str) -> Option<String> {
         if self.text.trim().is_empty() {
@@ -462,11 +538,13 @@ impl Editor {
         }
         let text = std::mem::take(&mut self.text);
         self.cursor = 0;
+        self.undo.clear();
+        self.redo.clear();
         let back = self.recall.take().map(|r| r.stash);
         self.edited();
         self.remember(session, &text);
         if let Some((stash, cursor)) = back {
-            self.text = stash; // the draft that a recall had set aside comes back
+            self.text = stash;
             self.cursor = cursor.min(self.text.len());
             self.edited();
         }
@@ -515,8 +593,7 @@ impl Editor {
         self.sent.iter().rev().filter(|e| e.0 == session).nth(depth).map(|e| e.1.clone())
     }
 
-    /// Up: on the first row, the input sent before; false when Up has nothing to do here. Text that was typed or edited is not replaced
-    /// (the cursor only goes to its start), an empty box or an unchanged recalled input is.
+    /// Up on the first row recalls what was sent before; edited text is not replaced.
     pub(crate) fn recall_older(&mut self, session: &str) -> bool {
         let depth = match &self.recall {
             Some(r) if r.shown == self.text => r.depth + 1,
@@ -541,7 +618,7 @@ impl Editor {
                 true
             }
             None => {
-                (self.text, self.cursor) = draft; // nothing was sent yet: the draft stays as it is
+                (self.text, self.cursor) = draft;
                 false
             }
         }
@@ -568,7 +645,6 @@ impl Editor {
         true
     }
 
-    // ------------------------------------------------------------------ drawing
     /// The rows of the box for a frame: at most `cap` of them, the cursor's row always among them, the first with the prompt "> ".
     pub(crate) fn prompt(&mut self, cols: usize, cap: usize, preedit: &str) -> Prompt {
         self.cols = cols.saturating_sub(2).max(2);
@@ -582,10 +658,9 @@ impl Editor {
         if at >= self.first + cap {
             self.first = at + 1 - cap;
         }
-        self.first = self.first.min(total.saturating_sub(cap)); // no empty rows below the last
+        self.first = self.first.min(total.saturating_sub(cap));
         let last = (self.first + cap).min(total);
-        let mut rows = Vec::new();
-        let mut caret = None;
+        let (mut rows, mut caret) = (Vec::new(), None);
         for row in self.first..last {
             let (start, end) = self.rows[row];
             let mut shown = if row == self.first && self.first == 0 { "> ".to_string() } else { "  ".to_string() };
@@ -608,191 +683,21 @@ impl Editor {
         Prompt { rows, note, caret }
     }
 
-    /// Where the box and its caret are on screen after a frame was laid out: `lines` is (the first buffer line of the prompt, the rows of
-    /// the box, the caret as (row, byte offset)), `at` is (x, y, width of the text, scale).
     pub(crate) fn place(&mut self, buffer: &Buffer, lines: (usize, usize, Option<(usize, usize)>), at: [f32; 4]) {
-        let (first_line, rows, caret) = lines;
-        let [ox, oy, text_w, s] = at;
-        let (mut top, mut bottom) = (f32::MAX, f32::MIN);
-        self.caret = None;
-        for run in buffer.layout_runs().filter(|r| r.line_i >= first_line && r.line_i < first_line + rows) {
-            (top, bottom) = (top.min(run.line_top), bottom.max(run.line_top + run.line_height));
-            if let Some((row, offset)) = caret.filter(|c| first_line + c.0 == run.line_i) {
-                let x = run.glyphs.iter().find(|g| g.start >= offset).map(|g| g.x).or_else(|| run.glyphs.last().map(|g| g.x + g.w)).unwrap_or(0.0);
-                let _ = row;
-                self.caret = Some([ox + x, oy + run.line_top, (1.5 * s).ceil(), run.line_height]);
-            }
-        }
-        self.rect = (top < bottom).then_some([ox, oy + top, ox + text_w, oy + bottom]);
+        place_layout(self, buffer, lines, at);
     }
 
     pub(crate) fn dump(&self, session: &str) -> Value {
         json!({
-            "text": self.text, "cursor": self.cursor, "rows": self.rows.len(), "first": self.first, "note": self.note, "sent": self.sent_count(session),
-            "recall": self.recall.as_ref().map(|r| r.depth), "parked": self.parked.len(), "rect": self.rect, "caret": self.caret,
+            "text": self.text, "cursor": self.cursor, "selection": self.selected_text(),
+            "selection_range": self.selection_range().map(|(a, b)| [a, b]),
+            "can_undo": !self.undo.is_empty(), "can_redo": !self.redo.is_empty(),
+            "rows": self.rows.len(), "first": self.first, "note": self.note, "sent": self.sent_count(session),
+            "recall": self.recall.as_ref().map(|r| r.depth), "parked": self.parked.len(),
+            "rect": self.rect, "caret": self.caret, "sel_rects": self.sel_rects,
         })
     }
 }
 
-impl App {
-    /// The editor's part of the dump. While a panel owns the line (a sign-in code is typed or pasted into it) the dump has the length and not the text.
-    pub(crate) fn editor_json(&self) -> Value {
-        let mut dump = self.dump_with_chip();
-        if self.ui.panel.is_some() {
-            (dump["text"], dump["cursor"], dump["len"]) = (Value::Null, Value::Null, json!(self.ed.text().len()));
-        }
-        dump
-    }
-
-    /// What the prompt of this frame is: the rows of the input box with the line under it, or the one line of a panel (a sign-in code is never drawn).
-    pub(crate) fn prompt_view(&mut self, cols: usize, area_rows: usize) -> Prompt {
-        let line = |text: String| Prompt { rows: vec![text], note: None, caret: None };
-        if self.code_entry() {
-            line(format!("> {}", self.shown_input()))
-        } else if self.ui.panel.is_some() || self.session.is_empty() {
-            line(format!("> {}[{}]", self.ed.text(), self.preedit))
-        } else {
-            self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
-        }
-    }
-
-    /// What the selection's owner sent, for the input box of a session: all of it, normalised, or the reason it was not taken.
-    pub(crate) fn box_paste(&mut self, result: Result<String, &'static str>) {
-        match result {
-            Ok(text) => self.ed.paste(&text),
-            Err("too_large") => self.ed.say(format!("Paste refused: more than {} KiB, or sent in pieces.", PASTE_FETCH / 1024)),
-            Err("timeout") => self.ed.say("Paste: the owner of the selection did not answer."),
-            Err(_) => self.ed.say("Nothing to paste."),
-        }
-        self.dirty = true;
-    }
-
-    /// The keys of the input box, for a session that is open and no composition in progress (the input method owns the keys then).
-    pub(crate) fn edit_key(&mut self, event: &KeyEvent) -> bool {
-        if self.ui.panel.is_some() || self.session.is_empty() || !self.preedit.is_empty() || self.ui.mods.alt_key() {
-            return false;
-        }
-        let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
-        let session = self.session.clone();
-        let ed = &mut self.ed;
-        let (stamp, empty, note) = (ed.stamp, ed.is_empty(), ed.note.take());
-        let handled = match &event.logical_key {
-            Key::Named(NamedKey::Enter) if shift && !ctrl => ed.put("\n") || true,
-            Key::Named(NamedKey::ArrowLeft) => {
-                if ctrl { ed.word_left() } else { ed.left() }
-                true
-            }
-            Key::Named(NamedKey::ArrowRight) => {
-                if ctrl { ed.word_right() } else { ed.right() }
-                true
-            }
-            Key::Named(NamedKey::Home) if !ctrl && !empty => {
-                ed.home();
-                true
-            }
-            Key::Named(NamedKey::End) if !ctrl && !empty => {
-                ed.end();
-                true
-            }
-            Key::Named(NamedKey::ArrowUp) if !ctrl => {
-                if !(ed.on_first_row() && ed.recall_older(&session)) && !ed.vertical(false) {
-                    (ed.cursor, ed.goal) = (0, None); // the first row and nothing to recall: the start of the text
-                }
-                true
-            }
-            Key::Named(NamedKey::ArrowDown) if !ctrl => {
-                if !(ed.on_last_row() && ed.recall_newer(&session)) && !ed.vertical(true) {
-                    (ed.cursor, ed.goal) = (ed.text.len(), None);
-                }
-                true
-            }
-            Key::Named(NamedKey::Delete) if !ctrl => ed.delete() || true,
-            Key::Named(NamedKey::Backspace) if ctrl => ed.delete_word_back() || true,
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("k") => ed.kill_to_end() || true,
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("u") => ed.clear() || true,
-            _ => false,
-        };
-        if !handled {
-            ed.note = note;
-            return false;
-        }
-        if self.ed.stamp != stamp {
-            emit_ime("text", self.ed.text());
-        }
-        self.dirty = true;
-        true
-    }
-
-    /// Ctrl+U clears the whole input line (and only that); true when it did.
-    pub(crate) fn ui_ctrl_u(&mut self, key: &Key) -> bool {
-        match key {
-            Key::Character(c) if self.ui.mods.control_key() && c.eq_ignore_ascii_case("u") && self.preedit.is_empty() => {
-                self.ed.clear();
-                true
-            }
-            _ => false,
-        }
-    }
-
-    /// The keys that reach the box last: Enter sends, Backspace removes a character, Ctrl+U clears, anything else that is text goes in.
-    pub(crate) fn typed_key(&mut self, event: &KeyEvent) {
-        if event.state != winit::event::ElementState::Pressed {
-            return;
-        }
-        let key = &event.logical_key;
-        if *key == Key::Named(NamedKey::Enter) {
-            self.send_draft();
-        } else if *key == Key::Named(NamedKey::Backspace) {
-            // an open composition belongs to the input method (its own Backspace edits it); otherwise one press removes one character
-            if self.preedit.is_empty() && self.ed.backspace() {
-                emit_ime("text", self.ed.text());
-                self.dirty = true;
-            }
-        } else if self.ui_ctrl_u(key) {
-            emit_ime("text", self.ed.text());
-            self.dirty = true;
-        } else if let Some(text) = &event.text {
-            if !text.chars().any(char::is_control) {
-                self.ed.put(text);
-                emit_ime("text", self.ed.text());
-                self.dirty = true;
-            }
-        }
-    }
-
-    /// Send the draft of the visible session as one input with its own request id; over the limit it stays, with the reason under the box.
-    pub(crate) fn send_draft(&mut self) {
-        if self.session.is_empty() || self.picture_send() || self.reconnect_instead() {
-            return;
-        }
-        let Some(text) = self.ed.prepare_send(&self.session) else {
-            self.dirty = true;
-            return;
-        };
-        let (session, generation) = (self.session.clone(), self.generation);
-        self.send_input(&session, generation, text.clone(), false);
-        emit_ime("sent", &text);
-        emit_ime("text", self.ed.text());
-        self.dirty = true;
-    }
-
-    /// A reply to one of our inputs carries its request id: a refused input returns to its draft, and a line says what the host said.
-    pub(crate) fn on_input_reply(&mut self, line: &str) -> bool {
-        let Some(id) = super::jstr(line, "id").filter(|id| id.starts_with("gui-")) else { return false };
-        let id = id.to_string();
-        if line.contains("\"ok\":0") {
-            if let Some((session, text)) = self.pending_inputs.remove(&id) {
-                let note = self.input_refused(&id, &session, super::jstr(line, "error").unwrap_or("refused"));
-                self.give_back_to(&session, &text, note);
-                self.dirty = true;
-            }
-        } else {
-            self.input_taken(&id);
-        }
-        true
-    }
-}
-
 #[cfg(test)]
-#[path = "editor_tests.rs"]
 mod tests;

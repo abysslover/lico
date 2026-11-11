@@ -380,7 +380,7 @@ impl super::super::App {
         true
     }
 
-    pub(super) fn paste_notice(&mut self, text: &str) {
+    pub(crate) fn paste_notice(&mut self, text: &str) {
         match self.ui.panel.as_mut() {
             Some(p) => p.notice = text.to_string(),
             None => self.ui.flash = Some(text.to_string()),

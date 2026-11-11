@@ -223,7 +223,7 @@ impl App {
             Step::Keys => {
                 body.extend([
                     "Ctrl+N new session   Ctrl+A accounts   Ctrl+Q quit", "F10 or Alt+F, Alt+S, Alt+V, Alt+H  the menus (arrows, Enter, Esc)", "Ctrl+Tab, Ctrl+Shift+Tab  next, previous session   Alt+1 to Alt+9  session by number",
-                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+C (or Ctrl+Shift+C) copy the selected lines   Ctrl+U clear the line",
+                    "Esc (empty input line)  back to the start screen", "Y allow, N deny the pending approval (input line empty); S allow for the session, V read it all (a request of Lico's own)", "Ctrl+V pastes text, or a PNG picture into a Claude session (Esc removes it)   Ctrl+Shift+P captures the screen into a Claude session   Shift+Insert or the middle button pastes the selected text   Ctrl+C (or Ctrl+Shift+C) copy selected lines or prompt text   Ctrl+X cut prompt selection   Ctrl+Z, Ctrl+Y undo and redo   Ctrl+U clear the line",
                     "Page Up, Page Down, End  scroll the output   Ctrl+F  find in conversation   Ctrl+Shift+F  search all sessions",
                     "Ctrl+Shift+G  group by account or workspace   Ctrl+=, Ctrl+-, Ctrl+0  text size (12 to 20 px)",
                     "F2 rename   Ctrl+Shift+W close   Ctrl+Delete delete   Ctrl+Shift+B rebind account   Ctrl+Shift+M toggle permission mode",

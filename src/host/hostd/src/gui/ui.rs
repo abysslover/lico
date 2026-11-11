@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::num::NonZeroU32;
 use std::sync::{mpsc, Arc};
-use std::thread;
 use std::time::Instant;
 
 use cosmic_text::{Buffer, BufferLine, Color, FontSystem, LineEnding, Metrics, Scroll, Shaping, SwashCache, SwashContent};
@@ -29,7 +28,6 @@ pub(crate) use row::{clock_text, memrow, Row};
 pub(super) mod clip;
 #[path = "search.rs"]
 mod search;
-use super::picture::fetch_pasted;
 use super::menu::{MenuGeom, TITLES};
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
@@ -38,7 +36,7 @@ pub const LIST_W: usize = 330; // wide enough for the longest state and the memo
 const LIST_TOP: usize = 40;
 const HISTORY_PAGE: i64 = 100;
 const SCROLLBACK_CAP: usize = 2000; // lines kept while reading older history; beyond it the newest are let go
-const COPY_LIMIT: usize = 60 * 1024; // one X11 property transfer, no INCR
+pub(crate) const COPY_LIMIT: usize = 60 * 1024; // one X11 property transfer, no INCR
 
 #[derive(Clone)]
 pub enum ListItem {
@@ -308,15 +306,6 @@ impl App {
         }
     }
 
-    /// Copy is a user action: only a non-empty selection, only from the key chord or menu.
-    pub(crate) fn copy_selection(&mut self) {
-        let Some(text) = self.selection_text() else { return };
-        let (n, before) = (text.bytes().filter(|&b| b == b'\n').count() + 1, self.ui.copied);
-        self.copy_text(text);
-        self.ui.flash = Some(if self.ui.copied > before { format!("Copied {n} {}.", if n == 1 { "line" } else { "lines" }) } else { "Copy refused: more than 64 KiB selected.".into() });
-        self.dirty = true;
-    }
-
     /// Put text on the clipboard: the result of a person's own key, or of the host forwarding the `lico clipboard write` that the person ran (`clip::on_clip_line`; a picture too). Nothing else writes it; an agent tool (S07) must ask the person first.
     pub(crate) fn copy_text(&mut self, text: String) {
         if text.len() > COPY_LIMIT {
@@ -330,6 +319,13 @@ impl App {
     // ------------------------------------------------------------------ events
     pub(crate) fn ui_window_event(&mut self, event: &WindowEvent) -> bool {
         match event {
+            WindowEvent::Resized(_) => {
+                self.ui.composed = None;
+                self.ui.list_sig.clear();
+                if let Some(view) = self.view.as_ref() { self.ui.scroll = self.ui.scroll.min(view.lines.len().saturating_sub(1)); }
+                self.dirty = true;
+                false
+            }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.ui.scale = *scale_factor as f32;
                 self.ui.list_sig.clear(); // every label is shaped again at the new size (the controls notice the scale)
@@ -346,6 +342,9 @@ impl App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
                 self.dirty |= self.hover_moved();
+                if self.ed_mouse_drag(position.x as f32, position.y as f32) {
+                    return true;
+                }
                 if self.ui.dragging {
                     if let Some(idx) = self.line_at(position.y as f32) {
                         if let Some((a, _)) = self.ui.sel {
@@ -362,6 +361,7 @@ impl App {
                     self.ui.flash = None;
                     let hit = self.ui.controls.hit_at(x, y);
                     if !matches!(&hit, Some(Action::Session(_))) { self.ui.clicked = None; }
+                    if self.ui.menu_open.is_some() || hit.is_some() || !self.ed.contains(x, y) { self.ed.clear_selection(); }
                     if let Some(open) = self.ui.menu_open {
                         match hit {
                             Some(Action::Item(m, i)) => self.menu_run(m, i),
@@ -378,6 +378,7 @@ impl App {
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
+                            None if self.ed_mouse_press(x, y) => {}
                             None => match self.line_at(y) {
                                 Some(idx) if self.form_click(idx) || self.panel_click(idx) => {} // a row of the new-session form, the Y or N of a question
                                 Some(idx) => {
@@ -389,7 +390,10 @@ impl App {
                         }
                     }
                     self.dirty = true;
-                } else { self.ui.dragging = false; }
+                } else {
+                    self.ui.dragging = false;
+                    self.ed.finish_drag();
+                }
                 true
             }
             WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
@@ -424,6 +428,7 @@ impl App {
                     Key::Named(NamedKey::Escape) => {
                         if self.ui.sel.is_some() {
                             self.ui.sel = None; // Esc with a selection only drops the selection
+                        } else if self.ed.clear_selection() {
                         } else if !self.drop_chip() && self.ed.is_empty() && self.preedit.is_empty() && !self.session.is_empty() { // a picture waiting in the box goes first
                             self.go_start(); // an empty input line: back to the start screen (the session keeps running)
                         }
@@ -438,63 +443,6 @@ impl App {
             }
             _ => false,
         }
-    }
-
-    /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
-    pub(crate) fn paste_allowed(&self) -> bool {
-        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { !self.session.is_empty() }
-    }
-
-    /// Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection; only on the person's own key.
-    pub(crate) fn paste_key(&mut self, event: &winit::event::KeyEvent) -> bool {
-        let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
-        let selection: &'static [u8] = match &event.logical_key {
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("v") => b"CLIPBOARD",
-            Key::Named(NamedKey::Insert) if shift && !ctrl => b"PRIMARY",
-            _ => return false,
-        };
-        if !event.repeat {
-            self.start_paste(selection);
-        }
-        true
-    }
-
-    /// Ask the owner of a selection for its text (from the paste keys and the menu); nothing happens where no line can take text.
-    pub(crate) fn start_paste(&mut self, selection: &'static [u8]) {
-        if !self.paste_allowed() || self.ui.paste_pending {
-            return;
-        }
-        let Some(proxy) = self.ui.proxy.clone() else { return };
-        self.ui.paste_pending = true;
-        let (limit, image) = if self.ui.panel.is_some() { (8192, false) } else { (super::editor::PASTE_FETCH, selection == b"CLIPBOARD") }; // a picture only in the box of a session, only from the CLIPBOARD, only when there is no text
-        thread::spawn(move || {
-            let _ = proxy.send_event(super::Ev::Paste(fetch_pasted(None, selection, limit, image)));
-        });
-    }
-
-    /// What the selection's owner sent: it goes onto the input line (never echoed, never submitted).
-    pub(crate) fn on_paste(&mut self, result: Result<String, &'static str>) {
-        self.ui.paste_pending = false;
-        if !self.paste_allowed() {
-            return; // the person moved on while the owner was answering
-        }
-        if self.ui.panel.is_none() {
-            return self.box_paste(result);
-        }
-        match result {
-            Ok(text) => {
-                let line: String = text.split(|c| c == '\n' || c == '\r').next().unwrap_or("").chars().filter(|c| !c.is_control()).collect();
-                if line.is_empty() {
-                    self.paste_notice("Nothing to paste.");
-                } else {
-                    self.ed.put(&line); // a newline ends the paste: Enter stays the person's own key
-                }
-            }
-            Err("too_large") => self.paste_notice("Paste refused: more than 8 KiB."),
-            Err("timeout") => self.paste_notice("Paste: the owner of the selection did not answer."),
-            Err(_) => self.paste_notice("Nothing to paste."),
-        }
-        self.dirty = true;
     }
 
     /// Go to a session: its view is attached, the one before is detached (its draft stays with it).
@@ -645,7 +593,7 @@ impl App {
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(), "search": self.search_json(), "memory": json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover}), "settings": json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64}), "real_screen": self.real_screen_json(), "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
             "layout": {
-                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
+                "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize, "window_size": self.window.as_ref().map(|w| [w.inner_size().width, w.inner_size().height]), "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
                 "dim": self.ui.controls.dimmed, "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect), "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
                 "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
             },
@@ -867,7 +815,7 @@ impl App {
             corner: if self.ui.markers { 16 } else { 0 },
             overlay: Overlay {
                 menu: menu_open.is_some(),
-                selection: self.ui.sel.is_some(), search: self.ui.search.open || search_bar.is_some(),
+                selection: self.ui.sel.is_some() || !self.ed.sel_rects.is_empty(), search: self.ui.search.open || search_bar.is_some(),
                 panel: panel_view.is_some(),
                 approval: bar.is_some(),
                 preedit: !self.preedit.is_empty(),
@@ -922,6 +870,7 @@ impl App {
                 }
             }
         }
+        for &r in &self.ed.sel_rects { controls::fill(&mut buf, width, height, r, 0xFF2A_4A7A); }
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
         let dim = super::panel::sendto::DIM;
         let hint_ink = Color::rgb(0x9A, 0xA4, 0xB0);

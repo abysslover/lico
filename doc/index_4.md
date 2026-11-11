@@ -14,5 +14,6 @@
 | [M03-P02 plan](plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | Persistent workspace-grouped session navigator and adjustable text size (`12..=20` px); G2 approved 2026-11-11 |
 | [M03-P02 report](reports/202611/20261111/20261111_07_M03-P02_workspace_navigator_report.md) | Workspace grouping (rolling git worktrees under parent repos), `12..=20` px scaling, and `< 50 MiB` RSS at scales 1 & 2; awaiting owner G3/G4 |
 | [M03-P03 plan](plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow; G2 approved 2026-11-11 |
+| [M03-P03 report](reports/202611/20261111/20261111_08_M03-P03_editor_and_reflow_report.md) | Split `gui/editor` into 4 modules (`ui.rs` down to `1,115` lines), mouse/keyboard selection, `Ctrl+C`/`Ctrl+X`, per-session undo/redo, and resize reflow; awaiting owner G3/G4 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

@@ -65,5 +65,5 @@ serve agents and scripts.
 |---|---|---|---|---|---|---|
 | M03-P01 | In-window account rename, session rebind, and live permission-mode control | [Plan](../../../plans/202611/20261111/20261111_05_M03-P01_account_and_session_admin_plan.md) | [Report](../../../reports/202611/20261111/20261111_06_M03-P01_account_and_session_admin_report.md) | pending | — | in_review |
 | M03-P02 | Persistent workspace-grouped session navigator and adjustable text size | [Plan](../../../plans/202611/20261111/20261111_06_M03-P02_workspace_navigator_plan.md) | [Report](../../../reports/202611/20261111/20261111_07_M03-P02_workspace_navigator_report.md) | pending | — | in_review |
-| M03-P03 | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow | [Plan](../../../plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | — | pending | — | in_progress |
+| M03-P03 | Prompt editor modularization, mouse/keyboard selection, undo/redo, and resize reflow | [Plan](../../../plans/202611/20261111/20261111_07_M03-P03_editor_and_reflow_plan.md) | [Report](../../../reports/202611/20261111/20261111_08_M03-P03_editor_and_reflow_report.md) | pending | — | in_review |
 | M03-P04 | Control-surface capabilities parity, loopback HTTP completion, full memory pass, and binary install | — | — | pending | — | approved |

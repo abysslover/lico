@@ -30,6 +30,7 @@ pub enum Cmd {
     SendTo,
     HandOver,
     Copy,
+    Cut,
     Paste,
     Older,
     Newer,
@@ -108,7 +109,9 @@ impl App {
                 v.push(Self::entry("Hand over conversation...", "", Cmd::HandOver, panel_reason.or(self.hand_reason())));
                 v.push(Self::entry("Allow approval", "Y", Cmd::Allow, pending));
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
-                v.push(Self::entry("Copy selected lines", "Ctrl+C", Cmd::Copy, if self.ui.sel.is_some() { None } else { Some("nothing is selected") }));
+                let copy_label = if self.ui.sel.is_none() && self.ui.panel.is_none() && self.ed.has_selection() { "Copy selected text" } else { "Copy selected lines" };
+                v.push(Self::entry(copy_label, "Ctrl+C", Cmd::Copy, if self.can_copy() { None } else { Some("nothing is selected") }));
+                v.push(Self::entry("Cut selection", "Ctrl+X", Cmd::Cut, if self.can_cut() { None } else { Some("no prompt text is selected") }));
                 v.push(Self::entry("Paste", "Ctrl+V", Cmd::Paste, if self.paste_allowed() { None } else { Some("no text line to paste into") }));
                 let vd_label = match self.selected_row().filter(|r| !r.virtual_display.is_empty()) {
                     Some(r) => format!("Virtual display: stop ({})", r.virtual_display),
@@ -224,6 +227,9 @@ impl App {
             Cmd::SendTo => self.send_ask(),
             Cmd::HandOver => self.hand_ask(),
             Cmd::Copy => self.copy_selection(),
+            Cmd::Cut => {
+                let _ = self.cut_editor_selection();
+            }
             Cmd::Paste => self.start_paste(b"CLIPBOARD"),
             Cmd::Older => self.scroll_by(20),
             Cmd::Newer => self.scroll_by(-20),
