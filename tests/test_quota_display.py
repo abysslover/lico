@@ -98,22 +98,22 @@ def test_claude_and_codex_weekly_quota_telemetry_and_gui_context_display():
 
             ui0 = wait_for(
                 lambda: (u := w.ui())
-                and len(u["layout"]["rows"]) == 2
+                and len(u["tabs"]["items"]) == 2
                 and all(r["weekly_remaining_pct"] is not None for r in u["rows"])
                 and u
             )
 
-            # Click Claude session row and verify header shows title + dir + 7d 68% left.
-            claude_hit = next(r for r in ui0["layout"]["rows"] if r[2] == made["s_claude"])
-            w.click(100.0, (claude_hit[0] + claude_hit[1]) / 2.0)
+            # Click Claude session tab and verify header shows title + dir + 7d 68% left.
+            claude_tab = next(t for t in ui0["tabs"]["items"] if t["session"] == made["s_claude"])
+            w.click((claude_tab["rect"][0] + claude_tab["close_rect"][0]) / 2.0, (claude_tab["rect"][1] + claude_tab["rect"][3]) / 2.0)
             ui_claude = wait_for(lambda: (u := w.ui()) and u["selected"] == made["s_claude"] and "7d 68% left" in u["header"] and u)
             assert f"dir: {proj}" in ui_claude["header"]
             assert "ClaudeTask" in ui_claude["header"]
             assert "claude / WorkClaude  7d 68%" in ui_claude["list_text"], ui_claude["list_text"]
 
-            # Click Codex session row and verify LOW (<20%) indicator in header and `!` in sidebar heading.
-            codex_hit = next(r for r in ui_claude["layout"]["rows"] if r[2] == made["s_codex"])
-            w.click(100.0, (codex_hit[0] + codex_hit[1]) / 2.0)
+            # Click Codex session tab and verify LOW (<20%) indicator in header and `!` in list_text.
+            codex_tab = next(t for t in ui_claude["tabs"]["items"] if t["session"] == made["s_codex"])
+            w.click((codex_tab["rect"][0] + codex_tab["close_rect"][0]) / 2.0, (codex_tab["rect"][1] + codex_tab["rect"][3]) / 2.0)
             ui_codex = wait_for(lambda: (u := w.ui()) and u["selected"] == made["s_codex"] and "7d LOW 14% left" in u["header"] and u)
             assert f"dir: {proj}" in ui_codex["header"]
             assert "codex / WorkCodex  7d 14%!" in ui_codex["list_text"], ui_codex["list_text"]

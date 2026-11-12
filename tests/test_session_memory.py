@@ -64,8 +64,8 @@ def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the
             total = wait_for(lambda: near(w.ui()["memory"]["total"]) and w.ui()["memory"]["total"])
             assert total.startswith("mem sessions ") and " host " in total and " window " in total, total
 
-            top, bottom, _ = next(r for r in w.ui()["layout"]["rows"] if r[2] == sid)
-            w.move(100, (top + bottom) / 2)                                             # the pointer over the row: the hint line tells what the figure is
+            tab = next(t for t in w.ui()["tabs"]["items"] if t["session"] == sid)
+            w.move((tab["rect"][0] + tab["close_rect"][0]) / 2, (tab["rect"][1] + tab["rect"][3]) / 2)
             state = w.ui()
             assert state["memory"]["hover"] == sid and " own (RSS " in state["hint"] and "3 processes" in state["hint"] and "detached" in state["hint"] and "shared between processes" in state["hint"], state["hint"]
             w.move(w.ui()["layout"]["list_w"] + 200, 300)

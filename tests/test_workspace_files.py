@@ -168,10 +168,10 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             w.proc.stdin.write("load\n")
             w.proc.stdin.flush()
 
-            # Select session sid in left sidebar
-            u0 = wait_for(lambda: (u := w.ui()) and any(r[2] == sid for r in u["layout"]["rows"]) and u)
-            y0, y1, _ = next(r for r in u0["layout"]["rows"] if r[2] == sid)
-            w.click(100.0, (y0 + y1) / 2.0)
+            # Select session sid in top tab bar
+            u0 = wait_for(lambda: (u := w.ui()) and any(t["session"] == sid for t in u["tabs"]["items"]) and u)
+            tab0 = next(t for t in u0["tabs"]["items"] if t["session"] == sid)
+            w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
             u_sel = wait_for(lambda: (u := w.ui())["selected"] == sid and u)
 
             # 1. Click Toolbar 'Files' -> opens Files viewer in proj, exposes '+ New here' & 'Refresh'

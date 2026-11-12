@@ -96,7 +96,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
-    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -170,6 +170,7 @@ impl App {
         }
         self.refresh_list();
         self.maybe_restore_workspace();
+        self.maybe_init_sidebar();
     }
 
     pub(crate) fn ui_accounts(&mut self, line: &str) {
@@ -380,9 +381,11 @@ impl App {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             _ => self.menu_close(), // a click elsewhere only closes the menu
                         }
-                    } else if self.host_popup_click(hit.clone()) {
+                    } else if self.host_popup_click(hit.clone()) || self.sidebar_popup_click(hit.clone()) {
                     } else {
+                        if !matches!(&hit, Some(Action::SidebarFilter)) { self.ui.sidebar.filter_focused = false; }
                         match hit {
+                            Some(ref a) if self.sidebar_click(a) => {}
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
@@ -394,8 +397,8 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
-                            Some(Action::Item(..) | Action::HostItem(..)) => {}
-                            None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
+                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPage(..)) => {}
+                            None if x < self.effective_list_w(self.ui.scale) as f32 => {}
                             None if self.ed_mouse_press(x, y) => {}
                             None => match self.line_at(y) {
                                 Some(idx) if self.form_click(idx) || self.panel_click(idx) => {} // a row of the new-session form, the Y or N of a question
@@ -420,12 +423,12 @@ impl App {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
                     MouseScrollDelta::PixelDelta(p) => (p.y / (self.line_h() * self.ui.scale.max(1.0)) as f64) as isize,
                 };
-                if !self.files_wheel(lines) { self.scroll_by(lines); }
+                if !self.files_wheel(lines) && !self.sidebar_wheel(lines) { self.scroll_by(lines); }
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 (self.ui.flash, self.ui.clicked) = (None, None);
-                if self.real_screen_hotkey(event) || self.menu_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
@@ -472,6 +475,7 @@ impl App {
         self.show(id, None);
         self.sync_active_tab_scroll();
         self.remember_session_view(id);
+        self.sidebar_sync_to_active_session();
         if self.ui.search.open && !self.ui.search.scope_all && self.ui.search.pending_jump.is_none() && !self.ui.search.query.is_empty() {
             self.run_search();
         }
@@ -553,7 +557,7 @@ impl App {
             "scroll_step": !self.ui.no_scroll_step, "causes": causes,
         });
         let layout = json!({
-            "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize,
+            "list_w": self.effective_list_w(self.ui.scale),
             "window_size": self.window.as_ref().map(|w| [w.inner_size().width, w.inner_size().height]),
             "maximized": self.window.as_ref().is_some_and(|w| w.is_maximized()),
             "maximized_requested": self.ui.maximized_requested,
@@ -573,7 +577,7 @@ impl App {
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()), "shown_lines": shown_lines,
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
-            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "frame": frame,
+            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "frame": frame,
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
             "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
@@ -624,7 +628,7 @@ impl App {
     pub(crate) fn compose(&mut self, buf: &mut [u32], width: usize, height: usize, age: u8) -> Option<(Instant, Instant)> {
         let mut buf = buf;
         let s = self.ui.scale.max(1.0);
-        let list_w = (LIST_W as f32 * s) as usize;
+        let list_w = self.effective_list_w(s);
         let (fp, line_h) = (self.font_px(), self.line_h());
         let lh = line_h * s;
         let (menu_h, bar_h) = toolbar::bar_heights(self.ui.menu, s, line_h);
@@ -657,7 +661,8 @@ impl App {
             }
         }
         let menu_open = self.ui.menu_open;
-        let overlay_menu = menu_open.is_some() || self.files_host_popup_open();
+        let sb_mode = self.sidebar_shown();
+        let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open();
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
         let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
@@ -854,11 +859,12 @@ impl App {
             fill_rect(&mut buf, width, 0, 0, 16, view.session_rgb);
             fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
         }
-        // the list column's right edge
-        for y in (top as usize)..height {
-            let idx = y * width + list_w - 1;
-            if let Some(px) = buf.get_mut(idx) {
-                *px = 0xFF30_3840;
+        if list_w > 0 {
+            for y in (top as usize)..height {
+                let idx = y * width + list_w - 1;
+                if let Some(px) = buf.get_mut(idx) {
+                    *px = 0xFF30_3840;
+                }
             }
         }
         if is_tx {
@@ -889,18 +895,19 @@ impl App {
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
         controls.begin(s, fp);
-        // the session list: group headings and rows, each row a control
         let mut y = list_top;
-        for item in &list_items {
-            match item {
-                ListItem::Heading(text) => {
-                    controls.text(fs, swash, &mut buf, width, height, 4.0 * s, y, list_w as i32 - 2, text, ink);
-                    y += lh;
-                }
-                ListItem::Row(id, text, cell) => {
-                    controls.row(fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], text, *id == session_sel, ink, Action::Session(id.clone()));
-                    memrow::draw(controls, fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], cell);
-                    y += lh;
+        if !sb_mode {
+            for item in &list_items {
+                match item {
+                    ListItem::Heading(text) => {
+                        controls.text(fs, swash, &mut buf, width, height, 4.0 * s, y, list_w as i32 - 2, text, ink);
+                        y += lh;
+                    }
+                    ListItem::Row(id, text, cell) => {
+                        controls.row(fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], text, *id == session_sel, ink, Action::Session(id.clone()));
+                        memrow::draw(controls, fs, swash, &mut buf, width, height, [0.0, y, list_w as f32 - 1.0, y + lh], cell);
+                        y += lh;
+                    }
                 }
             }
         }
@@ -930,11 +937,17 @@ impl App {
         let hint_y = hint_y_f;
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
         let hint_w = controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
-        memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
+        if !sb_mode {
+            memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
+        }
         super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h);
+        if sb_mode {
+            self.draw_sidebar(&mut buf, width, height, list_w, top, chat_top, hint_y, &total);
+        }
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
+        self.draw_sidebar_host_popup(&mut buf, width, height);
         self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);

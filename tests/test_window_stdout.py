@@ -40,9 +40,9 @@ def what_the_window_says(env_extra=None):
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session, env_extra=env_extra) as w:
             recording = w.events = Recording(w.events)
-            wait_for(lambda: w.ui()["rows"])
-            top, bottom, _ = next(r for r in w.ui()["layout"]["rows"] if r[2] == made["id"])
-            w.click(100, (top + bottom) / 2)
+            u0 = wait_for(lambda: (u := w.ui()) and any(t["session"] == made["id"] for t in u["tabs"]["items"]) and u)
+            tab = next(t for t in u0["tabs"]["items"] if t["session"] == made["id"])
+            w.click((tab["rect"][0] + tab["close_rect"][0]) / 2, (tab["rect"][1] + tab["rect"][3]) / 2)
             w.type_text(CANARY)
             assert CANARY in w.ui()["input"], "the text reached the window: the checks below are not vacuous"
             w.key("Return")                                                          # the draft is sent to the session

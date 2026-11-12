@@ -53,6 +53,7 @@ pub(crate) enum AsyncJob {
         req_id: u64,
         created_cwd: Option<String>,
     },
+    SidebarDir { req_id: u64, ssh_host: Option<String>, dir: String, keep_page: bool, fallback_root: bool },
 }
 
 pub(crate) struct AsyncDone {
@@ -160,6 +161,7 @@ impl App {
                 }
             }
             AsyncJob::SessionStart { req_id, created_cwd } => self.on_form_start_done(req_id, created_cwd, done.reply),
+            AsyncJob::SidebarDir { .. } => self.on_sidebar_async(done.job, done.reply),
         }
     }
 

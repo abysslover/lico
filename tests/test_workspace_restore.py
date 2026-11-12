@@ -298,9 +298,9 @@ def test_gui_restores_selected_session_and_start_screen_working_directory_across
             # Window 1: select `sid`, then close `lico gui`.
             g1 = _GuiInstance(env)
             try:
-                u0 = wait_for(lambda: (u := g1.ui()) and any(r[2] == sid for r in u["layout"]["rows"]) and u)
-                y0, y1, _ = next(r for r in u0["layout"]["rows"] if r[2] == sid)
-                g1.click(100.0, (y0 + y1) / 2.0)
+                u0 = wait_for(lambda: (u := g1.ui()) and any(t["session"] == sid for t in u["tabs"]["items"]) and u)
+                tab0 = next(t for t in u0["tabs"]["items"] if t["session"] == sid)
+                g1.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
                 u_sel = wait_for(lambda: (u := g1.ui())["selected"] == sid and u)
                 assert u_sel["workspace_state"] == {
                     "last_cwd": str(proj.resolve()),

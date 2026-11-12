@@ -166,6 +166,11 @@ impl App {
 
     pub(crate) fn focus_active_session_dir(&mut self) {
         let Some(row) = self.selected_row().cloned() else { return };
+        if self.ui.sidebar.collapsed {
+            self.ui.sidebar.collapsed = false;
+            self.ui.composed = None;
+        }
+        self.sidebar_sync_to_active_session();
         if row.is_global() {
             self.ui.flash = Some("Global general session (no fixed working directory).".into());
             self.dirty = true;

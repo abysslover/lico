@@ -16,8 +16,9 @@ def panel(w):
 
 
 def row_centre(w, sid):
-    top, bottom, _ = next(r for r in w.ui()["layout"]["rows"] if r[2] == sid)
-    return 100, (top + bottom) / 2
+    u = wait_for(lambda: (u := w.ui()) and any(t["session"] == sid for t in u["tabs"]["items"]) and u)
+    t = next(t for t in u["tabs"]["items"] if t["session"] == sid)
+    return (t["rect"][0] + t["close_rect"][0]) / 2, (t["rect"][1] + t["rect"][3]) / 2
 
 
 def test_a_working_session_is_closed_resumed_renamed_and_deleted_from_the_window_and_the_chosen_folder_stays():

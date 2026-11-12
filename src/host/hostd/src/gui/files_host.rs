@@ -62,7 +62,7 @@ impl App {
         }
     }
 
-    pub(super) fn fetch_ssh_host_aliases(&self) -> Vec<String> {
+    pub(crate) fn fetch_ssh_host_aliases(&self) -> Vec<String> {
         if self.socket.is_empty() {
             return Vec::new();
         }

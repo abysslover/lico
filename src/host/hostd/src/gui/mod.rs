@@ -12,6 +12,8 @@ mod realbar;
 mod scroll;
 #[cfg(test)]
 mod scroll_oracle;
+mod sidebar;
+mod sidebar_render;
 mod transcript;
 mod ui;
 mod update;

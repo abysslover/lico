@@ -129,10 +129,11 @@ impl App {
         let hit = self.ui.controls.hit_at(x, y);
         let popup_changed = match &hit {
             Some(Action::HostItem(idx)) => self.hover_files_host_item(*idx),
+            Some(Action::SidebarHostItem(idx)) => self.hover_sidebar_host_item(*idx),
             _ => false,
         };
         let over = match hit {
-            Some(Action::Session(id)) => Some(id),
+            Some(Action::Session(id) | Action::Tab(id)) => Some(id),
             _ => None,
         };
         let changed = over != self.ui.mem.hover;

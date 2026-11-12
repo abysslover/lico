@@ -235,8 +235,8 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             s_front, g_front = new_claude(conn, account=made["account"], mode="auto", name="front")
             s_back, g_back = new_claude(conn, account=made["account"], mode="auto", name="back")
             reload_status(w)
-            u_init = wait_for(lambda: (u := w.ui()) and len(u["layout"]["rows"]) == 3 and u)
-            front_idx = [r[2] for r in u_init["layout"]["rows"]].index(s_front) + 1
+            u_init = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 3 and u)
+            front_idx = [t["session"] for t in u_init["tabs"]["items"]].index(s_front) + 1
             assert front_idx in (1, 2)  # running sessions sort ahead of closed gui-wt (#3)
             fast_key(w, f"alt+{front_idx}")
             wait_for(lambda: w.ui()["selected"] == s_front)
@@ -257,7 +257,7 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             wait_for(lambda: status_of(conn, s_back)["activity"] == "idle")
             reload_status(w)
             attn_ui = wait_for(lambda: (u := w.ui()) and next(r for r in u["rows"] if r["session"] == s_back)["unread"] and u)
-            back_idx = [r[2] for r in attn_ui["layout"]["rows"]].index(s_back) + 1
+            back_idx = [t["session"] for t in attn_ui["tabs"]["items"]].index(s_back) + 1
             assert f"\u2022{back_idx} back" in attn_ui["list_text"], attn_ui["list_text"]
             title_now = wait_for(lambda: (t := w.title()) and t.endswith(" [finished]") and t)
             assert title_now.startswith("Lico "), title_now
@@ -293,7 +293,7 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
 
             # Open s_front, type a draft, press Ctrl+F, search ANCIENT_NEEDLE_42 (scrolled > 50 lines back!)
             reload_status(w)
-            front_idx2 = [r[2] for r in w.ui()["layout"]["rows"]].index(s_front) + 1
+            front_idx2 = [t["session"] for t in w.ui()["tabs"]["items"]].index(s_front) + 1
             fast_key(w, f"alt+{front_idx2}")
             wait_for(lambda: w.ui()["selected"] == s_front)
             fast_type(w, "keep my draft")

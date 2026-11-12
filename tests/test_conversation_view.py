@@ -68,9 +68,9 @@ def test_clean_conversation_hides_internal_events_preserves_logs_and_colors_user
 
             w.proc.stdin.write("load\n")
             w.proc.stdin.flush()
-            u0 = wait_for(lambda: (u := w.ui()) and len(u["layout"]["rows"]) == 1 and u)
-            y0, y1, _ = u0["layout"]["rows"][0]
-            w.click(100.0, (y0 + y1) / 2.0)
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 1 and u)
+            tab0 = u0["tabs"]["items"][0]
+            w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
             u = wait_for(lambda: (u := w.ui())["selected"] == sid and len(u["shown_lines"]) >= 4 and u)
 
             # 1. Default GUI view hides internal control records while keeping human prompts, agent prose, and forged `[agent]` lines!

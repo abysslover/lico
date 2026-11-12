@@ -62,6 +62,7 @@ pub struct Explorer {
     pub load_count: u64,
     pub refresh_count: u64,
     pub last_opened: Option<String>,
+    pub preview_from_sidebar: bool,
 }
 
 impl Explorer {
@@ -85,6 +86,7 @@ impl Explorer {
             load_count: 0,
             refresh_count: 0,
             last_opened: None,
+            preview_from_sidebar: false,
         }
     }
 }
@@ -107,7 +109,7 @@ fn spawn_external(program: &str, target: &str) -> bool {
     }
 }
 
-pub(super) fn parse_entries(reply: &Value) -> Vec<FileItem> {
+pub(crate) fn parse_entries(reply: &Value) -> Vec<FileItem> {
     reply["entries"]
         .as_array()
         .into_iter()
@@ -203,7 +205,7 @@ impl App {
         true
     }
 
-    pub(super) fn initial_files_cwd(&self) -> String {
+    pub(crate) fn initial_files_cwd(&self) -> String {
         if let Some(row) = self.selected_row().filter(|r| r.ssh_host.is_empty()) {
             if !row.worktree_repo.is_empty() {
                 return row.worktree_repo.clone();
@@ -245,6 +247,30 @@ impl App {
             self.files_start_remote_dir(&host, &start, false, start != "~", false);
         } else if !self.files_load_dir(&start, false) && start != "/" {
             let _ = self.files_load_dir("/", false);
+        }
+    }
+
+    pub(crate) fn files_open_sidebar_preview(&mut self, ssh_host: Option<String>, cwd: &str, full_path: &str) {
+        let ssh_hosts = self.fetch_ssh_host_aliases();
+        self.panel_open(Step::Files);
+        if let Some(p) = self.ui.panel.as_mut() {
+            let mut ex = Explorer::new(ssh_host.clone(), ssh_hosts, cwd.to_string());
+            ex.preview_from_sidebar = true;
+            p.files = Some(ex);
+        }
+        if let Some(host) = ssh_host {
+            self.files_start_remote_preview(&host, full_path, false);
+        } else if self.files_load_preview(full_path, true) {
+            let delegated_external = self
+                .ui
+                .panel
+                .as_ref()
+                .and_then(|p| p.files.as_ref())
+                .is_some_and(|ex| ex.preview.is_none());
+            if delegated_external {
+                self.panel_close();
+                self.sync_view_after_panel_close();
+            }
         }
     }
 
@@ -370,6 +396,7 @@ impl App {
             } else {
                 self.ui.flash = Some(format!("Hidden files: {state_word}."));
             }
+            self.sidebar_sync_hidden_toggle();
         } else {
             self.ui.flash = Some("Could not change hidden-file setting.".into());
         }
@@ -522,7 +549,11 @@ impl App {
         };
         if ex.preview.is_some() {
             if line == 0 {
-                if let Some(p) = self.ui.panel.as_mut() {
+                let from_sb = ex.preview_from_sidebar;
+                if from_sb {
+                    self.panel_close();
+                    self.sync_view_after_panel_close();
+                } else if let Some(p) = self.ui.panel.as_mut() {
                     if let Some(ex) = p.files.as_mut() {
                         ex.preview = None;
                     }
@@ -600,7 +631,16 @@ impl App {
         if in_preview {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape | NamedKey::Backspace) if !event.repeat => {
-                    if let Some(p) = self.ui.panel.as_mut() {
+                    let from_sb = self
+                        .ui
+                        .panel
+                        .as_ref()
+                        .and_then(|p| p.files.as_ref())
+                        .is_some_and(|ex| ex.preview_from_sidebar);
+                    if from_sb {
+                        self.panel_close();
+                        self.sync_view_after_panel_close();
+                    } else if let Some(p) = self.ui.panel.as_mut() {
                         if let Some(ex) = p.files.as_mut() {
                             ex.preview = None;
                         }

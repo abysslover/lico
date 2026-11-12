@@ -36,9 +36,9 @@ def _reload(w: ProductWindow) -> None:
 
 
 def _row_centre(w: ProductWindow, sid: str) -> tuple[float, float]:
-    u = wait_for(lambda: (u := w.ui()) and any(r[2] == sid for r in u["layout"]["rows"]) and u)
-    y0, y1, _ = next(r for r in u["layout"]["rows"] if r[2] == sid)
-    return 100.0, (y0 + y1) / 2.0
+    u = wait_for(lambda: (u := w.ui()) and any(t["session"] == sid for t in u["tabs"]["items"]) and u)
+    t = next(t for t in u["tabs"]["items"] if t["session"] == sid)
+    return (t["rect"][0] + t["close_rect"][0]) / 2.0, (t["rect"][1] + t["rect"][3]) / 2.0
 
 
 def _tool_btn(u: dict, btn_id: str) -> dict:
@@ -84,8 +84,8 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
 
             # Before first prompt, unnamed s_new falls back to folder basename 'alpha-proj', and running sessions precede closed
             _reload(w)
-            u0 = wait_for(lambda: (u := w.ui()) and len(u["layout"]["rows"]) == 3 and u)
-            order0 = [r[2] for r in u0["layout"]["rows"]]
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 3 and u)
+            order0 = [t["session"] for t in u0["tabs"]["items"]]
             assert order0[-1] == s_closed, order0  # running sessions always sort ahead of disconnected
             assert set(order0[:2]) == {s_old, s_new}
             new_row0 = next(r for r in u0["rows"] if r["session"] == s_new)
@@ -101,7 +101,7 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
                 and next(r for r in u["rows"] if r["session"] == s_new)["auto_title"] == "Fix sidebar click from About"
                 and u
             )
-            order1 = [r[2] for r in u1["layout"]["rows"]]
+            order1 = [t["session"] for t in u1["tabs"]["items"]]
             assert order1 == [s_new, s_old, s_closed], order1
             assert "Fix side\u2026" in u1["list_text"] and s_new[:7] not in u1["list_text"], u1["list_text"]
 
@@ -145,8 +145,8 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             assert conn.call(op="input", session=s_old, generation=1, request_id="p2", text="Bump older task")["ok"] == 1
             wait_for(lambda: status_of(conn, s_old)["activity"] == "idle" and status_of(conn, s_old)["seq"] >= 2)
             _reload(w)
-            u_reordered = wait_for(lambda: (u := w.ui()) and [r[2] for r in u["layout"]["rows"]][0] == s_old and u)
-            assert [r[2] for r in u_reordered["layout"]["rows"]] == [s_old, s_new, s_closed]
+            u_reordered = wait_for(lambda: (u := w.ui()) and [t["session"] for t in u["tabs"]["items"]][0] == s_old and u)
+            assert [t["session"] for t in u_reordered["tabs"]["items"]] == [s_old, s_new, s_closed]
 
             # 5. Toolbar geometry & direct mouse click actions
             tb = u_reordered["toolbar"]

@@ -40,6 +40,7 @@ pub enum Cmd {
     FindConversation,
     SearchAll,
     Files,
+    ToggleSidebar,
     RefreshFiles,
     NewInViewedDir,
     FilesPrevPage,
@@ -144,8 +145,18 @@ impl App {
                 } else {
                     None
                 };
-                vec![
+                let mut v = vec![
                     Self::entry("Working directory files", "Ctrl+E", Cmd::Files, None),
+                ];
+                if self.sidebar_shown() {
+                    v.push(Entry {
+                        label: format!("Left sidebar: {}", if self.ui.sidebar.collapsed { "hidden" } else { "shown" }),
+                        key: "Ctrl+B",
+                        cmd: Cmd::ToggleSidebar,
+                        reason: None,
+                    });
+                }
+                v.extend([
                     Entry {
                         label: format!("Hidden files: {}", if self.ui.show_hidden { "shown" } else { "hidden" }),
                         key: "Ctrl+H",
@@ -200,7 +211,8 @@ impl App {
                         cmd: Cmd::ToggleNotifications,
                         reason: panel_reason,
                     },
-                ]
+                ]);
+                v
             }
             _ => vec![Self::entry("Keys", "", Cmd::Keys, None), Self::entry("About Lico", "", Cmd::About, None)],
         }
@@ -278,6 +290,7 @@ impl App {
             Cmd::FindConversation => self.open_search(false),
             Cmd::SearchAll => self.open_search(true),
             Cmd::Files => self.files_open(),
+            Cmd::ToggleSidebar => self.toggle_sidebar_collapsed(),
             Cmd::RefreshFiles => self.files_refresh(),
             Cmd::NewInViewedDir => self.files_new_session_here(),
             Cmd::FilesPrevPage => self.files_step_page(-1),
