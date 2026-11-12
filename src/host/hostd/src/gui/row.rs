@@ -14,6 +14,9 @@ pub struct Row {
     pub account: String,
     pub ssh_host: String,
     pub model: String,
+    pub chosen_model: String,
+    pub effort: String,
+    pub tokens: Option<(u64, u64)>,
     pub state: String,
     pub state_at: u64,
     pub activity: String,
@@ -42,6 +45,17 @@ pub struct Row {
     pub processes: u32,
     pub weekly_remaining_pct: Option<u8>, // observed 7d allowance remaining (0..=100), None when unreported
     pub short_remaining_pct: Option<u8>,  // observed short-window (e.g. 5h) allowance remaining, None when unreported
+    pub weekly_resets_at: Option<u64>,
+    pub short_resets_at: Option<u64>,
+}
+
+pub fn parse_usage_resets(usage: &Value) -> Option<(Option<u64>, Option<u64>)> {
+    if !usage.is_object() {
+        return None;
+    }
+    let w = usage["weekly_resets_at"].as_u64().filter(|&n| n > 0);
+    let s = usage["short_resets_at"].as_u64().filter(|&n| n > 0);
+    (w.is_some() || s.is_some()).then_some((w, s))
 }
 
 pub fn parse_usage_pair(usage: &Value) -> Option<(Option<u8>, Option<u8>)> {
@@ -123,8 +137,13 @@ impl Row {
         let real_screens = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "computer").filter_map(|a| a["approval_id"].as_i64()).collect();
         let state_at = number("state_at");
         let last_active_at = entry["last_active_at"].as_u64().unwrap_or(state_at).max(state_at);
+        let tokens = entry["tokens"]
+            .as_object()
+            .and_then(|t| Some((t.get("input")?.as_u64()?, t.get("output")?.as_u64()?)));
         Some(Row {
-            session: text("session"), provider: text("provider"), account: text("account"), ssh_host: clean(&text("ssh_host")), model: clean(&text("model")), state: text("state"), state_at,
+            session: text("session"), provider: text("provider"), account: text("account"), ssh_host: clean(&text("ssh_host")),
+            model: clean(&text("model")), chosen_model: clean(&text("chosen_model")), effort: clean(&text("chosen_effort")), tokens,
+            state: text("state"), state_at,
             activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, asks, makes, reads, real_screens,
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
@@ -136,7 +155,14 @@ impl Row {
             memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,
             weekly_remaining_pct: entry["account_usage"]["weekly_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
             short_remaining_pct: entry["account_usage"]["short_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
+            weekly_resets_at: entry["account_usage"]["weekly_resets_at"].as_u64().filter(|&n| n > 0),
+            short_resets_at: entry["account_usage"]["short_resets_at"].as_u64().filter(|&n| n > 0),
         })
+    }
+
+    /// True when this session is a dedicated Global general session (no fixed working directory or git worktree).
+    pub fn is_global(&self) -> bool {
+        self.cwd.is_empty() && self.worktree_repo.is_empty()
     }
 
     pub fn header_line(&self, label: &str, now: u64, menu: bool, fallback_quota: Option<(Option<u8>, Option<u8>)>) -> String {

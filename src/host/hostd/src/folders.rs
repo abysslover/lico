@@ -254,6 +254,7 @@ pub fn remove_scratch(shared: &Shared, id: &str, scratch: bool) {
 pub fn remove_own(shared: &Shared, id: &str, scratch: bool) {
     crate::vdisplay::stop(id);
     crate::computer::real::revoke(id);
+    crate::tokens::forget(id);
     remove_scratch(shared, id, scratch);
     crate::handoff::remove_inbox(&shared.cfg.handoff_dir, id);
 }
@@ -320,6 +321,7 @@ pub fn annotate(entry: &mut Value, s: &Session) {
     if !usage.is_null() {
         entry["account_usage"] = usage;
     }
+    crate::tokens::annotate(entry, &s.id);
     for (key, value) in [("cwd", &s.settings.cwd), ("name", &s.settings.name), ("auto_title", &s.auto_title), ("chosen_model", &s.settings.model), ("chosen_effort", &s.settings.effort)] {
         if let Some(value) = value {
             entry[key] = json!(value);

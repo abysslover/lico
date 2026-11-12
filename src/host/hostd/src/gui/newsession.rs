@@ -208,6 +208,19 @@ impl App {
         self.form_resume();
     }
 
+    /// Opens the new-session form configured for a Global general session (no fixed working directory),
+    /// focusing `Field::Model` directly so lightweight general Q&A sessions can be started in one keystroke.
+    pub(crate) fn form_open_global(&mut self) {
+        self.form_open();
+        self.with_form(|_, f| {
+            f.folder.clear();
+            f.checked_folder = "\x00".to_string();
+            f.focus = Field::Model;
+        });
+        self.form_check_git();
+        self.form_resume();
+    }
+
     /// Opens the new-session form pre-populated with a specific working directory and optional SSH remote host target.
     pub(crate) fn form_open_at_host(&mut self, folder: String, ssh_host: Option<String>) {
         self.form_open();
@@ -327,7 +340,7 @@ impl App {
                     Field::Provider => format!("< {} >", p.provider),
                     Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
-                        t if t.is_empty() && field == Field::Folder => "(none: the session gets a scratch workspace of its own)".into(),
+                        t if t.is_empty() && field == Field::Folder => "(Global general session: gets a scratch workspace of its own)".into(),
                         t if t.is_empty() => "(optional)".into(),
                         t => t,
                     },

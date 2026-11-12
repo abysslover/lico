@@ -88,6 +88,8 @@ def _obj(required: dict, optional: dict | None = None) -> dict:
 MEMORY = {"type": "object", "required": {"private_kb": {"type": INT, "minimum": 0}, "rss_kb": {"type": INT, "minimum": 0}, "processes": {"type": INT, "minimum": 1}},
           "optional": {}}
 
+TOKENS = _obj({"input": {"type": INT, "minimum": 0}, "output": {"type": INT, "minimum": 0}})
+
 USAGE = {
     "type": "object",
     "required": {"updated_at": {"type": INT, "minimum": 0}},
@@ -155,7 +157,7 @@ REPLIES = {
                      "provider": {"type": STR, "enum": ["codex", "claude"]}, "model": {"type": STR, "max_length": 60}, "mode": {"type": STR, "enum": ["auto", "default"]}, "activity": {"type": STR, "enum": ["working", "idle"]}, "account_issue": {"type": STR}, "state_at": {"type": INT, "minimum": 0}, "busy_since": {"type": INT, "minimum": 0}, "last_event_at": {"type": INT, "minimum": 0}, "stalled": {"type": BOOL}, "credential_generation": {"type": INT, "minimum": 1},
                      "scratch": {"type": BOOL}, "cwd": {"type": STR, "max_length": MAX_PATH}, "name": {"type": STR, "max_length": MAX_NAME},
                      "auto_title": {"type": STR, "max_length": MAX_NAME}, "last_active_at": {"type": INT, "minimum": 0},
-                     "account_usage": USAGE,
+                     "account_usage": USAGE, "tokens": TOKENS,
                      "finished_seq": {"type": INT, "minimum": -1},
                      "worktree": _obj({"repo": {"type": STR, "max_length": MAX_PATH}, "branch": {"type": STR, "max_length": 80}, "exists": {"type": BOOL}}),
                      "memory": MEMORY,   # of a running session, from the second status call on

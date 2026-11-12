@@ -52,6 +52,7 @@ impl App {
         let mut labels = std::collections::HashMap::new();
         let mut ssh_hosts = std::collections::HashMap::new();
         let mut quotas = std::collections::HashMap::new();
+        let mut quota_resets = std::collections::HashMap::new();
         for a in arr {
             if let (Some(id), Some(lbl)) = (a["account"].as_str(), a["label"].as_str()) {
                 labels.insert(id.to_string(), super::super::clean(lbl));
@@ -61,11 +62,15 @@ impl App {
                 if let Some(q) = super::row::parse_usage_pair(&a["usage"]) {
                     quotas.insert(id.to_string(), q);
                 }
+                if let Some(qr) = super::row::parse_usage_resets(&a["usage"]) {
+                    quota_resets.insert(id.to_string(), qr);
+                }
             }
         }
         self.ui.labels = labels;
         self.ui.ssh_hosts = ssh_hosts;
         self.ui.quotas = quotas;
+        self.ui.quota_resets = quota_resets;
     }
 
     /// Logical text size in `lico gui` (`12.0..=20.0`, default `14.0`).

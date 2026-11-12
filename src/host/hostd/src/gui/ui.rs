@@ -28,9 +28,13 @@ pub(crate) use row::{clock_text, memrow, Row};
 pub(super) mod clip;
 #[path = "search.rs"]
 mod search;
+#[path = "tabs.rs"]
+mod tabs;
+#[path = "telemetry.rs"]
+mod telemetry;
 #[path = "toolbar.rs"]
 mod toolbar;
-use super::menu::{MenuGeom, TITLES};
+use super::menu::MenuGeom;
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
 
@@ -65,9 +69,12 @@ pub struct UiState {
     pub faces: super::fonts::Faces,
     pub enabled: bool,
     pub markers: bool,
+    pub workbench: bool,
+    pub maximized_requested: bool,
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>,
     pub quotas: HashMap<String, (Option<u8>, Option<u8>)>,
+    pub quota_resets: HashMap<String, (Option<u64>, Option<u64>)>,
     pub list_sig: String,
     pub list_swash: Option<SwashCache>,
     pub surface: Option<Surface<Arc<Window>, Arc<Window>>>,
@@ -89,6 +96,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -143,6 +151,9 @@ impl App {
         for r in &rows {
             if !r.account.is_empty() && (r.weekly_remaining_pct.is_some() || r.short_remaining_pct.is_some()) {
                 self.ui.quotas.insert(r.account.clone(), (r.weekly_remaining_pct, r.short_remaining_pct));
+            }
+            if !r.account.is_empty() && (r.weekly_resets_at.is_some() || r.short_resets_at.is_some()) {
+                self.ui.quota_resets.insert(r.account.clone(), (r.weekly_resets_at, r.short_resets_at));
             }
         }
         // a stable order: sessions keep the host's order, groups appear in the order of their first session
@@ -360,7 +371,7 @@ impl App {
                 if *state == ElementState::Pressed {
                     self.ui.flash = None;
                     let hit = self.ui.controls.hit_at(x, y);
-                    if !matches!(&hit, Some(Action::Session(_))) { self.ui.clicked = None; }
+                    if !matches!(&hit, Some(Action::Session(_) | Action::Tab(_))) { self.ui.clicked = None; }
                     if self.ui.menu_open.is_some() || hit.is_some() || !self.ed.contains(x, y) { self.ed.clear_selection(); }
                     if let Some(open) = self.ui.menu_open {
                         match hit {
@@ -374,7 +385,12 @@ impl App {
                         match hit {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
-                            Some(Action::Session(id)) => self.row_click(id),
+                            Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
+                            Some(Action::CloseTab(id)) => self.close_tab_by_id(id),
+                            Some(Action::TabScroll(d)) => self.step_tab_scroll(d),
+                            Some(Action::NewTab) => self.form_open(),
+                            Some(Action::NewGlobal) => self.form_open_global(),
+                            Some(Action::FocusSessionDir) => self.focus_active_session_dir(),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
@@ -454,6 +470,7 @@ impl App {
         self.ui.behind = false;
         self.ui.history_pending = false;
         self.show(id, None);
+        self.sync_active_tab_scroll();
         self.remember_session_view(id);
         if self.ui.search.open && !self.ui.search.scope_all && self.ui.search.pending_jump.is_none() && !self.ui.search.query.is_empty() {
             self.run_search();
@@ -520,76 +537,13 @@ impl App {
         }
     }
 
-    /// What the start screen says while no session is shown.
-    pub(crate) fn start_lines(&self) -> Vec<String> {
-        let mut lines = vec!["No session is open.".to_string(), "Ctrl+N  new session".to_string(), "Ctrl+A  accounts and sign-in".to_string(), "Ctrl+E  working directory files".to_string()];
-        if !self.ui.saved_cwd.is_empty() {
-            lines.push(format!("Working directory: {}   (Ctrl+E or Files to open)", self.ui.saved_cwd));
-        }
-        if !self.ui.numbered.is_empty() {
-            lines.push("Alt+1 to Alt+9, Ctrl+Tab or a click on the list opens a session; they keep running when you leave them.".to_string());
-        }
-        lines
-    }
-
-    /// The permanent line at the bottom: the keys that exist, fewer of them when the window is narrow (the right-most go first).
-    pub(crate) fn hint_text(&self, width: usize, scale: f32) -> String {
-        let cols = (width as f32 / (self.char_w() * scale)) as usize;
-        if let Some(text) = self.hover_hint(cols) {
-            return text; // the mouse is over a row: its memory, in place of the keys
-        }
-        let escape = if self.ui.panel.is_some() { Some("Esc back out") } else if !self.session.is_empty() { Some("Esc session list") } else { None };
-        let mut items = vec!["Ctrl+N new session", "Ctrl+A accounts", "Ctrl+Tab next session", "Alt+1-9 session by number"];
-        if let Some(e) = escape {
-            items.insert(2, e);
-        }
-        if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) {
-            items.insert(0, self.approval_hint());
-        }
-        if let Some(item) = self.disconnected_hint(cols) {
-            items.insert(0, item); // the open session is closed: what Enter does now comes first
-        }
-        let mut text = String::new();
-        for item in items {
-            let next = if text.is_empty() { item.to_string() } else { format!("{text}   {item}") };
-            if next.chars().count() > cols {
-                break;
-            }
-            text = next;
-        }
-        text
-    }
-
     fn line_at(&self, y: f32) -> Option<usize> {
         self.ui.hit_lines.iter().find(|l| y >= l.0 && y < l.1).map(|l| l.2)
     }
 
     // ------------------------------------------------------------------ the model, for tests and inspection
-    fn menu_json(&self) -> Value {
-        let titles: Vec<Value> = TITLES.iter().enumerate().map(|(i, t)| json!({"label": t, "rect": self.ui.menu_geom.titles.get(i)})).collect();
-        let items: Vec<Value> = match self.ui.menu_open {
-            Some(m) => self.menu_entries(m).iter().enumerate().map(|(i, e)| json!({"label": e.label, "key": e.key, "enabled": e.reason.is_none(), "reason": e.reason, "rect": self.ui.menu_geom.items.get(i)})).collect(),
-            None => Vec::new(),
-        };
-        json!({"shown": self.ui.menu, "titles": titles, "open": self.ui.menu_open, "selected": self.ui.menu_sel, "items": items})
-    }
-
     pub(crate) fn ui_dump(&self) {
-        let rows: Vec<Value> = self
-            .ui
-            .rows
-            .iter()
-            .map(|r| json!({
-                "session": r.session, "provider": r.provider, "account": r.account, "label": self.label_of(&r.account), "model": r.model,
-                "display_name": r.name(), "auto_title": if r.auto_title.is_empty() { Value::Null } else { json!(r.auto_title) }, "last_active_at": r.last_active_at,
-                "weekly_remaining_pct": r.weekly_remaining_pct, "short_remaining_pct": r.short_remaining_pct,
-                "state": r.state, "generation": r.generation, "state_text": r.state_text(), "activity": r.activity, "approvals": r.approvals.iter().map(|a| json!([a.0, a.1])).collect::<Vec<_>>(),
-                "virtual_display": if r.virtual_display.is_empty() { Value::Null } else { json!(r.virtual_display) },
-                "unread": self.row_unread(r),
-                "worktree": if r.worktree_branch.is_empty() { Value::Null } else { json!({"branch": r.worktree_branch, "repo": r.worktree_repo, "exists": r.worktree_exists}) },
-                "selected": r.session == self.session,
-            }))
-            .collect();
+        let rows = self.rows_dump_json();
         let view = self.view.as_ref();
         let causes: serde_json::Map<String, Value> = Cause::ALL.iter().zip(self.ui.stats.causes).map(|(c, n)| (c.name().to_string(), json!(n))).collect();
         let frame = json!({
@@ -601,6 +555,8 @@ impl App {
         let layout = json!({
             "list_w": (LIST_W as f32 * self.ui.scale.max(1.0)) as usize,
             "window_size": self.window.as_ref().map(|w| [w.inner_size().width, w.inner_size().height]),
+            "maximized": self.window.as_ref().is_some_and(|w| w.is_maximized()),
+            "maximized_requested": self.ui.maximized_requested,
             "rows": self.ui.controls.hits.iter().filter_map(|h| match &h.action { Action::Session(id) => Some(json!([h.rect[1], h.rect[3], id])), _ => None }).collect::<Vec<_>>(),
             "dim": self.ui.controls.dimmed,
             "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect),
@@ -617,7 +573,7 @@ impl App {
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()), "shown_lines": shown_lines,
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
-            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "frame": frame,
+            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "frame": frame,
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
             "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
@@ -674,6 +630,8 @@ impl App {
         let (menu_h, bar_h) = toolbar::bar_heights(self.ui.menu, s, line_h);
         let real_entries = self.ui.real_screen.clone();
         let top = bar_h + super::realbar::height_px_with(&real_entries, s, line_h);
+        let tab_h = tabs::height_px(self.tabs_shown(), s, line_h);
+        let chat_top = top + tab_h;
         let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
@@ -683,11 +641,12 @@ impl App {
         let live = self.answers_live();
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
-        let area_rows = ((height as f32 - top) / lh) as usize;
+        let area_rows = ((height as f32 - chat_top) / lh) as usize;
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
         if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(3 + n_prompt), cols); }
         let panel_view = self.panel_view();
+        let show_telem = self.show_telemetry_bar();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
         if panel_view.is_some() {
             if let Some(n) = &self.ui.host_notice {
@@ -710,7 +669,7 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + n_prompt - 1);
+        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
         let is_tx = panel_view.is_none();
         let (lines, raw_end): (Vec<(usize, i64, String)>, usize) = match &panel_view {
             Some((_, body)) => {
@@ -772,7 +731,7 @@ impl App {
                 buffer.lines.push(line);
             }
             buffer.set_scroll(Scroll::default());
-            buffer.set_size(Some(text_w as f32), Some(height as f32 - top));
+            buffer.set_size(Some(text_w as f32), Some(height as f32 - chat_top));
             buffer.shape_until_scroll(fs, true);
             // lines put in by hand are not all laid out by the call above (new lines in front of a reused one stayed unshaped and
             // the whole text vanished): every line of the screenful is laid out here
@@ -805,22 +764,22 @@ impl App {
         let search_line_i = 1 + bar.is_some() as usize;
         for run in view.buffer.layout_runs() {
             if bar.is_some() && run.line_i == 1 {
-                approval_y = Some(run.line_top + top);
+                approval_y = Some(run.line_top + chat_top);
             }
             if search_bar.is_some() && run.line_i == search_line_i {
-                let (y0, y1) = (run.line_top + top, run.line_top + run.line_height + top);
+                let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
                 search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
             if run.line_i >= base && first + (run.line_i - base) < end {
                 let raw_idx = lines[first + (run.line_i - base)].0;
                 match self.ui.hit_lines.last_mut() {
-                    Some(last) if last.2 == raw_idx => last.1 = run.line_top + run.line_height + top,
-                    _ => self.ui.hit_lines.push((run.line_top + top, run.line_top + run.line_height + top, raw_idx)),
+                    Some(last) if last.2 == raw_idx => last.1 = run.line_top + run.line_height + chat_top,
+                    _ => self.ui.hit_lines.push((run.line_top + chat_top, run.line_top + run.line_height + chat_top, raw_idx)),
                 }
             }
         }
         // the scroll step: what the frame is made of, and whether the last one can be kept in part
-        let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, top as i32);
+        let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, chat_top as i32);
         let line_count = view.buffer.lines.len();
         self.ed.place(&view.buffer, (line_count - n_prompt, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
         let mut recs: Vec<LineRec> = (0..line_count)
@@ -852,7 +811,9 @@ impl App {
                 _ => line_extent(&mut view.buffer, fs, &mut view.swash, 0, ox, oy),
             };
         }
-        let hint_row = (height as f32 - lh) as i32;
+        let hint_y_f = height as f32 - lh;
+        let telem_y_f = hint_y_f - lh;
+        let hint_row = (if show_telem { telem_y_f } else { hint_y_f }) as i32;
         let mut frame = Composed {
             width,
             height,
@@ -966,11 +927,14 @@ impl App {
             controls::fill(&mut buf, width, height, [x, y, x + w, y + h], 0xFFE0_E0E0); // the caret of the input box: a bar, never blinking
         }
         // the permanent hint line, over whatever reaches the bottom row
-        let hint_y = height as f32 - lh;
+        let hint_y = hint_y_f;
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
-        controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
+        let hint_w = controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
         memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
         super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h);
+        self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
+        self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
+        self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);

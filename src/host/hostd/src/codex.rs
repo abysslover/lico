@@ -311,6 +311,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         if let Some(thread) = &resume {
             s.codex_thread = Some(thread.clone());
         }
+        crate::tokens::on_codex_spawn(&s.id);
     }
     let writer_session = session.clone();
     thread::spawn(move || {
@@ -597,6 +598,7 @@ fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
             record(s, "[turn started]");
         }
         "turn/completed" => {
+            crate::tokens::observe_codex(&s.id, method, params);
             if let Some(link) = s.codex.as_mut() {
                 link.active_turn = None;
                 let _ = rpc(link, "account/rateLimits/read", json!({"excludeResetCreditDetails": true}), Pending::RateLimits, None);
@@ -606,6 +608,7 @@ fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
             s.mark_finished();
             return true;
         }
+        "thread/tokenUsage/updated" => crate::tokens::observe_codex(&s.id, method, params),
         "account/rateLimits/updated" => {
             let key = crate::quota::session_key(s.provider, s.account.as_deref());
             crate::quota::observe_codex(&key, params);

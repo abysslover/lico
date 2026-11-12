@@ -52,6 +52,7 @@ mod search;
 mod session;
 mod ssh;
 mod ssh_remote;
+mod tokens;
 mod tools;
 mod transfer;
 mod vdisplay;

@@ -95,6 +95,18 @@ impl App {
         }
     }
 
+    /// Close button (`×`) on a session tab: closes a running session, or asks before deleting a closed one.
+    pub(crate) fn close_tab_by_id(&mut self, id: String) {
+        if self.ui.panel.is_some() {
+            self.panel_close();
+        }
+        if id != self.session {
+            self.switch_to(&id);
+        }
+        let is_running = self.selected_row().is_some_and(|r| r.state == "running");
+        self.ask_open(if is_running { Act::Close } else { Act::Delete });
+    }
+
     /// Start an action on the open session: a name is asked for, a delete and the stopping of a working turn are asked about, and closing
     /// an idle session is done at once (nothing is lost: the conversation stays and resumes).
     pub(crate) fn ask_open(&mut self, act: Act) {

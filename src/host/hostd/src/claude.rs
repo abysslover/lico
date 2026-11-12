@@ -419,6 +419,7 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
             record(&mut s, &format!("[session started] model={model}"));
         }
         Some("assistant") => {
+            crate::tokens::observe_claude_assistant(&s.id, message);
             for block in message["message"]["content"].as_array().into_iter().flatten() {
                 match block["type"].as_str() {
                     Some("text") => {
@@ -465,6 +466,7 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
             }
         }
         Some("result") => {
+            crate::tokens::observe_claude_result(&s.id, message);
             s.set_busy(false);
             // an authentication or limit failure is shown against the account; nothing is retried under another one
             let status_issue = match message["api_error_status"].as_i64() {

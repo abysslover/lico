@@ -429,7 +429,13 @@ impl App {
             if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
                 match c.to_ascii_lowercase().as_str() {
                     "n" => {
-                        self.form_open();
+                        if !event.repeat {
+                            if self.ui.mods.shift_key() {
+                                self.form_open_global();
+                            } else {
+                                self.form_open();
+                            }
+                        }
                         return true;
                     }
                     "a" => {

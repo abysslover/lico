@@ -155,6 +155,14 @@ def handle(message):
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "rl", "delta": f"quota updated: 7d used {u7}%\n"})
             notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
             active["turn"] = None
+        elif text.startswith("tokens:"):
+            parts = text[len("tokens:"):].split(":")
+            inp = int(parts[0])
+            out_tok = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+            notify("thread/tokenUsage/updated", {"threadId": active["thread"], "turnId": tid, "tokenUsage": {"total": {"inputTokens": inp, "cachedInputTokens": 0, "outputTokens": out_tok}}})
+            notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "tok", "delta": f"token usage reported: in={inp} out={out_tok}\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         elif text == "stall":
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "stall", "delta": "stalling\n"})
             while not os.path.exists(f"{args.received}.end"):

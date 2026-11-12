@@ -332,6 +332,18 @@ def turn(message):
                  "rate_limit_info": {"status": "allowed", "rateLimitType": "five_hour", "utilization": u5_frac, "resetsAt": 1794400000}})
         say(f"quota updated: 7d used {int(round(u7_frac * 100))}%")
         out(result())
+    elif text.startswith("tokens:"):
+        parts = text[len("tokens:"):].split(":")
+        inp = int(parts[0])
+        out_tok = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+        cache_read = int(parts[2]) if len(parts) > 2 and parts[2] else 0
+        msg = assistant(f"token usage reported: in={inp + cache_read} out={out_tok}")
+        msg["message"]["id"] = f"msg_tok_{uuid.uuid4().hex[:8]}"
+        msg["message"]["usage"] = {"input_tokens": inp, "cache_read_input_tokens": cache_read, "output_tokens": out_tok}
+        out(msg)
+        res = result()
+        res["usage"] = {"input_tokens": inp, "cache_read_input_tokens": cache_read, "output_tokens": out_tok}
+        out(res)
     elif text == "stall":
         say("stalling")
         while not os.path.exists(f"{args.received}.end"):

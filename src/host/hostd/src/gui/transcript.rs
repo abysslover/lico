@@ -15,6 +15,7 @@ pub const USER_INK: Color = Color::rgb(0x82, 0xCA, 0xFF);
 pub const USER_BG: u32 = 0xFF15_2232;
 pub const AGENT_INK: Color = Color::rgb(0xEA, 0xEE, 0xF5);
 pub const TOOL_INK: Color = Color::rgb(0x94, 0xA0, 0xAE);
+pub const TOOL_BADGE_INK: Color = Color::rgb(0x64, 0xB5, 0xF6);
 pub const ERROR_INK: Color = Color::rgb(0xF4, 0x8C, 0x6C);
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -85,15 +86,32 @@ pub fn tint(list: AttrsList, text: &str) -> AttrsList {
     if super::panel::sendto::header_look(text).is_some() {
         return list; // transfer headers keep their dimmed + lit-sender look from `sendto::tint`
     }
-    let col = match classify(text) {
+    let kind = classify(text);
+    let col = match kind {
         LineKind::User => USER_INK,
         LineKind::Tool | LineKind::ControlEvent => TOOL_INK,
         LineKind::ErrorNote => ERROR_INK,
         LineKind::Agent => AGENT_INK,
     };
+    let badge_end = if kind == LineKind::Tool {
+        if text.starts_with("$ ") || text == "$" {
+            Some(1)
+        } else if text.starts_with("[tool]") {
+            Some(6)
+        } else if text.starts_with("[patch]") {
+            Some(7)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     let mut out = AttrsList::new(&list.defaults().color(col));
     for (range, attrs) in list.spans_iter() {
         out.add_span(range.clone(), &attrs.as_attrs().color(col));
+    }
+    if let Some(end) = badge_end.filter(|&e| e <= text.len()) {
+        out.add_span(0..end, &list.defaults().color(TOOL_BADGE_INK));
     }
     out
 }

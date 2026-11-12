@@ -21,7 +21,7 @@ pub(super) fn app(scale: f32, no_scroll_step: bool) -> App {
         ed: Default::default(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: String::new(), serial: 0, follow: false, updating: false, ended_meanwhile: false,
         session: "session-s0".into(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: UiState { enabled: true, markers: false, menu: true, faces: fonts::Faces::new(false), no_scroll_step, scale, fonts_gen: 1, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: UiState { enabled: true, markers: false, workbench: true, menu: true, faces: fonts::Faces::new(false), no_scroll_step, scale, fonts_gen: 1, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     let mut fs = fonts::system(false);
     let buffer = Buffer::new(&mut fs, Metrics::new(FONT_PX * scale, LINE_HEIGHT as f32 * scale));

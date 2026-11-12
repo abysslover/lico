@@ -36,6 +36,7 @@ pub struct Entry {
     pub mode: &'static str,
     pub account_removed: bool, // the account it was bound to was removed with its sessions detached
     pub settings: crate::folders::Settings,
+    pub tokens: Option<(u64, u64)>,
 }
 
 pub fn valid_session_id(id: &str) -> bool {
@@ -92,11 +93,18 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
         let auto_title = value["auto_title"]
             .as_str()
             .and_then(crate::folders::derive_auto_title);
+        let tokens = match value.get("tokens") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some((
+                v.get("input").and_then(Value::as_u64).ok_or_else(|| format!("sessions.json has invalid tokens for {session}"))?,
+                v.get("output").and_then(Value::as_u64).ok_or_else(|| format!("sessions.json has invalid tokens for {session}"))?,
+            )),
+        };
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
             provider_session, state_at: value["state_at"].as_u64().unwrap_or(0),
             last_active_at: value["last_active_at"].as_u64().unwrap_or(0),
-            auto_title, account_removed, settings,
+            auto_title, account_removed, settings, tokens,
             mode: if value["mode"] == "default" { "default" } else { "auto" },
         });
     }
@@ -124,6 +132,9 @@ pub fn save(shared: &Shared) {
             if let Some(title) = &s.auto_title {
                 record.insert("auto_title".into(), json!(title));
             }
+            if let Some((inp, out)) = crate::tokens::persisted_pair(&s.id) {
+                record.insert("tokens".into(), json!({"input": inp, "output": out}));
+            }
             record.extend(s.settings.record_fields());
             Some(Value::Object(record))
         })
@@ -148,6 +159,9 @@ pub fn recover(shared: &Arc<Shared>) -> Result<usize, String> {
     };
     let count = entries.len();
     for entry in entries {
+        if let Some((inp, out)) = entry.tokens {
+            crate::tokens::restore(&entry.session, inp, out);
+        }
         let (mut session, report) = crate::session::Session::recovered(&entry, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window);
         if entry.account_removed {
             session.account_issue = Some("account_removed".to_string());

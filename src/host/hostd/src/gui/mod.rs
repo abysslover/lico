@@ -551,10 +551,16 @@ impl ApplicationHandler<Ev> for App {
         if self.window.is_some() {
             return;
         }
-        let attrs = Window::default_attributes()
+        let mut attrs = Window::default_attributes()
             .with_title(if self.ui.markers || !self.ui.enabled { "Lico candidate A".to_string() } else { crate::ident::title() }) // the product window says version and commit; the measurement client keeps its marker title
             .with_inner_size(LogicalSize::new(1200.0, 800.0));
+        if self.ui.maximized_requested {
+            attrs = attrs.with_maximized(true);
+        }
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
+        if self.ui.maximized_requested {
+            window.set_maximized(true);
+        }
         window.set_ime_allowed(true);
         self.ui.scale = window.scale_factor() as f32;
         self.context = Some(Context::new(window.clone()).expect("context"));
@@ -728,12 +734,14 @@ pub fn run(args: Vec<String>) {
             }
         });
     }
+    let windowed = args.iter().any(|a| a == "--windowed") || std::env::var_os("LICO_WINDOWED").is_some_and(|v| v == "1");
+    let workbench = product || args.iter().any(|a| a == "--workbench");
     let mut app = App {
         stale_pending: false, stale_empty: false, pending_inputs: HashMap::new(), view_id: String::new(), generation: 1, sent_count: 0,
         ed: Default::default(), preedit: String::new(), dirty: false, quit: false, meta: Vec::new(), pending_show: None, print_status: false,
         window: None, context: None, view: None, font_system: None, sock, socket: socket.clone(), serial: 0, follow: explicit.is_none(), updating: outdated.is_some(), ended_meanwhile: false,
         session: String::new(), cursor: -1, dups: 0, gaps: 0, resyncs: 0, subscribed: false,
-        ui: ui::UiState { enabled: ui_mode, markers: !product, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), no_scroll_step: !product && args.iter().any(|a| a == "--no-scroll-step"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
+        ui: ui::UiState { enabled: ui_mode, markers: !product, workbench, maximized_requested: product && !windowed, menu: product || args.iter().any(|a| a == "--menu"), faces: fonts::Faces::new(!product && args.iter().any(|a| a == "--plain-fonts")), no_scroll_step: !product && args.iter().any(|a| a == "--no-scroll-step"), scale: 1.0, proxy: Some(proxy_for_paste), host_notice, ..Default::default() }, recent_draws: VecDeque::new(),
     };
     if let Some(seen) = outdated {
         let socket = socket.clone();

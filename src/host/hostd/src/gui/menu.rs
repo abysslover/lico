@@ -14,6 +14,7 @@ pub const TITLES: [&str; 4] = ["File", "Session", "View", "Help"];
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Cmd {
     NewSession,
+    NewGlobalSession,
     Accounts,
     Quit,
     Next,
@@ -93,6 +94,7 @@ impl App {
             1 => {
                 let two = if sessions >= 2 { None } else { Some("needs two sessions") };
                 let mut v = vec![
+                    Self::entry("New Global session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
                     Self::entry("Start screen", "Esc", Cmd::Start, panel_reason.or(none_open)),
@@ -232,6 +234,7 @@ impl App {
     pub(crate) fn run_cmd(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::NewSession => self.form_open(),
+            Cmd::NewGlobalSession => self.form_open_global(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
             Cmd::Next => {

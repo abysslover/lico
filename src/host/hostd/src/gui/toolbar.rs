@@ -96,6 +96,7 @@ impl App {
             && !matches!(
                 cmd,
                 Cmd::NewSession
+                    | Cmd::NewGlobalSession
                     | Cmd::Accounts
                     | Cmd::Files
                     | Cmd::RefreshFiles
