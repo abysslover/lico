@@ -1,6 +1,6 @@
 # M06-P03 Report — SSH remote directory browsing, remote `claude`/`codex` session execution & resume, and `0.2.2` patch release
 
-- Status: done (awaiting owner G3 inspection and G4 merge approval)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M06 — Hidden-file toggle in directory viewer and SSH remote host accounts, directory browsing, and sessions (`lico 0.2.2`)](../../../milestones/202611/20261112/20261112_03_M06_hidden_files_and_ssh_remote_sessions_milestone.md)
@@ -39,7 +39,7 @@ directly on the remote host inside isolated `0700` remote account homes
 | Check | Measured result | Budget / Gate | Status |
 |---|---|---|---|
 | Rust unit tests (`umask 022` and `umask 077`) | `585 passed; 0 failed` (`1` ignored, both umasks; + `2 passed` in `synth_agent`) | `0` failures | Met |
-| Full cold suite (`suite run --cold`) | `475` tests in `89` files, `0` failed, **`97.8 s`**, peak **`1,645.4 MiB`** | `<= 180.0 s`, `<= 2,048.0 MiB` | Met |
+| Full cold suite (`suite run --cold`) | `475` tests in `89` files, `0` failed, **`97.8 s`**, 4-worker harness tree peak **`1,645.4 MiB`** | `<= 180.0 s`, `<= 2,048.0 MiB` | Met |
 | Idle GUI memory, scale 1 (`idle_memory`, 10 accounts, 10k realistic lines, menu on) | `max = 24.52 MiB` (`24.19..24.52 MiB`), median PSS `17.11 MiB`, anon `3.94 MiB`, host `7.35 MiB` | `<= 50.0 MiB` (`PERF-01`) | Met |
 | Idle GUI memory, scale 2 (`idle_memory`, 2x HiDPI) | `max = 35.53 MiB` (`35.27..35.53 MiB`), median PSS `22.60 MiB`, anon `3.75 MiB`, host `7.51 MiB` | `<= 50.0 MiB` (`PERF-01`) | Met |
 | Hidden background session growth (`hidden_growth`, 10 vs 100 sessions) | `max = +0.26 MiB` (`24.54 MiB` -> `24.75 MiB`; host `8.68` -> `20.33 MiB`) | `<= +10.0 MiB` (`PERF-02`) | Met |
@@ -48,4 +48,4 @@ directly on the remote host inside isolated `0700` remote account homes
 
 ## Gate status
 
-All three phases of Milestone `M06` (`M06-P01` through `M06-P03`, `lico 0.2.2`) are implemented, measured, and verified on `phase/M06-P03-ssh-remote-files-and-sessions-0-2-2`. Execution stops here for owner **G3** inspection acceptance and **G4** merge/publication approval (`main` remains at `0.2.1` until G4).
+All three phases of Milestone `M06` (`M06-P01` through `M06-P03`, `lico 0.2.2`) were accepted by the owner at G3 and fast-forward merged to `main` (`milestone/M06-hidden-files-and-ssh-remote-sessions`) at G4 on 2026-11-12.

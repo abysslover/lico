@@ -1,11 +1,12 @@
 # M06 — Hidden-file toggle in directory viewer and SSH remote host accounts, directory browsing, and sessions (`lico 0.2.2`)
 
-- Status: in_progress
-- Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; patch version bump `0.2.1` -> `0.2.2` on completion)
+- Status: done
+- Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; G3 inspection accepted and G4 merged on 2026-11-12)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: All three phases `M06-P01` through `M06-P03` implemented and verified (`phase/M06-P03-ssh-remote-files-and-sessions-0-2-2`, `lico 0.2.2`)
-- Next gate: G3 inspection acceptance and G4 merge approval (`main` stays at `0.2.1` until G4)
+- Milestone branch: `milestone/M06-hidden-files-and-ssh-remote-sessions`
+- Implementation: All three phases `M06-P01` through `M06-P03` accepted at G3 and merged to `main` at G4 (`lico 0.2.2`)
+- Next gate: Closed on 2026-11-12
 
 ## Goal
 
@@ -74,5 +75,5 @@ single local `lico gui` administer both local and SSH workspaces seamlessly.
 |---|---|---|
 | G1 milestone approval | Approved 2026-11-12 | Scope and phases `M06-P01` to `M06-P03`, patch version bump `0.2.1` -> `0.2.2` on completion |
 | G2 phase plan approval | Approved 2026-11-12 | Continuous implementation across `M06-P01` to `M06-P03` |
-| G3 inspection acceptance | Pending | Awaits owner inspection after `M06-P03` |
-| G4 merge approval | Pending | Awaits explicit owner approval after `M06-P03` |
+| G3 inspection acceptance | Approved 2026-11-12 | Accepted by the owner across `M06-P01` to `M06-P03` (including `Host` combo-box dropdown and non-blocking `ssh_unreachable` handling) |
+| G4 merge approval | Approved 2026-11-12 | Fast-forward merged to `main` (`milestone/M06-hidden-files-and-ssh-remote-sessions`, `lico 0.2.2`) |

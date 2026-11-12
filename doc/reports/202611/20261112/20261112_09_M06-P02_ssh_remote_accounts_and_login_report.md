@@ -1,6 +1,6 @@
 # M06-P02 Report — SSH remote provider accounts (`[ssh: <host>]`) and supervised remote `Sign in` over SSH
 
-- Status: done (awaiting owner G3/G4 after `M06-P03`)
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M06 — Hidden-file toggle in directory viewer and SSH remote host accounts, directory browsing, and sessions (`lico 0.2.2`)](../../../milestones/202611/20261112/20261112_03_M06_hidden_files_and_ssh_remote_sessions_milestone.md)
