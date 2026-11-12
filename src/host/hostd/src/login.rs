@@ -176,7 +176,11 @@ fn read_output(login: Arc<Mutex<Login>>, mut stream: impl std::io::Read + Send +
 
 /// Start the sign-in of an account (`method` is `browser`, or `device` for Codex's device-code flow).
 pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
-    let provider = shared.accounts.lock().unwrap().get(account).ok_or("unknown_account")?.provider.clone();
+    let (provider, ssh_host) = {
+        let accounts = shared.accounts.lock().unwrap();
+        let a = accounts.get(account).ok_or("unknown_account")?;
+        (a.provider.clone(), a.ssh_host.clone())
+    };
     let words: Vec<&str> = match (provider.as_str(), method) {
         ("codex", "browser") => vec!["login"],
         ("codex", "device") => vec!["login", "--device-auth"],
@@ -187,8 +191,13 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
     if table.get(account).map_or(false, |l| running(l.lock().unwrap().state)) {
         return Err("busy"); // one login per account at a time
     }
-    let mut command = command_of(shared, &provider, &words);
-    private_environment(&mut command, shared, account)?;
+    let mut command = if let Some(host) = &ssh_host {
+        crate::ssh_remote::remote_login_command(shared, host, account, &provider, &words)?
+    } else {
+        let mut c = command_of(shared, &provider, &words);
+        private_environment(&mut c, shared, account)?;
+        c
+    };
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = spawn_provider_process(command).map_err(|_| "login_unavailable")?;
     let pid = child.id();
@@ -281,8 +290,14 @@ pub fn status(shared: &Arc<Shared>, account: &str, check: bool) -> Reply {
 }
 
 fn signed_in(shared: &Shared, account: &str) -> Option<bool> {
-    let mut command = command_of(shared, "codex", &["login", "status"]);
-    private_environment(&mut command, shared, account).ok()?;
+    let ssh_host = shared.accounts.lock().unwrap().ssh_host(account);
+    let mut command = if let Some(host) = &ssh_host {
+        crate::ssh_remote::remote_login_command(shared, host, account, "codex", &["login", "status"]).ok()?
+    } else {
+        let mut c = command_of(shared, "codex", &["login", "status"]);
+        private_environment(&mut c, shared, account).ok()?;
+        c
+    };
     command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
     let mut child = spawn_provider_process(command).ok()?;
     let began = Instant::now();

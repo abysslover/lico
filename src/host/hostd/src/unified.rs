@@ -51,6 +51,7 @@ mod registry;
 mod search;
 mod session;
 mod ssh;
+mod ssh_remote;
 mod tools;
 mod transfer;
 mod vdisplay;

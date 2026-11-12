@@ -36,6 +36,8 @@ pub struct Panel {
     pub account: String,
     pub notice: String,
     pub accounts: Vec<(String, String, String, bool)>, // id, provider, label, default
+    pub new_ssh_host: Option<String>, // None = local, Some(alias) = SSH remote target when adding an account
+    pub ssh_hosts: Vec<String>,       // discovered SSH host aliases from `ssh.hosts`
     pub login: Value,
     pub confirm: Option<char>,
     pub last_error: String, // the host's raw error word of the last failed step: in the ui dump only
@@ -111,7 +113,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -153,10 +155,6 @@ impl App {
         }
     }
 
-    fn account_name(p: &Panel) -> String {
-        p.accounts.iter().find(|a| a.0 == p.account).map_or(p.account.clone(), |a| format!("{} / {}", a.1, a.2))
-    }
-
     /// The title and the lines of what the panel shows now, or the first screen when no session is selected.
     pub(crate) fn panel_view(&self) -> Option<(String, Vec<String>)> {
         let Some(p) = self.ui.panel.as_ref() else {
@@ -172,12 +170,31 @@ impl App {
                 "New session".to_string()
             }
             Step::Label => {
+                if p.form.is_none() {
+                    body.push(format!("Provider: < {} >   (Tab or click to switch)", p.provider));
+                }
+                let host_txt = p.new_ssh_host.as_deref().map_or_else(
+                    || "local (this machine)".to_string(),
+                    |h| format!("ssh: {h} (authenticates & runs on {h})"),
+                );
+                if p.ssh_hosts.is_empty() {
+                    body.push(format!("Target:   < {host_txt} >   (no hosts in ~/.ssh/config)"));
+                } else {
+                    body.push(format!("Target:   < {host_txt} >   (Up/Down or click to switch SSH host)"));
+                }
+                body.push(String::new());
                 body.push("Type a label for the account and press Enter.".into());
-                format!("New {} account", p.provider)
+                match &p.new_ssh_host {
+                    Some(h) => format!("New {} account [ssh: {h}]", p.provider),
+                    None => format!("New {} account", p.provider),
+                }
             }
             Step::Login => {
                 let state = p.login["state"].as_str().unwrap_or("starting");
                 body.push(format!("state: {state}"));
+                if let Some(h) = self.ui.ssh_hosts.get(&p.account) {
+                    body.push(format!("host: ssh:{h} (runs login on {h}; remote connects directly to provider)"));
+                }
                 if let Some(url) = p.login["url"].as_str() {
                     body.push("Open this address and sign in:".into());
                     body.push(url.to_string());
@@ -188,16 +205,18 @@ impl App {
                 } else if p.provider == "codex" && p.login["state"] != json!("succeeded") {
                     body.push("D  use the device-code sign-in instead".into());
                 }
-                format!("Sign in: {}", Self::account_name(p))
+                format!("Sign in: {}", self.account_name(p))
             }
             Step::Accounts => {
                 for (i, a) in p.accounts.iter().enumerate() {
                     let q = self.ui.quotas.get(&a.0).map(|&(w, s)| super::ui::row::format_quota_detail(w, s)).filter(|s| !s.is_empty()).map(|s| format!("  [{s}]")).unwrap_or_default();
-                    body.push(format!("{}  {} / {}{}{q}", i + 1, a.1, a.2, if a.3 { "  (default)" } else { "" }));
+                    body.push(format!("{}  {} / {}{}{q}", i + 1, a.1, self.acct_display(a), if a.3 { "  (default)" } else { "" }));
                 }
                 if p.accounts.is_empty() {
-                    body.push("No account yet: Ctrl+N creates one with a session.".into());
+                    body.push("No account yet: press A to add one, or Ctrl+N with a session.".into());
                 }
+                body.push(String::new());
+                body.push("A  add a new account (local or SSH remote)".into());
                 "Accounts".to_string()
             }
             Step::Send => {
@@ -217,7 +236,7 @@ impl App {
             }
             Step::AccountRename => {
                 body.push("Type a new label for the account and press Enter.".into());
-                format!("Rename account: {}", Self::account_name(p))
+                format!("Rename account: {}", self.account_name(p))
             }
             Step::Rebind => {
                 let (heading, lines) = self.rebind_view(p);
@@ -246,6 +265,9 @@ impl App {
             }
             Step::Actions => {
                 body.extend(["S  sign in".to_string(), "R  rename this account".to_string(), "F  make it the default for its provider".to_string(), "D  remove it (its sessions stay, unbound)".to_string(), "E  remove it and end its sessions".to_string()]);
+                if let Some(h) = self.ui.ssh_hosts.get(&p.account) {
+                    body.push(format!("host: ssh:{h} (authenticates on {h}; connects directly to provider)"));
+                }
                 if let Some(s) = p.login["signed_in"].as_bool() {
                     body.push(format!("provider says: {}", if s { "signed in" } else { "not signed in" }));
                 } else if p.login.get("signed_in").is_some() {
@@ -257,7 +279,7 @@ impl App {
                         body.push(format!("quota: {q}"));
                     }
                 }
-                format!("Account: {}", Self::account_name(p))
+                format!("Account: {}", self.account_name(p))
             }
         };
         if !p.notice.is_empty() {
@@ -433,7 +455,7 @@ impl App {
         match &event.logical_key {
             Key::Named(NamedKey::Escape) => {
                 match step {
-                    Step::Actions => self.panel_open(Step::Accounts),
+                    Step::Actions | Step::Label => self.panel_open(Step::Accounts),
                     Step::AccountRename => {
                         let _ = self.ed.take();
                         self.preedit.clear();
@@ -444,6 +466,18 @@ impl App {
                     }
                     _ => self.panel_close(),
                 }
+                true
+            }
+            Key::Named(NamedKey::ArrowUp) if step == Step::Label => {
+                self.cycle_label_host(-1);
+                true
+            }
+            Key::Named(NamedKey::ArrowDown) if step == Step::Label => {
+                self.cycle_label_host(1);
+                true
+            }
+            Key::Named(NamedKey::Tab) if step == Step::Label => {
+                self.toggle_label_provider();
                 true
             }
             Key::Named(NamedKey::Enter) if step == Step::Send => {
@@ -471,7 +505,7 @@ impl App {
 
     /// A click on a line of a panel: the Y or N of a question, a choice of the send panel; false when the line is neither.
     pub(crate) fn panel_click(&mut self, line: usize) -> bool {
-        self.confirm_click(line) || self.send_click(line) || self.files_click(line)
+        self.confirm_click(line) || self.send_click(line) || self.files_click(line) || self.accounts_or_label_click(line)
     }
 
     fn submit_text(&mut self, step: Step, text: &str) {
@@ -482,11 +516,30 @@ impl App {
             Step::Rename => self.rename_submit(text),
             Step::AccountRename => self.account_rename_submit(text),
             Step::Label => {
-                let provider = self.ui.panel.as_ref().map(|p| p.provider.clone()).unwrap_or_default();
-                let reply = self.host_call(json!({"op": "account.create", "provider": provider, "label": text}));
+                let (provider, ssh_host, from_form) = self
+                    .ui
+                    .panel
+                    .as_ref()
+                    .map(|p| (p.provider.clone(), p.new_ssh_host.clone(), p.form.is_some()))
+                    .unwrap_or_default();
+                let mut req = json!({"op": "account.create", "provider": provider, "label": text});
+                if let Some(h) = &ssh_host {
+                    req["ssh_host"] = json!(h);
+                }
+                let reply = self.host_call(req);
                 self.load_accounts();
+                self.refresh_list();
                 if reply["ok"] == json!(1) {
-                    self.form_account_added(reply["account"].as_str().unwrap_or("").to_string());
+                    let new_id = reply["account"].as_str().unwrap_or("").to_string();
+                    if from_form {
+                        self.form_account_added(new_id);
+                    } else if let Some(p) = self.ui.panel.as_mut() {
+                        p.account = new_id;
+                        p.step = Step::Actions;
+                        p.confirm = None;
+                        p.login = json!({});
+                        p.notice = "Account added. Press S to sign in.".into();
+                    }
                 } else if let Some(p) = self.ui.panel.as_mut() {
                     p.notice = format!("Could not create the account: {}", reply["error"].as_str().unwrap_or("unknown"));
                 }
@@ -508,7 +561,7 @@ impl App {
         }
     }
 
-    fn panel_choice(&mut self, step: Step, key: char) {
+    pub(super) fn panel_choice(&mut self, step: Step, key: char) {
         match step {
             Step::Login => match key {
                 'c' => self.login_address(true),
@@ -517,6 +570,10 @@ impl App {
                 _ => {}
             },
             Step::Accounts => {
+                if key == 'a' {
+                    self.open_add_account_from_accounts();
+                    return;
+                }
                 let Some(p) = self.ui.panel.as_ref() else { return };
                 if let Some(a) = key.to_digit(10).and_then(|d| p.accounts.get((d as usize).wrapping_sub(1))).cloned() {
                     let status = self.host_call(json!({"op": "account.login.status", "account": a.0, "check": true}));

@@ -24,7 +24,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   session mode ID auto|default   switch a session's permission mode (restarts an idle Claude session cleanly)\n\
-  account create --provider codex|claude --label TEXT\n\
+  account create --provider codex|claude --label TEXT [--ssh-host HOST]\n\
   account rename ID LABEL        rename an account's label\n\
   account list | default ID | affected ID | credential ID REF | remove ID detach|end\n\
   account login ID [--device]    sign in with the provider's own login (shows the address, asks for a code when one is needed)\n\
@@ -260,7 +260,11 @@ pub fn run(args: Vec<String>) {
         }
         ["account", "create", ..] => {
             let (Some(provider), Some(label)) = (flag(&args, "--provider"), flag(&args, "--label")) else { die(1, USAGE) };
-            expect_ok(call(&mut connect(&socket), json!({"op": "account.create", "provider": provider, "label": label})));
+            let mut request = json!({"op": "account.create", "provider": provider, "label": label});
+            if let Some(host) = flag(&args, "--ssh-host") {
+                request["ssh_host"] = json!(host);
+            }
+            expect_ok(call(&mut connect(&socket), request));
         }
         ["account", "rename", id, label] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "account.rename", "account": id, "label": label})));

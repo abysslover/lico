@@ -7,6 +7,111 @@ use super::confirm::{Act, Ask};
 use super::{Panel, Step};
 
 impl App {
+    pub(super) fn acct_display(&self, a: &(String, String, String, bool)) -> String {
+        self.ui.ssh_hosts.get(&a.0).map_or_else(|| a.2.clone(), |h| format!("{} [ssh: {h}]", a.2))
+    }
+
+    pub(super) fn account_name(&self, p: &Panel) -> String {
+        p.accounts
+            .iter()
+            .find(|a| a.0 == p.account)
+            .map_or_else(|| self.label_of(&p.account), |a| format!("{} / {}", a.1, self.acct_display(a)))
+    }
+
+    pub(super) fn load_ssh_hosts(&mut self) {
+        let hosts: Vec<String> = if self.socket.is_empty() {
+            Vec::new()
+        } else {
+            let reply = self.host_call_within(json!({"op": "ssh.hosts"}), 2);
+            reply["hosts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|h| h["host"].as_str().map(clean))
+                .filter(|s| !s.is_empty())
+                .collect()
+        };
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.ssh_hosts = hosts;
+        }
+    }
+
+    pub(super) fn cycle_label_host(&mut self, by: isize) {
+        let Some(p) = self.ui.panel.as_mut() else { return };
+        if p.ssh_hosts.is_empty() {
+            p.new_ssh_host = None;
+            return;
+        }
+        let mut choices: Vec<Option<String>> = vec![None];
+        choices.extend(p.ssh_hosts.iter().cloned().map(Some));
+        let cur = choices.iter().position(|c| *c == p.new_ssh_host).unwrap_or(0) as isize;
+        let idx = (cur + by).rem_euclid(choices.len() as isize) as usize;
+        p.new_ssh_host = choices[idx].clone();
+        self.dirty = true;
+    }
+
+    pub(super) fn toggle_label_provider(&mut self) {
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.provider = if p.provider == "codex" { "claude".into() } else { "codex".into() };
+            self.dirty = true;
+        }
+    }
+
+    pub(super) fn open_add_account_from_accounts(&mut self) {
+        self.load_ssh_hosts();
+        let _ = self.ed.take();
+        self.preedit.clear();
+        if let Some(p) = self.ui.panel.as_mut() {
+            if p.provider.is_empty() {
+                p.provider = "claude".into();
+            }
+            p.new_ssh_host = None;
+            p.step = Step::Label;
+            p.notice.clear();
+        }
+        self.dirty = true;
+    }
+
+    pub(super) fn accounts_or_label_click(&mut self, line: usize) -> bool {
+        let Some(p) = self.ui.panel.as_ref() else { return false };
+        match p.step {
+            Step::Label => {
+                if p.form.is_none() {
+                    match line {
+                        0 => {
+                            self.toggle_label_provider();
+                            return true;
+                        }
+                        1 => {
+                            self.cycle_label_host(1);
+                            return true;
+                        }
+                        _ => return false,
+                    }
+                } else if line == 0 {
+                    self.cycle_label_host(1);
+                    return true;
+                }
+                false
+            }
+            Step::Accounts => {
+                let n = p.accounts.len();
+                if line < n && line < 9 {
+                    let ch = char::from_digit((line + 1) as u32, 10).unwrap_or(' ');
+                    self.panel_choice(Step::Accounts, ch);
+                    return true;
+                }
+                let add_row = if n == 0 { 2 } else { n + 1 };
+                if line == add_row {
+                    self.open_add_account_from_accounts();
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// Start renaming the currently selected account inside `Step::Actions`.
     pub(super) fn account_rename_start(&mut self) {
         let current = self
@@ -112,7 +217,7 @@ impl App {
             for (i, a) in p.accounts.iter().enumerate().take(9) {
                 let def = if a.3 { "  (default)" } else { "" };
                 let cur = if a.0 == p.account { "  (current)" } else { "" };
-                lines.push(format!("{}  {} / {}{def}{cur}", i + 1, a.1, a.2));
+                lines.push(format!("{}  {} / {}{def}{cur}", i + 1, a.1, self.acct_display(a)));
             }
         }
         ("Rebind session to account".into(), lines)

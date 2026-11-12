@@ -294,7 +294,7 @@ impl App {
             .map(|field| {
                 let value = match field {
                     Field::Provider => format!("< {} >", p.provider),
-                    Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", a.2, if a.3 { " (default)" } else { "" })),
+                    Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
                         t if t.is_empty() && field == Field::Folder => "(none: the session gets a scratch workspace of its own)".into(),
                         t if t.is_empty() => "(optional)".into(),
@@ -458,7 +458,9 @@ impl App {
 
     fn form_new_account(&mut self) {
         self.form_store();
+        self.load_ssh_hosts();
         if let Some(p) = self.ui.panel.as_mut() {
+            p.new_ssh_host = None;
             p.step = Step::Label;
             p.notice.clear();
         }
@@ -549,6 +551,9 @@ impl App {
         let key = &event.logical_key;
         match step {
             Step::Label | Step::Login if *key == Key::Named(NamedKey::Escape) => self.form_back(),
+            Step::Label if matches!(key, Key::Named(NamedKey::ArrowUp)) => self.cycle_label_host(-1),
+            Step::Label if matches!(key, Key::Named(NamedKey::ArrowDown)) => self.cycle_label_host(1),
+            Step::Label if matches!(key, Key::Named(NamedKey::Tab)) => self.cycle_label_host(if shift { -1 } else { 1 }),
             Step::NewSession => {
                 match key {
                     Key::Named(NamedKey::Escape) => return false, // the panel's own: close

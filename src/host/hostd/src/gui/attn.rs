@@ -50,16 +50,21 @@ impl App {
     pub(crate) fn sync_accounts_value(&mut self, value: &Value) {
         let arr = value["accounts"].as_array().into_iter().flatten();
         let mut labels = std::collections::HashMap::new();
+        let mut ssh_hosts = std::collections::HashMap::new();
         let mut quotas = std::collections::HashMap::new();
         for a in arr {
             if let (Some(id), Some(lbl)) = (a["account"].as_str(), a["label"].as_str()) {
                 labels.insert(id.to_string(), super::super::clean(lbl));
+                if let Some(h) = a["ssh_host"].as_str().filter(|s| !s.is_empty()) {
+                    ssh_hosts.insert(id.to_string(), super::super::clean(h));
+                }
                 if let Some(q) = super::row::parse_usage_pair(&a["usage"]) {
                     quotas.insert(id.to_string(), q);
                 }
             }
         }
         self.ui.labels = labels;
+        self.ui.ssh_hosts = ssh_hosts;
         self.ui.quotas = quotas;
     }
 

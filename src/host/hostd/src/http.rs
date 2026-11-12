@@ -288,7 +288,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 if !valid_request("account.create", &map) {
                     return Err(bad("bad_request"));
                 }
-                core::account_create(shared, crate::ipc::text(&map, "provider"), crate::ipc::text(&map, "label"))
+                crate::admin::account_create_with(shared, crate::ipc::text(&map, "provider"), crate::ipc::text(&map, "label"), map.get("ssh_host").and_then(Value::as_str))
             }
             _ => return Err((405, "bad_request")),
         },

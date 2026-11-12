@@ -76,12 +76,22 @@ pub fn capabilities(shared: &Shared) -> Reply {
     })))
 }
 
+pub fn account_create_with(shared: &Shared, provider: &str, label: &str, ssh_host: Option<&str>) -> Reply {
+    let account = shared.accounts.lock().unwrap().create_with(provider, label, ssh_host)?;
+    Ok(obj(json!({
+        "account": account.id,
+        "provider": account.provider,
+        "label": account.label,
+        "ssh_host": account.ssh_host,
+    })))
+}
+
 pub fn account_rename(shared: &Shared, account: &str, label: &str) -> Reply {
     if !crate::ipc::valid_label(&json!(label)) {
         return Err("bad_request");
     }
     let updated = shared.accounts.lock().unwrap().rename(account, label)?;
-    Ok(obj(json!({"account": updated.id, "provider": updated.provider, "label": updated.label})))
+    Ok(obj(json!({"account": updated.id, "provider": updated.provider, "label": updated.label, "ssh_host": updated.ssh_host})))
 }
 
 pub fn session_mode(shared: &Arc<Shared>, session: &str, generation: i64, mode: &str) -> Reply {

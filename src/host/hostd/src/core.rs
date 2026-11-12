@@ -488,11 +488,6 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
     }
 }
 
-pub fn account_create(shared: &Shared, provider: &str, label: &str) -> Reply {
-    let account = shared.accounts.lock().unwrap().create(provider, label)?;
-    Ok(obj(json!({"account": account.id, "provider": account.provider, "label": account.label})))
-}
-
 pub fn account_list(shared: &Shared) -> Reply {
     let mut entries = shared.accounts.lock().unwrap().entries();
     let sessions: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();

@@ -16,6 +16,7 @@ pub struct Account {
     pub id: String,
     pub provider: String,
     pub label: String,
+    pub ssh_host: Option<String>,
     pub credential_generation: u64,
     pub credential_ref: Option<String>, // an opaque reference into the credential store, never a secret
 }
@@ -54,7 +55,19 @@ impl Accounts {
                 let value = serde_json::from_str::<Value>(&text).map_err(|e| format!("accounts.json is not valid: {e}"))?;
                 for entry in value["accounts"].as_array().into_iter().flatten() {
                     if let (Some(id), Some(provider), Some(label)) = (entry["account"].as_str(), entry["provider"].as_str(), entry["label"].as_str()) {
-                        accounts.list.push(Account { id: id.into(), provider: provider.into(), label: label.into(), credential_generation: entry["credential_generation"].as_u64().unwrap_or(1), credential_ref: entry["credential_ref"].as_str().map(str::to_string) });
+                        let ssh_host = entry["ssh_host"]
+                            .as_str()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty() && crate::ssh::valid_ssh_host(s))
+                            .map(str::to_string);
+                        accounts.list.push(Account {
+                            id: id.into(),
+                            provider: provider.into(),
+                            label: label.into(),
+                            ssh_host,
+                            credential_generation: entry["credential_generation"].as_u64().unwrap_or(1),
+                            credential_ref: entry["credential_ref"].as_str().map(str::to_string),
+                        });
                     }
                 }
                 for (provider, id) in value["defaults"].as_object().into_iter().flatten() {
@@ -75,7 +88,7 @@ impl Accounts {
 
     fn save(&self) -> std::io::Result<()> {
         let value = json!({
-            "accounts": self.list.iter().map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "credential_generation": a.credential_generation, "credential_ref": a.credential_ref})).collect::<Vec<_>>(),
+            "accounts": self.list.iter().map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "ssh_host": a.ssh_host, "credential_generation": a.credential_generation, "credential_ref": a.credential_ref})).collect::<Vec<_>>(),
             "defaults": self.defaults,
             "managed": self.managed,
         });
@@ -86,8 +99,18 @@ impl Accounts {
         std::fs::rename(&temporary, self.dir.join("accounts.json"))
     }
 
+    #[cfg(test)]
     pub fn create(&mut self, provider: &str, label: &str) -> Result<Account, &'static str> {
+        self.create_with(provider, label, None)
+    }
+
+    pub fn create_with(&mut self, provider: &str, label: &str, ssh_host: Option<&str>) -> Result<Account, &'static str> {
         provider_variable(provider).ok_or("bad_request")?;
+        let ssh_host = match ssh_host.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(h) if crate::ssh::valid_ssh_host(h) => Some(h.to_string()),
+            Some(_) => return Err("bad_request"),
+            None => None,
+        };
         if self.list.len() >= MAX_ACCOUNTS {
             return Err("busy");
         }
@@ -96,7 +119,14 @@ impl Accounts {
         for dir in [&self.dir.join(&id), &homes.home, &homes.provider_home] {
             std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(|_| "busy")?;
         }
-        let account = Account { id: id.clone(), provider: provider.into(), label: label.into(), credential_generation: 1, credential_ref: None };
+        let account = Account {
+            id: id.clone(),
+            provider: provider.into(),
+            label: label.into(),
+            ssh_host,
+            credential_generation: 1,
+            credential_ref: None,
+        };
         self.list.push(account.clone());
         self.managed.insert(provider.to_string());
         self.defaults.entry(provider.to_string()).or_insert_with(|| id.clone()); // a provider's first account is its default
@@ -105,6 +135,10 @@ impl Accounts {
             return Err("busy");
         }
         Ok(account)
+    }
+
+    pub fn ssh_host(&self, id: &str) -> Option<String> {
+        self.get(id).and_then(|a| a.ssh_host.clone())
     }
 
     pub fn get(&self, id: &str) -> Option<&Account> {
@@ -171,7 +205,7 @@ impl Accounts {
     pub fn entries(&self) -> Vec<Value> {
         self.list
             .iter()
-            .map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "default": self.defaults.get(&a.provider) == Some(&a.id), "credential_generation": a.credential_generation, "has_credential": a.credential_ref.is_some()}))
+            .map(|a| json!({"account": a.id, "provider": a.provider, "label": a.label, "ssh_host": a.ssh_host, "default": self.defaults.get(&a.provider) == Some(&a.id), "credential_generation": a.credential_generation, "has_credential": a.credential_ref.is_some()}))
             .collect()
     }
 
@@ -203,5 +237,14 @@ mod tests {
         assert_eq!(mode_of(&dir.join(&made.id)), 0o700);
         let homes = accounts.homes(&made.id).unwrap();
         assert_eq!((mode_of(&homes.home), mode_of(&homes.provider_home)), (0o700, 0o700));
+        assert_eq!(made.ssh_host, None);
+
+        let remote = accounts.create_with("codex", "Cluster", Some("gpu-box")).unwrap();
+        assert_eq!(remote.ssh_host.as_deref(), Some("gpu-box"));
+        assert_eq!(accounts.create_with("claude", "Bad", Some("-oProxyCommand=id")).err(), Some("bad_request"));
+
+        let reloaded = Accounts::load(&dir).unwrap();
+        assert_eq!(reloaded.ssh_host(&made.id), None);
+        assert_eq!(reloaded.ssh_host(&remote.id).as_deref(), Some("gpu-box"));
     }
 }

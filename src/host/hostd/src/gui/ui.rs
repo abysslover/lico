@@ -66,7 +66,7 @@ pub struct UiState {
     pub enabled: bool,
     pub markers: bool,
     pub rows: Vec<Row>,
-    pub labels: HashMap<String, String>,
+    pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>,
     pub quotas: HashMap<String, (Option<u8>, Option<u8>)>,
     pub list_sig: String,
     pub list_swash: Option<SwashCache>,
@@ -241,11 +241,9 @@ impl App {
     }
 
     pub(crate) fn label_of(&self, account: &str) -> String {
-        if account.is_empty() {
-            "no account".into()
-        } else {
-            self.ui.labels.get(account).cloned().unwrap_or_else(|| account.to_string())
-        }
+        if account.is_empty() { return "no account".into(); }
+        let base = self.ui.labels.get(account).cloned().unwrap_or_else(|| account.to_string());
+        self.ui.ssh_hosts.get(account).map_or_else(|| base.clone(), |h| format!("{base} [ssh: {h}]"))
     }
 
     // ------------------------------------------------------------------ lines of the selected session
