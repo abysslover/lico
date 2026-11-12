@@ -1,6 +1,6 @@
 # M07-P05 Report — Centered modal approval window, session-persistent `Allow`, visible peer-conversation cards (`1`-turn event-driven), mouse drag-selection auto-copy across all chat panels, and persistent `[ Directories ]` navigation history & bookmarks
 
-- Status: pending G3 inspection
+- Status: done (owner G3 accepted and G4 merged on 2026-11-13)
 - Version: 1.1.0
 - Date: 2026-11-13
 - Milestone: [M07 — Two-pane tabbed workbench, session telemetry bar, Global general sessions, and paginated past-session resume (`lico 0.2.3`)](../../../milestones/202611/20261112/20261112_04_M07_two_pane_workbench_and_past_sessions_milestone.md)
@@ -77,5 +77,5 @@ budget:
 ## Gate status
 
 All five phases of Milestone `M07` (`M07-P01` through `M07-P05`, `lico 0.2.3`)
-are implemented, measured, and installed to `~/bin/lico` for live testing,
-awaiting owner G3 inspection acceptance and G4 merge/publication approval.
+were accepted by the owner at G3 and fast-forward merged to `main`
+(`milestone/M07-two-pane-workbench-and-past-sessions`) at G4 on 2026-11-13.

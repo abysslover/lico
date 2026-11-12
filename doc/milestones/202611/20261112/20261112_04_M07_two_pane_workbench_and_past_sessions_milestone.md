@@ -1,12 +1,12 @@
 # M07 — Two-pane tabbed workbench, session telemetry bar, Global general sessions, and paginated past-session resume (`lico 0.2.3`)
 
-- Status: pending G3 inspection
-- Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution)
+- Status: done (closed 2026-11-13)
+- Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; G3 and G4 approved 2026-11-13)
 - Project: Lico
 - Updated: 2026-11-13
-- Milestone branch: `milestone/M07-two-pane-workbench-and-past-sessions` (created at milestone close)
-- Implementation: Completed on branches `phase/M07-P01-session-tabs-and-telemetry-bar` through `phase/M07-P05-peer-reply-copy-and-dir-nav` (`lico 0.2.3`)
-- Next gate: G3 inspection acceptance and G4 merge approval
+- Milestone branch: `milestone/M07-two-pane-workbench-and-past-sessions`
+- Implementation: Merged to `main` across `phase/M07-P01-session-tabs-and-telemetry-bar` through `phase/M07-P05-peer-reply-copy-and-dir-nav` (`lico 0.2.3`)
+- Next gate: Completed (G1..G4 accepted and merged to `main` on 2026-11-13)
 
 ## Goal
 
@@ -70,11 +70,11 @@ into an ergonomic daily workbench while keeping memory around `~25-36 MiB`.
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M07-P01 | Maximized launch, `Global` general sessions, token/quota reset telemetry, chat session tab bar, and bottom telemetry strip | [Plan](../../../plans/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `00014` | — | pending G3 |
-| M07-P02 | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview | [Plan](../../../plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | [Report](../../../reports/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_report.md) | `00015` | — | pending G3 |
-| M07-P03 | Full-pagination `session.past` discovery and one-click `claude`/`codex` resume (local + SSH, `cwd` + `Global`) and `0.2.3` release | [Plan](../../../plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | [Report](../../../reports/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_report.md) | `00016` | — | pending G3 |
-| M07-P04 | Bidirectional `Claude` <-> `Codex` MCP communication, bordered command/tool cards, Claude `get_usage` `5h`/`Wk` quota, symlink dir/file navigation, and `/exit` tab dismissal | [Plan](../../../plans/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_plan.md) | [Report](../../../reports/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_report.md) | `00017` | — | pending G3 |
-| M07-P05 | Centered modal approval window, session-persistent `Allow`, visible peer-conversation cards (`1`-turn event-driven) & clean receiver chat view, mouse-selection auto-copy & universal right-pane copy, and persistent `[ Directories ]` history (`<`/`>`) + bookmarks toolbox | [Plan](../../../plans/202611/20261113/20261113_01_M07-P05_peer_reply_copy_and_dir_nav_plan.md) | [Report](../../../reports/202611/20261113/20261113_01_M07-P05_peer_reply_copy_and_dir_nav_report.md) | `20261113/00001..00002` | — | pending G3 |
+| M07-P01 | Maximized launch, `Global` general sessions, token/quota reset telemetry, chat session tab bar, and bottom telemetry strip | [Plan](../../../plans/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `00014` | — | done (merged 2026-11-13) |
+| M07-P02 | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview | [Plan](../../../plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | [Report](../../../reports/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_report.md) | `00015` | — | done (merged 2026-11-13) |
+| M07-P03 | Full-pagination `session.past` discovery and one-click `claude`/`codex` resume (local + SSH, `cwd` + `Global`) and `0.2.3` release | [Plan](../../../plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | [Report](../../../reports/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_report.md) | `00016` | — | done (merged 2026-11-13) |
+| M07-P04 | Bidirectional `Claude` <-> `Codex` MCP communication, bordered command/tool cards, Claude `get_usage` `5h`/`Wk` quota, symlink dir/file navigation, and `/exit` tab dismissal | [Plan](../../../plans/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_plan.md) | [Report](../../../reports/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_report.md) | `00017` | — | done (merged 2026-11-13) |
+| M07-P05 | Centered modal approval window, session-persistent `Allow`, visible peer-conversation cards (`1`-turn event-driven) & clean receiver chat view, mouse-selection auto-copy & universal right-pane copy, and persistent `[ Directories ]` history (`<`/`>`) + bookmarks toolbox | [Plan](../../../plans/202611/20261113/20261113_01_M07-P05_peer_reply_copy_and_dir_nav_plan.md) | [Report](../../../reports/202611/20261113/20261113_01_M07-P05_peer_reply_copy_and_dir_nav_report.md) | `20261113/00001..00002` | — | done (merged 2026-11-13) |
 
 ## Gates
 
@@ -82,5 +82,5 @@ into an ergonomic daily workbench while keeping memory around `~25-36 MiB`.
 |---|---|---|
 | G1 milestone approval | Approved 2026-11-12 | Scope and phases `M07-P01` to `M07-P05`, patch version bump `0.2.2` -> `0.2.3` on completion |
 | G2 phase plan approval | Approved 2026-11-12 / 2026-11-13 | Continuous implementation across `M07-P01` to `M07-P05` |
-| G3 inspection acceptance | Pending | Owner inspection of `M07-P01` through `M07-P05` deliverables and screenshots |
-| G4 merge approval | Pending | Owner explicit approval before merging to `main` and pushing |
+| G3 inspection acceptance | Approved 2026-11-13 | Owner inspection acceptance across `M07-P01` through `M07-P05` |
+| G4 merge approval | Approved 2026-11-13 | Fast-forward merged to `main` (`milestone/M07-two-pane-workbench-and-past-sessions`) on 2026-11-13 |

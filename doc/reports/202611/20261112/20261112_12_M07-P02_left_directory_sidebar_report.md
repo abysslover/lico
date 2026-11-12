@@ -1,6 +1,6 @@
 # M07-P02 Report — Two-column workbench left `[ Directories | Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview
 
-- Status: pending G3 inspection
+- Status: done (owner G3 accepted and G4 merged on 2026-11-13)
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M07 — Two-pane tabbed workbench, session telemetry bar, Global general sessions, and paginated past-session resume (`lico 0.2.3`)](../../../milestones/202611/20261112/20261112_04_M07_two_pane_workbench_and_past_sessions_milestone.md)
