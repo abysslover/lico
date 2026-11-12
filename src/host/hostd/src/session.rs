@@ -458,6 +458,7 @@ pub struct Session {
     pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
     pub finished_seq: i64, // last sequence number at which a provider turn finished (`-1` until a turn finishes; `>> ` echo never updates it)
     pub tab_closed: bool, // dismissed from the workbench tab bar (`×`, `/exit`, `/quit`); conversation stays resumable in `Past`
+    pub peer_turn: crate::calls::PeerTurn, // approved agent-to-agent (`mcp__lico__send`) reply routing state
 }
 
 /// How long the count of steps in a row (`incoming_hops`) is held against a shallower text from another session, so that a third session cannot reset a chain
@@ -535,6 +536,7 @@ impl Session {
             made_by: None,
             finished_seq: -1,
             tab_closed: false,
+            peer_turn: Default::default(),
         }
     }
 
@@ -696,6 +698,13 @@ impl Session {
                 self.auto_title = Some(title);
                 crate::registry::mark_dirty();
             }
+        }
+        if matches!(origin, Origin::Person | Origin::Session(0)) {
+            self.peer_turn.clear();
+        } else if matches!(origin, Origin::Session(hops) if hops >= 1) && !(self.made_by.is_some() && self.finished_seq < 0) {
+            self.append(b"[peer turn started]".to_vec());
+        } else if origin == Origin::Host {
+            self.append(b"[host notice]".to_vec());
         }
         crate::echo::append(self, text, origin != Origin::Person);
         let key = self.key(request_id);

@@ -404,6 +404,13 @@ impl super::super::App {
     /// A press of the middle button over the input box: the same paste as Shift+Insert (the primary selection, text only, at the caret, never sent).
     /// Anywhere else, on the release and for the other buttons nothing happens here (false: as before this existed). It does not touch the selected lines.
     pub(super) fn middle_press(&mut self, state: ElementState, button: MouseButton) -> bool {
+        if state == ElementState::Pressed && !self.ui.menu_open.is_some() && self.sidebar_shown() && self.ui.sidebar.tab == 0 {
+            match button {
+                MouseButton::Back => { self.sidebar_nav_step(-1); return true; }
+                MouseButton::Forward => { self.sidebar_nav_step(1); return true; }
+                _ => {}
+            }
+        }
         if !wants_primary(state, button, self.ui.menu_open.is_some(), self.ed.rect, self.ui.mouse) {
             return false;
         }
@@ -415,6 +422,114 @@ impl super::super::App {
         match self.ui.panel.as_mut() {
             Some(p) => p.notice = text.to_string(),
             None => self.ui.flash = Some(text.to_string()),
+        }
+    }
+
+    /// Selected lines in either an open right-pane panel (`Send`, `Files`, `Accounts`, `Start`, etc.) or the active conversation transcript.
+    pub(crate) fn selection_text(&self) -> Option<String> {
+        let (a, b) = self.ui.sel?;
+        let (lo, hi) = (a.min(b), a.max(b));
+        if let Some((_, body)) = self.panel_view() {
+            let lines: Vec<&str> = (lo..=hi).filter_map(|i| body.get(i).map(String::as_str)).collect();
+            return if lines.is_empty() { None } else { Some(lines.join("\n")) };
+        }
+        let view = self.view.as_ref()?;
+        let vis = crate::gui::transcript::compute_visible_transcript(&view.lines, view.lines.len(), self.ui.show_events);
+        let lines: Vec<&str> = vis
+            .iter()
+            .filter(|(raw_idx, _, _, _)| *raw_idx >= lo && *raw_idx <= hi)
+            .map(|(_, _, text, _)| text.as_str())
+            .collect();
+        if lines.is_empty() { None } else { Some(lines.join("\n")) }
+    }
+
+    /// Left-button press inside the right-hand main area (`x >= list_w`, outside controls and editor).
+    pub(crate) fn main_mouse_press(&mut self, x: f32, y: f32) {
+        let idx = self.line_at(y);
+        let in_panel = self.panel_view().is_some();
+        let shift = self.ui.mods.shift_key();
+        if in_panel {
+            if shift {
+                if let Some(i) = idx {
+                    let a = self.ui.sel.map_or(i, |(a, _)| a);
+                    self.ui.sel = Some((a, i));
+                    self.ui.dragging = true;
+                    self.ui.drag_moved = true;
+                }
+                self.ui.drag_origin = None;
+            } else {
+                self.ui.drag_origin = Some((x, y, idx, true));
+                self.ui.drag_moved = false;
+                self.ui.dragging = false;
+            }
+        } else {
+            self.ui.drag_origin = Some((x, y, idx, false));
+            self.ui.drag_moved = shift;
+            match idx {
+                Some(i) => {
+                    let a = if shift { self.ui.sel.map_or(i, |(a, _)| a) } else { i };
+                    self.ui.sel = Some((a, i));
+                    self.ui.dragging = true;
+                }
+                None => {
+                    self.ui.sel = None;
+                    self.ui.dragging = false;
+                }
+            }
+        }
+    }
+
+    /// Cursor movement during a potential or active right-pane drag selection.
+    pub(crate) fn main_mouse_drag(&mut self, x: f32, y: f32) {
+        let thresh = 4.0 * self.ui.scale.max(1.0);
+        if let Some((ox, oy, orig_idx, in_panel)) = self.ui.drag_origin {
+            if !self.ui.drag_moved && (x - ox).hypot(y - oy) >= thresh {
+                self.ui.drag_moved = true;
+                if in_panel && !self.ui.dragging {
+                    if let Some(start) = orig_idx.or_else(|| self.line_at(y)) {
+                        self.ui.sel = Some((start, start));
+                        self.ui.dragging = true;
+                        self.dirty = true;
+                    }
+                }
+            }
+        }
+        if self.ui.dragging {
+            if let Some(idx) = self.line_at(y) {
+                if let Some((a, cur_b)) = self.ui.sel {
+                    if cur_b != idx {
+                        self.ui.sel = Some((a, idx));
+                        self.dirty = true;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Left-button release: activates a stationary single click in panels, or auto-copies a finished mouse selection onto `CLIPBOARD`.
+    pub(crate) fn main_mouse_release(&mut self) {
+        let origin = self.ui.drag_origin.take();
+        let moved = std::mem::take(&mut self.ui.drag_moved);
+        let was_line_drag = std::mem::take(&mut self.ui.dragging);
+        let was_ed_drag = self.ed.selecting;
+        self.ed.finish_drag();
+        if let Some((_, _, orig_idx, true)) = origin {
+            if !moved {
+                self.ui.sel = None;
+                if let Some(idx) = orig_idx {
+                    let _ = self.form_click(idx) || self.panel_click(idx);
+                }
+                self.dirty = true;
+                return;
+            }
+        }
+        let multi_line = self.ui.sel.is_some_and(|(a, b)| a != b);
+        if was_line_drag && (moved || multi_line) && self.selection_text().is_some() {
+            self.copy_selection();
+        } else if was_ed_drag && self.ed.has_selection() {
+            self.copy_selection();
+        } else if was_line_drag || was_ed_drag {
+            self.dirty = true;
         }
     }
 

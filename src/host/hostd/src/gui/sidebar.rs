@@ -32,6 +32,8 @@ pub struct SidebarEntryGeom {
 pub struct SidebarGeom {
     pub dir_tab_rect: Option<Rect>,
     pub past_tab_rect: Option<Rect>,
+    pub back_rect: Option<Rect>, pub forward_rect: Option<Rect>,
+    pub bookmark_toggle_rect: Option<Rect>, pub bookmarks_btn_rect: Option<Rect>,
     pub host_rect: Option<Rect>,
     pub dotfiles_rect: Option<Rect>,
     pub refresh_rect: Option<Rect>,
@@ -46,6 +48,7 @@ pub struct SidebarGeom {
     pub next_rect: Option<Rect>,
     pub entries: Vec<SidebarEntryGeom>,
     pub host_items: Vec<(usize, Rect)>,
+    pub bookmark_items: Vec<super::sidebar_nav::BookmarkItemGeom>,
 }
 
 #[derive(Default)]
@@ -74,6 +77,7 @@ pub struct SidebarState {
     pub load_count: u64,
     pub refresh_count: u64,
     pub last_opened: Option<String>,
+    pub nav: super::sidebar_nav::DirNavState,
     pub past: super::sidebar_past::PastSidebarState,
     pub geom: SidebarGeom,
 }
@@ -208,6 +212,7 @@ impl App {
         }
         self.ui.sidebar.collapsed = !self.ui.sidebar.collapsed;
         self.ui.sidebar.host_popup_open = false;
+        self.ui.sidebar.nav.popup_open = false;
         self.ui.sidebar.filter_focused = false;
         self.ui.composed = None;
         self.ui.flash = Some(if self.ui.sidebar.collapsed {
@@ -267,6 +272,9 @@ impl App {
         }
         self.ui.sidebar.initialized = true;
         self.ui.sidebar.ssh_hosts = self.fetch_ssh_host_aliases();
+        if self.sidebar_restore_initial_nav() {
+            return;
+        }
         if !self.session.is_empty() {
             self.sidebar_sync_to_active_session();
             if !self.ui.sidebar.cwd.is_empty() || self.ui.sidebar.loading.is_some() {
@@ -278,7 +286,7 @@ impl App {
     }
 
     pub(crate) fn sidebar_sync_to_active_session(&mut self) {
-        if !self.sidebar_shown() || self.socket.is_empty() {
+        if !self.sidebar_shown() || self.socket.is_empty() || self.ui.sidebar.nav.suppress_session_sync {
             return;
         }
         self.ui.sidebar.initialized = true;
@@ -288,6 +296,8 @@ impl App {
             if self.ui.sidebar.cwd.is_empty() && self.ui.sidebar.loading.is_none() {
                 let start = self.initial_files_cwd();
                 self.sidebar_start_dir(None, &start, false, false, true);
+            } else {
+                self.sidebar_record_current_location();
             }
             self.past_sync_if_open(false);
             self.dirty = true;
@@ -302,6 +312,8 @@ impl App {
             if !same {
                 let fallback = act_host.is_some() && dir != "~";
                 self.sidebar_start_dir(act_host, &dir, false, false, fallback);
+            } else {
+                self.sidebar_record_current_location();
             }
             self.past_sync_if_open(false);
             self.dirty = true;
@@ -316,6 +328,7 @@ impl App {
     pub(crate) fn sidebar_select_tab(&mut self, tab: u8) {
         let clamped = tab.min(1);
         self.ui.sidebar.host_popup_open = false;
+        self.ui.sidebar.nav.popup_open = false;
         self.ui.sidebar.filter_focused = false;
         if self.ui.sidebar.tab != clamped {
             self.ui.sidebar.tab = clamped;
@@ -328,8 +341,10 @@ impl App {
 
     pub(crate) fn sidebar_select_global(&mut self) {
         self.ui.sidebar.host_popup_open = false;
+        self.ui.sidebar.nav.popup_open = false;
         self.ui.sidebar.filter_focused = false;
         self.ui.sidebar.global_scope = true;
+        self.sidebar_record_current_location();
         self.past_sync_if_open(false);
         self.dirty = true;
     }
@@ -399,6 +414,8 @@ impl App {
         self.ui.sidebar.loading = None;
 
         if reply["ok"] != json!(1) {
+            self.ui.sidebar.nav.stepping = false;
+            self.ui.sidebar.nav.target_page = None;
             let err = reply["error"].as_str().unwrap_or("unknown").to_string();
             let transport_dead = matches!(err.as_str(), "ssh_unreachable" | "host_timeout" | "host_unreachable");
             if fallback_root && !transport_dead {
@@ -429,9 +446,17 @@ impl App {
         self.ui.sidebar.unreachable = false;
         self.ui.sidebar.error = None;
         self.ui.sidebar.load_count += 1;
-        if !keep_page {
-            self.ui.sidebar.page = 0;
-            self.ui.sidebar.filter.clear();
+        if self.ui.sidebar.nav.stepping {
+            self.ui.sidebar.nav.stepping = false;
+            self.ui.sidebar.page = self.ui.sidebar.nav.target_page.take().unwrap_or(0);
+        } else {
+            if let Some(tp) = self.ui.sidebar.nav.target_page.take() {
+                self.ui.sidebar.page = tp;
+            } else if !keep_page {
+                self.ui.sidebar.page = 0;
+                self.ui.sidebar.filter.clear();
+            }
+            self.sidebar_record_current_location();
         }
         self.past_sync_if_open(false);
         self.dirty = true;
@@ -543,15 +568,14 @@ impl App {
     }
 
     pub(crate) fn sidebar_step_page(&mut self, delta: isize) {
-        if delta == 0 {
-            return;
-        }
+        if delta == 0 { return; }
         let filtered_len = self.ui.sidebar.filtered_indices().len();
         let ps = self.ui.sidebar.page_size.max(1);
         let (_, _, cur_p, total_pages) = self.ui.sidebar.page_window(filtered_len, ps);
         let next = (cur_p as isize + delta).clamp(0, total_pages.saturating_sub(1) as isize) as usize;
         if next != self.ui.sidebar.page {
             self.ui.sidebar.page = next;
+            self.sidebar_record_current_location();
             self.dirty = true;
         }
     }
@@ -563,6 +587,7 @@ impl App {
         }
         self.menu_close();
         self.close_files_host_popup();
+        self.close_sidebar_bookmarks_popup();
         self.ui.sidebar.filter_focused = false;
         self.ui.sidebar.ssh_hosts = self.fetch_ssh_host_aliases();
         if self.ui.sidebar.ssh_hosts.is_empty() && self.ui.sidebar.ssh_host.is_none() {
@@ -571,10 +596,7 @@ impl App {
             return;
         }
         let choices = self.ui.sidebar.host_choices();
-        self.ui.sidebar.host_popup_sel = choices
-            .iter()
-            .position(|c| *c == self.ui.sidebar.ssh_host)
-            .unwrap_or(0);
+        self.ui.sidebar.host_popup_sel = choices.iter().position(|c| *c == self.ui.sidebar.ssh_host).unwrap_or(0);
         self.ui.sidebar.sync_popup_scroll(HOST_POPUP_MAX_VIS);
         self.ui.sidebar.host_popup_open = true;
         self.dirty = true;
@@ -598,29 +620,22 @@ impl App {
     }
 
     pub(crate) fn sidebar_popup_click(&mut self, hit: Option<Action>) -> bool {
-        if !self.sidebar_host_popup_open() {
-            return false;
-        }
+        if self.sidebar_nav_popup_click(hit.clone()) { return true; }
+        if !self.sidebar_host_popup_open() { return false; }
         match hit {
             Some(Action::SidebarHostItem(idx)) => self.select_sidebar_host_index(idx),
-            Some(Action::SidebarHost) => self.close_sidebar_host_popup(),
             _ => self.close_sidebar_host_popup(),
         }
         true
     }
 
     pub(crate) fn sidebar_wheel(&mut self, lines: isize) -> bool {
-        if !self.sidebar_shown() || self.ui.sidebar.collapsed {
-            return false;
-        }
+        if !self.sidebar_shown() || self.ui.sidebar.collapsed { return false; }
         let list_w = self.effective_list_w(self.ui.scale);
-        if (self.ui.mouse.0.max(0.0) as usize) >= list_w {
-            return false;
-        }
-        if lines == 0 {
-            return true;
-        }
+        if (self.ui.mouse.0.max(0.0) as usize) >= list_w { return false; }
+        if lines == 0 { return true; }
         let step = -lines;
+        if self.sidebar_nav_wheel(step) { return true; }
         if self.ui.sidebar.host_popup_open {
             let max_idx = self.ui.sidebar.host_choices().len().saturating_sub(1) as isize;
             self.ui.sidebar.host_popup_sel = (self.ui.sidebar.host_popup_sel as isize)
@@ -639,16 +654,13 @@ impl App {
     }
 
     pub(crate) fn sidebar_key(&mut self, event: &KeyEvent) -> bool {
-        if !self.sidebar_shown() {
-            return false;
-        }
+        if !self.sidebar_shown() { return false; }
         let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
         if ctrl && !self.ui.mods.shift_key() && super::key_letter(event) == Some('b') {
-            if !event.repeat {
-                self.toggle_sidebar_collapsed();
-            }
+            if !event.repeat { self.toggle_sidebar_collapsed(); }
             return true;
         }
+        if self.sidebar_nav_key(event) { return true; }
         if self.sidebar_host_popup_open() {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) if !event.repeat => self.close_sidebar_host_popup(),
@@ -671,9 +683,7 @@ impl App {
             }
             return true;
         }
-        if !self.ui.sidebar.filter_focused {
-            return false;
-        }
+        if !self.ui.sidebar.filter_focused { return false; }
         match &event.logical_key {
             Key::Named(NamedKey::Escape) if !event.repeat => {
                 if !self.ui.sidebar.filter.is_empty() {
@@ -697,19 +707,13 @@ impl App {
             }
             Key::Character(s) if !self.ui.mods.control_key() && !self.ui.mods.alt_key() => {
                 for ch in s.chars().filter(|c| !c.is_control() && !super::editor::hidden(*c)) {
-                    if self.ui.sidebar.filter.chars().count() < 64 {
-                        self.ui.sidebar.filter.push(ch);
-                    }
+                    if self.ui.sidebar.filter.chars().count() < 64 { self.ui.sidebar.filter.push(ch); }
                 }
                 self.ui.sidebar.page = 0;
                 self.past_sync_if_open(false);
                 self.dirty = true;
             }
-            _ => {
-                if self.ui.mods.control_key() || self.ui.mods.alt_key() {
-                    return false;
-                }
-            }
+            _ => if self.ui.mods.control_key() || self.ui.mods.alt_key() { return false; },
         }
         true
     }
@@ -725,12 +729,17 @@ impl App {
     pub(crate) fn sidebar_click(&mut self, action: &Action) -> bool {
         match *action {
             Action::SidebarTab(t) => self.sidebar_select_tab(t),
+            Action::SidebarNavBack => self.sidebar_nav_step(-1),
+            Action::SidebarNavForward => self.sidebar_nav_step(1),
+            Action::SidebarBookmarkToggle => self.sidebar_toggle_bookmark(),
+            Action::SidebarBookmarksBtn => self.toggle_sidebar_bookmarks_popup(),
             Action::SidebarHost => self.toggle_sidebar_host_popup(),
             Action::SidebarDotfiles => self.toggle_hidden_files(),
             Action::SidebarRefresh => self.sidebar_refresh(),
             Action::SidebarNewHere => self.sidebar_new_session_here(),
             Action::SidebarFilter => {
                 self.ui.sidebar.host_popup_open = false;
+                self.ui.sidebar.nav.popup_open = false;
                 self.ui.sidebar.filter_focused = true;
                 self.dirty = true;
             }
@@ -745,6 +754,7 @@ impl App {
             Action::SidebarActiveDir => {
                 self.ui.sidebar.global_scope = false;
                 self.ui.sidebar.filter_focused = false;
+                self.sidebar_record_current_location();
                 self.past_sync_if_open(false);
                 self.dirty = true;
             }
@@ -753,11 +763,7 @@ impl App {
             Action::SidebarEntry(idx) => self.sidebar_activate_entry(idx),
             Action::SidebarPastEntry(idx) => self.past_activate_entry(idx),
             Action::SidebarPage(d) => {
-                if self.ui.sidebar.tab == 1 {
-                    self.past_step_page(d);
-                } else {
-                    self.sidebar_step_page(d);
-                }
+                if self.ui.sidebar.tab == 1 { self.past_step_page(d); } else { self.sidebar_step_page(d); }
             }
             _ => return false,
         }

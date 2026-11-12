@@ -56,7 +56,7 @@ impl App {
             let hidden_label = if self.ui.show_hidden { "Hidden: on" } else { "Hidden: off" };
             let (host_label, host_active, host_reason) = self.files_host_toolbar_state();
             let new_here_reason = self.files_new_here_reason();
-            return vec![
+            let mut out = vec![
                 ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
                 ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
                 ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: true, reason: None },
@@ -68,6 +68,10 @@ impl App {
                 ToolBtn { label: "Next >".into(), id: "next_page", cmd: Cmd::FilesNextPage, active: false, reason: if has_next { None } else { Some("already on last page") } },
                 ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
             ];
+            if self.can_copy() {
+                out.push(ToolBtn { label: "Copy".into(), id: "copy", cmd: Cmd::Copy, active: false, reason: None });
+            }
+            return out;
         }
         let peers = self.running_peer_count();
         let send_label = if peers > 0 { format!("Send -> Session ({peers})") } else { "Send -> Session".to_string() };
@@ -113,6 +117,7 @@ impl App {
                     | Cmd::FilesNextPage
                     | Cmd::ToggleHiddenFiles
                     | Cmd::CycleFilesHost
+                    | Cmd::Copy
             )
         {
             self.panel_close();

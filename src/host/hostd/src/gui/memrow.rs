@@ -130,6 +130,7 @@ impl App {
         let popup_changed = match &hit {
             Some(Action::HostItem(idx)) => self.hover_files_host_item(*idx),
             Some(Action::SidebarHostItem(idx)) => self.hover_sidebar_host_item(*idx),
+            Some(Action::SidebarBookmarkItem(idx)) => self.hover_sidebar_bookmark_item(*idx),
             _ => false,
         };
         let over = match hit {

@@ -77,6 +77,8 @@ pub fn classify(text: &str) -> LineKind {
                     | "turn completed"
                     | "exit 0"
                     | "account changed"
+                    | "peer turn started"
+                    | "host notice"
             ) {
                 return LineKind::ControlEvent;
             }
@@ -101,6 +103,7 @@ pub fn classify(text: &str) -> LineKind {
     }
 }
 
+#[cfg(test)]
 pub fn is_hidden_control(text: &str) -> bool {
     classify(text) == LineKind::ControlEvent
 }
@@ -169,7 +172,70 @@ pub fn compute_visible_transcript(
 ) -> Vec<(usize, i64, String, u16)> {
     let mut out: Vec<(usize, i64, String, u16)> = Vec::new();
     let mut in_cmd = false;
+    let mut in_peer_turn = false;
+    let mut in_peer_echo = false;
+    let mut in_host_notice = false;
+    let is_echo_line = |t: &str| {
+        !t.starts_with(crate::leads::TAG)
+            && (t == ">>"
+                || t.starts_with(">> ")
+                || t.strip_prefix('[')
+                    .and_then(|s| s.split_once(']'))
+                    .is_some_and(|(note, after)| (after.is_empty() || after.starts_with(' ')) && fold_marker(note)))
+    };
     for (i, (seq, text)) in view_lines.iter().take(raw_end).enumerate() {
+        if !text.starts_with(crate::leads::TAG) {
+            if text == "[peer turn started]" {
+                in_peer_turn = true;
+                in_peer_echo = true;
+                in_host_notice = false;
+                in_cmd = false;
+                if !show_events {
+                    continue;
+                }
+            } else if text == "[host notice]" {
+                in_host_notice = true;
+                in_cmd = false;
+                if !show_events {
+                    continue;
+                }
+            }
+        }
+        if in_host_notice {
+            if is_echo_line(text) {
+                if !show_events {
+                    continue;
+                }
+            } else {
+                in_host_notice = false;
+            }
+        }
+        if in_peer_turn {
+            if in_peer_echo && !is_echo_line(text) {
+                in_peer_echo = false;
+            }
+            if !in_peer_echo && is_user_prompt(text) {
+                in_peer_turn = false;
+            } else {
+                let ends_turn = !text.starts_with(crate::leads::TAG)
+                    && (text == "[turn completed]"
+                        || text == "[turn interrupted]"
+                        || text == "[session closed]"
+                        || text == "[provider disconnected]"
+                        || text.starts_with("[turn failed]")
+                        || text.starts_with("[turn failed "));
+                if ends_turn {
+                    in_peer_turn = false;
+                    in_peer_echo = false;
+                    in_cmd = false;
+                    if !show_events {
+                        continue;
+                    }
+                } else if !show_events {
+                    continue;
+                }
+            }
+        }
         let kind = classify(text);
         if is_exit_note(text) {
             in_cmd = false;
@@ -352,10 +418,9 @@ impl App {
 
     pub(crate) fn shown_lines_dump(&self) -> Vec<String> {
         let Some(view) = self.view.as_ref() else { return Vec::new() };
-        view.lines
-            .iter()
-            .filter(|(_, text)| self.ui.show_events || !is_hidden_control(text))
-            .map(|(_, text)| text.clone())
+        compute_visible_transcript(&view.lines, view.lines.len(), self.ui.show_events)
+            .into_iter()
+            .map(|(_, _, text, _)| text)
             .collect()
     }
 }
@@ -465,5 +530,42 @@ mod tests {
         let base = AttrsList::new(&cosmic_text::Attrs::new());
         assert_eq!(tint(base.clone(), "$ echo hi").defaults().color_opt, Some(CMD_TEXT_INK));
         assert_eq!(tint_role(base, "skill header line 1", by_text("skill header line 1")).defaults().color_opt, Some(CMD_OUT_INK));
+    }
+
+    #[test]
+    fn multiline_peer_turn_and_host_notice_echo_are_hidden_until_turn_completes_unless_events_shown() {
+        let raw: VecDeque<(i64, String)> = [
+            ">> 사용자가 직접 질문한 항목",
+            "사람 질문에 대한 답변입니다.",
+            "[turn completed]",
+            "[peer turn started]",
+            ">> [from session 'ClaudeMain' (sd220fe) | 05:31 | message | 121 B]",
+            ">> 안녕하세요 Codex! 첫 줄입니다.",
+            ">> 두 번째 줄입니다.",
+            "[turn started]",
+            "반갑습니다 Claude!",
+            "[turn completed]",
+            "[host notice]",
+            ">> [peer reply from 'CodexWorker' (s999999) | 05:31 | 24 B]",
+            ">> 반갑습니다 Claude!",
+            "Codex로부터 답장이 도착했습니다.",
+            "[turn completed]",
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(i, s)| (i as i64, s.to_string()))
+        .collect();
+
+        let hidden: Vec<String> = compute_visible_transcript(&raw, raw.len(), false).into_iter().map(|(_, _, t, _)| t).collect();
+        assert_eq!(
+            hidden,
+            vec![
+                ">> 사용자가 직접 질문한 항목",
+                "사람 질문에 대한 답변입니다.",
+                "Codex로부터 답장이 도착했습니다.",
+            ]
+        );
+        let shown = compute_visible_transcript(&raw, raw.len(), true);
+        assert_eq!(shown.len(), raw.len());
     }
 }

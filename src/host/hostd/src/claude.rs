@@ -69,6 +69,7 @@ fn record_text(s: &mut Session, prefix: &str, text: &str) {
 
 /// A line of what the agent said: tagged when it begins like a record of the host (see `leads`).
 fn record_agent(s: &mut Session, line: &str) {
+    s.peer_turn.push_line(line);
     s.append(crate::leads::agent_record(line, MAX_RECORD).into_bytes());
 }
 
@@ -436,6 +437,7 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
     }
     s.heard();
     let mut notify_event: Option<(bool, String, Option<String>, Option<String>)> = None; // (is_approval, id, name, cwd)
+    let mut peer_done = None;
     match message["type"].as_str() {
         Some("system") if message["subtype"] == "init" => {
             // the id is handed back as an argument on resume: letters, digits, dash and underscore only, never a leading dash
@@ -518,8 +520,12 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
                 for error in message["errors"].as_array().into_iter().flatten().take(MAX_RESULT_LINES) {
                     record_text(&mut s, "[error] ", error.as_str().unwrap_or(""));
                 }
+                s.peer_turn.drop_active();
             } else {
                 record(&mut s, "[turn completed]");
+                let label = crate::transfer::session_label(&s);
+                let sid = s.id.clone();
+                peer_done = s.peer_turn.finish(&sid, label);
             }
             s.mark_finished();
             if let Some(link) = s.claude.as_mut() {
@@ -539,6 +545,7 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
         _ => {}
     }
     drop(s);
+    crate::calls::deliver_peer_reply(shared, peer_done);
     if let Some((is_approval, id, name, cwd)) = notify_event {
         if is_approval {
             crate::notify::on_approval_needed(shared, &id, name.as_deref(), cwd.as_deref());

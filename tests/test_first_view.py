@@ -165,18 +165,19 @@ def test_only_selected_text_reaches_the_clipboard_and_only_on_a_user_action():
             xdo(xvfb.display, "mousemove", "--window", wid, "500", str(int(y0)), "mousedown", "1", "mousemove", "--window", wid, "500", str(int(y1)), "mouseup", "1")
             state = ui(client, lambda u: u["selection"])
             assert state["selection"].count("\n") == 2 and all(part.startswith("line ") for part in state["selection"].split("\n"))
-            assert reader.selection_owner("CLIPBOARD") == 0                                  # selecting is not copying
-            assert state["copied"] == 0
-            xdo(xvfb.display, "key", "ctrl+shift+c")                                          # the user's own chord
-            wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0)
+            wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0)                        # mouse drag-selection auto-copies to CLIPBOARD
+            assert reader.selection_text("CLIPBOARD") == state["selection"]
+            assert state["copied"] == 1 and reader.selection_owner("PRIMARY") == 0
+            xdo(xvfb.display, "key", "ctrl+shift+c")                                          # explicit chord also copies cleanly
+            wait_for(lambda: ui(client)["copied"] == 2)
             assert reader.selection_text("CLIPBOARD") == state["selection"]                   # exactly the selected lines, nothing else
-            assert ui(client)["copied"] == 1 and reader.selection_owner("PRIMARY") == 0
+            assert reader.selection_owner("PRIMARY") == 0
             # with nothing selected the chord copies nothing, and the clipboard keeps what it had
             xdo(xvfb.display, "key", "Escape")
             ui(client, lambda u: u["selection"] is None)
             xdo(xvfb.display, "key", "ctrl+shift+c")
             time.sleep(0.15)
-            assert ui(client)["copied"] == 1 and reader.selection_text("CLIPBOARD") == state["selection"]
+            assert ui(client)["copied"] == 2 and reader.selection_text("CLIPBOARD") == state["selection"]
         finally:
             if reader:
                 reader.close()

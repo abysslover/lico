@@ -13,6 +13,7 @@ mod scroll;
 #[cfg(test)]
 mod scroll_oracle;
 mod sidebar;
+mod sidebar_nav;
 mod sidebar_past;
 mod sidebar_render;
 mod transcript;

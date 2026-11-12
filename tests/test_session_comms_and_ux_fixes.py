@@ -258,7 +258,7 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                 assert not any(b["id"] == "copy" for b in ui0["toolbar"]["buttons"])
                 assert reader.selection_owner("CLIPBOARD") == 0 and reader.selection_owner("PRIMARY") == 0
 
-                # Drag mouse across transcript lines: selecting does NOT auto-copy, and lights up `Copy` + `Send -> Session (1)`!
+                # Drag mouse across transcript lines: mouse release auto-copies to CLIPBOARD, and lights up `Copy` + `Send -> Session (1)`!
                 lines = ui0["layout"]["lines"]
                 y0 = (lines[1][0] + lines[1][1]) / 2.0
                 y1 = (lines[2][0] + lines[2][1]) / 2.0
@@ -273,14 +273,17 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                     if (u := w.ui()) and u["selection"] and any(b["id"] == "copy" for b in u["toolbar"]["buttons"])
                     else None
                 )
-                assert reader.selection_owner("CLIPBOARD") == 0 and reader.selection_owner("PRIMARY") == 0
+                wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0 or None)
+                assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
+                assert reader.selection_owner("PRIMARY") == 0
+                copied_after_drag = ui_sel["copied"]
                 copy_btn = next(b for b in ui_sel["toolbar"]["buttons"] if b["id"] == "copy")
                 send_btn = next(b for b in ui_sel["toolbar"]["buttons"] if b["id"] == "send_to")
                 assert copy_btn["enabled"] is True and send_btn["enabled"] is True
 
                 # Click toolbar `Copy`: owns CLIPBOARD with exact UTF-8 selection, leaves PRIMARY untouched
                 w.click(*_centre(copy_btn["rect"]))
-                wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0 or None)
+                wait_for(lambda: w.ui()["copied"] > copied_after_drag or None)
                 assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
                 assert reader.selection_owner("PRIMARY") == 0
 

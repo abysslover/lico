@@ -124,6 +124,7 @@ impl App {
         self.ui.saved_cwd = settings["last_cwd"].as_str().unwrap_or("").to_string();
         self.ui.saved_view = settings["last_view"].as_str().unwrap_or("start").to_string();
         self.ui.saved_session = settings["last_session"].as_str().unwrap_or("").to_string();
+        self.sync_nav_from_settings(settings);
     }
 
     /// Persist `last_cwd`, `last_view`, and/or `last_session` to the host (`settings.set`) when running as `lico gui`.
@@ -187,6 +188,7 @@ impl App {
     }
 
     pub(crate) fn flush_workspace_state(&mut self) {
+        self.flush_sidebar_nav_state();
         if let Some(cwd) = self
             .ui
             .panel
@@ -221,8 +223,11 @@ impl App {
             "session" => {
                 let sid = self.ui.saved_session.clone();
                 if !sid.is_empty() && self.ui.rows.iter().any(|r| r.session == sid && (!self.tabs_shown() || !r.tab_closed)) {
+                    let keep_nav = !self.ui.sidebar.nav.history.is_empty();
+                    self.ui.sidebar.nav.suppress_session_sync = keep_nav;
                     self.switch_to(&sid);
-                } else if !self.ui.saved_cwd.is_empty() {
+                    self.ui.sidebar.nav.suppress_session_sync = false;
+                } else if !self.ui.saved_cwd.is_empty() && !self.sidebar_shown() {
                     let dir = self.ui.saved_cwd.clone();
                     self.files_open_at(&dir);
                 }

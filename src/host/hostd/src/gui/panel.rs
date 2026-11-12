@@ -36,6 +36,7 @@ pub(crate) enum AsyncJob {
     AccountCheck { req_id: u64, account: String },
     SessionStart { req_id: u64, created_cwd: Option<String> },
     SidebarDir { req_id: u64, ssh_host: Option<String>, dir: String, keep_page: bool, fallback_root: bool },
+    SidebarNavSave,
     SidebarPast { req_id: u64, scope_key: String, page: usize },
     PastResume { req_id: u64, created_cwd: Option<String> },
 }
@@ -146,6 +147,7 @@ impl App {
             }
             AsyncJob::SessionStart { req_id, created_cwd } => self.on_form_start_done(req_id, created_cwd, done.reply),
             AsyncJob::SidebarDir { .. } => self.on_sidebar_async(done.job, done.reply),
+            AsyncJob::SidebarNavSave => self.on_sidebar_nav_saved(done.reply),
             AsyncJob::SidebarPast { .. } | AsyncJob::PastResume { .. } => self.on_past_async(done.job, done.reply),
         }
     }
@@ -171,6 +173,7 @@ impl App {
     pub(crate) fn panel_open(&mut self, step: Step) {
         self.search_close();
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
+        (self.ui.sel, self.ui.dragging, self.ui.drag_origin, self.ui.drag_moved) = (None, false, None, false);
         let stash = self.ed.take();
         self.preedit.clear();
         self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), pending_check_req: 0, login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
@@ -183,6 +186,7 @@ impl App {
 
     pub(crate) fn panel_close(&mut self) {
         let closed = self.ui.panel.is_some();
+        (self.ui.sel, self.ui.dragging, self.ui.drag_origin, self.ui.drag_moved) = (None, false, None, false);
         if let Some(p) = self.ui.panel.take() {
             if p.step == Step::Login && !p.account.is_empty() {
                 self.host_call(json!({"op": "account.login.cancel", "account": p.account})); // leaving the panel ends an unfinished sign-in
@@ -519,7 +523,7 @@ impl App {
             // chords work while the input line is taking a code
             let on_login = self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Login);
             match ch {
-                'c' if on_login => self.login_address(true),
+                'c' if on_login && self.ui.sel.is_none() => self.login_address(true),
                 'o' if on_login => self.login_address(false),
                 _ => return false,
             }

@@ -130,13 +130,7 @@ impl App {
 
     /// The size of the selected lines as they would be sent, without building them.
     fn selected_size(&self) -> usize {
-        let (Some((a, b)), Some(view)) = (self.ui.sel, self.view.as_ref()) else { return 0 };
-        (a.min(b)..=a.max(b))
-            .filter_map(|i| view.lines.get(i).map(|l| l.1.as_str()))
-            .filter(|t| self.ui.show_events || !super::super::transcript::is_hidden_control(t))
-            .map(|t| t.len() + 1)
-            .sum::<usize>()
-            .saturating_sub(1)
+        self.selection_text().map_or(0, |s| s.len())
     }
 
     /// Why a text cannot be sent now (the menu greys the entry with this), if it cannot.

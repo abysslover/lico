@@ -39,6 +39,12 @@ pub enum Action {
     SidebarEntry(usize),
     SidebarPastEntry(usize),
     SidebarPage(isize),
+    SidebarNavBack,
+    SidebarNavForward,
+    SidebarBookmarkToggle,
+    SidebarBookmarksBtn,
+    SidebarBookmarkItem(usize),
+    SidebarBookmarkRemove(usize),
     Allow,
     Deny,
     StopRealScreen,
@@ -151,4 +157,58 @@ impl Controls {
 /// Fill a box (used for backgrounds that belong to a control but carry no text).
 pub fn fill(buf: &mut [u32], width: usize, height: usize, r: Rect, color: u32) {
     rect(buf, width, height, r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32, color);
+}
+
+/// Wrap `text` into lines of at most `max_cols` display columns (`2` for wide CJK/emoji, `1` otherwise),
+/// breaking at spaces when possible so approval prompts never run under the right-aligned Allow/Deny buttons.
+pub fn wrap_cols(text: &str, max_cols: usize) -> Vec<String> {
+    let cap = max_cols.max(12);
+    let col_w = |c: char| if super::editor::wide(c) { 2 } else { 1 };
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut cur_cols = 0usize;
+    let mut last_space: Option<(usize, usize)> = None; // (byte_pos_of_space, cols_before_space)
+    for ch in text.chars() {
+        let w = col_w(ch);
+        if cur_cols + w > cap && !cur.is_empty() {
+            if ch == ' ' {
+                out.push(std::mem::take(&mut cur));
+                cur_cols = 0;
+                last_space = None;
+                continue;
+            }
+            if let Some((sp_byte, _)) = last_space.take() {
+                let tail = cur[sp_byte + 1..].to_string();
+                cur.truncate(sp_byte);
+                out.push(std::mem::take(&mut cur));
+                cur_cols = tail.chars().map(col_w).sum();
+                cur = tail;
+            } else {
+                out.push(std::mem::take(&mut cur));
+                cur_cols = 0;
+            }
+        }
+        if ch == ' ' && !cur.is_empty() {
+            last_space = Some((cur.len(), cur_cols));
+        }
+        cur.push(ch);
+        cur_cols += w;
+    }
+    if !cur.is_empty() || out.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Paint the card banner behind a pending approval prompt (`[x0, y0, width, y1]`) before blitting text.
+pub fn paint_approval_banner(buf: &mut [u32], width: usize, height: usize, x0: usize, span: Option<(f32, f32)>, scale: f32) {
+    let Some((y0, y1)) = span else { return };
+    if y1 <= y0 || x0 >= width {
+        return;
+    }
+    let rail = (3.0 * scale.max(1.0)).round().max(2.0);
+    fill(buf, width, height, [x0 as f32, y0, width as f32, y1], 0xFF28_2216);
+    fill(buf, width, height, [x0 as f32, y0, width as f32, (y0 + 1.0).min(y1)], 0xFF4E_3F22);
+    fill(buf, width, height, [x0 as f32, (y1 - 1.0).max(y0), width as f32, y1], 0xFF4E_3F22);
+    fill(buf, width, height, [x0 as f32, y0, (x0 as f32 + rail).min(width as f32), y1], 0xFFE5_A93C);
 }

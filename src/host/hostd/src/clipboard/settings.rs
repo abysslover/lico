@@ -15,7 +15,10 @@ use super::open::open_regular;
 use crate::provider_record::O_NOFOLLOW;
 
 /// The most bytes of the settings file; a larger file is ignored.
-pub const MAX_SETTINGS_BYTES: u64 = 4096;
+pub const MAX_SETTINGS_BYTES: u64 = 32768;
+
+/// Maximum persisted `[ Directories ]` navigation history items and bookmarks.
+pub const MAX_DIR_NAV: usize = 48;
 
 /// Default, minimum, and maximum logical text sizes in `lico gui`.
 pub const DEFAULT_FONT_PX: i64 = 14;
@@ -35,6 +38,9 @@ pub struct Patch<'a> {
     pub last_view: Option<&'a str>,
     pub last_session: Option<&'a str>,
     pub show_hidden: Option<bool>,
+    pub dir_history: Option<&'a Vec<Value>>,
+    pub dir_history_idx: Option<i64>,
+    pub dir_bookmarks: Option<&'a Vec<Value>>,
 }
 
 impl<'a> Patch<'a> {
@@ -48,8 +54,89 @@ impl<'a> Patch<'a> {
             last_view: map.get("last_view").and_then(Value::as_str),
             last_session: map.get("last_session").and_then(Value::as_str),
             show_hidden: map.get("show_hidden").and_then(Value::as_bool),
+            dir_history: map.get("dir_history").and_then(Value::as_array),
+            dir_history_idx: map.get("dir_history_idx").and_then(Value::as_i64),
+            dir_bookmarks: map.get("dir_bookmarks").and_then(Value::as_array),
         }
     }
+}
+
+fn valid_dir_nav_item(value: &Value, with_label: bool) -> bool {
+    let Some(obj) = value.as_object() else { return false };
+    let required: &[&str] = if with_label {
+        &["cwd", "global", "page", "label"]
+    } else {
+        &["cwd", "global", "page"]
+    };
+    if !required.iter().all(|k| obj.contains_key(*k)) {
+        return false;
+    }
+    obj.iter().all(|(k, v)| match k.as_str() {
+        "cwd" => matches!(v, Value::String(s) if s.is_empty() || crate::folders::valid_path_shape(s)),
+        "global" => v.is_boolean(),
+        "page" => v.as_i64().is_some_and(|n| (0..=10_000).contains(&n)),
+        "ssh_host" => matches!(v, Value::Null) || matches!(v, Value::String(s) if crate::ssh::valid_ssh_host(s)),
+        "label" if with_label => matches!(
+            v,
+            Value::String(s)
+                if !s.is_empty()
+                    && s.chars().count() <= 80
+                    && !s.chars().any(crate::folders::refused_char)
+                    && !crate::folders::shows_nothing(s)
+        ),
+        _ => false,
+    })
+}
+
+pub fn valid_dir_history_array(value: &Value) -> bool {
+    matches!(value, Value::Array(arr) if arr.len() <= MAX_DIR_NAV && arr.iter().all(|v| valid_dir_nav_item(v, false)))
+}
+
+pub fn valid_dir_bookmarks_array(value: &Value) -> bool {
+    matches!(value, Value::Array(arr) if arr.len() <= MAX_DIR_NAV && arr.iter().all(|v| valid_dir_nav_item(v, true)))
+}
+
+fn is_state_dir_path(settings_file: &Path, raw: &str) -> bool {
+    if raw.is_empty() {
+        return false;
+    }
+    let Some(state_dir) = settings_file.parent() else { return false };
+    let p = Path::new(raw);
+    if p == state_dir || p.starts_with(state_dir) {
+        return true;
+    }
+    if let Ok(state_canon) = std::fs::canonicalize(state_dir) {
+        if p == state_canon || p.starts_with(&state_canon) {
+            return true;
+        }
+        if let Ok(p_canon) = std::fs::canonicalize(p) {
+            if p_canon == state_canon || p_canon.starts_with(&state_canon) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn clean_dir_nav_entries(path: &Path, arr: &[Value], with_label: bool) -> Vec<Value> {
+    arr.iter()
+        .filter(|v| valid_dir_nav_item(v, with_label))
+        .filter(|v| {
+            let obj = v.as_object().unwrap();
+            let global = obj.get("global").and_then(Value::as_bool).unwrap_or(false);
+            let cwd = obj.get("cwd").and_then(Value::as_str).unwrap_or("");
+            let ssh = obj.get("ssh_host").and_then(Value::as_str).filter(|s| !s.is_empty());
+            if !global && cwd.is_empty() {
+                return false;
+            }
+            if ssh.is_none() && !cwd.is_empty() && (!Path::new(cwd).is_absolute() || is_state_dir_path(path, cwd)) {
+                return false;
+            }
+            true
+        })
+        .take(MAX_DIR_NAV)
+        .cloned()
+        .collect()
 }
 
 pub fn valid_session_ref(text: &str) -> bool {
@@ -172,6 +259,26 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     if let Some(sid) = last_session_value(&path) {
         out["last_session"] = Value::String(sid);
     }
+    if let Some(map) = read_object(&path) {
+        if let Some(arr) = map.get("dir_history").and_then(Value::as_array) {
+            let cleaned = clean_dir_nav_entries(&path, arr, false);
+            if !cleaned.is_empty() {
+                let raw_idx = map
+                    .get("dir_history_idx")
+                    .and_then(Value::as_i64)
+                    .unwrap_or((cleaned.len() - 1) as i64);
+                let idx = raw_idx.clamp(0, (cleaned.len() - 1) as i64);
+                out["dir_history"] = Value::Array(cleaned);
+                out["dir_history_idx"] = json!(idx);
+            }
+        }
+        if let Some(arr) = map.get("dir_bookmarks").and_then(Value::as_array) {
+            let cleaned = clean_dir_nav_entries(&path, arr, true);
+            if !cleaned.is_empty() {
+                out["dir_bookmarks"] = Value::Array(cleaned);
+            }
+        }
+    }
     out
 }
 
@@ -196,6 +303,9 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
         && patch.last_view.is_none()
         && patch.last_session.is_none()
         && patch.show_hidden.is_none()
+        && patch.dir_history.is_none()
+        && patch.dir_history_idx.is_none()
+        && patch.dir_bookmarks.is_none()
     {
         return Err("bad_request");
     }
@@ -221,6 +331,21 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
     }
     if let Some(cwd) = patch.last_cwd {
         if !cwd.is_empty() && (!crate::folders::valid_path_shape(cwd) || !Path::new(cwd).is_absolute()) {
+            return Err("bad_request");
+        }
+    }
+    if let Some(arr) = patch.dir_history {
+        if arr.len() > MAX_DIR_NAV || !arr.iter().all(|v| valid_dir_nav_item(v, false)) {
+            return Err("bad_request");
+        }
+    }
+    if let Some(idx) = patch.dir_history_idx {
+        if !(0..MAX_DIR_NAV as i64).contains(&idx) {
+            return Err("bad_request");
+        }
+    }
+    if let Some(arr) = patch.dir_bookmarks {
+        if arr.len() > MAX_DIR_NAV || !arr.iter().all(|v| valid_dir_nav_item(v, true)) {
             return Err("bad_request");
         }
     }
@@ -267,6 +392,30 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
             map.insert("show_hidden".into(), Value::Bool(true));
         } else {
             map.remove("show_hidden");
+        }
+    }
+    if let Some(arr) = patch.dir_history {
+        let cleaned = clean_dir_nav_entries(&path, arr, false);
+        if cleaned.is_empty() {
+            map.remove("dir_history");
+            map.remove("dir_history_idx");
+        } else {
+            map.insert("dir_history".into(), Value::Array(cleaned));
+        }
+    }
+    if let Some(idx) = patch.dir_history_idx {
+        if map.get("dir_history").and_then(Value::as_array).is_some_and(|a| !a.is_empty()) {
+            map.insert("dir_history_idx".into(), json!(idx));
+        } else {
+            map.remove("dir_history_idx");
+        }
+    }
+    if let Some(arr) = patch.dir_bookmarks {
+        let cleaned = clean_dir_nav_entries(&path, arr, true);
+        if cleaned.is_empty() {
+            map.remove("dir_bookmarks");
+        } else {
+            map.insert("dir_bookmarks".into(), Value::Array(cleaned));
         }
     }
     let mut text = Value::Object(map).to_string();
@@ -341,6 +490,26 @@ mod tests {
 
         assert_eq!(update_settings(&handoff, Patch { last_view: Some("bogus"), ..Default::default() }), Err("bad_request"));
         assert_eq!(update_settings(&handoff, Patch { last_session: Some("bad/id"), ..Default::default() }), Err("bad_request"));
+
+        // Directory navigation history and bookmarks round-trip and drop state-folder entries.
+        let hist = vec![
+            json!({"cwd": "", "global": true, "page": 0}),
+            json!({"cwd": inside, "global": false, "page": 0}),
+            json!({"cwd": "/var/tmp", "global": false, "page": 2}),
+        ];
+        let bms = vec![json!({"cwd": "/var/tmp", "global": false, "page": 2, "label": "tmp (p.3)"})];
+        let nav_rep = update_settings(
+            &handoff,
+            Patch { dir_history: Some(&hist), dir_history_idx: Some(2), dir_bookmarks: Some(&bms), ..Default::default() },
+        )
+        .unwrap();
+        assert_eq!(nav_rep["settings"]["dir_history"].as_array().unwrap().len(), 2);
+        assert_eq!(nav_rep["settings"]["dir_history_idx"], json!(1));
+        assert_eq!(nav_rep["settings"]["dir_bookmarks"][0]["label"], json!("tmp (p.3)"));
+
+        let bad_bm = vec![json!({"cwd": "/var/tmp", "global": false, "page": 0, "label": "   "})];
+        assert_eq!(update_settings(&handoff, Patch { dir_bookmarks: Some(&bad_bm), ..Default::default() }), Err("bad_request"));
+
         let _ = std::fs::remove_dir_all(&root);
     }
 }

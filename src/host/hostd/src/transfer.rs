@@ -142,7 +142,7 @@ pub fn header(who: Option<(&str, &str)>, hhmm: &str, kind: &str, size: &str) -> 
     }
 }
 
-fn defused(text: &str) -> String {
+pub(crate) fn defused(text: &str) -> String {
     text.split_inclusive('\n').map(|piece| piece.strip_suffix('\n').map_or_else(|| defuse(piece), |line| defuse(line) + "\n")).collect()
 }
 
@@ -305,8 +305,11 @@ fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str
         None => format!("{}\n{body}", header(who, &hhmm, kind, &plain)),
     };
     let request_id = format!("x-{}", core::random_hex(8));
+    let sender_id = sender.as_ref().map(|s| s.id.as_str());
+    crate::calls::before_peer_deliver(shared, sender_id, to, by);
     let origin = if sender.is_some() { Origin::Session(hops) } else { Origin::Person };
     let res = core::input(shared, to, None, &request_id, &delivered, origin, None);
+    crate::calls::after_peer_deliver(shared, sender_id, to, by, res.is_ok());
     let file_path = stored.map(|(_, path)| path);
     drop(delivered);
     drop(body);

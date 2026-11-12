@@ -107,6 +107,31 @@ COMMON_REPLY_OPTIONAL = {"id": {"type": STR, "max_length": 64}}
 _V = {"type": INT, "enum": [PROTOCOL]}
 _OK = {"type": INT, "enum": [1]}
 
+MAX_DIR_NAV = 48
+
+DIR_HISTORY_ITEM = _obj(
+    {
+        "cwd": {"type": STR, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
+        "global": {"type": BOOL},
+        "page": {"type": INT, "minimum": 0, "maximum": 10000},
+    },
+    {
+        "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
+    },
+)
+
+DIR_BOOKMARK_ITEM = _obj(
+    {
+        "cwd": {"type": STR, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
+        "global": {"type": BOOL},
+        "page": {"type": INT, "minimum": 0, "maximum": 10000},
+        "label": {"type": STR, "min_length": 1, "max_length": 80, "no_control": True, "no_hidden": True, "no_blank": True},
+    },
+    {
+        "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
+    },
+)
+
 SETTINGS_BODY = _obj(
     {"clipboard_write": {"type": BOOL}, "notifications": {"type": BOOL}, "group_by": {"type": STR, "enum": ["account", "workspace"]}, "font_px": {"type": INT, "minimum": 12, "maximum": 20}},
     {
@@ -114,6 +139,9 @@ SETTINGS_BODY = _obj(
         "last_view": {"type": STR, "enum": ["start", "files", "session"]},
         "last_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
         "show_hidden": {"type": BOOL},
+        "dir_history": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_HISTORY_ITEM},
+        "dir_history_idx": {"type": INT, "minimum": 0, "maximum": MAX_DIR_NAV - 1},
+        "dir_bookmarks": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_BOOKMARK_ITEM},
     },
 )
 
@@ -402,6 +430,9 @@ REQUESTS = {
             "last_view": {"type": STR, "enum": ["start", "files", "session"]},
             "last_session": {"type": STR, "max_length": 64, "charset": "id"},
             "show_hidden": {"type": BOOL},
+            "dir_history": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_HISTORY_ITEM},
+            "dir_history_idx": {"type": INT, "minimum": 0, "maximum": MAX_DIR_NAV - 1},
+            "dir_bookmarks": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_BOOKMARK_ITEM},
         },
     ),
     "folder.git": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True}},
@@ -489,6 +520,8 @@ def _check(value, spec: dict, path: str, errors: list[str]) -> None:
     if isinstance(value, list):
         if "length" in spec and len(value) != spec["length"]:
             errors.append(f"{path}: length {len(value)}")
+        if "max_items" in spec and len(value) > spec["max_items"]:
+            errors.append(f"{path}: more than {spec['max_items']} items")
         for index, item in enumerate(value):
             if "items" in spec:
                 _check(item, spec["items"], f"{path}[{index}]", errors)
@@ -525,7 +558,22 @@ def validate_request(op: str, message: dict) -> list[str]:
     validate_object(body, REQUESTS[op], "$", errors)
     if op == "transfer.send":
         errors += _transfer_shape(body)
-    if op == "settings.set" and not any(k in body for k in ("clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden")):
+    if op == "settings.set" and not any(
+        k in body
+        for k in (
+            "clipboard_write",
+            "notifications",
+            "group_by",
+            "font_px",
+            "last_cwd",
+            "last_view",
+            "last_session",
+            "show_hidden",
+            "dir_history",
+            "dir_history_idx",
+            "dir_bookmarks",
+        )
+    ):
         errors.append("$.settings.set: at least one setting field required")
     if op == "session.past" and "cwd" in body and body.get("global") is True:
         errors.append("$.session.past: cwd and global=true are mutually exclusive")

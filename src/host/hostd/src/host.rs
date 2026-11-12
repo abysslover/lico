@@ -46,7 +46,7 @@ fn refuse(message: &str) -> ! {
 }
 
 pub fn run(args: Vec<String>) {
-    let arg = |name: &str, default: &str| args.windows(2).find(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
+    let arg = |name: &str, default: &str| args.windows(2).rfind(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
         eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P|auto --http-token-file FILE]");

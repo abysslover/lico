@@ -165,7 +165,10 @@ fn record_text(s: &mut Session, prefix: &str, text: &str) {
 }
 
 /// A line of what the agent said or a command printed: tagged when it begins like a record of the host (see `leads`).
-fn record_agent(s: &mut Session, line: &str) {
+fn record_agent(s: &mut Session, line: &str, is_agent_msg: bool) {
+    if is_agent_msg {
+        s.peer_turn.push_line(line);
+    }
     s.append(crate::leads::agent_record(line, MAX_RECORD).into_bytes());
 }
 
@@ -470,6 +473,7 @@ fn handle_message(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, mess
         return;
     }
     let mut notify_event: Option<(bool, String, Option<String>, Option<String>)> = None;
+    let mut peer_done = None;
     match (method, message.get("id")) {
         (None, Some(id)) => response(&mut s, id, message, cwd),
         (Some(method), Some(id)) => {
@@ -478,13 +482,22 @@ fn handle_message(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, mess
             }
         }
         (Some(method), None) => {
-            if notification(&mut s, method, message.get("params").unwrap_or(&Value::Null)) {
+            let params = message.get("params").unwrap_or(&Value::Null);
+            if notification(&mut s, method, params) {
+                if params.pointer("/turn/status").and_then(Value::as_str) == Some("completed") {
+                    let label = crate::transfer::session_label(&s);
+                    let sid = s.id.clone();
+                    peer_done = s.peer_turn.finish(&sid, label);
+                } else {
+                    s.peer_turn.drop_active();
+                }
                 notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
             }
         }
         _ => {}
     }
     drop(s);
+    crate::calls::deliver_peer_reply(shared, peer_done);
     if let Some((is_approval, id, name, cwd)) = notify_event {
         if is_approval {
             crate::notify::on_approval_needed(shared, &id, name.as_deref(), cwd.as_deref());
@@ -596,16 +609,16 @@ fn server_request(s: &mut Session, id: Value, method: &str, params: &Value) -> b
     }
 }
 
-fn flush(s: &mut Session, item: &str) {
+fn flush(s: &mut Session, item: &str, is_agent_msg: bool) {
     let item = clip(item, 128);
     let item = item.as_str();
     let rest = s.codex.as_mut().and_then(|l| l.buffers.remove(item)).unwrap_or_default();
     if !rest.is_empty() {
-        record_agent(s, rest.trim_end_matches('\r'));
+        record_agent(s, rest.trim_end_matches('\r'), is_agent_msg);
     }
 }
 
-fn delta(s: &mut Session, item: &str, text: &str) {
+fn delta(s: &mut Session, item: &str, text: &str, is_agent_msg: bool) {
     let item = clip(item, 128);
     let item = item.as_str();
     let Some(link) = s.codex.as_mut() else { return };
@@ -623,14 +636,16 @@ fn delta(s: &mut Session, item: &str, text: &str) {
         lines.extend(link.buffers.drain().map(|(_, partial)| partial).filter(|partial| !partial.is_empty()));
     }
     for line in lines {
-        record_agent(s, &line);
+        record_agent(s, &line, is_agent_msg);
     }
 }
 
 fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
     let text = |p: &str| params.pointer(p).and_then(Value::as_str).unwrap_or("").to_string();
     match method {
-        "item/agentMessage/delta" | "item/commandExecution/outputDelta" => delta(s, &text("/itemId"), &lines::shown(&text("/delta"))),
+        "item/agentMessage/delta" | "item/commandExecution/outputDelta" => {
+            delta(s, &text("/itemId"), &lines::shown(&text("/delta")), method == "item/agentMessage/delta")
+        }
         "item/started" => match text("/item/type").as_str() {
             "commandExecution" => record_text(s, "$ ", &text("/item/command")),
             "fileChange" => {
@@ -645,8 +660,9 @@ fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
             _ => {}
         },
         "item/completed" => {
-            flush(s, &text("/item/id"));
-            match text("/item/type").as_str() {
+            let item_type = text("/item/type");
+            flush(s, &text("/item/id"), item_type == "agentMessage");
+            match item_type.as_str() {
                 "commandExecution" => match params.pointer("/item/exitCode").and_then(Value::as_i64) {
                     Some(code) => record(s, &format!("[exit {code}]")),
                     None => record(s, "[exit unknown]"),

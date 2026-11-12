@@ -191,7 +191,7 @@ PLAIN_HEADER = r"\[from session 'writer' \(.{{7}}\) \| \d\d:\d\d \| message \| {
 
 def received_with(world, tag):
     """The texts the program of any session was handed (user messages, parsed from what it read) that carry `tag`."""
-    return [user_text(m) for m in sent_users(world.received) if tag in user_text(m)]
+    return [t for m in sent_users(world.received) if tag in (t := user_text(m)) and not t.startswith("[peer reply from ")]
 
 
 def test_an_agents_text_is_cleaned_once_so_the_card_the_pages_the_command_the_history_and_the_program_all_have_the_same_string(world):
@@ -257,7 +257,7 @@ def test_the_program_in_the_session_calls_send_with_the_credential_it_read_at_it
     number = status_of(world.conn, caller)["approvals"][0]["approval_id"]
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
     wait_for(lambda: [r for r in records(world.log, target) if re.fullmatch(HEADER.format(name="writer", id7=caller[:7], size="16 B"), r)])
-    wait_for(lambda: records(world.log, caller).count("[turn completed]") == 2)                                      # the notice is a turn of the program, as a person's word is
+    wait_for(lambda: records(world.log, caller).count("[turn completed]") >= 2)                                     # the notice (and any peer reply) is a turn of the program, as a person's word is
     assert re.fullmatch(NOTICE.format(number=number), notices(world.log, caller)[0])
 
 

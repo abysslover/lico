@@ -34,9 +34,9 @@ impl App {
         }
     }
 
-    /// True when either conversation lines or prompt editor text are selected and copyable.
+    /// True when either conversation/panel lines or prompt editor text are selected and copyable.
     pub(crate) fn can_copy(&self) -> bool {
-        self.ui.sel.is_some() || (self.ui.panel.is_none() && self.ed.has_selection())
+        self.selection_text().is_some() || (self.ui.panel.is_none() && self.ed.has_selection())
     }
 
     pub(crate) fn can_cut(&self) -> bool {
@@ -97,6 +97,8 @@ impl App {
         }
         self.ui.sel = None;
         self.ui.dragging = false;
+        self.ui.drag_origin = None;
+        self.ui.drag_moved = false;
         if self.ed.mouse_press(x, y, self.ui.mods.shift_key()) {
             self.dirty = true;
         }

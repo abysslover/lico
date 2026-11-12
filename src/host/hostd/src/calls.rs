@@ -134,6 +134,122 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
     card_line(&format!("send to '{label}' ({})", transfer::id7(to)), text, removed)
 }
 
+const MAX_PEER_QUEUE: usize = 8;
+const MAX_PEER_REPLY: usize = 32 * 1024;
+
+#[derive(Default)]
+pub struct PeerTurn {
+    pub active: Option<(String, bool)>,
+    pub queue: VecDeque<String>,
+    pub reply_buf: String,
+}
+
+impl PeerTurn {
+    pub fn clear(&mut self) {
+        self.active = None;
+        self.queue.clear();
+        self.reply_buf.clear();
+    }
+
+    pub fn begin_or_queue(&mut self, caller_id: &str) {
+        if self.active.as_ref().is_some_and(|(c, _)| c == caller_id) {
+            return;
+        }
+        if self.active.is_none() {
+            self.active = Some((caller_id.to_string(), false));
+            self.reply_buf.clear();
+        } else if self.queue.len() < MAX_PEER_QUEUE {
+            self.queue.push_back(caller_id.to_string());
+        }
+    }
+
+    pub fn rollback_failed_send(&mut self, caller_id: &str) {
+        if self.queue.back().is_some_and(|c| c == caller_id) {
+            self.queue.pop_back();
+        } else if self.active.as_ref().is_some_and(|(c, _)| c == caller_id) && self.reply_buf.is_empty() {
+            self.active = self.queue.pop_front().map(|c| (c, false));
+        }
+    }
+
+    pub fn note_outbound_to(&mut self, target_id: &str) {
+        if let Some((caller, sent)) = self.active.as_mut() {
+            if caller == target_id {
+                *sent = true;
+            }
+        }
+    }
+
+    pub fn push_line(&mut self, raw_line: &str) {
+        if self.active.is_none() || self.reply_buf.len() >= MAX_PEER_REPLY {
+            return;
+        }
+        let cleaned = crate::codex::sanitize(raw_line);
+        if !self.reply_buf.is_empty() {
+            self.reply_buf.push('\n');
+        }
+        let rem = MAX_PEER_REPLY.saturating_sub(self.reply_buf.len());
+        self.reply_buf.push_str(&crate::codex::clip(&cleaned, rem));
+    }
+
+    pub fn finish(&mut self, self_id: &str, self_label: String) -> Option<(String, String, String, String, bool)> {
+        let (caller_id, explicit_sent) = self.active.take()?;
+        let reply = std::mem::take(&mut self.reply_buf);
+        self.active = self.queue.pop_front().map(|c| (c, false));
+        Some((caller_id, self_id.to_string(), self_label, reply, explicit_sent))
+    }
+
+    pub fn drop_active(&mut self) {
+        self.active = self.queue.pop_front().map(|c| (c, false));
+        self.reply_buf.clear();
+    }
+}
+
+pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) {
+    if by != By::Session {
+        return;
+    }
+    let Some(caller_id) = from else { return };
+    if let Some(found) = core::find(shared, caller_id) {
+        found.lock().unwrap().peer_turn.note_outbound_to(to);
+    }
+    if let Some(found) = core::find(shared, to) {
+        let mut s = found.lock().unwrap();
+        if matches!(s.provider, "claude" | "codex") && !(s.made_by.is_some() && s.finished_seq < 0) {
+            s.peer_turn.begin_or_queue(caller_id);
+        }
+    }
+}
+
+pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By, ok: bool) {
+    if !ok && by == By::Session {
+        if let (Some(caller_id), Some(found)) = (from, core::find(shared, to)) {
+            found.lock().unwrap().peer_turn.rollback_failed_send(caller_id);
+        }
+    }
+}
+
+pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<(String, String, String, String, bool)>) {
+    let Some((caller_id, from_id, from_label, reply_text, explicit_sent)) = done else { return };
+    if explicit_sent || reply_text.trim().is_empty() {
+        return;
+    }
+    let cleaned = leads::agent_text(&reply_text).text;
+    if cleaned.trim().is_empty() || crate::folders::shows_nothing(&cleaned) {
+        return;
+    }
+    let body = crate::codex::clip(&transfer::defused(&cleaned), 56 * 1024);
+    let head = format!(
+        "[peer reply from '{}' ({}) | {} | {}]",
+        from_label,
+        transfer::id7(&from_id),
+        transfer::hhmm_now(),
+        transfer::size_text(cleaned.len())
+    );
+    let payload = format!("{head}\n{body}");
+    let req_id = format!("pr-{}", core::random_hex(8));
+    let _ = core::input(shared, &caller_id, None, &req_id, &payload, crate::session::Origin::Host, None);
+}
+
 /// What a card says after its head: how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the opening quote of the start of it.
 pub(crate) fn card_tail(text: &str, removed: usize) -> String {
     let lines = transfer::line_count(text);

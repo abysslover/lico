@@ -141,6 +141,7 @@ impl App {
             "host_items": host_items,
         });
         self.insert_past_json(&mut out);
+        self.insert_nav_json(&mut out);
         out
     }
 
@@ -173,6 +174,13 @@ impl App {
         let is_active_cwd = self.sidebar_is_active_cwd();
         let is_glob_hi = self.sidebar_is_global_highlighted();
         let can_jump = self.sidebar_can_jump_active();
+        let can_back = self.ui.sidebar.nav.can_back();
+        let can_fwd = self.ui.sidebar.nav.can_forward();
+        let hist_len = self.ui.sidebar.nav.history.len();
+        let hist_idx = self.ui.sidebar.nav.index.min(hist_len.saturating_sub(1));
+        let bookmarked = self.sidebar_is_bookmarked();
+        let bm_len = self.ui.sidebar.nav.bookmarks.len();
+        let bm_pop = self.ui.sidebar.nav.popup_open;
         let show_hidden = self.ui.show_hidden;
         let ssh_host = self.ui.sidebar.ssh_host.clone();
         let cwd = self.ui.sidebar.cwd.clone();
@@ -229,8 +237,78 @@ impl App {
             return;
         }
 
-        // 2. Controls row: `[Host: local v]`  `[.dot]`  `[R]`  `[+]`
+        // 1b. Top Navigation History (`<` / `>`) + Bookmarks (`☆`/`★` + `Marks (N) v`) Toolbox
         let row_h = lh + 2.0 * s;
+        controls::fill(buf, width, height, [2.0 * s, y - s, x_right - 2.0 * s, y + row_h + s], 0xFF14_1C27);
+        controls::fill(buf, width, height, [2.0 * s, y + row_h + s - 1.0, x_right - 2.0 * s, y + row_h + s], 0xFF25_3242);
+        let nav_btn_w = controls.width(fs, "<") + 12.0 * s;
+        let back_rect = [4.0 * s, y, 4.0 * s + nav_btn_w, y + row_h];
+        let fwd_rect = [back_rect[2] + 3.0 * s, y, back_rect[2] + 3.0 * s + nav_btn_w, y + row_h];
+        controls.button(
+            fs,
+            swash,
+            buf,
+            width,
+            height,
+            back_rect,
+            "<",
+            if can_back { 0xFF21_354E } else { 0xFF17_1F2B },
+            if can_back { ink } else { dim },
+            Action::SidebarNavBack,
+        );
+        controls.button(
+            fs,
+            swash,
+            buf,
+            width,
+            height,
+            fwd_rect,
+            ">",
+            if can_fwd { 0xFF21_354E } else { 0xFF17_1F2B },
+            if can_fwd { ink } else { dim },
+            Action::SidebarNavForward,
+        );
+        let marks_lbl = format!("Marks ({bm_len}) v");
+        let marks_w = controls.width(fs, &marks_lbl) + 12.0 * s;
+        let star_lbl = if bookmarked { "\u{2605}" } else { "\u{2606}" };
+        let star_w = controls.width(fs, star_lbl) + 12.0 * s;
+        let bm_btn_rect = [x_right - 4.0 * s - marks_w, y, x_right - 4.0 * s, y + row_h];
+        let star_rect = [bm_btn_rect[0] - 3.0 * s - star_w, y, bm_btn_rect[0] - 3.0 * s, y + row_h];
+        if hist_len > 0 && star_rect[0] > fwd_rect[2] + 10.0 * s {
+            let pos_lbl = format!("{}/{}", hist_idx + 1, hist_len);
+            controls.text(fs, swash, buf, width, height, fwd_rect[2] + 5.0 * s, y + s, (star_rect[0] - 2.0 * s) as i32, &pos_lbl, muted);
+        }
+        controls.button(
+            fs,
+            swash,
+            buf,
+            width,
+            height,
+            star_rect,
+            star_lbl,
+            if bookmarked { 0xFF33_2B16 } else { 0xFF1A_2432 },
+            if bookmarked { gold_ink } else { muted },
+            Action::SidebarBookmarkToggle,
+        );
+        controls.button(
+            fs,
+            swash,
+            buf,
+            width,
+            height,
+            bm_btn_rect,
+            &marks_lbl,
+            if bm_pop || bm_len > 0 { 0xFF21_344A } else { 0xFF1A_2432 },
+            if bm_pop || bm_len > 0 { ink } else { muted },
+            Action::SidebarBookmarksBtn,
+        );
+        geom.back_rect = Some(back_rect);
+        geom.forward_rect = Some(fwd_rect);
+        geom.bookmark_toggle_rect = Some(star_rect);
+        geom.bookmarks_btn_rect = Some(bm_btn_rect);
+        y += row_h + 4.0 * s;
+
+        // 2. Controls row: `[Host: local v]`  `[.dot]`  `[R]`  `[+]`
         let plus_w = controls.width(fs, "+") + 12.0 * s;
         let ref_w = controls.width(fs, "R") + 12.0 * s;
         let dot_w = controls.width(fs, ".dot") + 10.0 * s;

@@ -86,6 +86,8 @@ pub struct UiState {
     pub history_lines: u64,
     pub sel: Option<(usize, usize)>,
     pub dragging: bool,
+    pub drag_origin: Option<(f32, f32, Option<usize>, bool)>,
+    pub drag_moved: bool,
     pub mouse: (f64, f64),
     pub mods: ModifiersState,
     pub hit_lines: Vec<(f32, f32, usize, u16)>,
@@ -307,18 +309,7 @@ impl App {
     }
 
     // ------------------------------------------------------------------ approvals, copy
-    pub(crate) fn selection_text(&self) -> Option<String> {
-        let (a, b) = self.ui.sel?;
-        let view = self.view.as_ref()?;
-        let (lo, hi) = (a.min(b), a.max(b));
-        let lines: Vec<&str> = (lo..=hi)
-            .filter_map(|i| view.lines.get(i).map(|l| l.1.as_str()))
-            .filter(|t| self.ui.show_events || !super::transcript::is_hidden_control(t))
-            .collect();
-        if lines.is_empty() { None } else { Some(lines.join("\n")) }
-    }
-
-    /// Put text on the clipboard: the result of a person's own key, or of the host forwarding the `lico clipboard write` that the person ran (`clip::on_clip_line`; a picture too). Nothing else writes it; an agent tool (S07) must ask the person first.
+    /// Put text on the clipboard: the result of a person's own key, mouse selection, or `lico clipboard write`.
     pub(crate) fn copy_text(&mut self, text: String) {
         if text.len() > COPY_LIMIT {
             return; // larger than one transfer; refused rather than cut
@@ -357,14 +348,7 @@ impl App {
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
                 }
-                if self.ui.dragging {
-                    if let Some(idx) = self.line_at(position.y as f32) {
-                        if let Some((a, _)) = self.ui.sel {
-                            self.ui.sel = Some((a, idx));
-                            self.dirty = true;
-                        }
-                    }
-                }
+                self.main_mouse_drag(position.x as f32, position.y as f32);
                 true
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
@@ -397,27 +381,15 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
-                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPastEntry(..) | Action::SidebarPage(..)) => {}
+                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPastEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
                             None if self.ed_mouse_press(x, y) => {}
-                            None => match self.line_at(y) {
-                                Some(idx) if self.form_click(idx) || self.panel_click(idx) => {} // a row of the new-session form, the Y or N of a question
-                                Some(idx) => {
-                                    self.ui.sel = Some((idx, idx));
-                                    self.ui.dragging = true;
-                                }
-                                None => self.ui.sel = None,
-                            },
+                            None => self.main_mouse_press(x, y),
                         }
                     }
                     self.dirty = true;
                 } else {
-                    let was_selecting = self.ui.dragging || self.ed.selecting;
-                    self.ui.dragging = false;
-                    self.ed.finish_drag();
-                    if was_selecting {
-                        self.dirty = true;
-                    }
+                    self.main_mouse_release();
                 }
                 true
             }
@@ -670,7 +642,7 @@ impl App {
         }
         let menu_open = self.ui.menu_open;
         let sb_mode = self.sidebar_shown();
-        let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open();
+        let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open() || self.sidebar_bookmarks_popup_open();
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
         let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
@@ -678,11 +650,14 @@ impl App {
         let total = memrow::total(&self.ui.rows, &self.ui.mem);
         let session_sel = self.session.clone();
         let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
+        let bar_cols = (((main_w as f32 - 208.0 * s).max(80.0 * s)) / (self.char_w() * s)).max(16.0) as usize;
+        let bar_lines = bar.as_deref().map(|b| controls::wrap_cols(&clean(b), bar_cols)).unwrap_or_default();
+        let bar_n = bar_lines.len();
         let search_bar = if self.ui.panel.is_some() { None } else { self.search_bar_line() };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
+        let rows_avail = area_rows.saturating_sub(4 + bar_n + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
         let is_tx = panel_view.is_none();
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
@@ -712,14 +687,15 @@ impl App {
             }
         }
         let mut text = header;
-        if let Some(b) = &bar {
-            text.push_str(&format!("\n{}{}", clean(b), "\u{a0}".repeat(24))); // the buttons stand over the end of its last row (190 logical pixels): 24 no-break spaces wrap with the last word and keep that room empty
+        for bl in &bar_lines {
+            text.push('\n');
+            text.push_str(bl);
         }
         if let Some(sb) = &search_bar {
             text.push('\n');
             text.push_str(&clean(sb));
         }
-        let base = 1 + bar.is_some() as usize + search_bar.is_some() as usize;
+        let base = 1 + bar_n + search_bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text and style are unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by (style_tag, text), and only new text is shaped.
         let mut prev_styles = std::mem::take(&mut self.ui.line_styles);
@@ -777,12 +753,13 @@ impl App {
         let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();
-        let mut approval_y = None;
+        let mut approval_span: Option<(f32, f32)> = None;
         let mut search_y: Option<(f32, f32)> = None;
-        let search_line_i = 1 + bar.is_some() as usize;
+        let search_line_i = 1 + bar_n;
         for run in view.buffer.layout_runs() {
-            if bar.is_some() && run.line_i == 1 {
-                approval_y = Some(run.line_top + chat_top);
+            if bar_n > 0 && run.line_i >= 1 && run.line_i < 1 + bar_n {
+                let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
+                approval_span = Some(approval_span.map_or((y0, y1), |(a, _)| (a, y1)));
             }
             if search_bar.is_some() && run.line_i == search_line_i {
                 let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
@@ -885,6 +862,7 @@ impl App {
         if is_tx {
             super::transcript::paint_transcript_decorations(&mut buf, width, height, list_w, s, oy, hint_row, &self.ui.hit_lines, plan.is_ok().then_some(cleared.as_slice()));
         }
+        controls::paint_approval_banner(&mut buf, width, height, list_w, approval_span, s);
         if let Some((sy0, sy1)) = search_y {
             rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
         }
@@ -926,8 +904,6 @@ impl App {
                 }
             }
         }
-        // the Allow and Deny buttons of the first pending approval, dimmed while a card of the host's own is not to be answered yet
-        if let Some(y) = approval_y { controls.answer_buttons(fs, swash, &mut buf, width, height, y, ink, live) }
         let modes: Vec<Mode> = (0..frame.lines.len())
             .map(|i| match &plan {
                 Ok(shift) if shift.kept.contains(&i) => {
@@ -944,6 +920,9 @@ impl App {
         blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents }));
         for (line, extent) in frame.lines.iter_mut().zip(extents) {
             line.ext = extent;
+        }
+        if let Some((ay0, _)) = approval_span {
+            controls.answer_buttons(fs, swash, &mut buf, width, height, ay0, ink, live);
         }
         if let Some([x, y, w, h]) = self.ed.caret {
             controls::fill(&mut buf, width, height, [x, y, x + w, y + h], 0xFFE0_E0E0); // the caret of the input box: a bar, never blinking
@@ -963,6 +942,7 @@ impl App {
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_sidebar_host_popup(&mut buf, width, height);
+        self.draw_sidebar_bookmarks_popup(&mut buf, width, height);
         self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);

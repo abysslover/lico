@@ -189,6 +189,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("settings.set", "last_cwd") => matches!(value, Value::String(s) if s.is_empty() || crate::folders::valid_path_shape(s)),
             ("settings.set", "last_view") => matches!(value.as_str(), Some("start" | "files" | "session")),
             ("settings.set", "last_session") => matches!(value, Value::String(s) if s.is_empty() || crate::clipboard::settings::valid_session_ref(s)),
+            ("settings.set", "dir_history") => crate::clipboard::settings::valid_dir_history_array(value),
+            ("settings.set", "dir_history_idx") => in_range(value, 0, crate::clipboard::settings::MAX_DIR_NAV as i64 - 1),
+            ("settings.set", "dir_bookmarks") => crate::clipboard::settings::valid_dir_bookmarks_array(value),
             ("folder.git", "cwd") => valid_str(value, 1024),
             ("folder.list", "cwd") | ("folder.read", "path") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
             ("folder.list", "show_hidden") => value.is_boolean(),
@@ -215,9 +218,21 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         && (op != "transfer.send" || transfer_shape(request))
         && (op != "clipboard.write" || clipboard_shape(request))
         && (op != "settings.set"
-            || ["clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden"]
-                .iter()
-                .any(|k| request.contains_key(*k)))
+            || [
+                "clipboard_write",
+                "notifications",
+                "group_by",
+                "font_px",
+                "last_cwd",
+                "last_view",
+                "last_session",
+                "show_hidden",
+                "dir_history",
+                "dir_history_idx",
+                "dir_bookmarks",
+            ]
+            .iter()
+            .any(|k| request.contains_key(*k)))
         && !(op == "session.past" && request.contains_key("cwd") && request.get("global") == Some(&Value::Bool(true)))
 }
 
