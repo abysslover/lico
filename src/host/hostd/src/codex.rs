@@ -375,6 +375,10 @@ pub fn start(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), 
     spawn_provider(shared, session, None)
 }
 
+pub fn start_with_resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
+    spawn_provider(shared, session, resume)
+}
+
 /// Bring a disconnected session back: a new provider process resumes the same thread, and
 /// the execution generation moves on so every older target is stale.
 pub fn resume(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), &'static str> {

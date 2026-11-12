@@ -27,7 +27,7 @@ extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
 }
 
-const REMOTE_OP_TIMEOUT_SECS: u64 = 4;
+pub(crate) const REMOTE_OP_TIMEOUT_SECS: u64 = 4;
 const REMOTE_PATH_SETUP: &str =
     "umask 077 && LICO_RH=\"$HOME\" && export PATH=\"$LICO_RH/.local/bin:$LICO_RH/.npm-global/bin:$LICO_RH/.cargo/bin:$LICO_RH/bin:/usr/local/bin:$PATH\"";
 
@@ -59,7 +59,7 @@ pub fn sanitize_ssh_env(cmd: &mut Command) {
 
 /// Executes a short non-interactive `sh -c <inner>` over `BatchMode=yes` SSH in its own process group,
 /// killing the process group on timeout and bounding `stdout` to `max_out` bytes.
-fn run_ssh_bounded(shared: &Shared, host: &str, inner: &str, max_out: usize, timeout_secs: u64) -> Result<(bool, String), &'static str> {
+pub(crate) fn run_ssh_bounded(shared: &Shared, host: &str, inner: &str, max_out: usize, timeout_secs: u64) -> Result<(bool, String), &'static str> {
     let connect_secs = timeout_secs.clamp(1, 3);
     let mut cmd = ssh_base_command(shared, host, connect_secs)?;
     sanitize_ssh_env(&mut cmd);
@@ -110,6 +110,10 @@ fn run_ssh_bounded(shared: &Shared, host: &str, inner: &str, max_out: usize, tim
         }
         None => Err("ssh_unreachable"),
     }
+}
+
+pub(crate) fn map_remote_err_pub(code: &str, fallback: &'static str) -> &'static str {
+    map_remote_err(code, fallback)
 }
 
 fn map_remote_err(code: &str, fallback: &'static str) -> &'static str {
@@ -458,6 +462,14 @@ pub fn prepare_session(shared: &Shared, kind: &str, account: Option<&str>, mut c
     };
     if chosen.worktree_branch.is_some() {
         return Err("option_unavailable");
+    }
+    if let Some(ref rid) = chosen.resume_id {
+        if !matches!(kind, "claude" | "codex") {
+            return Err("option_unavailable");
+        }
+        if !crate::provider_record::valid_provider_session(rid) {
+            return Err("bad_request");
+        }
     }
     if let Some(folder) = &chosen.cwd {
         if kind == "synthetic" {

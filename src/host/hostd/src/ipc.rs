@@ -93,7 +93,7 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" => &[],
+        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "session.past" => &[],
         "ssh.check" => &["host"],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
@@ -156,6 +156,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.create" | "session.rename", "name") => matches!(value, Value::String(s) if crate::folders::valid_name(s)),
             ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
             ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
+            ("session.create", "resume_id") => valid_request_id(value),
             ("session.create", "rate") => in_range(value, 0, 10_000),
             ("session.create", "history") => in_range(value, 0, 100_000),
             ("session.create", "payload") => in_range(value, 1, 4096),
@@ -196,6 +197,13 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("ssh.check", "host") => matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
+            ("session.past", "cwd") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
+            ("session.past", "global") => value.is_boolean(),
+            ("session.past", "ssh_host") => matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
+            ("session.past", "account") => valid_request_id(value),
+            ("session.past", "query") => crate::past::valid_query(value),
+            ("session.past", "offset") => in_range(value, 0, 1_000_000),
+            ("session.past", "limit") => in_range(value, 1, crate::past::MAX_LIMIT as i64),
             _ => false,
         };
         if !ok {
@@ -209,6 +217,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             || ["clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden"]
                 .iter()
                 .any(|k| request.contains_key(*k)))
+        && !(op == "session.past" && request.contains_key("cwd") && request.get("global") == Some(&Value::Bool(true)))
 }
 
 /// A text write has `text` and no `path`; a picture write has `path` and no `text`.
@@ -299,6 +308,7 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "ssh.hosts" => crate::ssh::ssh_hosts(shared),
         "ssh.check" => crate::ssh::ssh_check(shared, text(request, "host")),
         "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
+        "session.past" => crate::past::session_past(shared, request),
         "display.ensure" => crate::vdisplay::ensure(shared, session),
         "display.status" => crate::vdisplay::status_op(shared, session),
         "display.stop" => crate::vdisplay::stop_op(shared, session),

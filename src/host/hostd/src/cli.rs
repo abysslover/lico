@@ -15,8 +15,10 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
   session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
-                 [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL]\n\
+                 [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID]\n\
                  (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
+  session past [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--offset N] [--limit N]\n\
+                 list past Claude and Codex conversations with full offset/limit pagination\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -237,6 +239,65 @@ pub fn run(args: Vec<String>) {
             }
             if let Some(branch) = flag(&args, "--worktree") {
                 request["worktree_branch"] = json!(branch);
+            }
+            if let Some(rid) = flag(&args, "--resume") {
+                request["resume_id"] = json!(rid);
+            }
+            expect_ok(call(&mut connect(&socket), request));
+        }
+        ["session", "past", rest @ ..] => {
+            let mut request = json!({"op": "session.past"});
+            let mut is_global = false;
+            let mut cwd_opt: Option<String> = None;
+            let mut ssh_host: Option<String> = None;
+            let mut idx = 0;
+            while idx < rest.len() {
+                match rest[idx] {
+                    "--global" => is_global = true,
+                    "--cwd" => {
+                        idx += 1;
+                        cwd_opt = Some((*rest.get(idx).unwrap_or_else(|| die(1, USAGE))).to_string());
+                    }
+                    "--ssh-host" => {
+                        idx += 1;
+                        let h = (*rest.get(idx).unwrap_or_else(|| die(1, USAGE))).to_string();
+                        request["ssh_host"] = json!(h.clone());
+                        ssh_host = Some(h);
+                    }
+                    "--account" => {
+                        idx += 1;
+                        request["account"] = json!(*rest.get(idx).unwrap_or_else(|| die(1, USAGE)));
+                    }
+                    "--query" | "-q" => {
+                        idx += 1;
+                        request["query"] = json!(*rest.get(idx).unwrap_or_else(|| die(1, USAGE)));
+                    }
+                    "--offset" => {
+                        idx += 1;
+                        let n: i64 = rest.get(idx).and_then(|v| v.parse().ok()).unwrap_or_else(|| die(1, USAGE));
+                        request["offset"] = json!(n);
+                    }
+                    "--limit" => {
+                        idx += 1;
+                        let n: i64 = rest.get(idx).and_then(|v| v.parse().ok()).unwrap_or_else(|| die(1, USAGE));
+                        request["limit"] = json!(n);
+                    }
+                    _ => die(1, USAGE),
+                }
+                idx += 1;
+            }
+            if is_global && cwd_opt.is_some() {
+                die(1, USAGE);
+            }
+            if is_global {
+                request["global"] = json!(true);
+            } else if let Some(raw) = cwd_opt {
+                if ssh_host.is_some() || raw == "~" || raw.starts_with("~/") || raw.starts_with('/') {
+                    request["cwd"] = json!(raw);
+                } else {
+                    let abs = std::env::current_dir().map(|d| d.join(&raw)).unwrap_or_else(|_| raw.clone().into());
+                    request["cwd"] = json!(abs.to_string_lossy());
+                }
             }
             expect_ok(call(&mut connect(&socket), request));
         }

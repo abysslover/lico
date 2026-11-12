@@ -10,7 +10,7 @@ use super::sidebar::{SidebarEntryGeom, SidebarGeom};
 use super::ui::memrow;
 use super::{App, BACKGROUND};
 
-fn clip_cols(text: &str, max_cols: usize) -> String {
+pub(super) fn clip_cols(text: &str, max_cols: usize) -> String {
     let width = |c: char| if editor::wide(c) { 2 } else { 1 };
     let total: usize = text.chars().map(width).sum();
     if total <= max_cols {
@@ -30,7 +30,7 @@ fn clip_cols(text: &str, max_cols: usize) -> String {
     out
 }
 
-fn tail_path(path: &str, max_cols: usize) -> String {
+pub(super) fn tail_path(path: &str, max_cols: usize) -> String {
     if path.is_empty() {
         return "(none)".into();
     }
@@ -97,7 +97,7 @@ impl App {
                 json!({"index": idx, "host": ch, "label": label, "active": active, "rect": rect})
             })
             .collect();
-        json!({
+        let mut out = json!({
             "shown": self.sidebar_shown(),
             "collapsed": sb.collapsed,
             "tab": if sb.tab == 0 { "directories" } else { "past" },
@@ -139,7 +139,9 @@ impl App {
             "next_rect": sb.geom.next_rect,
             "entries": entries,
             "host_items": host_items,
-        })
+        });
+        self.insert_past_json(&mut out);
+        out
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -220,32 +222,10 @@ impl App {
 
         let mem_y = hint_y - lh;
         let mut y = tab_y1 + 4.0 * s;
+        self.ui.sidebar.past.page_size = super::sidebar_past::calc_past_ps(tab_y1, hint_y, lh, s);
 
         if tab_idx == 1 {
-            // `[ Past ]` tab scaffold in M07-P02 (wired to full paginated `session.past` + resume in M07-P03).
-            let scope_lbl = if self.ui.sidebar.global_scope {
-                "Scope: Global (general)".to_string()
-            } else if let Some(ref h) = ssh_host {
-                format!("Scope: ssh:{h}:{}", tail_path(&cwd, max_cols.saturating_sub(14)))
-            } else {
-                format!("Scope: {}", tail_path(&cwd, max_cols.saturating_sub(7)))
-            };
-            controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, &scope_lbl, teal_ink);
-            y += lh + 4.0 * s;
-            controls.text(
-                fs,
-                swash,
-                buf,
-                width,
-                height,
-                6.0 * s,
-                y,
-                x_right as i32,
-                &clip_cols("Past sessions for selected directory.", max_cols),
-                muted,
-            );
-            memrow::draw_total(controls, fs, swash, buf, width, height, [4.0 * s, mem_y, x_right - 2.0, y + lh], total_mem, muted);
-            self.ui.sidebar.geom = geom;
+            self.draw_past_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
             return;
         }
 

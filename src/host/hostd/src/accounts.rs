@@ -156,6 +156,10 @@ impl Accounts {
         self.list.iter().find(|a| a.id == id)
     }
 
+    pub fn list_snapshot(&self) -> Vec<Account> {
+        self.list.clone()
+    }
+
     pub fn default_for(&self, provider: &str) -> Option<&Account> {
         self.defaults.get(provider).and_then(|id| self.get(id))
     }

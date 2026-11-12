@@ -319,6 +319,50 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             }
             _ => return Err((405, "bad_request")),
         },
+        ["v1", "sessions", "past"] => {
+            allowed(method == "GET")?;
+            let qmap = query_map(&request.query).map_err(bad)?;
+            if qmap
+                .keys()
+                .any(|k| !matches!(k.as_str(), "cwd" | "global" | "ssh_host" | "account" | "q" | "query" | "offset" | "limit"))
+            {
+                return Err(bad("bad_request"));
+            }
+            let mut req = Map::new();
+            req.insert("op".into(), json!("session.past"));
+            if let Some(c) = qmap.get("cwd").and_then(Value::as_str) {
+                req.insert("cwd".into(), json!(c));
+            }
+            if let Some(g) = qmap.get("global").and_then(Value::as_str) {
+                let flag = match g {
+                    "1" | "true" => true,
+                    "0" | "false" => false,
+                    _ => return Err(bad("bad_request")),
+                };
+                req.insert("global".into(), json!(flag));
+            }
+            if let Some(h) = qmap.get("ssh_host").and_then(Value::as_str) {
+                req.insert("ssh_host".into(), json!(h));
+            }
+            if let Some(a) = qmap.get("account").and_then(Value::as_str) {
+                req.insert("account".into(), json!(a));
+            }
+            if let Some(q) = qmap.get("query").or_else(|| qmap.get("q")).and_then(Value::as_str) {
+                req.insert("query".into(), json!(q));
+            }
+            if let Some(o) = qmap.get("offset").and_then(Value::as_str) {
+                let parsed = o.parse::<i64>().map_err(|_| bad("bad_request"))?;
+                req.insert("offset".into(), json!(parsed));
+            }
+            if let Some(l) = qmap.get("limit").and_then(Value::as_str) {
+                let parsed = l.parse::<i64>().map_err(|_| bad("bad_request"))?;
+                req.insert("limit".into(), json!(parsed));
+            }
+            if !valid_request("session.past", &req) {
+                return Err(bad("bad_request"));
+            }
+            crate::past::session_past(shared, &req)
+        }
         ["v1", "sessions", id] if id_ok(id) => {
             allowed(method == "GET")?;
             core::session_one(shared, id)

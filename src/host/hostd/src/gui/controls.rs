@@ -37,6 +37,7 @@ pub enum Action {
     SidebarJumpActive,
     SidebarParent,
     SidebarEntry(usize),
+    SidebarPastEntry(usize),
     SidebarPage(isize),
     Allow,
     Deny,

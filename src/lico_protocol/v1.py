@@ -70,6 +70,7 @@ INVENTORY = {
     "ssh.hosts": {"state": "host", "mutates": False},
     "ssh.check": {"state": "host", "mutates": False},
     "session.search": {"state": "host", "mutates": False},
+    "session.past": {"state": "host", "mutates": False},
     "display.ensure": {"state": "host", "mutates": True},
     "display.status": {"state": "host", "mutates": False},
     "display.stop": {"state": "host", "mutates": True},
@@ -283,6 +284,30 @@ REPLIES = {
                                                                         "seq": {"type": INT, "minimum": 0}, "text": {"type": STR, "max_length": 240}})},
                             "total": {"type": INT, "minimum": 0}, "truncated": {"type": BOOL}},
                            COMMON_REPLY_OPTIONAL),
+    "session.past": _obj({
+        "v": _V,
+        "ok": _OK,
+        "scope": {"type": STR, "enum": ["folder", "global"]},
+        "cwd": {"type": [STR, "null"], "max_length": MAX_PATH},
+        "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
+        "total": {"type": INT, "minimum": 0},
+        "offset": {"type": INT, "minimum": 0},
+        "limit": {"type": INT, "minimum": 1, "maximum": 100},
+        "has_more": {"type": BOOL},
+        "items": {"type": "array", "items": _obj({
+            "provider": {"type": STR, "enum": ["codex", "claude"]},
+            "provider_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+            "account": {"type": [STR, "null"], "max_length": 64},
+            "account_label": {"type": [STR, "null"], "max_length": 40},
+            "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
+            "cwd": {"type": [STR, "null"], "max_length": MAX_PATH},
+            "global": {"type": BOOL},
+            "title": {"type": STR, "min_length": 1, "max_length": MAX_NAME},
+            "updated_at": {"type": INT, "minimum": 0},
+            "open_session": {"type": [STR, "null"], "max_length": 64},
+            "open_state": {"type": [STR, "null"], "enum": ["running", "disconnected", "exited", None]},
+        })},
+    }, COMMON_REPLY_OPTIONAL),
     "display.ensure": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "display": {"type": STR, "max_length": 16}, "geometry": {"type": STR, "max_length": 32}},
                            COMMON_REPLY_OPTIONAL),
     "display.status": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "running": {"type": BOOL}, "display": {"type": [STR, "null"], "max_length": 16}},
@@ -326,7 +351,8 @@ REQUESTS = {
                             "worktree_branch": {"type": STR, "min_length": 1, "max_length": 80, "no_control": True, "no_hidden": True},
                             "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True, "no_blank": "trimmed"},
                             "model": {"type": STR, "min_length": 1, "max_length": 60, "charset": "model"},
-                            "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"}}),
+                            "effort": {"type": STR, "min_length": 1, "max_length": 16, "charset": "lower"},
+                            "resume_id": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}}),
     "session.rename": _obj({"session": {"type": STR, "max_length": 64}, "name": {"type": STR, "max_length": MAX_NAME, "no_control": True, "no_hidden": True, "no_blank": "trimmed"}}, _COMMON_REQ),
     "session.options": _obj({}, _COMMON_REQ),
     "session.rebind": _obj({"session": {"type": STR, "max_length": 64}, "generation": {"type": INT, "minimum": 1},
@@ -389,6 +415,16 @@ REQUESTS = {
     "ssh.check": _obj({"host": {"type": STR, "min_length": 1, "max_length": 128, "charset": "model"}}, _COMMON_REQ),
     "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
                            {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
+    "session.past": _obj({}, {
+        **_COMMON_REQ,
+        "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
+        "global": {"type": BOOL},
+        "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
+        "account": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+        "query": {"type": STR, "max_length": 256, "no_control": True, "no_hidden": True},
+        "offset": {"type": INT, "minimum": 0, "maximum": 1000000},
+        "limit": {"type": INT, "minimum": 1, "maximum": 100},
+    }),
     "display.ensure": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.status": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.stop": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
@@ -491,6 +527,8 @@ def validate_request(op: str, message: dict) -> list[str]:
         errors += _transfer_shape(body)
     if op == "settings.set" and not any(k in body for k in ("clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden")):
         errors.append("$.settings.set: at least one setting field required")
+    if op == "session.past" and "cwd" in body and body.get("global") is True:
+        errors.append("$.session.past: cwd and global=true are mutually exclusive")
     return errors
 
 

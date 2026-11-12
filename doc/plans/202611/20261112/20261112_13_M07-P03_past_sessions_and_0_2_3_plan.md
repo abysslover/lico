@@ -1,6 +1,6 @@
 # M07-P03 Plan — Full-pagination `session.past` discovery, one-click `claude`/`codex` resume, and `lico 0.2.3` release
 
-- Status: in progress
+- Status: done (pending G3 inspection)
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M07 — Two-pane tabbed workbench, session telemetry bar, Global general sessions, and paginated past-session resume (`lico 0.2.3`)](../../../milestones/202611/20261112/20261112_04_M07_two_pane_workbench_and_past_sessions_milestone.md)

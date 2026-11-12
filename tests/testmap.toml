@@ -106,6 +106,7 @@
 "tests/test_ssh_sessions_and_files.py" = ["cli", "gui", "host"]
 "tests/test_session_tabs_and_telemetry.py" = ["cli", "gui", "host"]
 "tests/test_left_directory_sidebar.py" = ["cli", "gui", "host"]
+"tests/test_past_sessions_pagination_and_resume.py" = ["cli", "gui", "host"]
 
 [rust.modules]
 # The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
@@ -150,6 +151,7 @@ marks = ["host"]
 mcp = ["host"]
 memory = ["host"]
 notify = ["host"]
+past = ["host"]
 payload = ["host"]
 pending = ["host"]
 png = ["host"]

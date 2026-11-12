@@ -32,6 +32,7 @@ pub struct Settings {
     pub effort: Option<String>,          // `--effort`; none = the program's default
     pub worktree_repo: Option<String>,   // canonical parent git repository when started in a worktree (M02-P06)
     pub worktree_branch: Option<String>, // branch created for that worktree (M02-P06)
+    pub resume_id: Option<String>,       // provider session/thread id to resume (`M07-P03`)
 }
 
 /// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
@@ -108,6 +109,7 @@ impl Settings {
             effort: field("effort"),
             worktree_repo: None,
             worktree_branch: field("worktree_branch"),
+            resume_id: field("resume_id"),
         }
     }
 
@@ -162,7 +164,7 @@ impl Settings {
             }
             _ => text("name", name_shape)?,
         };
-        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch })
+        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch, resume_id: None })
     }
 }
 
@@ -219,6 +221,14 @@ pub fn prepare(shared: &Shared, kind: &str, mut chosen: Settings) -> Result<Sett
         }
         if chosen.effort.as_ref().map_or(false, |e| !claude_help(shared).efforts.contains(e)) {
             return Err("option_unavailable");
+        }
+    }
+    if let Some(ref rid) = chosen.resume_id {
+        if !matches!(kind, "claude" | "codex") {
+            return Err("option_unavailable");
+        }
+        if !crate::provider_record::valid_provider_session(rid) {
+            return Err("bad_request");
         }
     }
     chosen.name = chosen.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
@@ -278,6 +288,7 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
         let wt = crate::worktree::create(shared, &repo, &id, &branch)?;
         chosen.cwd = Some(wt.to_string_lossy().into_owned());
     }
+    let resume_id = chosen.resume_id.take();
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     {
         let mut s = session.lock().unwrap();
@@ -289,8 +300,16 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
             s.account = Some(account);
             s.credential_generation = credential_generation;
         }
+        if let Some(ref rid) = resume_id {
+            s.codex_thread = Some(rid.clone());
+            crate::past::seed_resumed_transcript(shared, &mut s, rid);
+        }
     }
-    let started = if kind == "claude" { crate::claude::start(shared, &session) } else { crate::codex::start(shared, &session) };
+    let started = if kind == "claude" {
+        crate::claude::start_with_resume(shared, &session, resume_id)
+    } else {
+        crate::codex::start_with_resume(shared, &session, resume_id)
+    };
     if let Err(code) = started {
         let mut s = session.lock().unwrap();
         s.purged = true;

@@ -1,12 +1,12 @@
 # M07 — Two-pane tabbed workbench, session telemetry bar, Global general sessions, and paginated past-session resume (`lico 0.2.3`)
 
-- Status: in progress
+- Status: pending G3 inspection
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution)
 - Project: Lico
 - Updated: 2026-11-12
 - Milestone branch: `milestone/M07-two-pane-workbench-and-past-sessions` (created at milestone close)
-- Implementation: In progress across `M07-P01` through `M07-P03`
-- Next gate: G3 inspection acceptance and G4 merge after `M07-P03`
+- Implementation: Completed on branches `phase/M07-P01-session-tabs-and-telemetry-bar` through `phase/M07-P03-past-sessions-and-0-2-3` (`lico 0.2.3`)
+- Next gate: G3 inspection acceptance and G4 merge approval
 
 ## Goal
 
@@ -72,7 +72,7 @@ into an ergonomic daily workbench while keeping memory around `~25-36 MiB`.
 |---|---|---|---|---|---|---|
 | M07-P01 | Maximized launch, `Global` general sessions, token/quota reset telemetry, chat session tab bar, and bottom telemetry strip | [Plan](../../../plans/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `00014` | — | pending G3 |
 | M07-P02 | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview | [Plan](../../../plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | [Report](../../../reports/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_report.md) | `00015` | — | pending G3 |
-| M07-P03 | Full-pagination `session.past` discovery and one-click `claude`/`codex` resume (local + SSH, `cwd` + `Global`) and `0.2.3` release | [Plan](../../../plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | — | — | — | in progress |
+| M07-P03 | Full-pagination `session.past` discovery and one-click `claude`/`codex` resume (local + SSH, `cwd` + `Global`) and `0.2.3` release | [Plan](../../../plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | [Report](../../../reports/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_report.md) | `00016` | — | pending G3 |
 
 ## Gates
 

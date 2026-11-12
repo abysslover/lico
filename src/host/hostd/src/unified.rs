@@ -40,6 +40,7 @@ mod marks;
 mod mcp;
 mod memory;
 mod notify;
+mod past;
 mod pasted;
 mod payload;
 mod pending;

@@ -74,6 +74,7 @@ pub struct SidebarState {
     pub load_count: u64,
     pub refresh_count: u64,
     pub last_opened: Option<String>,
+    pub past: super::sidebar_past::PastSidebarState,
     pub geom: SidebarGeom,
 }
 
@@ -288,6 +289,7 @@ impl App {
                 let start = self.initial_files_cwd();
                 self.sidebar_start_dir(None, &start, false, false, true);
             }
+            self.past_sync_if_open(false);
             self.dirty = true;
             return;
         }
@@ -301,6 +303,7 @@ impl App {
                 let fallback = act_host.is_some() && dir != "~";
                 self.sidebar_start_dir(act_host, &dir, false, false, fallback);
             }
+            self.past_sync_if_open(false);
             self.dirty = true;
         }
     }
@@ -316,6 +319,9 @@ impl App {
         self.ui.sidebar.filter_focused = false;
         if self.ui.sidebar.tab != clamped {
             self.ui.sidebar.tab = clamped;
+            if clamped == 1 {
+                self.past_sync_if_open(false);
+            }
             self.dirty = true;
         }
     }
@@ -324,6 +330,7 @@ impl App {
         self.ui.sidebar.host_popup_open = false;
         self.ui.sidebar.filter_focused = false;
         self.ui.sidebar.global_scope = true;
+        self.past_sync_if_open(false);
         self.dirty = true;
     }
 
@@ -406,7 +413,11 @@ impl App {
                 }
             }
             self.ui.sidebar.unreachable = ssh_host.is_some() && (transport_dead || err == "folder_unreadable");
-            self.ui.sidebar.error = Some(err);
+            self.ui.sidebar.error = Some(err.clone());
+            if self.ui.sidebar.tab == 1 {
+                self.ui.sidebar.past.loading = false;
+                self.ui.sidebar.past.error = Some(err);
+            }
             self.dirty = true;
             return;
         }
@@ -422,13 +433,14 @@ impl App {
             self.ui.sidebar.page = 0;
             self.ui.sidebar.filter.clear();
         }
+        self.past_sync_if_open(false);
         self.dirty = true;
     }
 
     pub(crate) fn sidebar_refresh(&mut self) {
         self.ui.sidebar.host_popup_open = false;
         if self.ui.sidebar.tab != 0 {
-            self.dirty = true;
+            self.past_start_fetch(self.ui.sidebar.past.page, true);
             return;
         }
         let host = self.ui.sidebar.ssh_host.clone();
@@ -620,6 +632,8 @@ impl App {
         }
         if self.ui.sidebar.tab == 0 {
             self.sidebar_step_page(if step > 0 { 1 } else { -1 });
+        } else {
+            self.past_step_page(if step > 0 { 1 } else { -1 });
         }
         true
     }
@@ -669,6 +683,7 @@ impl App {
                 if !self.ui.sidebar.filter.is_empty() {
                     self.ui.sidebar.filter.clear();
                     self.ui.sidebar.page = 0;
+                    self.past_sync_if_open(false);
                 } else {
                     self.ui.sidebar.filter_focused = false;
                 }
@@ -681,6 +696,7 @@ impl App {
             Key::Named(NamedKey::Backspace) => {
                 self.ui.sidebar.filter.pop();
                 self.ui.sidebar.page = 0;
+                self.past_sync_if_open(false);
                 self.dirty = true;
             }
             Key::Character(s) if !self.ui.mods.control_key() && !self.ui.mods.alt_key() => {
@@ -690,6 +706,7 @@ impl App {
                     }
                 }
                 self.ui.sidebar.page = 0;
+                self.past_sync_if_open(false);
                 self.dirty = true;
             }
             _ => {
@@ -725,18 +742,27 @@ impl App {
                 self.ui.sidebar.filter.clear();
                 self.ui.sidebar.filter_focused = false;
                 self.ui.sidebar.page = 0;
+                self.past_sync_if_open(false);
                 self.dirty = true;
             }
             Action::SidebarGlobal => self.sidebar_select_global(),
             Action::SidebarActiveDir => {
                 self.ui.sidebar.global_scope = false;
                 self.ui.sidebar.filter_focused = false;
+                self.past_sync_if_open(false);
                 self.dirty = true;
             }
             Action::SidebarJumpActive => self.sidebar_jump_to_active(),
             Action::SidebarParent => self.sidebar_go_parent(),
             Action::SidebarEntry(idx) => self.sidebar_activate_entry(idx),
-            Action::SidebarPage(d) => self.sidebar_step_page(d),
+            Action::SidebarPastEntry(idx) => self.past_activate_entry(idx),
+            Action::SidebarPage(d) => {
+                if self.ui.sidebar.tab == 1 {
+                    self.past_step_page(d);
+                } else {
+                    self.sidebar_step_page(d);
+                }
+            }
             _ => return false,
         }
         true
