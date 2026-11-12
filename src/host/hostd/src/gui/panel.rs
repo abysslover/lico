@@ -31,28 +31,10 @@ pub enum Step {
 }
 
 pub(crate) enum AsyncJob {
-    FilesDir {
-        req_id: u64,
-        ssh_host: String,
-        dir: String,
-        keep_cursor: bool,
-        fallback_tilde: bool,
-        refreshed: bool,
-    },
-    FilesPreview {
-        req_id: u64,
-        ssh_host: String,
-        path: String,
-        refreshed: bool,
-    },
-    AccountCheck {
-        req_id: u64,
-        account: String,
-    },
-    SessionStart {
-        req_id: u64,
-        created_cwd: Option<String>,
-    },
+    FilesDir { req_id: u64, ssh_host: String, dir: String, keep_cursor: bool, fallback_tilde: bool, refreshed: bool },
+    FilesPreview { req_id: u64, ssh_host: String, path: String, refreshed: bool },
+    AccountCheck { req_id: u64, account: String },
+    SessionStart { req_id: u64, created_cwd: Option<String> },
     SidebarDir { req_id: u64, ssh_host: Option<String>, dir: String, keep_page: bool, fallback_root: bool },
     SidebarPast { req_id: u64, scope_key: String, page: usize },
     PastResume { req_id: u64, created_cwd: Option<String> },
@@ -431,87 +413,94 @@ impl App {
             if self.lifecycle_key(event) {
                 return true;
             }
-            if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
-                match c.to_ascii_lowercase().as_str() {
-                    "n" => {
-                        if !event.repeat {
-                            if self.ui.mods.shift_key() {
-                                self.form_open_global();
-                            } else {
-                                self.form_open();
+            if ctrl {
+                if let Some(ch) = super::key_letter(event) {
+                    match ch {
+                        'n' => {
+                            if !event.repeat {
+                                if self.ui.mods.shift_key() {
+                                    self.form_open_global();
+                                } else {
+                                    self.form_open();
+                                }
                             }
+                            return true;
                         }
-                        return true;
-                    }
-                    "a" => {
-                        self.panel_open(Step::Accounts);
-                        return true;
-                    }
-                    "r" => {
-                        self.resume_session();
-                        return true;
-                    }
-                    "s" if self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.send_ask();
+                        'a' => {
+                            self.panel_open(Step::Accounts);
+                            return true;
                         }
-                        return true;
-                    }
-                    "b" if self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.open_rebind();
+                        'r' => {
+                            self.resume_session();
+                            return true;
                         }
-                        return true;
-                    }
-                    "m" if self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.toggle_session_mode();
+                        's' if self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.send_ask();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "g" if self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.toggle_group_by();
+                        'b' if self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.open_rebind();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "e" if self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.toggle_show_events();
+                        'm' if self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.toggle_session_mode();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "e" if !self.ui.mods.alt_key() => {
-                        if !event.repeat {
-                            self.files_open();
+                        'g' if self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.toggle_group_by();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "h" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.toggle_hidden_files();
+                        'e' if self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.toggle_show_events();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "=" | "+" if !self.ui.mods.alt_key() => {
-                        if !event.repeat {
-                            self.step_font_px(1);
+                        'e' if !self.ui.mods.alt_key() => {
+                            if !event.repeat {
+                                self.files_open();
+                            }
+                            return true;
                         }
-                        return true;
-                    }
-                    "-" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.step_font_px(-1);
+                        'h' if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.toggle_hidden_files();
+                            }
+                            return true;
                         }
-                        return true;
+                        _ => {}
                     }
-                    "0" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
-                        if !event.repeat {
-                            self.step_font_px(0);
+                }
+                if let Key::Character(c) = &event.logical_key {
+                    match c.as_str() {
+                        "=" | "+" if !self.ui.mods.alt_key() => {
+                            if !event.repeat {
+                                self.step_font_px(1);
+                            }
+                            return true;
                         }
-                        return true;
+                        "-" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.step_font_px(-1);
+                            }
+                            return true;
+                        }
+                        "0" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
+                            if !event.repeat {
+                                self.step_font_px(0);
+                            }
+                            return true;
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
             return false;
@@ -526,12 +515,12 @@ impl App {
         if event.repeat && !text_mode {
             return true; // a held key is not a second, deliberate press (a confirmation needs two); typing in the input line repeats
         }
-        if let (true, Key::Character(c)) = (ctrl, &event.logical_key) {
+        if let (true, Some(ch)) = (ctrl, super::key_letter(event)) {
             // chords work while the input line is taking a code
             let on_login = self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Login);
-            match c.to_lowercase().as_str() {
-                "c" if on_login => self.login_address(true),
-                "o" if on_login => self.login_address(false),
+            match ch {
+                'c' if on_login => self.login_address(true),
+                'o' if on_login => self.login_address(false),
                 _ => return false,
             }
             self.dirty = true;
@@ -579,13 +568,18 @@ impl App {
                 true
             }
             _ if text_mode => false, // typing (and the input method) go to the input line
-            Key::Character(c) => {
-                let key = if step == Step::Card { c.to_string() } else { c.to_lowercase() }; // the view tells S from s
-                self.panel_choice(step, key.chars().next().unwrap_or(' '));
-                self.dirty = true;
+            _ => {
+                let choice = super::key_letter_cased(event, self.ui.mods.shift_key()).or_else(|| match &event.logical_key {
+                    Key::Character(c) => c.chars().next(),
+                    _ => None,
+                });
+                if let Some(ch) = choice {
+                    let ch = if step == Step::Card { ch } else { ch.to_ascii_lowercase() };
+                    self.panel_choice(step, ch);
+                    self.dirty = true;
+                }
                 true
             }
-            _ => true,
         }
     }
 

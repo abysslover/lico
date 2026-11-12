@@ -121,6 +121,13 @@ impl App {
         self.ui.numbered.iter().take(9).enumerate().filter(|(_, id)| id.as_str() != from).filter_map(|(i, id)| self.ui.rows.iter().find(|r| &r.session == id).map(|r| (i + 1, r))).collect()
     }
 
+    pub(crate) fn running_peer_count(&self) -> usize {
+        if self.session.is_empty() {
+            return 0;
+        }
+        self.others(&self.session).iter().filter(|(_, r)| r.state == "running").count()
+    }
+
     /// The size of the selected lines as they would be sent, without building them.
     fn selected_size(&self) -> usize {
         let (Some((a, b)), Some(view)) = (self.ui.sel, self.view.as_ref()) else { return 0 };

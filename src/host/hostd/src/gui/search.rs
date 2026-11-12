@@ -198,21 +198,18 @@ impl App {
             return false;
         }
         let (ctrl, shift, alt) = (self.ui.mods.control_key(), self.ui.mods.shift_key(), self.ui.mods.alt_key());
-        if ctrl && !alt {
-            if let Key::Character(c) = &event.logical_key {
-                if c.eq_ignore_ascii_case("f") {
-                    if !event.repeat {
-                        if shift {
-                            self.open_search(true);
-                        } else if self.session.is_empty() {
-                            self.open_search(true);
-                        } else {
-                            self.open_search(false);
-                        }
-                    }
-                    return true;
+        let letter = super::super::key_letter(event);
+        if ctrl && !alt && letter == Some('f') {
+            if !event.repeat {
+                if shift {
+                    self.open_search(true);
+                } else if self.session.is_empty() {
+                    self.open_search(true);
+                } else {
+                    self.open_search(false);
                 }
             }
+            return true;
         }
         if !self.ui.search.open {
             return false;
@@ -248,7 +245,7 @@ impl App {
                 self.dirty = true;
                 true
             }
-            Key::Character(c) if ctrl && !shift && !alt && c.eq_ignore_ascii_case("u") => {
+            _ if ctrl && !shift && !alt && letter == Some('u') => {
                 if !self.ui.search.query.is_empty() {
                     self.ui.search.query.clear();
                     self.run_search();
@@ -256,7 +253,7 @@ impl App {
                 true
             }
             Key::Named(NamedKey::PageUp | NamedKey::PageDown | NamedKey::End) => false,
-            Key::Character(c) if ctrl && shift && !alt && c.eq_ignore_ascii_case("c") => false,
+            _ if ctrl && shift && !alt && letter == Some('c') => false,
             _ if ctrl || alt => true,
             _ => {
                 let typed = event.text.as_deref().filter(|t| !t.is_empty()).or_else(|| match &event.logical_key {

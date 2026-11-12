@@ -61,14 +61,19 @@ def test_claude_and_codex_weekly_quota_telemetry_and_gui_context_display():
             )["ok"] == 1
 
             def both_reported():
+                if (
+                    status_of(conn, s_claude["session"])["activity"] != "idle"
+                    or status_of(conn, s_codex["session"])["activity"] != "idle"
+                ):
+                    return None
                 accts = conn.call(op="account.list")
                 assert validate_response("account.list", accts) == []
                 m = {a["account"]: a["usage"] for a in accts["accounts"]}
                 if (
                     m[a_claude]
+                    and "short_remaining_pct" in m[a_claude]
                     and m[a_codex]
-                    and status_of(conn, s_claude["session"])["activity"] == "idle"
-                    and status_of(conn, s_codex["session"])["activity"] == "idle"
+                    and "short_remaining_pct" in m[a_codex]
                 ):
                     return m
                 return None

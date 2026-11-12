@@ -116,12 +116,30 @@ class Mapper:
                 _emit(self.out, "$ " + item["command"])
             elif item["type"] == "fileChange":
                 _emit(self.out, f"[patch] {len(item.get('changes', []))} change(s)")
+            elif item["type"] == "mcpToolCall":
+                srv = sanitize(str(item.get("server", ""))).encode()[:24].decode(errors="ignore")
+                tool = sanitize(str(item.get("tool", ""))).encode()[:40].decode(errors="ignore")
+                _emit(self.out, f"[tool] mcp__{srv}__{tool}")
         elif method == "item/completed":
             item = params["item"]
             self._flush(item["id"])
             if item["type"] == "commandExecution":
                 code = item.get("exitCode")
                 _emit(self.out, f"[exit {code}]" if code is not None else "[exit unknown]")
+            elif item["type"] == "mcpToolCall":
+                err = item.get("error")
+                res = item.get("result")
+                if err is not None or (isinstance(res, dict) and res.get("isError") is True):
+                    _emit(self.out, "[tool error]")
+                out = ""
+                if isinstance(err, dict) and isinstance(err.get("message"), str):
+                    out = err["message"]
+                elif isinstance(res, dict):
+                    content = res.get("content")
+                    if isinstance(content, list) and content and isinstance(content[0], dict) and isinstance(content[0].get("text"), str):
+                        out = content[0]["text"]
+                if out:
+                    _emit(self.out, "> " + out)
         elif method == "turn/started":
             _emit(self.out, "[turn started]")
         elif method == "turn/completed":

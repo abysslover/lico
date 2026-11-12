@@ -125,6 +125,12 @@ impl App {
         if let Some(e) = escape {
             items.insert(2, e);
         }
+        if self.ui.panel.is_none() && self.running_peer_count() > 0 {
+            items.insert(2, "Ctrl+Shift+S send to session");
+        }
+        if self.can_copy() {
+            items.insert(0, "Ctrl+C copy selection");
+        }
         if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) {
             items.insert(0, self.approval_hint());
         }

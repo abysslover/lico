@@ -312,6 +312,9 @@ fn status_entry(shared: &Shared, s: &Session) -> Value {
     if !s.provider.is_empty() {
         entry["provider"] = json!(s.provider);
         entry["mode"] = json!(s.mode);
+        if s.tab_closed {
+            entry["tab_closed"] = json!(true);
+        }
         crate::folders::annotate(&mut entry, s);
         crate::worktree::annotate(shared, &mut entry, s);
     }
@@ -639,6 +642,10 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         return Err(code);
     }
     let mut s = found.lock().unwrap();
+    if s.tab_closed {
+        s.tab_closed = false;
+        crate::registry::mark_dirty();
+    }
     if s.provider == "claude" {
         crate::claude::note(&mut s, "[account changed]");
     } else {
@@ -698,23 +705,13 @@ pub fn session_purge_with(shared: &Arc<Shared>, session: &str, generation: i64, 
 /// Older records of a session, read from its log on demand: up to `limit` records before sequence `before`, oldest first.
 pub fn history(shared: &Shared, session: &str, before: i64, limit: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let (view, text_mode, oldest) = {
-        let s = found.lock().unwrap();
-        (s.log_view(), s.text_mode, s.oldest())
-    };
+    let (view, text_mode, oldest) = { let s = found.lock().unwrap(); (s.log_view(), s.text_mode, s.oldest()) };
     let limit = limit.clamp(1, 200);
     let from = (before - limit).max(oldest.min(before));
     let records = view.read(from, before, limit as usize).map_err(|_| "busy")?;
-    let lines: Vec<Value> = records
-        .iter()
-        .map(|(seq, data)| {
-            if text_mode {
-                json!([seq, String::from_utf8_lossy(data)])
-            } else {
-                json!([seq, format!("{:08} {}", seq, payload::hex(&data[..data.len().min(44)]))])
-            }
-        })
-        .collect();
+    let lines: Vec<Value> = records.iter().map(|(seq, data)| {
+        if text_mode { json!([seq, String::from_utf8_lossy(data)]) } else { json!([seq, format!("{:08} {}", seq, payload::hex(&data[..data.len().min(44)]))]) }
+    }).collect();
     Ok(obj(json!({"session": session, "lines": lines, "oldest": oldest})))
 }
 
@@ -723,9 +720,7 @@ pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> R
     {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
-        if s.codex_thread.is_none() {
-            return Err("bad_request");
-        }
+        if s.codex_thread.is_none() { return Err("bad_request"); }
         s.generation += 1; // every target of the old execution is stale from now on
     }
     let provider = found.lock().unwrap().provider;
@@ -734,7 +729,8 @@ pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> R
         found.lock().unwrap().generation -= 1;
         return Err(code);
     }
-    let s = found.lock().unwrap();
+    let mut s = found.lock().unwrap();
+    if s.tab_closed { s.tab_closed = false; crate::registry::mark_dirty(); }
     Ok(obj(json!({"session": s.id, "generation": s.generation})))
 }
 
@@ -765,9 +761,7 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
         crate::claude::send_input(&mut s, request_id, text, picture)?;
         s.record_input(request_id, &shown, origin, crate::session::now_secs());
     } else {
-        if s.input_tx.is_none() {
-            return Err("session_exited");
-        }
+        if s.input_tx.is_none() { return Err("session_exited"); }
         let line = format!("I {request_id} {}", payload::hex(text.as_bytes()));
         match s.input_tx.as_ref().map(|tx| tx.try_send(line)) {
             Some(Ok(())) => s.record_input(request_id, text, origin, crate::session::now_secs()),
@@ -775,6 +769,7 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
             _ => return Err("session_exited"),
         }
     }
+    if origin == Origin::Person && s.tab_closed { s.tab_closed = false; crate::registry::mark_dirty(); }
     let state = s.input_state(request_id).unwrap_or(InputState::Accepted);
     Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": false})))
 }

@@ -67,7 +67,7 @@ pub fn derive_auto_title(text: &str) -> Option<String> {
     for raw in text.lines() {
         let cleaned: String = raw.chars().filter(|c| !refused_char(*c)).collect();
         let trimmed = cleaned.trim();
-        if trimmed.is_empty() || trimmed.starts_with("[from session ") || trimmed.starts_with("[a long line ") {
+        if trimmed.is_empty() || trimmed.starts_with('/') || trimmed.starts_with("[from session ") || trimmed.starts_with("[a long line ") {
             continue;
         }
         let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -738,5 +738,13 @@ mod tests {
         for wrong in [json!({"scratch": "yes"}), json!({"scratch": true, "cwd": "/x"}), json!({"scratch": false}), json!({"scratch": false, "cwd": "relative"}), json!({"name": 5}), json!({"chosen_effort": "High"})] {
             assert!(Settings::from_record(&wrong, "s1").is_err(), "{wrong}");
         }
+    }
+
+    #[test]
+    fn slash_commands_never_become_auto_titles_while_multiline_prompts_keep_first_real_line() {
+        for slash in ["/exit", "  /exit  ", "/quit", "/model sonnet", "/compact"] {
+            assert_eq!(derive_auto_title(slash), None, "{slash}");
+        }
+        assert_eq!(derive_auto_title("/model sonnet\n너는 세션이 유지되고 있니?"), Some("너는 세션이 유지되고 있니?".into()));
     }
 }

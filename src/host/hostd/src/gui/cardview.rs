@@ -271,8 +271,17 @@ impl App {
         if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
             return false;
         }
-        match &event.logical_key {
-            Key::Character(c) if self.answer_key(c) => {}
+        let key_buf;
+        let key_str = if let Some(ch) = crate::gui::key_letter_cased(event, self.ui.mods.shift_key()) {
+            key_buf = ch.to_string();
+            Some(key_buf.as_str())
+        } else if let Key::Character(c) = &event.logical_key {
+            Some(c.as_str())
+        } else {
+            None
+        };
+        match key_str {
+            Some(c) if self.answer_key(c) => {}
             _ => return false,
         }
         self.dirty = true;

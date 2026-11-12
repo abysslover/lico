@@ -462,3 +462,34 @@ fn user_prompt_backgrounds_role_colors_and_hidden_control_events_match_full_repa
         p.step("toggle events hidden");
     }
 }
+
+#[test]
+fn command_execution_boxes_exit_errors_mcp_cards_and_peer_banners_match_full_repaint_across_scales() {
+    for scale in [1.0, 1.25, 2.0] {
+        let mut p = Pair::new((1040, 660), scale);
+        p.full("first", Cause::First);
+        for turn in 0..14 {
+            p.push(&[
+                format!(">> [from session 'peer' (s123456) | 14:{turn:02} | message | 24 B]"),
+                format!(">> cross-session check {turn}"),
+                "$ /bin/bash -lc 'lico session list'".into(),
+                "stdout row 1: checking state".into(),
+                if turn % 2 == 0 { "[exit 1]".into() } else { "[exit 0]".into() },
+                "[tool] mcp__lico__sessions".into(),
+                "> {\"sessions\":[]}".into(),
+                "[tool] mcp__lico__send".into(),
+                "[tool error]".into(),
+                "> receiver busy".into(),
+                "[patch] 1 change(s)".into(),
+                format!("Agent prose after command card {turn} 한글 요약."),
+            ]);
+            p.step(&format!("boxed turn {turn}"));
+        }
+        p.push(&["$ echo incremental".into(), "line inside box".into(), "[exit 1]".into(), "plain prose after box".into()]);
+        p.shift("incremental shift with boxed command card and exit 1");
+        p.both(|app| app.toggle_show_events());
+        p.step("events shown with exit 0 inside command cards");
+        p.both(|app| app.toggle_show_events());
+        p.step("events hidden again");
+    }
+}

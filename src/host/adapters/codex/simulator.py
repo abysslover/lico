@@ -31,6 +31,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--received", default="")
@@ -62,6 +64,33 @@ active = {"turn": None, "thread": "th-1"}
 scheduled = []          # (time, message)
 waiting = {}            # request id -> remaining fixture steps after it is answered
 replay = []
+mcp_ready = False
+
+
+def _mcp_server():
+    url = ""
+    token_var = ""
+    for idx, arg in enumerate(sys.argv):
+        if arg == "-c" and idx + 1 < len(sys.argv):
+            kv = sys.argv[idx + 1]
+            if kv.startswith("mcp_servers.lico.url="):
+                url = json.loads(kv.split("=", 1)[1])
+            elif kv.startswith("mcp_servers.lico.bearer_token_env_var="):
+                token_var = json.loads(kv.split("=", 1)[1])
+    token = os.environ.get(token_var or "LICO_MCP_TOKEN", "")
+    if not url or not token:
+        return None
+    return {"url": url, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+def _mcp_rpc(server, method, params=None, number=None):
+    message = {"jsonrpc": "2.0", "method": method, **({"params": params} if params is not None else {}), **({"id": number} if number else {})}
+    request = urllib.request.Request(server["url"], json.dumps(message).encode(), {"Content-Type": "application/json", **server["headers"]})
+    try:
+        with urllib.request.urlopen(request, timeout=10) as reply:
+            return reply.status, reply.read().decode()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode()
 
 
 def out(message):
@@ -238,6 +267,33 @@ def handle(message):
             sys.stdout.flush()
             notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": "it", "delta": "still alive\n"})
             notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+        elif text == "tools" or text.startswith("tool:"):
+            global mcp_ready
+            server = _mcp_server()
+            iid = f"mcp-{turn_counter}"
+            if server is None:
+                notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": iid, "delta": "no mcp server\n"})
+            else:
+                if not mcp_ready or text == "tools":
+                    _mcp_rpc(server, "initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "codex-simulator", "version": "0"}}, 1)
+                    _mcp_rpc(server, "notifications/initialized")
+                    mcp_ready = True
+                if text == "tools":
+                    tool_name, tool_args = "sessions", {}
+                else:
+                    tool_name, _, raw_args = text[len("tool:"):].partition(" ")
+                    tool_args = json.loads(raw_args or "{}")
+                notify("item/started", {"threadId": active["thread"], "turnId": tid, "startedAtMs": 1, "item": {"id": iid, "type": "mcpToolCall", "server": "lico", "tool": tool_name, "arguments": tool_args}})
+                status_code, body = _mcp_rpc(server, "tools/call", {"name": tool_name, "arguments": tool_args}, 3)
+                parsed = json.loads(body) if body else {}
+                if status_code == 200 and "result" in parsed:
+                    notify("item/completed", {"threadId": active["thread"], "turnId": tid, "completedAtMs": 2, "item": {"id": iid, "type": "mcpToolCall", "server": "lico", "tool": tool_name, "result": parsed["result"]}})
+                else:
+                    err_msg = parsed.get("error", {}).get("message", f"http {status_code}")
+                    notify("item/completed", {"threadId": active["thread"], "turnId": tid, "completedAtMs": 2, "item": {"id": iid, "type": "mcpToolCall", "server": "lico", "tool": tool_name, "error": {"message": err_msg}}})
+                notify("item/agentMessage/delta", {"threadId": active["thread"], "turnId": tid, "itemId": f"msg-{turn_counter}", "delta": f"codex-mcp {status_code} {body}\n"})
+            notify("turn/completed", {"threadId": active["thread"], "turn": {"id": tid, "items": [], "status": "completed"}})
+            active["turn"] = None
         else:
             iid = f"it-{turn_counter}"
             notify("item/started", {"threadId": active["thread"], "turnId": tid, "startedAtMs": 1, "item": {"id": iid, "type": "agentMessage", "text": ""}})

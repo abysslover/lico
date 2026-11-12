@@ -178,6 +178,8 @@ pub fn notice(header: &str, path: &Path, text: &str, size: &str, provider: &str,
     }
     let how = if tool && provider == "claude" {
         "the Read tool refuses over about 25,000 tokens: use read_handoff with this path, 32 KiB a call (the answer says where the next part starts)"
+    } else if tool && provider == "codex" {
+        "use read_handoff with this path, 32 KiB a call (the answer says where the next part starts)"
     } else if provider == "claude" {
         "the Read tool refuses over about 25,000 tokens: read in parts with offset and limit, 400 lines at a time"
     } else {
@@ -468,7 +470,12 @@ pub(crate) mod tests {
         }
         let tool = notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "claude", true);
         assert_eq!(tool, format!("{top}8.8 KiB, 1000 lines; the Read tool refuses over about 25,000 tokens: use read_handoff with this path, 32 KiB a call (the answer says where the next part starts).\n{end}"));
-        assert_eq!(notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "codex", true), format!("{top}8.8 KiB, 1000 lines; read it in parts, 400 lines at a time.\n{end}"), "a tool is named to the program that has it only");
+        assert_eq!(
+            notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "codex", true),
+            format!("{top}8.8 KiB, 1000 lines; use read_handoff with this path, 32 KiB a call (the answer says where the next part starts).\n{end}"),
+            "a Codex session on the MCP listener gets read_handoff without Claude's Read tool caveat"
+        );
+        assert_eq!(notice(&head, Path::new("/inbox/f.md"), &text, "8.8 KiB", "", true), format!("{top}8.8 KiB, 1000 lines; read it in parts, 400 lines at a time.\n{end}"), "a non-provider session gets plain chunk advice");
         assert_eq!(line_count("a\nb"), 2);
         assert_eq!(line_count("a\nb\n"), 2, "a final newline does not make another line");
         assert_eq!((lines_word(1).as_str(), lines_word(2).as_str(), lines_word(120).as_str()), ("1 line", "2 lines", "120 lines"));

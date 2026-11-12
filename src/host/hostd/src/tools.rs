@@ -103,6 +103,17 @@ impl Table {
         Ok(Grant { key, path })
     }
 
+    fn issue_token(&mut self, dir: &Path, session: &str, generation: u64) -> (String, String) {
+        self.keys.retain(|_, k| k.session != session);
+        if let Ok(path) = file_of(dir, session) {
+            let _ = std::fs::remove_file(path);
+        }
+        let (key, secret) = (core::random_hex(16), core::random_hex(32));
+        let bearer = format!("{key}.{secret}");
+        self.keys.insert(key.clone(), Key { session: session.to_string(), generation, secret, begun: false });
+        (key, bearer)
+    }
+
     /// The session and generation a credential belongs to, or why it belongs to none.
     fn check(&self, header: &str) -> Result<(String, u64), Refusal> {
         let (key, secret) = parse(header).ok_or(Refusal::Malformed)?;
@@ -191,18 +202,31 @@ pub fn reset(dir: PathBuf) -> std::io::Result<()> {
 pub fn issue(shared: &Arc<Shared>, session: &str, generation: u64) -> Result<Grant, &'static str> {
     let mut state = state();
     let dir = state.dir.clone().ok_or("busy")?;
-    let port = match state.port {
-        Some(port) => port,
+    let port = ensure_listener(&mut state, shared)?;
+    state.table.issue(&dir, port, session, generation).map_err(|_| "busy")
+}
+
+/// Issue a loopback MCP bearer token `(key, port, bearer)` for a local `codex app-server` process (configured via `-c` + `LICO_MCP_TOKEN`, no config file on disk).
+pub fn issue_codex(shared: &Arc<Shared>, session: &str, generation: u64) -> Result<(String, u16, String), &'static str> {
+    let mut state = state();
+    let dir = state.dir.clone().ok_or("busy")?;
+    let port = ensure_listener(&mut state, shared)?;
+    let (key, bearer) = state.table.issue_token(&dir, session, generation);
+    Ok((key, port, bearer))
+}
+
+fn ensure_listener(state: &mut State, shared: &Arc<Shared>) -> Result<u16, &'static str> {
+    match state.port {
+        Some(port) => Ok(port),
         None => {
             let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|_| "busy")?;
             let port = listener.local_addr().map_err(|_| "busy")?.port();
             let shared = shared.clone();
             thread::Builder::new().stack_size(STACK).spawn(move || serve(listener, shared, port)).map_err(|_| "busy")?;
             state.port = Some(port);
-            port
+            Ok(port)
         }
-    };
-    state.table.issue(&dir, port, session, generation).map_err(|_| "busy")
+    }
 }
 
 /// Whether the program of `session` is on the tool connection now, so that a notice can send it to `read_handoff`.

@@ -127,7 +127,20 @@ pub fn folder_list(shared: &Shared, cwd: &str, show_hidden: bool) -> Reply {
         }
         let Ok(ft) = entry.file_type() else { continue };
         let (kind, size, is_html, external) = if ft.is_symlink() {
-            ("link", 0, false, false)
+            match std::fs::metadata(entry.path()) {
+                Ok(tmeta) if tmeta.is_dir() => ("dir", 0, false, false),
+                Ok(tmeta) if tmeta.is_file() => {
+                    let link_t = std::fs::read_link(entry.path()).ok();
+                    let tname = link_t.as_ref().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or("");
+                    (
+                        "file",
+                        tmeta.len(),
+                        is_html_name(&name) || is_html_name(tname),
+                        uses_system_opener(&name) || uses_system_opener(tname),
+                    )
+                }
+                _ => ("link", 0, false, false),
+            }
         } else if ft.is_dir() {
             ("dir", 0, false, false)
         } else if ft.is_file() {
@@ -181,7 +194,8 @@ pub(crate) fn sanitize_preview_text(raw_str: &str) -> String {
         .collect()
 }
 
-/// Reads at most `64 KiB` of a regular file inside an allowed working directory, refusing symlinks and special files.
+/// Reads at most `64 KiB` of a regular file (following symlinks whose resolved target is an allowed regular file,
+/// while refusing protected private state roots, directories, broken links, and special files).
 pub fn folder_read(shared: &Shared, path: &str) -> Reply {
     if !crate::folders::valid_path_shape(path) {
         return Err("bad_request");
@@ -220,19 +234,45 @@ pub fn folder_read(shared: &Shared, path: &str) -> Reply {
             "file_unreadable"
         }
     })?;
-    if lmeta.file_type().is_symlink() || !lmeta.file_type().is_file() {
+    let open_path = if lmeta.file_type().is_symlink() {
+        let resolved = std::fs::canonicalize(&target).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                "file_missing"
+            } else {
+                "file_unreadable"
+            }
+        })?;
+        let Some(res_str) = resolved.to_str().filter(|s| crate::folders::valid_path_shape(s)) else {
+            return Err("file_unreadable");
+        };
+        let res_parent = resolved.parent().and_then(|d| d.to_str()).unwrap_or("/");
+        let res_parent_arg = if res_parent.is_empty() { "/" } else { res_parent };
+        crate::folders::check_folder(shared, res_parent_arg)?;
+        let rmeta = std::fs::symlink_metadata(&resolved).map_err(|_| "file_unreadable")?;
+        if !rmeta.file_type().is_file() {
+            if rmeta.file_type().is_dir() {
+                if let Err(code @ "folder_protected") = crate::folders::check_folder(shared, res_str) {
+                    return Err(code);
+                }
+            }
+            return Err("file_not_regular");
+        }
+        resolved
+    } else if !lmeta.file_type().is_file() {
         if lmeta.file_type().is_dir() {
             if let Err(code @ "folder_protected") = crate::folders::check_folder(shared, &full_str) {
                 return Err(code);
             }
         }
         return Err("file_not_regular");
-    }
+    } else {
+        target
+    };
 
     let file = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(O_NOFOLLOW | O_NONBLOCK)
-        .open(&target)
+        .open(&open_path)
         .map_err(|_| "file_unreadable")?;
     let fd_meta = file.metadata().map_err(|_| "file_unreadable")?;
     if !fd_meta.is_file() {
@@ -355,33 +395,41 @@ mod tests {
         std::fs::write(work.join("notes.md"), b"hello").unwrap();
         std::fs::write(work.join("bad\u{202E}name.txt"), b"skip").unwrap();
         std::os::unix::fs::symlink(work.join("notes.md"), work.join("shortcut")).unwrap();
+        std::os::unix::fs::symlink(work.join("Alpha"), work.join("alpha_link")).unwrap();
+        std::os::unix::fs::symlink(work.join("nonexistent.txt"), work.join("dangling")).unwrap();
 
         let res = folder_list(&shared, work.to_str().unwrap(), false).expect("folder_list default");
         assert_eq!(res["show_hidden"], json!(false));
         let entries = res["entries"].as_array().unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e["name"].as_str().unwrap()).collect();
-        assert_eq!(names, vec!["Alpha", "zeta", "notes.md", "report.HTML", "shortcut", "slides.pptx"]);
+        assert_eq!(
+            names,
+            vec!["Alpha", "alpha_link", "zeta", "dangling", "notes.md", "report.HTML", "shortcut", "slides.pptx"]
+        );
         assert_eq!(entries[0]["kind"], json!("dir"));
-        assert_eq!(entries[2]["is_html"], json!(false));
-        assert_eq!(entries[2]["external"], json!(false));
-        assert_eq!(entries[3]["is_html"], json!(true));
-        assert_eq!(entries[3]["external"], json!(true));
-        assert_eq!(entries[4]["kind"], json!("link"));
-        assert_eq!(entries[5]["is_html"], json!(false));
+        assert_eq!(entries[1]["kind"], json!("dir"));
+        assert_eq!(entries[3]["kind"], json!("link"));
+        assert_eq!(entries[4]["is_html"], json!(false));
+        assert_eq!(entries[4]["external"], json!(false));
+        assert_eq!(entries[5]["is_html"], json!(true));
         assert_eq!(entries[5]["external"], json!(true));
+        assert_eq!(entries[6]["kind"], json!("file"));
+        assert_eq!(entries[6]["size"], json!(5));
+        assert_eq!(entries[7]["is_html"], json!(false));
+        assert_eq!(entries[7]["external"], json!(true));
 
         let res_all = folder_list(&shared, work.to_str().unwrap(), true).expect("folder_list hidden on");
         assert_eq!(res_all["show_hidden"], json!(true));
         let all_names: Vec<&str> = res_all["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
         assert_eq!(
             all_names,
-            vec![".git", "Alpha", "zeta", ".env", "notes.md", "report.HTML", "shortcut", "slides.pptx"]
+            vec![".git", "Alpha", "alpha_link", "zeta", ".env", "dangling", "notes.md", "report.HTML", "shortcut", "slides.pptx"]
         );
         assert!(!all_names.contains(&".") && !all_names.contains(&".."));
     }
 
     #[test]
-    fn folder_list_and_read_refuse_protected_state_dirs_and_symlinks() {
+    fn folder_list_and_read_follow_safe_symlinks_while_refusing_protected_state_dirs() {
         let tree = TempTree::new();
         let state = tree.0.join("state");
         let shared = dummy_shared(&state);
@@ -393,10 +441,21 @@ mod tests {
         std::fs::write(&real, b"ok").unwrap();
         let link = work.join("link.txt");
         std::os::unix::fs::symlink(&real, &link).unwrap();
+        let secret_link = work.join("secret_link.txt");
+        std::os::unix::fs::symlink(&secret, &secret_link).unwrap();
+        let logs_link = work.join("logs_dir_link");
+        std::os::unix::fs::symlink(state.join("logs"), &logs_link).unwrap();
+        let dangling = work.join("dangling.txt");
+        std::os::unix::fs::symlink(work.join("nope.txt"), &dangling).unwrap();
 
         assert_eq!(folder_list(&shared, state.join("logs").to_str().unwrap(), false), Err("folder_protected"));
+        assert_eq!(folder_list(&shared, logs_link.to_str().unwrap(), false), Err("folder_protected"));
         assert_eq!(folder_read(&shared, secret.to_str().unwrap()), Err("folder_protected"));
-        assert_eq!(folder_read(&shared, link.to_str().unwrap()), Err("file_not_regular"));
+        assert_eq!(folder_read(&shared, secret_link.to_str().unwrap()), Err("folder_protected"));
+        assert_eq!(folder_read(&shared, logs_link.to_str().unwrap()), Err("folder_protected"));
+        let r_link = folder_read(&shared, link.to_str().unwrap()).expect("safe symlink file read");
+        assert_eq!(r_link["text"], json!("ok"));
+        assert_eq!(folder_read(&shared, dangling.to_str().unwrap()), Err("file_missing"));
         assert_eq!(folder_read(&shared, work.to_str().unwrap()), Err("file_not_regular"));
         assert_eq!(folder_read(&shared, "relative/path.txt"), Err("folder_not_absolute"));
         assert_eq!(folder_read(&shared, work.join("missing.txt").to_str().unwrap()), Err("file_missing"));

@@ -502,7 +502,7 @@ impl App {
                 self.sidebar_start_dir(host, &full, false, false, false);
             }
             "link" => {
-                self.ui.flash = Some("Symbolic links are not followed by the file viewer.".into());
+                self.ui.flash = Some("Broken or special symbolic link cannot be opened.".into());
                 self.dirty = true;
             }
             _ if item.external => {
@@ -643,15 +643,11 @@ impl App {
             return false;
         }
         let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
-        if ctrl && !self.ui.mods.shift_key() {
-            if let Key::Character(c) = &event.logical_key {
-                if c.eq_ignore_ascii_case("b") {
-                    if !event.repeat {
-                        self.toggle_sidebar_collapsed();
-                    }
-                    return true;
-                }
+        if ctrl && !self.ui.mods.shift_key() && super::key_letter(event) == Some('b') {
+            if !event.repeat {
+                self.toggle_sidebar_collapsed();
             }
+            return true;
         }
         if self.sidebar_host_popup_open() {
             match &event.logical_key {

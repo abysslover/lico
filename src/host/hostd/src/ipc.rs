@@ -153,6 +153,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.create", "worktree_branch") => matches!(value, Value::String(s) if crate::worktree::valid_branch_shape(s)),
             ("session.close" | "session.purge", "worktree") => matches!(value.as_str(), Some("keep" | "remove")),
             ("session.close" | "session.purge", "force_dirty") => value.is_boolean(),
+            ("session.close", "hide_tab") => value.is_boolean(),
             ("session.create" | "session.rename", "name") => matches!(value, Value::String(s) if crate::folders::valid_name(s)),
             ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
             ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
@@ -254,7 +255,14 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "resources" => core::resources(shared),
         "session.resume" => core::session_resume(shared, session, generation.unwrap_or(0)),
         "session.purge" => core::session_purge_with(shared, session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
-        "session.close" => crate::lifecycle::session_close_with(shared, session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
+        "session.close" => crate::lifecycle::session_close_opts(
+            shared,
+            session,
+            generation.unwrap_or(0),
+            request.get("worktree").and_then(Value::as_str),
+            request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false),
+            request.get("hide_tab").and_then(Value::as_bool).unwrap_or(false),
+        ),
         "session.create" => core::session_create(
             shared,
             text(request, "kind"),

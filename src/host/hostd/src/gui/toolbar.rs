@@ -69,7 +69,10 @@ impl App {
                 ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
             ];
         }
-        vec![
+        let peers = self.running_peer_count();
+        let send_label = if peers > 0 { format!("Send -> Session ({peers})") } else { "Send -> Session".to_string() };
+        let in_send = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Send);
+        let mut out = vec![
             ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
             ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
             ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: false, reason: None },
@@ -78,7 +81,12 @@ impl App {
             ToolBtn { label: mode_label.into(), id: "toggle_mode", cmd: Cmd::ToggleMode, active: sel.is_some_and(|r| r.mode == "default"), reason: self.mode_reason() },
             ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
             ToolBtn { label: "Find".into(), id: "find", cmd: Cmd::FindConversation, active: self.ui.search.open && !self.ui.search.scope_all, reason: none_open },
-        ]
+            ToolBtn { label: send_label, id: "send_to", cmd: Cmd::SendTo, active: in_send, reason: self.send_reason() },
+        ];
+        if self.can_copy() {
+            out.push(ToolBtn { label: "Copy".into(), id: "copy", cmd: Cmd::Copy, active: false, reason: None });
+        }
+        out
     }
 
     pub(crate) fn toolbar_click(&mut self, index: usize) {

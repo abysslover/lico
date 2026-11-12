@@ -39,6 +39,21 @@ pub struct Link {
     tx: SyncSender<(String, Option<String>)>,
     pending_inputs: HashMap<String, String>, // uuid given to the provider -> host request id, until replayed
     approvals: HashMap<i64, (String, Value)>, // approval number -> (provider request id, the tool input to hand back)
+    usage_seq: u64,
+}
+
+fn request_usage(link: &mut Link) {
+    link.usage_seq = link.usage_seq.wrapping_add(1);
+    let req_id = format!("lico-usage-{}", link.usage_seq);
+    let _ = send(
+        link,
+        json!({
+            "type": "control_request",
+            "request_id": req_id,
+            "request": {"subtype": "get_usage", "skip_behaviors": true},
+        }),
+        None,
+    );
 }
 
 fn record(s: &mut Session, line: &str) {
@@ -312,7 +327,9 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         s.process_group = true;
         s.broker_stop = broker;
         s.provider = "claude";
-        s.claude = Some(Link { tx, pending_inputs: HashMap::new(), approvals: HashMap::new() });
+        let mut link = Link { tx, pending_inputs: HashMap::new(), approvals: HashMap::new(), usage_seq: 0 };
+        request_usage(&mut link);
+        s.claude = Some(link);
         s.set_state(State::Running);
         if let Some(provider_session) = &resume {
             s.codex_thread = Some(provider_session.clone());
@@ -407,6 +424,16 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
     if s.agent_pid != pid {
         return; // a close or a purge zeroed it and a resume may have put another process there: what a helper of the old one prints is read and ignored
     }
+    if message["type"] == "control_response" {
+        let resp = &message["response"];
+        if resp["subtype"] == "success"
+            && resp["request_id"].as_str().is_some_and(|id| id.starts_with("lico-usage-"))
+        {
+            let key = crate::quota::session_key(s.provider, s.account.as_deref());
+            crate::quota::observe_claude_usage(&key, &resp["response"]);
+        }
+        return;
+    }
     s.heard();
     let mut notify_event: Option<(bool, String, Option<String>, Option<String>)> = None; // (is_approval, id, name, cwd)
     match message["type"].as_str() {
@@ -495,6 +522,9 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
                 record(&mut s, "[turn completed]");
             }
             s.mark_finished();
+            if let Some(link) = s.claude.as_mut() {
+                request_usage(link);
+            }
             notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
         }
         Some("control_request") => {

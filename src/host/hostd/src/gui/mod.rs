@@ -36,6 +36,9 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use events::emit_ime;
+pub(crate) use events::{key_letter, key_letter_cased};
+#[cfg(test)]
+pub(crate) use events::key_letter_parts;
 use wire::{jint, jstr, json_escape};
 
 const VISIBLE_LINES: usize = 40;

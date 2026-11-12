@@ -522,7 +522,7 @@ impl App {
             }
             "link" => {
                 if let Some(p) = self.ui.panel.as_mut() {
-                    p.notice = "Symbolic links are not followed by the file viewer.".into();
+                    p.notice = "Broken or special symbolic link cannot be opened.".into();
                 }
                 self.dirty = true;
             }
@@ -596,22 +596,18 @@ impl App {
                 Key::Named(NamedKey::PageDown) => self.move_host_popup_sel(HOST_POPUP_MAX_VIS as isize),
                 Key::Named(NamedKey::Home) => self.move_host_popup_sel(isize::MIN / 2),
                 Key::Named(NamedKey::End) => self.move_host_popup_sel(isize::MAX / 2),
-                Key::Character(c) if !event.repeat && c.eq_ignore_ascii_case("h") && !self.ui.mods.control_key() => {
+                _ if !event.repeat && crate::gui::key_letter(event) == Some('h') && !self.ui.mods.control_key() => {
                     self.close_files_host_popup();
                 }
                 _ => {}
             }
             return true;
         }
-        if self.ui.mods.control_key() && !self.ui.mods.alt_key() && !self.ui.mods.shift_key() {
-            if let Key::Character(c) = &event.logical_key {
-                if c.eq_ignore_ascii_case("h") {
-                    if !event.repeat {
-                        self.toggle_hidden_files();
-                    }
-                    return true;
-                }
+        if self.ui.mods.control_key() && !self.ui.mods.alt_key() && !self.ui.mods.shift_key() && crate::gui::key_letter(event) == Some('h') {
+            if !event.repeat {
+                self.toggle_hidden_files();
             }
+            return true;
         }
         if self.ui.mods.control_key() || self.ui.mods.alt_key() {
             return false;
@@ -654,11 +650,11 @@ impl App {
                 Key::Named(NamedKey::PageDown) => self.files_step_page(1),
                 Key::Named(NamedKey::Home) => self.files_scroll_preview(isize::MIN / 2),
                 Key::Named(NamedKey::End) => self.files_scroll_preview(isize::MAX / 2),
-                Key::Character(c) if !event.repeat => match c.as_str() {
-                    "[" => self.files_step_page(-1),
-                    "]" => self.files_step_page(1),
-                    _ if c.eq_ignore_ascii_case("h") => self.toggle_files_host_popup(),
-                    _ if c.eq_ignore_ascii_case("n") => self.files_new_session_here(),
+                _ if !event.repeat => match (&event.logical_key, crate::gui::key_letter(event)) {
+                    (Key::Character(c), _) if c.as_str() == "[" => self.files_step_page(-1),
+                    (Key::Character(c), _) if c.as_str() == "]" => self.files_step_page(1),
+                    (_, Some('h')) => self.toggle_files_host_popup(),
+                    (_, Some('n')) => self.files_new_session_here(),
                     _ => {}
                 },
                 _ => {}
@@ -686,12 +682,12 @@ impl App {
             Key::Named(NamedKey::PageDown) => self.files_step_page(1),
             Key::Named(NamedKey::Home) => self.files_move_cursor(isize::MIN / 2),
             Key::Named(NamedKey::End) => self.files_move_cursor(isize::MAX / 2),
-            Key::Character(c) if !event.repeat => match c.to_ascii_lowercase().as_str() {
-                "[" => self.files_step_page(-1),
-                "]" => self.files_step_page(1),
-                "." => self.toggle_hidden_files(),
-                "h" => self.toggle_files_host_popup(),
-                "n" => self.files_new_session_here(),
+            _ if !event.repeat => match (&event.logical_key, crate::gui::key_letter(event)) {
+                (Key::Character(c), _) if c.as_str() == "[" => self.files_step_page(-1),
+                (Key::Character(c), _) if c.as_str() == "]" => self.files_step_page(1),
+                (Key::Character(c), _) if c.as_str() == "." => self.toggle_hidden_files(),
+                (_, Some('h')) => self.toggle_files_host_popup(),
+                (_, Some('n')) => self.files_new_session_here(),
                 _ => {}
             },
             _ => {}

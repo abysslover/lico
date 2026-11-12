@@ -57,7 +57,7 @@ impl Rig {
     }
 
     fn give(&self, req: Option<&str>, source: Source) -> Option<serde_json::Value> {
-        self.jobs.send(Job { req: req.map(str::to_string), source }).unwrap();
+        self.jobs.send(Job { req: req.map(str::to_string), source, clipboard: true, primary: false }).unwrap();
         req.map(|_| serde_json::from_str(&self.reports.recv_timeout(Duration::from_secs(10)).expect("the owner reported")).unwrap())
     }
 
@@ -66,7 +66,11 @@ impl Rig {
     }
 
     fn requestor(&self) -> Requestor {
-        Requestor::new(&self.display)
+        Requestor::for_selection(&self.display, "CLIPBOARD")
+    }
+
+    fn primary_requestor(&self) -> Requestor {
+        Requestor::for_selection(&self.display, "PRIMARY")
     }
 }
 
@@ -93,13 +97,17 @@ struct Requestor {
 
 impl Requestor {
     fn new(display: &str) -> Requestor {
+        Self::for_selection(display, "CLIPBOARD")
+    }
+
+    fn for_selection(display: &str, sel_name: &str) -> Requestor {
         let (conn, num) = x11rb::connect(Some(display)).unwrap();
         let root = conn.setup().roots[num].root;
         let win = conn.generate_id().unwrap();
         let aux = CreateWindowAux::new().event_mask(EventMask::PROPERTY_CHANGE);
         conn.create_window(0, win, root, 0, 0, 1, 1, 0, WindowClass::INPUT_ONLY, 0, &aux).unwrap();
         let atom = |n: &str| conn.intern_atom(false, n.as_bytes()).unwrap().reply().unwrap().atom;
-        let (selection, property) = (atom("CLIPBOARD"), atom("LICO_TEST_PROP"));
+        let (selection, property) = (atom(sel_name), atom("LICO_TEST_PROP"));
         Requestor { conn, win, selection, property }
     }
 
@@ -411,11 +419,11 @@ fn a_value_is_confirmed_only_when_the_server_says_this_window_owns_the_selection
         };
         serve_with(Some(&d), rx, &move |line| drop(tx.lock().unwrap().send(line)), &between);
     });
-    jobs.send(Job { req: Some("race".into()), source: Source::Text("lost the race".into()) }).unwrap();
+    jobs.send(Job { req: Some("race".into()), source: Source::Text("lost the race".into()), clipboard: true, primary: false }).unwrap();
     let said: serde_json::Value = serde_json::from_str(&reports.recv_timeout(Duration::from_secs(10)).unwrap()).unwrap();
     assert_eq!((said["ok"].as_bool(), said["error"].as_str()), (Some(false), Some("x_error")), "{said}");
     // the next job is not raced: it is confirmed
-    jobs.send(Job { req: Some("fine".into()), source: Source::Text("won".into()) }).unwrap();
+    jobs.send(Job { req: Some("fine".into()), source: Source::Text("won".into()), clipboard: true, primary: false }).unwrap();
     let said: serde_json::Value = serde_json::from_str(&reports.recv_timeout(Duration::from_secs(10)).unwrap()).unwrap();
     assert_eq!(said["ok"].as_bool(), Some(true), "{said}");
 }
@@ -449,4 +457,16 @@ fn only_the_press_of_the_middle_button_over_the_box_with_no_menu_asks_for_the_pr
     assert!(!wants_primary(Pressed, MouseButton::Middle, true, rect, at), "with a menu open the press is ignored");
     assert!(!wants_primary(Pressed, MouseButton::Middle, false, rect, (150.0, 95.0)), "outside the box");
     assert!(!wants_primary(Pressed, MouseButton::Middle, false, None, at), "no box");
+}
+
+#[test]
+fn explicit_copy_owns_clipboard_without_disturbing_primary_selection() {
+    let rig = Rig::start();
+    rig.jobs.send(Job { req: None, source: Source::Text("middle text".into()), clipboard: false, primary: true }).unwrap();
+    rig.jobs.send(Job::text("결정3:SLM-EMR\t승인".into())).unwrap();
+    rig.silent();
+    let clip = rig.requestor();
+    let prim = rig.primary_requestor();
+    assert_eq!(clip.ask("UTF8_STRING"), Got::Bytes { ptype: "UTF8_STRING".into(), data: "결정3:SLM-EMR\t승인".as_bytes().to_vec(), incr: None });
+    assert_eq!(prim.ask("UTF8_STRING"), Got::Bytes { ptype: "UTF8_STRING".into(), data: b"middle text".to_vec(), incr: None });
 }

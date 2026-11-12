@@ -232,7 +232,12 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             )
             assert any(e["name"] == "README.md" for e in ufiles["panel"]["files"]["entries"])
 
-            # Clicking `×` on Global tab closes that running session cleanly
+            # Clicking `×` on blank 0-turn Global tab purges it cleanly; clicking `×` on conversation-bearing Codex tab disconnects & hides it
             gtab = next(t for t in ufiles["tabs"]["items"] if t["session"] == s_global)
             w.click(*_centre(gtab["close_rect"]))
-            wait_for(lambda: status_of(conn, s_global)["state"] == "disconnected")
+            wait_for(lambda: all(s["session"] != s_global for s in conn.call(op="status")["sessions"]) or None)
+
+            ui_after_g = wait_for(lambda: (u := w.ui()) and all(t["session"] != s_global for t in u["tabs"]["items"]) and u)
+            xtab = next(t for t in ui_after_g["tabs"]["items"] if t["session"] == s_codex)
+            w.click(*_centre(xtab["close_rect"]))
+            wait_for(lambda: (st := status_of(conn, s_codex))["state"] == "disconnected" and st.get("tab_closed") is True or None)

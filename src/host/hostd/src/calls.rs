@@ -82,12 +82,12 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     if to == caller {
         return Err("bad_request: a session cannot send to itself".into());
     }
-    // the tool connection is for Claude sessions (SF-05): an agent does not send to any other kind (a person's own send from the window can)
+    // the tool connection is for provider sessions (Claude and Codex): an agent does not send to synthetic non-provider sessions
     if core::find(shared, to).is_some_and(|found| {
         let s = found.lock().unwrap();
-        !s.purged && s.provider != "claude"
+        !s.purged && !matches!(s.provider, "claude" | "codex")
     }) {
-        return Err("not_allowed: agents send to Claude Code sessions only; that session is not one".into());
+        return Err("not_allowed: agents send to provider sessions only; that session is not one".into());
     }
     // what is already known to be refused is refused now, so that the person is not asked for a send that could not happen
     let label = receiver_label(shared, caller, to).map_err(|code| refusal(shared, caller, code))?;
@@ -457,16 +457,16 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn the_tool_connection_is_for_claude_sessions_so_an_agent_sends_to_no_other_kind() {
+    fn agents_send_to_claude_and_codex_provider_sessions_and_refuse_non_provider_ones() {
         let w = pair();
-        for kind in ["codex", ""] {
+        w.with(TWO, |s| s.provider = "");
+        let text = call(&w, ONE, &ask(TWO, "x")).unwrap_err();
+        assert!(text.starts_with("not_allowed: ") && text.contains("provider sessions only"), "{text}");
+        assert!(w.delivered(TWO).is_none());
+        for kind in ["codex", "claude"] {
             w.with(TWO, |s| s.provider = kind);
-            let text = call(&w, ONE, &ask(TWO, "x")).unwrap_err();
-            assert!(text.starts_with("not_allowed: ") && text.contains("Claude"), "{kind:?}: {text}");
-            assert!(w.delivered(TWO).is_none());
+            assert!(call(&w, ONE, &ask(TWO, "x")).is_ok(), "{kind}");
         }
-        w.with(TWO, |s| s.provider = "claude");
-        assert!(call(&w, ONE, &ask(TWO, "x")).is_ok());
     }
 
     #[test]

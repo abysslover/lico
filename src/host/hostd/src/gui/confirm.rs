@@ -19,6 +19,7 @@ const DOUBLE_CLICK: Duration = Duration::from_millis(500);
 pub enum Act {
     Rename,
     Close,
+    CloseTab,
     Delete,
 }
 
@@ -53,7 +54,7 @@ impl App {
     pub(crate) fn ask_reason(&self, act: Act) -> Option<&'static str> {
         match (act, self.selected_row().map(|r| r.state.as_str())) {
             (_, None) => Some("no session is open"),
-            (Act::Close, Some("running")) | (Act::Rename | Act::Delete, _) => None,
+            (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete, _) => None,
             (Act::Close, Some("disconnected")) => Some("the session is already closed"),
             (Act::Close, Some(_)) => Some("the session has ended"),
         }
@@ -65,7 +66,7 @@ impl App {
         let act = match &event.logical_key {
             Key::Named(NamedKey::F2) if !ctrl && !alt => Act::Rename,
             Key::Named(NamedKey::Delete) if ctrl && !alt => Act::Delete,
-            Key::Character(c) if ctrl && shift && !alt && c.eq_ignore_ascii_case("w") => Act::Close,
+            _ if ctrl && shift && !alt && crate::gui::key_letter(event) == Some('w') => Act::Close,
             _ => return false,
         };
         if !event.repeat {
@@ -95,7 +96,8 @@ impl App {
         }
     }
 
-    /// Close button (`×`) on a session tab: closes a running session, or asks before deleting a closed one.
+    /// Close button (`×`) on a session tab, or `/exit` (`/quit`): dismisses the tab cleanly (stopping any idle process and keeping
+    /// resumable conversations in `Past`, or purging a blank 0-turn tab).
     pub(crate) fn close_tab_by_id(&mut self, id: String) {
         if self.ui.panel.is_some() {
             self.panel_close();
@@ -103,8 +105,7 @@ impl App {
         if id != self.session {
             self.switch_to(&id);
         }
-        let is_running = self.selected_row().is_some_and(|r| r.state == "running");
-        self.ask_open(if is_running { Act::Close } else { Act::Delete });
+        self.ask_open(Act::CloseTab);
     }
 
     /// Start an action on the open session: a name is asked for, a delete and the stopping of a working turn are asked about, and closing
@@ -128,10 +129,11 @@ impl App {
             worktree_exists: row.worktree_exists,
             dirty_confirm: false,
         };
-        if act == Act::Close && !ask.working && !ask.worktree_exists {
+        if matches!(act, Act::Close | Act::CloseTab) && !ask.working && !ask.worktree_exists {
+            let prefix = if act == Act::CloseTab { "Close tab" } else { "Close session" };
             return match self.ask_do(&ask, "", None, false) {
                 Ok(done) => self.ui.flash = Some(done),
-                Err((_, text)) => self.ui.flash = Some(format!("Close session: {text}")),
+                Err((_, text)) => self.ui.flash = Some(format!("{prefix}: {text}")),
             };
         }
         let name = row.name.clone();
@@ -149,6 +151,7 @@ impl App {
         let mut request = match ask.act {
             Act::Rename => json!({"op": "session.rename", "session": ask.session, "name": name}),
             Act::Close => json!({"op": "session.close", "session": ask.session, "generation": ask.generation}),
+            Act::CloseTab => json!({"op": "session.close", "session": ask.session, "generation": ask.generation, "hide_tab": true}),
             Act::Delete => json!({"op": "session.purge", "session": ask.session, "generation": ask.generation}),
         };
         if let Some(policy) = worktree {
@@ -157,7 +160,22 @@ impl App {
                 request["force_dirty"] = json!(true);
             }
         }
-        let reply = self.host_call(request);
+        let mut reply = self.host_call(request);
+        let mut purged_empty = false;
+        if ask.act == Act::CloseTab
+            && reply["ok"] != json!(1)
+            && matches!(reply["error"].as_str(), Some("no_conversation_yet" | "session_exited"))
+        {
+            let mut purge_req = json!({"op": "session.purge", "session": ask.session, "generation": ask.generation});
+            if let Some(policy) = worktree {
+                purge_req["worktree"] = json!(policy);
+                if force_dirty {
+                    purge_req["force_dirty"] = json!(true);
+                }
+            }
+            reply = self.host_call(purge_req);
+            purged_empty = true;
+        }
         if reply["ok"] != json!(1) {
             let code = reply["error"].as_str().unwrap_or("unknown").to_string();
             let text = why(&code);
@@ -165,6 +183,8 @@ impl App {
         }
         if ask.act == Act::Delete {
             self.session_gone(&ask.session);
+        } else if ask.act == Act::CloseTab {
+            self.dismiss_tab_after(&ask.session, purged_empty);
         }
         self.send("{\"op\":\"status\"}");
         Ok(match (ask.act, worktree) {
@@ -173,10 +193,51 @@ impl App {
             (Act::Close, Some("remove")) => "Session closed and worktree removed (branch kept). Ctrl+R brings the session back.".into(),
             (Act::Close, Some("keep")) => "Session closed (worktree kept). Ctrl+R brings it back.".into(),
             (Act::Close, _) => "Session closed. Ctrl+R brings it back.".into(),
+            (Act::CloseTab, _) if purged_empty => "Tab closed.".into(),
+            (Act::CloseTab, Some("remove")) => "Tab closed and worktree removed (branch kept). Conversation stays in Past.".into(),
+            (Act::CloseTab, Some("keep")) => "Tab closed (worktree kept). Conversation stays in Past.".into(),
+            (Act::CloseTab, _) => "Tab closed. Conversation stays in Past.".into(),
             (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
             (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
             (Act::Delete, _) => "Session deleted.".into(),
         })
+    }
+
+    fn dismiss_tab_after(&mut self, id: &str, purged: bool) {
+        let pos = self.ui.numbered.iter().position(|n| n == id);
+        let remaining: Vec<String> = self.ui.numbered.iter().filter(|n| n.as_str() != id).cloned().collect();
+        let next_tab = pos.and_then(|i| remaining.get(i).or_else(|| remaining.last()).cloned());
+        if purged {
+            self.panel_close();
+            self.ed.forget(id);
+            self.pending_inputs.retain(|_, (session, _)| session != id);
+            self.meta.retain(|m| m.id != id);
+            self.ui.rows.retain(|r| r.session != id);
+            self.ui.numbered.retain(|n| n != id);
+        } else {
+            self.panel_close();
+            if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == id) {
+                row.tab_closed = true;
+                row.state = "disconnected".into();
+                row.activity.clear();
+                row.busy_since = 0;
+            }
+            if self.tabs_shown() {
+                self.ui.numbered.retain(|n| n != id);
+            }
+        }
+        if self.session == id {
+            if self.tabs_shown() {
+                if let Some(next) = next_tab {
+                    self.switch_to(&next);
+                } else {
+                    self.go_start();
+                }
+            } else {
+                self.go_start();
+            }
+        }
+        self.refresh_list();
     }
 
     /// The host deleted a session: the screen leaves it if it was shown, and the list, the draft box and the bookkeeping of the window forget it.
@@ -289,7 +350,11 @@ impl App {
         let Some(ask) = p.ask.as_ref() else { return (String::new(), Vec::new()) };
         let named = format!("\"{}\"", ask.title);
         if ask.act != Act::Rename && ask.worktree_exists {
-            let verb = if ask.act == Act::Close { "close session" } else { "delete session" };
+            let verb = match ask.act {
+                Act::Close => "close session",
+                Act::CloseTab => "close tab",
+                _ => "delete session",
+            };
             if ask.dirty_confirm {
                 return (
                     "Uncommitted changes in worktree".into(),
@@ -303,10 +368,10 @@ impl App {
                     ],
                 );
             }
-            let heading = if ask.act == Act::Close { "Close worktree session" } else { "Delete worktree session" };
+            let heading = if matches!(ask.act, Act::Close | Act::CloseTab) { "Close worktree session" } else { "Delete worktree session" };
             let first = match (ask.act, ask.working) {
-                (Act::Close, true) => format!("Stop the work of {named} and close it?"),
-                (Act::Close, false) => format!("Close {named}? Its conversation stays; Ctrl+R brings it back."),
+                (Act::Close | Act::CloseTab, true) => format!("Stop the work of {named} and close it?"),
+                (Act::Close | Act::CloseTab, false) => format!("Close {named}? Its conversation stays; Past / Ctrl+R brings it back."),
                 _ => format!("Delete {named}? This cannot be undone."),
             };
             return (
@@ -325,7 +390,7 @@ impl App {
         let folder = if ask.cwd.is_empty() { "Its scratch workspace is removed with it.".to_string() } else { format!("The folder {} is not touched.", ask.cwd) };
         match ask.act {
             Act::Rename => ("Rename session".into(), vec![format!("Type the new name of {named} and press Enter."), "An empty name takes the name away. At most 60 characters.".into(), "The host keeps the name: other windows and the command line show it too.".into()]),
-            Act::Close => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
+            Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Past / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
             Act::Delete => {
                 let running = if ask.working { "A turn is running: it is stopped first." } else { "Its process, if any, is stopped first." };
                 ("Delete session".into(), vec![format!("Delete {named}? This cannot be undone."), format!("{running} Its record is removed for good."), folder, String::new(), "Y  delete it".into(), "N  keep it".into()])

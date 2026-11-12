@@ -457,6 +457,7 @@ pub struct Session {
     pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
     pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
     pub finished_seq: i64, // last sequence number at which a provider turn finished (`-1` until a turn finishes; `>> ` echo never updates it)
+    pub tab_closed: bool, // dismissed from the workbench tab bar (`×`, `/exit`, `/quit`); conversation stays resumable in `Past`
 }
 
 /// How long the count of steps in a row (`incoming_hops`) is held against a shallower text from another session, so that a third session cannot reset a chain
@@ -533,6 +534,7 @@ impl Session {
             pending: Default::default(),
             made_by: None,
             finished_seq: -1,
+            tab_closed: false,
         }
     }
 
@@ -592,7 +594,8 @@ impl Session {
         s.state = State::Disconnected;
         s.state_at = if entry.state_at > 0 { entry.state_at } else { now_secs() };
         s.last_active_at = entry.last_active_at.max(s.state_at);
-        s.auto_title = entry.auto_title.clone();
+        s.auto_title = entry.auto_title.as_deref().filter(|t| !t.trim_start().starts_with('/')).map(str::to_string);
+        s.tab_closed = entry.tab_closed;
         let from = (next - window_cap as i64).max(0);
         if let Ok(records) = s.log.view().read(from, next, window_cap) {
             s.window = records.into_iter().collect();
@@ -600,48 +603,31 @@ impl Session {
         if s.auto_title.is_none() {
             let mut derived = None;
             let _ = s.log.view().scan_each(|_, bytes| {
-                if let Some(rest) = std::str::from_utf8(bytes).ok().and_then(|t| t.strip_prefix(">> ")) {
-                    if !rest.starts_with('[') {
-                        derived = crate::folders::derive_auto_title(rest);
-                        if derived.is_some() {
-                            return false;
-                        }
-                    }
+                if let Some(rest) = std::str::from_utf8(bytes).ok().and_then(|t| t.strip_prefix(">> ")).filter(|r| !r.starts_with('[')) {
+                    derived = crate::folders::derive_auto_title(rest);
+                    if derived.is_some() { return false; }
                 }
                 true
             });
             s.auto_title = derived;
         }
+        if s.auto_title != entry.auto_title {
+            crate::registry::mark_dirty();
+        }
         (s, report)
     }
 
-    pub fn sync_log(&mut self) {
-        self.log.sync();
+    pub fn has_conversation(&self) -> bool {
+        self.finished_seq >= 0 || self.auto_title.is_some() || self.settings.name.is_some() || !self.inputs.is_empty() || self.window.iter().any(|(_, b)| b.starts_with(b">> ")) || self.next_seq > 2
     }
 
-    pub fn last_seq(&self) -> i64 {
-        self.next_seq - 1
-    }
-
-    pub fn oldest(&self) -> i64 {
-        self.log.oldest(self.next_seq)
-    }
-
-    pub fn mem_start(&self) -> i64 {
-        self.window.front().map_or(self.next_seq, |r| r.0)
-    }
-
-    pub fn log_view(&self) -> LogView {
-        self.log.view()
-    }
-
-    pub fn purge_log(&mut self) {
-        self.log.purge();
-    }
-
-    pub fn disk_bytes(&self) -> usize {
-        self.log.disk_bytes()
-    }
+    pub fn sync_log(&mut self) { self.log.sync(); }
+    pub fn last_seq(&self) -> i64 { self.next_seq - 1 }
+    pub fn oldest(&self) -> i64 { self.log.oldest(self.next_seq) }
+    pub fn mem_start(&self) -> i64 { self.window.front().map_or(self.next_seq, |r| r.0) }
+    pub fn log_view(&self) -> LogView { self.log.view() }
+    pub fn purge_log(&mut self) { self.log.purge(); }
+    pub fn disk_bytes(&self) -> usize { self.log.disk_bytes() }
 
     pub fn append(&mut self, data: Vec<u8>) {
         if self.log_failed || self.purged {

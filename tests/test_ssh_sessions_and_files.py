@@ -204,6 +204,8 @@ def test_remote_files_parity_and_safety_across_socket_cli_and_http():
             assert cli_off["ok"] == 1 and v1.validate_response("folder.list", cli_off) == []
             assert cli_off["cwd"] == str(exp_dir) and cli_off["ssh_host"] == "gpu-box"
             assert [e["name"] for e in cli_off["entries"]] == ["sub", "escape_link", "README.md", "report.html"]
+            by_name_rem = {e["name"]: e for e in cli_off["entries"]}
+            assert by_name_rem["escape_link"]["kind"] == "file"
 
             cli_on = json.loads(cli(host, "files", "~/projects/experiment", "--hidden", "--ssh-host", "gpu-box").stdout)
             assert ".env.local" in [e["name"] for e in cli_on["entries"]]
@@ -228,8 +230,16 @@ def test_remote_files_parity_and_safety_across_socket_cli_and_http():
             assert st_r == 200 and v1.validate_response("folder.read", http_r) == []
             assert http_r["text"] == sock_r["text"] and http_r["ssh_host"] == "gpu-box"
 
-            # 4. Safety refusals: symlink (`file_not_regular`), remote state root (`folder_protected`), bad ssh_host
-            assert conn.call(op="folder.read", path=str(exp_dir / "escape_link"), ssh_host="gpu-box")["error"] == "file_not_regular"
+            # 4. Symlink following + safety refusals: special device (`file_not_regular`), remote state root (`folder_protected`), bad ssh_host
+            state_lico_dir = uhome / ".local" / "state" / "lico"
+            os.symlink(exp_dir / "sub", exp_dir / "sub_link")
+            os.symlink("/dev/null", exp_dir / "devnull_link")
+            os.symlink(state_lico_dir / "secret.txt", exp_dir / "secret_link")
+            assert conn.call(op="folder.read", path=str(exp_dir / "escape_link"), ssh_host="gpu-box")["ok"] == 1
+            sub_via_link = conn.call(op="folder.list", cwd=str(exp_dir / "sub_link"), ssh_host="gpu-box")
+            assert sub_via_link["ok"] == 1 and [e["name"] for e in sub_via_link["entries"]] == ["notes.txt"]
+            assert conn.call(op="folder.read", path=str(exp_dir / "devnull_link"), ssh_host="gpu-box")["error"] == "file_not_regular"
+            assert conn.call(op="folder.read", path=str(exp_dir / "secret_link"), ssh_host="gpu-box")["error"] == "folder_protected"
             state_root = str(uhome / ".local" / "state" / "lico")
             assert conn.call(op="folder.list", cwd=state_root, ssh_host="gpu-box")["error"] == "folder_protected"
             assert conn.call(op="folder.read", path=f"{state_root}/secret.txt", ssh_host="gpu-box")["error"] == "folder_protected"

@@ -5,7 +5,7 @@
 - Project: Lico
 - Updated: 2026-11-12
 - Milestone branch: `milestone/M07-two-pane-workbench-and-past-sessions` (created at milestone close)
-- Implementation: Completed on branches `phase/M07-P01-session-tabs-and-telemetry-bar` through `phase/M07-P03-past-sessions-and-0-2-3` (`lico 0.2.3`)
+- Implementation: Completed on branches `phase/M07-P01-session-tabs-and-telemetry-bar` through `phase/M07-P04-session-comms-command-boxes-and-fixes` (`lico 0.2.3`)
 - Next gate: G3 inspection acceptance and G4 merge approval
 
 ## Goal
@@ -73,12 +73,13 @@ into an ergonomic daily workbench while keeping memory around `~25-36 MiB`.
 | M07-P01 | Maximized launch, `Global` general sessions, token/quota reset telemetry, chat session tab bar, and bottom telemetry strip | [Plan](../../../plans/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_plan.md) | [Report](../../../reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `00014` | — | pending G3 |
 | M07-P02 | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview | [Plan](../../../plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | [Report](../../../reports/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_report.md) | `00015` | — | pending G3 |
 | M07-P03 | Full-pagination `session.past` discovery and one-click `claude`/`codex` resume (local + SSH, `cwd` + `Global`) and `0.2.3` release | [Plan](../../../plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | [Report](../../../reports/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_report.md) | `00016` | — | pending G3 |
+| M07-P04 | Bidirectional `Claude` <-> `Codex` MCP communication, bordered command/tool cards, Claude `get_usage` `5h`/`Wk` quota, symlink dir/file navigation, and `/exit` tab dismissal | [Plan](../../../plans/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_plan.md) | [Report](../../../reports/202611/20261112/20261112_14_M07-P04_session_comms_command_boxes_and_fixes_report.md) | `00017` | — | pending G3 |
 
 ## Gates
 
 | Gate | State | Boundary |
 |---|---|---|
-| G1 milestone approval | Approved 2026-11-12 | Scope and phases `M07-P01` to `M07-P03`, patch version bump `0.2.2` -> `0.2.3` on completion |
-| G2 phase plan approval | Approved 2026-11-12 | Continuous implementation across `M07-P01` to `M07-P03` |
-| G3 inspection acceptance | Pending | Owner inspection of `M07-P01` through `M07-P03` deliverables and screenshots |
+| G1 milestone approval | Approved 2026-11-12 | Scope and phases `M07-P01` to `M07-P04`, patch version bump `0.2.2` -> `0.2.3` on completion |
+| G2 phase plan approval | Approved 2026-11-12 | Continuous implementation across `M07-P01` to `M07-P04` |
+| G3 inspection acceptance | Pending | Owner inspection of `M07-P01` through `M07-P04` deliverables and screenshots |
 | G4 merge approval | Pending | Owner explicit approval before merging to `main` and pushing |

@@ -81,12 +81,77 @@ fn remaining_from_used_pct(used: i64) -> u8 {
     (100_i64.saturating_sub(used)).clamp(0, 100) as u8
 }
 
+fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = y - i64::from(m <= 2);
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = (y - era * 400) as u64;
+    let m_adj = u64::from(if m > 2 { m - 3 } else { m + 9 });
+    let doy = (153 * m_adj + 2) / 5 + u64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + (doe as i64) - 719_468
+}
+
+fn parse_iso8601_ts(raw: &str) -> Option<u64> {
+    let s = raw.trim();
+    if s.len() < 19 {
+        return None;
+    }
+    let b = s.as_bytes();
+    if b[4] != b'-' || b[7] != b'-' || !matches!(b[10], b'T' | b't' | b' ') || b[13] != b':' || b[16] != b':' {
+        return None;
+    }
+    let year: i64 = s.get(0..4)?.parse().ok()?;
+    let month: u32 = s.get(5..7)?.parse().ok()?;
+    let day: u32 = s.get(8..10)?.parse().ok()?;
+    let hour: i64 = s.get(11..13)?.parse().ok()?;
+    let min: i64 = s.get(14..16)?.parse().ok()?;
+    let sec: i64 = s.get(17..19)?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || hour > 23 || min > 59 || sec > 60 {
+        return None;
+    }
+    let mut rest = s.get(19..)?;
+    if let Some(after_dot) = rest.strip_prefix('.') {
+        let digits = after_dot.bytes().take_while(|c| c.is_ascii_digit()).count();
+        rest = after_dot.get(digits..)?;
+    }
+    let offset_secs: i64 = if matches!(rest, "Z" | "z" | "") {
+        0
+    } else {
+        let sign: i64 = match rest.as_bytes().first()? {
+            b'+' => 1,
+            b'-' => -1,
+            _ => return None,
+        };
+        let tz = rest.get(1..)?;
+        let (oh, om): (i64, i64) = if tz.len() == 5 && tz.as_bytes()[2] == b':' {
+            (tz.get(0..2)?.parse().ok()?, tz.get(3..5)?.parse().ok()?)
+        } else if tz.len() == 4 {
+            (tz.get(0..2)?.parse().ok()?, tz.get(2..4)?.parse().ok()?)
+        } else if tz.len() == 2 {
+            (tz.get(0..2)?.parse().ok()?, 0)
+        } else {
+            return None;
+        };
+        if oh > 23 || om > 59 {
+            return None;
+        }
+        sign * (oh * 3600 + om * 60)
+    };
+    let ts = days_from_civil(year, month, day) * 86_400 + hour * 3600 + min * 60 + sec - offset_secs;
+    (ts > 0).then_some(ts as u64)
+}
+
 fn reset_ts(obj: &Value) -> Option<u64> {
-    obj.get("resetsAt")
-        .or_else(|| obj.get("resets_at"))
-        .and_then(Value::as_i64)
-        .filter(|&n| n > 0)
-        .map(|n| n as u64)
+    let raw = obj.get("resetsAt").or_else(|| obj.get("resets_at"))?;
+    if let Some(n) = raw.as_i64() {
+        return (n > 0).then_some(n as u64);
+    }
+    if let Some(f) = raw.as_f64() {
+        if f.is_finite() && f > 0.0 {
+            return Some(f.round() as u64);
+        }
+    }
+    raw.as_str().and_then(parse_iso8601_ts)
 }
 
 /// Record a Codex `GetAccountRateLimitsResponse` result or `AccountRateLimitsUpdatedNotification` params.
@@ -212,9 +277,105 @@ pub fn observe_claude(key: &str, message: &Value) {
     entry.updated_at = now_secs();
 }
 
+fn claude_usage_pct_remaining(win: &Value) -> Option<u8> {
+    let u = win.get("utilization")?;
+    if let Some(i) = u.as_i64() {
+        return Some(remaining_from_used_pct(i));
+    }
+    if let Some(f) = u.as_f64() {
+        if f.is_finite() {
+            return Some(remaining_from_used_pct(f.round() as i64));
+        }
+    }
+    None
+}
+
+/// Record a Claude Code `control_request` `get_usage` response (`rate_limits` uses `0..100` `utilization` and ISO-8601 `resets_at`).
+pub fn observe_claude_usage(key: &str, payload: &Value) {
+    if key.is_empty() {
+        return;
+    }
+    let limits = payload.get("rate_limits").unwrap_or(payload);
+    if !limits.is_object() {
+        return;
+    }
+    let mut weekly: Option<(u8, Option<u64>)> = None;
+    let mut short: Option<(u8, Option<u64>)> = None;
+
+    for wkey in ["seven_day", "seven_day_sonnet", "seven_day_opus", "seven_day_oauth_apps"] {
+        if let Some(win) = limits.get(wkey).filter(|v| v.is_object()) {
+            if let Some(rem) = claude_usage_pct_remaining(win) {
+                weekly = Some((rem, reset_ts(win)));
+                break;
+            }
+        }
+    }
+    if weekly.is_none() {
+        for item in limits.get("model_scoped").and_then(Value::as_array).into_iter().flatten() {
+            if let Some(rem) = claude_usage_pct_remaining(item) {
+                weekly = Some((rem, reset_ts(item)));
+                break;
+            }
+        }
+    }
+    if let Some(win) = limits.get("five_hour").filter(|v| v.is_object()) {
+        if let Some(rem) = claude_usage_pct_remaining(win) {
+            short = Some((rem, reset_ts(win)));
+        }
+    }
+
+    if weekly.is_none() && short.is_none() {
+        return;
+    }
+    let mut guard = store().lock().unwrap_or_else(|e| e.into_inner());
+    let entry = guard.entry(key.to_string()).or_default();
+    if let Some((rem, resets)) = weekly {
+        entry.weekly_remaining_pct = Some(rem);
+        if resets.is_some() {
+            entry.weekly_resets_at = resets;
+        }
+    }
+    if let Some((rem, resets)) = short {
+        entry.short_remaining_pct = Some(rem);
+        if resets.is_some() {
+            entry.short_resets_at = resets;
+        }
+    }
+    entry.updated_at = now_secs();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_get_usage_parses_0_to_100_percent_and_iso8601_resets_at() {
+        assert_eq!(parse_iso8601_ts("1970-01-01T00:00:01Z"), Some(1));
+        assert_eq!(parse_iso8601_ts("2026-11-12T00:00:00.000000+00:00"), Some(1_794_441_600));
+        assert_eq!(parse_iso8601_ts("2026-11-12T09:00:00+09:00"), Some(1_794_441_600));
+
+        observe_claude_usage("ut-cusage-null", &json!({"rate_limits_available": false, "rate_limits": null}));
+        assert_eq!(usage_json("ut-cusage-null"), Value::Null);
+
+        // 0.6% used must stay ~99% remaining (never scaled by 100 as if it were a 0..1 fraction!).
+        observe_claude_usage(
+            "ut-cusage-1",
+            &json!({
+                "rate_limits_available": true,
+                "subscription_type": "max",
+                "rate_limits": {
+                    "five_hour": {"utilization": 0.6, "resets_at": "2026-11-12T05:00:00.123456+00:00"},
+                    "seven_day": {"utilization": 18.4, "resets_at": "2026-11-17T08:00:00Z"}
+                }
+            }),
+        );
+        let u = usage_json("ut-cusage-1");
+        assert_eq!(u["short_remaining_pct"], json!(99));
+        assert_eq!(u["weekly_remaining_pct"], json!(82));
+        assert_eq!(u["short_resets_at"], json!(1_794_459_600));
+        assert_eq!(u["weekly_resets_at"], json!(1_794_902_400));
+        forget("ut-cusage-1");
+    }
 
     #[test]
     fn codex_and_claude_rate_limits_merge_cleanly_while_unreported_stays_null() {

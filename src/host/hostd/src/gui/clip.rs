@@ -70,16 +70,18 @@ pub(in crate::gui) enum Source {
     File(PathBuf),
 }
 
-/// A request to own the selection. `req` is the id the host gave a `lico clipboard write`: when it is there, the owner reports the outcome to the
-/// window (which tells the host); a copy by the person's own key has none.
+/// A request to own X11 selection(s). `req` is the id the host gave a `lico clipboard write`: when it is there, the owner reports the outcome to the
+/// window (which tells the host); a copy by the person's own key (`Ctrl+C`, `Ctrl+Shift+C`, toolbar `Copy`) owns `CLIPBOARD` without touching `PRIMARY`.
 pub(in crate::gui) struct Job {
     pub req: Option<String>,
     pub source: Source,
+    pub clipboard: bool,
+    pub primary: bool,
 }
 
 impl Job {
     pub(super) fn text(text: String) -> Job {
-        Job { req: None, source: Source::Text(text) }
+        Job { req: None, source: Source::Text(text), clipboard: true, primary: false }
     }
 }
 
@@ -248,9 +250,11 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
     else {
         return;
     };
+    let primary: Atom = AtomEnum::PRIMARY.into();
     let atoms = Atoms { targets, utf8, text: text_atom, png };
     let incr_above = INCR_ABOVE.min(conn.maximum_request_bytes().saturating_sub(1024));
-    let mut held: Option<Held> = None;
+    let mut held_clip: Option<Held> = None;
+    let mut held_primary: Option<Held> = None;
     let mut transfers: Vec<Transfer> = Vec::new();
     let mut owned_once = false;
     let tell = |req: &Option<String>, outcome: &Result<Taken, (&'static str, String)>| {
@@ -264,7 +268,7 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
     loop {
         // a new value: owned first, confirmed after the server says so
         // before the first value there is nothing to serve: wait for it (afterwards the loop goes on, so that a request that races with a release is answered)
-        let job = if held.is_none() && transfers.is_empty() && !owned_once {
+        let job = if held_clip.is_none() && held_primary.is_none() && transfers.is_empty() && !owned_once {
             match rx.recv() {
                 Ok(job) => Some(job),
                 Err(_) => return,
@@ -273,17 +277,33 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
             rx.try_recv().ok()
         };
         let mut next = job;
-        while let Some(Job { req, source }) = next.take() {
+        while let Some(Job { req, source, clipboard: want_clip, primary: want_prim }) = next.take() {
             let outcome = resolve(source);
             let outcome = match outcome {
                 Ok(taken) => {
-                    let _ = conn.set_selection_owner(win, clipboard, x11rb::CURRENT_TIME);
-                    let _ = conn.flush();
-                    between();
-                    let owner = conn.get_selection_owner(clipboard).ok().and_then(|c| c.reply().ok()).map(|r| r.owner);
-                    if owner == Some(win) {
-                        held = Some(taken.held.clone());
-                        owned_once = true;
+                    let mut clip_ok = true;
+                    if want_clip {
+                        let _ = conn.set_selection_owner(win, clipboard, x11rb::CURRENT_TIME);
+                        let _ = conn.flush();
+                        between();
+                        let owner = conn.get_selection_owner(clipboard).ok().and_then(|c| c.reply().ok()).map(|r| r.owner);
+                        if owner == Some(win) {
+                            held_clip = Some(taken.held.clone());
+                            owned_once = true;
+                        } else {
+                            clip_ok = false;
+                        }
+                    }
+                    if want_prim {
+                        let _ = conn.set_selection_owner(win, primary, x11rb::CURRENT_TIME);
+                        let _ = conn.flush();
+                        let owner = conn.get_selection_owner(primary).ok().and_then(|c| c.reply().ok()).map(|r| r.owner);
+                        if owner == Some(win) {
+                            held_primary = Some(taken.held.clone());
+                            owned_once = true;
+                        }
+                    }
+                    if clip_ok {
                         Ok(taken)
                     } else {
                         Err(("x_error", "the window could not take the selection".to_string()))
@@ -299,7 +319,14 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
             Ok(Some(Event::SelectionRequest(r))) => {
                 busy = true;
                 let mut property = if r.property == x11rb::NONE { r.target } else { r.property };
-                let reply = held.as_ref().map_or(Reply::Refuse, |h| answer(h, r.target, &atoms));
+                let active = if r.selection == clipboard {
+                    held_clip.as_ref()
+                } else if r.selection == primary {
+                    held_primary.as_ref()
+                } else {
+                    None
+                };
+                let reply = active.map_or(Reply::Refuse, |h| answer(h, r.target, &atoms));
                 match reply {
                     Reply::Targets(list) => {
                         let _ = conn.change_property32(PropMode::REPLACE, r.requestor, property, AtomEnum::ATOM, &list);
@@ -335,9 +362,13 @@ fn serve_with(display: Option<&str>, rx: mpsc::Receiver<Job>, report: &dyn Fn(St
                     }
                 }
             }
-            Ok(Some(Event::SelectionClear(_))) => {
+            Ok(Some(Event::SelectionClear(e))) => {
                 busy = true;
-                held = None; // another client owns the clipboard now
+                if e.selection == clipboard {
+                    held_clip = None; // another client owns CLIPBOARD now
+                } else if e.selection == primary {
+                    held_primary = None; // another client owns PRIMARY now
+                }
             }
             Ok(Some(_)) => busy = true,
             Ok(None) => {}
@@ -413,7 +444,9 @@ impl super::super::App {
                     (Some("image"), None, Some(path)) if path.starts_with('/') => Some(Source::File(PathBuf::from(path))),
                     _ => None,
                 };
-                let sent = source.map(|source| self.clip_sender().send(Job { req: Some(req.clone()), source }).is_ok()).unwrap_or(false);
+                let sent = source
+                    .map(|source| self.clip_sender().send(Job { req: Some(req.clone()), source, clipboard: true, primary: false }).is_ok())
+                    .unwrap_or(false);
                 if !sent {
                     let failed = serde_json::json!({"op": "clipboard.done", "req": req, "ok": false, "error": "x_error"});
                     self.send(&failed.to_string());

@@ -21,6 +21,7 @@ pub struct Row {
     pub state_at: u64,
     pub activity: String,
     pub generation: i64,
+    pub tab_closed: bool,
     pub approvals: Vec<(i64, String)>,
     pub asks: Vec<i64>, // the ones of those that are the host's own question for an agent's request (cardview.rs), not the program's
     pub makes: Vec<i64>, // the ones of those that ask for a session to be made: there is no yes for the session to give to them
@@ -144,7 +145,9 @@ impl Row {
             session: text("session"), provider: text("provider"), account: text("account"), ssh_host: clean(&text("ssh_host")),
             model: clean(&text("model")), chosen_model: clean(&text("chosen_model")), effort: clean(&text("chosen_effort")), tokens,
             state: text("state"), state_at,
-            activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, asks, makes, reads, real_screens,
+            activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1),
+            tab_closed: entry["tab_closed"].as_bool().unwrap_or(false),
+            approvals, asks, makes, reads, real_screens,
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
             cwd: clean(&text("cwd")), name: clean(&text("name")), auto_title: clean(&text("auto_title")), last_active_at,

@@ -220,7 +220,7 @@ impl App {
             }
             "session" => {
                 let sid = self.ui.saved_session.clone();
-                if !sid.is_empty() && self.ui.rows.iter().any(|r| r.session == sid) {
+                if !sid.is_empty() && self.ui.rows.iter().any(|r| r.session == sid && (!self.tabs_shown() || !r.tab_closed)) {
                     self.switch_to(&sid);
                 } else if !self.ui.saved_cwd.is_empty() {
                     let dir = self.ui.saved_cwd.clone();
@@ -285,10 +285,11 @@ impl App {
         if self.ui.markers || !self.ui.enabled {
             return "Lico candidate A".to_string();
         }
+        let show_all = !self.tabs_shown();
         let base = crate::ident::title();
-        if self.ui.rows.iter().any(|r| r.session != self.session && !r.approvals.is_empty()) {
+        if self.ui.rows.iter().any(|r| (show_all || !r.tab_closed) && r.session != self.session && !r.approvals.is_empty()) {
             format!("{base} [approval]")
-        } else if self.ui.rows.iter().any(|r| self.row_unread(r)) {
+        } else if self.ui.rows.iter().any(|r| (show_all || !r.tab_closed) && self.row_unread(r)) {
             format!("{base} [finished]")
         } else {
             base
@@ -337,20 +338,22 @@ impl App {
         let mut items = Vec::new();
         let mut number = 0usize;
         self.ui.numbered.clear();
+        let show_all = !self.tabs_shown();
+        let shown = |r: &Row, cur: &str| show_all || !r.tab_closed || r.session == cur;
         if self.ui.group_by_workspace {
             let mut roots: Vec<String> = Vec::new();
-            for row in &self.ui.rows {
+            for row in self.ui.rows.iter().filter(|r| shown(r, &self.session)) {
                 let root = workspace_root(row).to_string();
                 if !roots.contains(&root) {
                     roots.push(root);
                 }
             }
             roots.sort_by_key(|root| {
-                self.ui.rows.iter().filter(|r| workspace_root(r) == root.as_str()).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
+                self.ui.rows.iter().filter(|r| shown(r, &self.session) && workspace_root(r) == root.as_str()).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
             });
             for root in &roots {
                 items.push(ListItem::Heading(workspace_heading(root, &roots)));
-                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| workspace_root(r) == root.as_str()).collect();
+                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && workspace_root(r) == root.as_str()).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {
                     number += 1;
@@ -360,19 +363,19 @@ impl App {
             }
         } else {
             let mut groups: Vec<(String, String)> = Vec::new(); // (provider, account)
-            for row in &self.ui.rows {
+            for row in self.ui.rows.iter().filter(|r| shown(r, &self.session)) {
                 let key = (row.provider.clone(), row.account.clone());
                 if !groups.contains(&key) {
                     groups.push(key);
                 }
             }
             groups.sort_by_key(|(provider, account)| {
-                self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
+                self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).map(row_sort_key).min().unwrap_or((2, std::cmp::Reverse(0)))
             });
             for (provider, account) in &groups {
                 let qtag = self.ui.quotas.get(account).map(|&(w, s)| super::row::format_quota_list_tag(w, s)).unwrap_or_default();
                 items.push(ListItem::Heading(format!("{provider} / {}{qtag}", self.label_of(account))));
-                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| &r.provider == provider && &r.account == account).collect();
+                let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {
                     number += 1;

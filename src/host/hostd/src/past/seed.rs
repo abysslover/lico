@@ -360,9 +360,7 @@ pub fn seed_resumed_transcript(shared: &Shared, s: &mut Session, resume_id: &str
     };
 
     if s.auto_title.is_none() {
-        if let Some((_, first_user)) = turns.iter().find(|(u, _)| *u) {
-            s.auto_title = derive_auto_title(first_user);
-        }
+        s.auto_title = turns.iter().filter(|(u, _)| *u).find_map(|(_, first_user)| derive_auto_title(first_user));
     }
     s.append(format!("[provider reconnected] resumed {resume_id}").into_bytes());
     let start_idx = turns.len().saturating_sub(MAX_SEED_TURNS);

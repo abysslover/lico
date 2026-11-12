@@ -207,7 +207,11 @@ impl App {
             return;
         };
         if let Some(ref sid) = entry.open_session {
-            if let Some(row_state) = self.ui.rows.iter().find(|r| r.session == *sid).map(|r| r.state.clone()) {
+            if let Some(row_state) = self.ui.rows.iter_mut().find(|r| r.session == *sid).map(|r| {
+                r.tab_closed = false;
+                r.state.clone()
+            }) {
+                self.refresh_list();
                 if row_state == "running" {
                     self.panel_close();
                     self.switch_to(sid);

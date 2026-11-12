@@ -133,7 +133,7 @@ impl App {
     pub(crate) fn paste_key(&mut self, event: &KeyEvent) -> bool {
         let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
         let selection: &'static [u8] = match &event.logical_key {
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("v") => b"CLIPBOARD",
+            _ if ctrl && crate::gui::key_letter(event) == Some('v') => b"CLIPBOARD",
             Key::Named(NamedKey::Insert) if shift && !ctrl => b"PRIMARY",
             _ => return false,
         };
@@ -188,13 +188,12 @@ impl App {
             return false;
         }
         let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
-        if let Key::Character(c) = &event.logical_key {
-            if ctrl && !shift && c.eq_ignore_ascii_case("x") {
-                if !event.repeat {
-                    let _ = self.cut_editor_selection();
-                }
-                return true;
+        let letter = crate::gui::key_letter(event);
+        if ctrl && !shift && letter == Some('x') {
+            if !event.repeat {
+                let _ = self.cut_editor_selection();
             }
+            return true;
         }
         let session = self.session.clone();
         let ed = &mut self.ed;
@@ -243,9 +242,9 @@ impl App {
             }
             Key::Named(NamedKey::Delete) if !ctrl => ed.delete() || true,
             Key::Named(NamedKey::Backspace) if ctrl => ed.delete_word_back() || true,
-            Key::Character(c) if ctrl && !shift && c.eq_ignore_ascii_case("k") => ed.kill_to_end() || true,
-            Key::Character(c) if ctrl && !shift && c.eq_ignore_ascii_case("u") => ed.clear() || true,
-            Key::Character(c) if ctrl && c.eq_ignore_ascii_case("z") => {
+            _ if ctrl && !shift && letter == Some('k') => ed.kill_to_end() || true,
+            _ if ctrl && !shift && letter == Some('u') => ed.clear() || true,
+            _ if ctrl && letter == Some('z') => {
                 if !event.repeat {
                     if shift {
                         ed.redo();
@@ -255,7 +254,7 @@ impl App {
                 }
                 true
             }
-            Key::Character(c) if ctrl && !shift && c.eq_ignore_ascii_case("y") => {
+            _ if ctrl && !shift && letter == Some('y') => {
                 if !event.repeat {
                     ed.redo();
                 }
@@ -275,13 +274,12 @@ impl App {
     }
 
     /// Ctrl+U clears the whole input line (and only that); true when it did.
-    pub(crate) fn ui_ctrl_u(&mut self, key: &Key) -> bool {
-        match key {
-            Key::Character(c) if self.ui.mods.control_key() && c.eq_ignore_ascii_case("u") && self.preedit.is_empty() => {
-                self.ed.clear();
-                true
-            }
-            _ => false,
+    pub(crate) fn ui_ctrl_u(&mut self, event: &KeyEvent) -> bool {
+        if self.ui.mods.control_key() && crate::gui::key_letter(event) == Some('u') && self.preedit.is_empty() {
+            self.ed.clear();
+            true
+        } else {
+            false
         }
     }
 
@@ -298,7 +296,7 @@ impl App {
                 emit_ime("text", self.ed.text());
                 self.dirty = true;
             }
-        } else if self.ui_ctrl_u(key) {
+        } else if self.ui_ctrl_u(event) {
             emit_ime("text", self.ed.text());
             self.dirty = true;
         } else if let Some(text) = &event.text {
@@ -310,9 +308,20 @@ impl App {
         }
     }
 
-    /// Send the draft of the visible session as one input with its own request id; over the limit it stays, with the reason under the box.
+    /// Send the draft of the visible session as one input with its own request id; `/exit` and `/quit` dismiss the tab locally instead of sending to the agent.
     pub(crate) fn send_draft(&mut self) {
-        if self.session.is_empty() || self.picture_send() || self.reconnect_instead() {
+        if self.session.is_empty() || self.picture_send() {
+            return;
+        }
+        if matches!(self.ed.text().trim(), "/exit" | "/quit") {
+            let sid = self.session.clone();
+            self.ed.clear();
+            emit_ime("text", "");
+            self.close_tab_by_id(sid);
+            self.dirty = true;
+            return;
+        }
+        if self.reconnect_instead() {
             return;
         }
         let Some(text) = self.ed.prepare_send(&self.session) else {

@@ -88,7 +88,7 @@ pub struct UiState {
     pub dragging: bool,
     pub mouse: (f64, f64),
     pub mods: ModifiersState,
-    pub hit_lines: Vec<(f32, f32, usize)>,
+    pub hit_lines: Vec<(f32, f32, usize, u16)>,
     pub controls: Controls, // every drawn box and what a click on it means
     pub list_items: Vec<ListItem>,
     pub menu: bool, // the bar is shown (the product window; the measurement client only with --menu)
@@ -120,7 +120,7 @@ pub struct UiState {
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
     pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, pub show_hidden: bool, // view settings
-    pub tx_range: std::ops::Range<usize>, // buffer line slice shaped with transcript role colors
+    pub line_styles: Vec<u8>, // per-buffer-line style tag (`0` non-transcript, `1 + (role & STYLE_MASK)` transcript)
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
@@ -412,8 +412,12 @@ impl App {
                     }
                     self.dirty = true;
                 } else {
+                    let was_selecting = self.ui.dragging || self.ed.selecting;
                     self.ui.dragging = false;
                     self.ed.finish_drag();
+                    if was_selecting {
+                        self.dirty = true;
+                    }
                 }
                 true
             }
@@ -433,8 +437,9 @@ impl App {
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
                 let chord = ctrl && self.ui.mods.shift_key();
+                let letter = super::key_letter(event);
                 match &event.logical_key {
-                    Key::Character(c) if ctrl && c.eq_ignore_ascii_case("c") => {
+                    _ if ctrl && letter == Some('c') => {
                         if !event.repeat { self.copy_selection(); }
                         true
                     }
@@ -442,7 +447,7 @@ impl App {
                         if !event.repeat { self.copy_selection(); }
                         true
                     }
-                    Key::Character(c) if chord && c.eq_ignore_ascii_case("p") => {
+                    _ if chord && letter == Some('p') => {
                         if !event.repeat { self.capture_to_input(); }
                         true
                     }
@@ -468,6 +473,9 @@ impl App {
 
     /// Go to a session: its view is attached, the one before is detached (its draft stays with it).
     pub(crate) fn switch_to(&mut self, id: &str) {
+        if let Some(r) = self.ui.rows.iter_mut().find(|r| r.session == id) {
+            r.tab_closed = false;
+        }
         self.ui.scroll = 0;
         self.ui.sel = None;
         self.ui.behind = false;
@@ -676,9 +684,9 @@ impl App {
         let status = self.status_line(panel_view.is_some());
         let rows_avail = area_rows.saturating_sub(if bar.is_some() { 5 } else { 4 } + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
         let is_tx = panel_view.is_none();
-        let (lines, raw_end): (Vec<(usize, i64, String)>, usize) = match &panel_view {
+        let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
-                let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone())).collect();
+                let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone(), 0u16)).collect();
                 let n = v.len();
                 (v, n)
             }
@@ -712,25 +720,30 @@ impl App {
             text.push_str(&clean(sb));
         }
         let base = 1 + bar.is_some() as usize + search_bar.is_some() as usize;
-        // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text is unchanged keeps its
-        // shaped layout: the buffer's lines are taken apart and put back by text, and only new text is shaped.
-        let mut prev_tx = std::mem::take(&mut self.ui.tx_range);
+        // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text and style are unchanged keeps its
+        // shaped layout: the buffer's lines are taken apart and put back by (style_tag, text), and only new text is shaped.
+        let mut prev_styles = std::mem::take(&mut self.ui.line_styles);
         let faces = &mut self.ui.faces;
         let mut build = |first: usize, end: usize, text: &mut String, buffer: &mut Buffer, fs: &mut FontSystem| {
-            let mut pool: HashMap<(bool, String), Vec<BufferLine>> = HashMap::new();
+            let mut pool: HashMap<(u8, String), Vec<BufferLine>> = HashMap::new();
             for (idx, line) in std::mem::take(&mut buffer.lines).into_iter().enumerate() {
-                pool.entry((prev_tx.contains(&idx), line.text().to_string())).or_default().push(line);
+                let tag = prev_styles.get(idx).copied().unwrap_or(0);
+                pool.entry((tag, line.text().to_string())).or_default().push(line);
             }
-            let mut wanted: Vec<(bool, &str)> = text.split('\n').map(|s| (false, s)).collect();
-            let tx_start = wanted.len();
-            wanted.extend(lines[first..end].iter().map(|l| (is_tx, l.2.as_str())));
-            prev_tx = if is_tx { tx_start..wanted.len() } else { 0..0 };
-            wanted.extend(status.as_deref().map(|s| (false, s)));
-            wanted.extend(pv.rows.iter().chain(&pv.note).map(|s| (false, s.as_str())));
-            for (tx, line_text) in wanted {
-                let line = pool.get_mut(&(tx, line_text.to_string())).and_then(Vec::pop).unwrap_or_else(|| {
+            let mut wanted: Vec<(u8, u16, &str)> = text.split('\n').map(|s| (0u8, 0u16, s)).collect();
+            wanted.extend(lines[first..end].iter().map(|l| {
+                let tag = if is_tx { 1 + (l.3 & super::transcript::STYLE_MASK) as u8 } else { 0 };
+                (tag, l.3, l.2.as_str())
+            }));
+            wanted.extend(status.as_deref().map(|s| (0u8, 0u16, s)));
+            wanted.extend(pv.rows.iter().chain(&pv.note).map(|s| (0u8, 0u16, s.as_str())));
+            prev_styles.clear();
+            prev_styles.reserve(wanted.len());
+            for (tag, role, line_text) in wanted {
+                prev_styles.push(tag);
+                let line = pool.get_mut(&(tag, line_text.to_string())).and_then(Vec::pop).unwrap_or_else(|| {
                     let attrs = faces.line(fs, line_text);
-                    let attrs = if tx { super::transcript::tint(attrs, line_text) } else { attrs };
+                    let attrs = if tag > 0 { super::transcript::tint_role(attrs, line_text, role) } else { attrs };
                     BufferLine::new(line_text, LineEnding::None, attrs, Shaping::Advanced)
                 });
                 buffer.lines.push(line);
@@ -759,7 +772,7 @@ impl App {
             if is_tx { first += 1; } else { end -= 1; }
             build(first, end, &mut text, &mut view.buffer, fs);
         }
-        self.ui.tx_range = prev_tx;
+        self.ui.line_styles = prev_styles;
         self.ui.window_span = (lines.get(first).map_or(raw_end, |l| l.0), if is_tx { raw_end } else { end });
         let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
@@ -776,10 +789,11 @@ impl App {
                 search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
             if run.line_i >= base && first + (run.line_i - base) < end {
-                let raw_idx = lines[first + (run.line_i - base)].0;
+                let entry = &lines[first + (run.line_i - base)];
+                let (raw_idx, role) = (entry.0, entry.3);
                 match self.ui.hit_lines.last_mut() {
                     Some(last) if last.2 == raw_idx => last.1 = run.line_top + run.line_height + chat_top,
-                    _ => self.ui.hit_lines.push((run.line_top + chat_top, run.line_top + run.line_height + chat_top, raw_idx)),
+                    _ => self.ui.hit_lines.push((run.line_top + chat_top, run.line_top + run.line_height + chat_top, raw_idx, role)),
                 }
             }
         }
@@ -789,16 +803,17 @@ impl App {
         self.ed.place(&view.buffer, (line_count - n_prompt, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
         let mut recs: Vec<LineRec> = (0..line_count)
             .map(|i| {
-                let key = if i + n_prompt >= line_count {
-                    scroll::Key::Prompt
+                let (key, role) = if i + n_prompt >= line_count {
+                    (scroll::Key::Prompt, 0)
                 } else if status.is_some() && i + n_prompt + 1 == line_count {
-                    scroll::Key::Status
+                    (scroll::Key::Status, 0)
                 } else if i >= base && first + (i - base) < end {
-                    scroll::Key::Transcript(lines[first + (i - base)].1)
+                    let entry = &lines[first + (i - base)];
+                    (scroll::Key::Transcript(entry.1), entry.3)
                 } else {
-                    scroll::Key::Header
+                    (scroll::Key::Header, 0)
                 };
-                LineRec { key, text: view.buffer.lines[i].text().to_string(), top: 0.0, bottom: 0.0, rows: 0, ext: Extent::EMPTY }
+                LineRec { key, role, text: view.buffer.lines[i].text().to_string(), top: 0.0, bottom: 0.0, rows: 0, ext: Extent::EMPTY }
             })
             .collect();
         for run in view.buffer.layout_runs() {
@@ -868,13 +883,13 @@ impl App {
             }
         }
         if is_tx {
-            super::transcript::paint_user_backgrounds(&mut buf, width, height, list_w, oy, hint_row, &self.ui.hit_lines, &view.lines, plan.is_ok().then_some(cleared.as_slice()));
+            super::transcript::paint_transcript_decorations(&mut buf, width, height, list_w, s, oy, hint_row, &self.ui.hit_lines, plan.is_ok().then_some(cleared.as_slice()));
         }
         if let Some((sy0, sy1)) = search_y {
             rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
         }
         if is_tx && self.ui.search.open {
-            for (y0, y1, idx) in &self.ui.hit_lines {
+            for (y0, y1, idx, _) in &self.ui.hit_lines {
                 if let Some(active) = view.lines.get(*idx).and_then(|(seq, _)| self.ui.search.line_kind(&session_sel, *seq)) {
                     let bg = if active { 0xFF5A_4314 } else { 0xFF2B_2412 };
                     rect(&mut buf, width, height, list_w as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, bg);
@@ -883,7 +898,7 @@ impl App {
         }
         if let Some((a, b)) = self.ui.sel {
             let (lo, hi) = (a.min(b), a.max(b));
-            for (y0, y1, idx) in &self.ui.hit_lines {
+            for (y0, y1, idx, _) in &self.ui.hit_lines {
                 if *idx >= lo && *idx <= hi {
                     rect(&mut buf, width, height, list_w as i32, *y0 as i32, main_w as i32, (*y1 - *y0) as i32, 0xFF2A_4A7A);
                 }

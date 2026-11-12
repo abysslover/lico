@@ -48,3 +48,65 @@ fn the_row_blit_draws_the_same_pixels_as_the_callback_blit() {
         assert!(a == b, "the pixels differ for offset ({ox}, {oy}) clip {clip}");
     }
 }
+
+#[test]
+fn hangul_ime_logical_keys_fall_back_to_physical_keycode_for_shortcuts() {
+    use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
+    assert_eq!(super::super::key_letter_parts(&Key::Character("ㅊ".into()), &PhysicalKey::Code(KeyCode::KeyC)), Some('c'));
+    assert_eq!(super::super::key_letter_parts(&Key::Character("ㅍ".into()), &PhysicalKey::Code(KeyCode::KeyV)), Some('v'));
+    assert_eq!(super::super::key_letter_parts(&Key::Character("ㄴ".into()), &PhysicalKey::Code(KeyCode::KeyS)), Some('s'));
+    assert_eq!(super::super::key_letter_parts(&Key::Character("ㅁ".into()), &PhysicalKey::Code(KeyCode::KeyA)), Some('a'));
+    // Remapped ASCII layouts (e.g. Dvorak) keep their logical ASCII letter
+    assert_eq!(super::super::key_letter_parts(&Key::Character("j".into()), &PhysicalKey::Code(KeyCode::KeyC)), Some('j'));
+    assert_eq!(super::super::key_letter_parts(&Key::Named(NamedKey::Enter), &PhysicalKey::Code(KeyCode::Enter)), None);
+}
+
+#[test]
+fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_toolbar_surfaces_send_to_and_copy() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::os::unix::net::{UnixListener, UnixStream};
+    let scratch = crate::handoff::Scratch::new("exit_tab");
+    let sock_path = scratch.0.join("host.sock");
+    let listener = UnixListener::bind(&sock_path).unwrap();
+    let handle = std::thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut req = String::new();
+        BufReader::new(&mut s).read_line(&mut req).unwrap();
+        s.write_all(b"{\"v\":1,\"ok\":1,\"session\":\"s111111\",\"state\":\"disconnected\"}\n").unwrap();
+        req
+    });
+
+    let (sock, mut peer) = UnixStream::pair().unwrap();
+    peer.set_nonblocking(true).unwrap();
+    let mut app = super::super::scroll_oracle::app(1.0, false);
+    app.sock = sock;
+    app.socket = sock_path.to_string_lossy().into_owned();
+    app.session = "s111111".into();
+    app.generation = 3;
+    app.ui.rows = vec![
+        Row { session: "s111111".into(), provider: "codex".into(), state: "running".into(), generation: 3, ..Default::default() },
+        Row { session: "s222222".into(), provider: "claude".into(), state: "running".into(), generation: 1, ..Default::default() },
+    ];
+    app.refresh_list();
+    app.push_line(0, "hello world".into());
+
+    let btns = app.toolbar_entries();
+    assert!(btns.iter().any(|b| b.id == "send_to" && b.label == "Send -> Session (1)" && b.reason == Some("nothing to send: type in the input box or select lines")));
+    assert!(!btns.iter().any(|b| b.id == "copy"));
+
+    app.ui.sel = Some((0, 0));
+    let btns_sel = app.toolbar_entries();
+    assert!(btns_sel.iter().any(|b| b.id == "send_to" && b.label == "Send -> Session (1)" && b.reason.is_none()));
+    assert!(btns_sel.iter().any(|b| b.id == "copy" && b.label == "Copy" && b.reason.is_none()));
+
+    app.ed.set("/exit".into());
+    app.send_draft();
+    let one_shot_req = handle.join().unwrap();
+    assert_eq!(app.ed.text(), "");
+    assert_eq!(app.pending_show, Some(("s222222".into(), None)), "closing s111111 switches cleanly to adjacent open tab s222222");
+    assert!(app.ui.rows.iter().find(|r| r.session == "s111111").unwrap().tab_closed);
+    assert!(one_shot_req.contains("\"op\":\"session.close\"") && one_shot_req.contains("\"hide_tab\":true"), "req={one_shot_req}");
+    let mut stream_sent = String::new();
+    let _ = peer.read_to_string(&mut stream_sent);
+    assert!(!stream_sent.contains("\"op\":\"input\""), "/exit must never be sent to the LLM: {stream_sent}");
+}

@@ -37,6 +37,7 @@ pub struct Entry {
     pub account_removed: bool, // the account it was bound to was removed with its sessions detached
     pub settings: crate::folders::Settings,
     pub tokens: Option<(u64, u64)>,
+    pub tab_closed: bool,
 }
 
 pub fn valid_session_id(id: &str) -> bool {
@@ -100,11 +101,16 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
                 v.get("output").and_then(Value::as_u64).ok_or_else(|| format!("sessions.json has invalid tokens for {session}"))?,
             )),
         };
+        let tab_closed = match value.get("tab_closed") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            _ => return Err(format!("sessions.json has invalid tab_closed for {session}")),
+        };
         out.push(Entry {
             session, provider, generation, account, credential_generation: value["credential_generation"].as_u64().unwrap_or(0),
             provider_session, state_at: value["state_at"].as_u64().unwrap_or(0),
             last_active_at: value["last_active_at"].as_u64().unwrap_or(0),
-            auto_title, account_removed, settings, tokens,
+            auto_title, account_removed, settings, tokens, tab_closed,
             mode: if value["mode"] == "default" { "default" } else { "auto" },
         });
     }
@@ -134,6 +140,9 @@ pub fn save(shared: &Shared) {
             }
             if let Some((inp, out)) = crate::tokens::persisted_pair(&s.id) {
                 record.insert("tokens".into(), json!({"input": inp, "output": out}));
+            }
+            if s.tab_closed {
+                record.insert("tab_closed".into(), json!(true));
             }
             record.extend(s.settings.record_fields());
             Some(Value::Object(record))

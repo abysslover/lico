@@ -51,6 +51,8 @@ def test_folder_list_and_read_parity_and_security_across_socket_cli_and_http():
         (work / "notes.md").write_text("alpha\r\nbeta\t한글\n", encoding="utf-8")
         (work / "binary.bin").write_bytes(b"\x00\x01\x02\x03")
         os.symlink(work / "notes.md", work / "link.md")
+        os.symlink(work / "src", work / "src_link")
+        os.symlink(work / "missing.md", work / "dangling.md")
 
         host, log_dir = start(
             directory,
@@ -72,13 +74,24 @@ def test_folder_list_and_read_parity_and_security_across_socket_cli_and_http():
             assert v1.validate_request("folder.list", req_list) == []
             sock_list = conn.call(**req_list)
             assert v1.validate_response("folder.list", sock_list) == []
-            assert [e["name"] for e in sock_list["entries"]] == ["src", "binary.bin", "guide.pdf", "index.html", "link.md", "notes.md"]
+            assert [e["name"] for e in sock_list["entries"]] == [
+                "src",
+                "src_link",
+                "binary.bin",
+                "dangling.md",
+                "guide.pdf",
+                "index.html",
+                "link.md",
+                "notes.md",
+            ]
             by_name = {e["name"]: e for e in sock_list["entries"]}
             assert by_name["src"]["kind"] == "dir" and by_name["src"]["external"] is False
+            assert by_name["src_link"]["kind"] == "dir" and by_name["src_link"]["external"] is False
+            assert by_name["dangling.md"]["kind"] == "link" and by_name["dangling.md"]["external"] is False
             assert by_name["index.html"]["is_html"] is True and by_name["index.html"]["external"] is True
             assert by_name["guide.pdf"]["is_html"] is False and by_name["guide.pdf"]["external"] is True
             assert by_name["notes.md"]["is_html"] is False and by_name["notes.md"]["external"] is False
-            assert by_name["link.md"]["kind"] == "link" and by_name["link.md"]["external"] is False
+            assert by_name["link.md"]["kind"] == "file" and by_name["link.md"]["external"] is False
 
             st_post, post_list = _http(port, "POST", "/v1", token, req_list)
             assert st_post == 200 and post_list == sock_list
@@ -110,12 +123,20 @@ def test_folder_list_and_read_parity_and_security_across_socket_cli_and_http():
             assert v1.validate_response("folder.read", bin_read) == []
             assert bin_read["binary"] is True and bin_read["text"] == ""
 
-            # 3. Security refusals: protected host state dir, symlinks, missing files, relative paths
+            # 3. Symlink following + security refusals on protected host state dir, broken links, relative paths
             secret = Path(log_dir) / "probe.txt"
             secret.write_text("nope", encoding="utf-8")
+            os.symlink(secret, work / "secret_link.txt")
+            os.symlink(log_dir, work / "secret_dir_link")
             assert conn.call(op="folder.list", cwd=str(log_dir))["error"] == "folder_protected"
+            assert conn.call(op="folder.list", cwd=str(work / "secret_dir_link"))["error"] == "folder_protected"
             assert conn.call(op="folder.read", path=str(secret))["error"] == "folder_protected"
-            assert conn.call(op="folder.read", path=str(work / "link.md"))["error"] == "file_not_regular"
+            assert conn.call(op="folder.read", path=str(work / "secret_link.txt"))["error"] == "folder_protected"
+            link_read = conn.call(op="folder.read", path=str(work / "link.md"))
+            assert link_read["ok"] == 1 and link_read["text"] == "alpha\nbeta\t한글\n"
+            link_dir_list = conn.call(op="folder.list", cwd=str(work / "src_link"))
+            assert link_dir_list["ok"] == 1 and link_dir_list["cwd"] == str((work / "src").resolve())
+            assert conn.call(op="folder.read", path=str(work / "dangling.md"))["error"] == "file_missing"
             assert conn.call(op="folder.read", path="relative.txt")["error"] == "folder_not_absolute"
             st_miss, body_miss = _http(
                 port,

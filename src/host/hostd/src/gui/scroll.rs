@@ -113,6 +113,7 @@ pub enum Key {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineRec {
     pub key: Key,
+    pub role: u16,
     pub text: String,
     pub top: f32,
     pub bottom: f32,
@@ -234,7 +235,7 @@ pub fn decide(prev: Option<&Composed>, now: &Now) -> Result<Shift, Cause> {
         return Err(Cause::NothingInCommon);
     }
     // the old lines from j on are the first lines of the new frame, and everything after them is new
-    let same = |a: &LineRec, b: &LineRec| a.key == b.key && a.text == b.text && a.rows == b.rows && a.rows > 0;
+    let same = |a: &LineRec, b: &LineRec| a.key == b.key && a.role == b.role && a.text == b.text && a.rows == b.rows && a.rows > 0;
     let aligned = |j: usize| {
         let kept = old_t.len() - j;
         kept <= new_t.len() && (0..kept).all(|i| same(&old.lines[old_t[j + i]], &new.lines[new_t[i]]))
@@ -303,7 +304,7 @@ mod tests {
 
     fn rec(key: Key, text: &str, row: usize, rows: usize, ext: Option<(i32, i32)>) -> LineRec {
         let top = row as f32 * LH;
-        LineRec { key, text: text.into(), top, bottom: top + rows as f32 * LH, rows, ext: ext.map_or(Extent::EMPTY, |(a, b)| Extent { top: a, bottom: b, left: 100 }) }
+        LineRec { key, role: 0, text: text.into(), top, bottom: top + rows as f32 * LH, rows, ext: ext.map_or(Extent::EMPTY, |(a, b)| Extent { top: a, bottom: b, left: 100 }) }
     }
 
     /// A header, lines `first..first+n` of one row each and a prompt, glyphs reaching 2 rows beyond their box at most.

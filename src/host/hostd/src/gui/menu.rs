@@ -315,13 +315,10 @@ impl App {
     /// F10 and Alt+letter open the bar, arrows move, Enter runs, Esc closes; Ctrl+Q quits. True when the key was taken.
     pub(crate) fn menu_key(&mut self, event: &KeyEvent) -> bool {
         let (ctrl, alt) = (self.ui.mods.control_key(), self.ui.mods.alt_key());
-        if ctrl && !alt {
-            if let Key::Character(c) = &event.logical_key {
-                if c.eq_ignore_ascii_case("q") {
-                    self.quit = true;
-                    return true;
-                }
-            }
+        let letter = super::key_letter(event);
+        if ctrl && !alt && letter == Some('q') {
+            self.quit = true;
+            return true;
         }
         if !self.ui.menu {
             return false;
@@ -335,8 +332,8 @@ impl App {
                 }
                 return true;
             }
-            Key::Character(c) if alt && !ctrl => {
-                if let Some(i) = ["f", "s", "v", "h"].iter().position(|l| c.eq_ignore_ascii_case(l)) {
+            _ if alt && !ctrl => {
+                if let Some(i) = letter.and_then(|ch| ['f', 's', 'v', 'h'].iter().position(|&l| l == ch)) {
                     self.menu_open_at(i);
                     return true;
                 }

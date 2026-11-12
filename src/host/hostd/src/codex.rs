@@ -241,30 +241,63 @@ pub fn answer(s: &mut Session, number: i64, allow: bool) -> Result<(), &'static 
 
 // ----------------------------------------------------------------- the process
 fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<String>) -> Result<(), &'static str> {
-    if session.lock().unwrap().purged {
+    let (session_id, generation, bound, purged) = {
+        let s = session.lock().unwrap();
+        (s.id.clone(), s.generation, s.account.clone(), s.purged)
+    };
+    if purged {
         return Err("busy"); // a deleted session gets no workspace and no process
     }
-    let bound = session.lock().unwrap().account.clone();
     let remote_acct = bound
         .as_deref()
         .and_then(|acc| shared.accounts.lock().unwrap().ssh_host(acc).map(|h| (acc.to_string(), h)));
+    let mut mcp_key: Option<String> = None;
     let (mut command, cwd): (Command, String) = if let Some((account, host)) = remote_acct {
         let remote_cwd = crate::ssh_remote::ensure_remote_workspace(shared, &host, session)?;
         let cmd = crate::ssh_remote::remote_codex_command(shared, &host, &account, &remote_cwd)?;
         (cmd, remote_cwd)
     } else {
         let workspace = crate::folders::working_dir(shared, session)?;
+        let acct_homes = match &bound {
+            Some(account) => Some(shared.accounts.lock().unwrap().homes(account).ok_or("busy")?),
+            None => None,
+        };
+        let attach_mcp = shared.cfg.codex_args.first().map(String::as_str) == Some("app-server")
+            || shared.cfg.codex_args.iter().any(|a| a == "--lico-mcp");
+        let issued = if attach_mcp {
+            crate::handoff::inbox(&shared.cfg.handoff_dir, &session_id).map_err(|_| "busy")?;
+            Some(crate::tools::issue_codex(shared, &session_id, generation)?)
+        } else {
+            None
+        };
         let mut command = Command::new(&shared.cfg.codex);
-        command.args(&shared.cfg.codex_args).current_dir(&workspace).env_clear();
+        for arg in &shared.cfg.codex_args {
+            if arg != "--lico-mcp" {
+                command.arg(arg);
+            }
+        }
+        command.current_dir(&workspace).env_clear();
         for key in ["PATH", "LANG"] {
             if let Some(value) = std::env::var_os(key) {
                 command.env(key, value);
             }
         }
-        match bound {
+        if let Some((key, port, bearer)) = issued {
+            command
+                .arg("-c")
+                .arg(format!("mcp_servers.lico.url=\"http://127.0.0.1:{port}/mcp\""))
+                .arg("-c")
+                .arg("mcp_servers.lico.bearer_token_env_var=\"LICO_MCP_TOKEN\"")
+                .arg("-c")
+                .arg("shell_environment_policy.exclude=[\"LICO_MCP_TOKEN\"]")
+                .env("LICO_MCP_TOKEN", bearer)
+                .env("NO_PROXY", "127.0.0.1,localhost,::1")
+                .env("no_proxy", "127.0.0.1,localhost,::1");
+            mcp_key = Some(key);
+        }
+        match acct_homes {
             // a session bound to an account sees only that account's private home: its own HOME and its own provider home
-            Some(account) => {
-                let homes = shared.accounts.lock().unwrap().homes(&account).ok_or("busy")?;
+            Some(homes) => {
                 command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
             }
             // a session without an account keeps the host's own provider home (the owner's, as before accounts existed)
@@ -279,11 +312,22 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         (command, workspace.to_string_lossy().to_string())
     };
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = core::spawn_provider_process(command).map_err(|_| "busy")?;
+    let mut child = match core::spawn_provider_process(command) {
+        Ok(c) => c,
+        Err(_) => {
+            if let Some(ref k) = mcp_key {
+                crate::tools::release(k);
+            }
+            return Err("busy");
+        }
+    };
     let pid = child.id();
     let (Some(stdout), Some(mut stdin)) = (child.stdout.take(), child.stdin.take()) else {
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
+        if let Some(ref k) = mcp_key {
+            crate::tools::release(k);
+        }
         return Err("busy");
     };
     let (tx, rx) = mpsc::sync_channel::<(String, Option<String>)>(1024);
@@ -292,6 +336,9 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     if rpc(&mut link, "initialize", init, Pending::Init, None).is_err() {
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
+        if let Some(ref k) = mcp_key {
+            crate::tools::release(k);
+        }
         return Err("busy");
     }
     {
@@ -301,6 +348,9 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
             drop(s);
             unsafe { kill(-(pid as i32), 9) };
             let _ = child.wait();
+            if let Some(ref k) = mcp_key {
+                crate::tools::release(k);
+            }
             return Err("busy");
         }
         s.agent_pid = pid;
@@ -326,6 +376,7 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     });
     let reader_session = session.clone();
     let reader_shared = shared.clone();
+    let reader_key = mcp_key.clone();
     thread::spawn(move || {
         for line in lines::lines(stdout, MAX_PROVIDER_LINE) {
             match line {
@@ -339,6 +390,9 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
         let _ = child.wait();
+        if let Some(ref k) = reader_key {
+            crate::tools::release(k);
+        }
         let mut s = reader_session.lock().unwrap();
         let mine = s.agent_pid == pid; // a close or a purge zeroed it, and a resume may have put its own process there
         if mine {
@@ -583,15 +637,36 @@ fn notification(s: &mut Session, method: &str, params: &Value) -> bool {
                 let count = params.pointer("/item/changes").and_then(Value::as_array).map_or(0, Vec::len);
                 record(s, &format!("[patch] {count} change(s)"));
             }
+            "mcpToolCall" => {
+                let srv = clip(&sanitize(&text("/item/server")), 24);
+                let tool = clip(&sanitize(&text("/item/tool")), 40);
+                record(s, &format!("[tool] mcp__{srv}__{tool}"));
+            }
             _ => {}
         },
         "item/completed" => {
             flush(s, &text("/item/id"));
-            if text("/item/type") == "commandExecution" {
-                match params.pointer("/item/exitCode").and_then(Value::as_i64) {
+            match text("/item/type").as_str() {
+                "commandExecution" => match params.pointer("/item/exitCode").and_then(Value::as_i64) {
                     Some(code) => record(s, &format!("[exit {code}]")),
                     None => record(s, "[exit unknown]"),
+                },
+                "mcpToolCall" => {
+                    let is_err = params.pointer("/item/error").is_some_and(|v| !v.is_null())
+                        || params.pointer("/item/result/isError") == Some(&Value::Bool(true));
+                    if is_err {
+                        record(s, "[tool error]");
+                    }
+                    let out = params
+                        .pointer("/item/error/message")
+                        .and_then(Value::as_str)
+                        .or_else(|| params.pointer("/item/result/content/0/text").and_then(Value::as_str))
+                        .unwrap_or("");
+                    if !out.is_empty() {
+                        record_text(s, "> ", out);
+                    }
                 }
+                _ => {}
             }
         }
         "turn/started" => {

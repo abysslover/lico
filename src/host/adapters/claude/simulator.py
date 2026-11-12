@@ -65,6 +65,7 @@ parser.add_argument("--received", default="")
 parser.add_argument("--fixture", default="")
 parser.add_argument("--resume", default="")
 parser.add_argument("--settings", default="")
+parser.add_argument("--usage", default="")
 args, _ = parser.parse_known_args()
 if args.help:
     sys.stdout.write(open(args.help_file).read() if args.help_file else HELP)
@@ -94,6 +95,40 @@ ALWAYS_ASK = ("AskUserQuestion", "ExitPlanMode")
 def out(message):
     sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
     sys.stdout.flush()
+
+
+def _parse_usage_spec(spec):
+    if not spec:
+        return None
+    parts = spec.split(":")
+    u7 = float(parts[0])
+    u5 = float(parts[1]) if len(parts) > 1 and parts[1] else None
+    return (u7, u5)
+
+
+usage_state = _parse_usage_spec(args.usage)
+
+
+def _usage_payload():
+    if usage_state is None:
+        return {"rate_limits_available": False, "subscription_type": None, "rate_limits": None}
+    u7, u5 = usage_state
+    rl = {
+        "seven_day": {"utilization": u7, "resets_at": "2026-11-17T08:00:00.000000+00:00"},
+        "five_hour": {"utilization": u5, "resets_at": "2026-11-12T14:00:00.000000+00:00"} if u5 is not None else None,
+        "seven_day_sonnet": None,
+        "seven_day_opus": None,
+    }
+    return {"rate_limits_available": True, "subscription_type": "max", "rate_limits": rl}
+
+
+def handle_control_request(message):
+    req_id = message.get("request_id", "")
+    subtype = (message.get("request") or {}).get("subtype", "")
+    if subtype == "get_usage":
+        out({"type": "control_response", "response": {"subtype": "success", "request_id": req_id, "response": _usage_payload()}})
+    else:
+        out({"type": "control_response", "response": {"subtype": "error", "request_id": req_id, "error": "unsupported"}})
 
 
 def assistant(text=None, tool=None):
@@ -161,6 +196,7 @@ def mcp(server, method, params=None, number=None):
 
 
 def turn(message):
+    global usage_state
     text = "".join(b.get("text", "") for b in message["message"]["content"] if b.get("type") == "text")
     out({"type": "user", "uuid": message["uuid"], "session_id": session, "parent_tool_use_id": None, "isReplay": True, "message": message["message"]})
     init()
@@ -187,7 +223,9 @@ def turn(message):
                         reply = read_line()
                         if reply.get("type") == "control_response" and reply.get("response", {}).get("request_id") == msg["request_id"]:
                             break
-                        if reply.get("type") == "user":
+                        if reply.get("type") == "control_request":
+                            handle_control_request(reply)
+                        elif reply.get("type") == "user":
                             queued.append(reply)
             # host steps are the answers awaited above
     elif text == "askuser":
@@ -200,7 +238,9 @@ def turn(message):
                 reply = read_line()
                 if reply.get("type") == "control_response" and reply.get("response", {}).get("request_id") == "ask-1":
                     break
-                if reply.get("type") == "user":
+                if reply.get("type") == "control_request":
+                    handle_control_request(reply)
+                elif reply.get("type") == "user":
                     queued.append(reply)
             say("[question answered]")
         out(result())
@@ -270,7 +310,9 @@ def turn(message):
             reply = read_line()
             if reply.get("type") == "control_response" and reply.get("response", {}).get("request_id") == "big-1":
                 break
-            if reply.get("type") == "user":
+            if reply.get("type") == "control_request":
+                handle_control_request(reply)
+            elif reply.get("type") == "user":
                 queued.append(reply)
         say("answered: " + reply["response"]["subtype"])
         out(result())
@@ -344,6 +386,11 @@ def turn(message):
         res = result()
         res["usage"] = {"input_tokens": inp, "cache_read_input_tokens": cache_read, "output_tokens": out_tok}
         out(res)
+    elif text.startswith("usage:"):
+        global usage_state
+        usage_state = _parse_usage_spec(text[len("usage:"):])
+        say("usage state configured")
+        out(result())
     elif text == "stall":
         say("stalling")
         while not os.path.exists(f"{args.received}.end"):
@@ -359,3 +406,5 @@ while True:
     message = queued.pop(0) if queued else read_line()
     if message.get("type") == "user":
         turn(message)
+    elif message.get("type") == "control_request":
+        handle_control_request(message)
