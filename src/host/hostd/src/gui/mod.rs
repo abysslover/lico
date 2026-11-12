@@ -1,6 +1,7 @@
 //! The primary client (formerly candidate A2): winit, softbuffer and cosmic-text (shaping, font fallback).
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
+mod approval_modal;
 mod controls;
 mod editor;
 mod events;

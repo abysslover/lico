@@ -27,6 +27,7 @@ pub struct Row {
     pub makes: Vec<i64>, // the ones of those that ask for a session to be made: there is no yes for the session to give to them
     pub reads: Vec<i64>, // the ones of those that ask to read the history of another session
     pub real_screens: Vec<i64>, // the ones of those that ask for time-bounded real-screen control
+    pub screen_tools: Vec<i64>, // the ones of those that ask for one-shot capture or clipboard access
     pub virtual_display: String, // `:N` when a private virtual display runs for this session, else empty
     pub issue: String,
     pub mode: String,
@@ -136,6 +137,7 @@ impl Row {
         let makes = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "create").filter_map(|a| a["approval_id"].as_i64()).collect();
         let reads = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "history").filter_map(|a| a["approval_id"].as_i64()).collect();
         let real_screens = entry["approvals"].as_array().into_iter().flatten().filter(|a| a["tool"] == "computer").filter_map(|a| a["approval_id"].as_i64()).collect();
+        let screen_tools = entry["approvals"].as_array().into_iter().flatten().filter(|a| matches!(a["tool"].as_str(), Some("capture" | "clipboard_read" | "clipboard_write"))).filter_map(|a| a["approval_id"].as_i64()).collect();
         let state_at = number("state_at");
         let last_active_at = entry["last_active_at"].as_u64().unwrap_or(state_at).max(state_at);
         let tokens = entry["tokens"]
@@ -147,7 +149,7 @@ impl Row {
             state: text("state"), state_at,
             activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1),
             tab_closed: entry["tab_closed"].as_bool().unwrap_or(false),
-            approvals, asks, makes, reads, real_screens,
+            approvals, asks, makes, reads, real_screens, screen_tools,
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
             cwd: clean(&text("cwd")), name: clean(&text("name")), auto_title: clean(&text("auto_title")), last_active_at,

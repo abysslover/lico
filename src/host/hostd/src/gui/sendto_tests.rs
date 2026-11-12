@@ -578,3 +578,12 @@ fn the_window_puts_the_sentence_of_the_table_under_the_box_and_the_text_back_whe
         assert!(note.starts_with("Not sent: ") && note.contains(contains) && note.ends_with(" The text is back in the box."), "{code}: {note}");
     }
 }
+
+#[test]
+fn peer_reply_headers_match_session_header_look_and_highlight_sender_name() {
+    let line = ">> [peer reply from 'CodexWorker' (sf87442) | 07:31 | 9 B]";
+    let look = header_look(line);
+    assert_eq!(look, Some(Look::Session(21..32)));
+    assert_eq!(&line[21..32], "CodexWorker");
+    assert_eq!(header_look(">> [peer reply from 'bad|name' (sf87442) | 07:31 | 9 B]"), None);
+}

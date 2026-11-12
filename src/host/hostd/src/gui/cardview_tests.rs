@@ -173,13 +173,13 @@ fn the_view_moves_by_line_and_page_and_reads_the_next_page_when_this_one_is_pass
 #[test]
 fn y_n_and_s_in_the_view_answer_with_the_text_that_was_read_and_say_what_came_of_it() {
     let cases: [(char, &str, bool, Value, &str); 7] = [
-        ('Y', "allow", false, answered("done"), "Allowed: the text was sent."),
+        ('Y', "allow", true, answered("done"), "Allowed for the session: the text was sent, and later sends to that session are not asked."),
         ('N', "deny", false, answered("declined"), "Declined: nothing was sent."),
-        ('y', "allow", false, answered("done"), "Allowed: the text was sent."),
+        ('y', "allow", true, answered("done"), "Allowed for the session: the text was sent, and later sends to that session are not asked."),
         ('n', "deny", false, answered("declined"), "Declined: nothing was sent."),
         ('S', "allow", true, answered("done"), "Allowed for the session: the text was sent, and later sends to that session are not asked."),
-        ('y', "allow", false, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "session_exited"}), "Allowed, but not sent: that session has ended."),
-        ('y', "allow", false, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "chain_depth"}), "Allowed, but not sent: the chain of agents is too long; a person has to start it again."),
+        ('y', "allow", true, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "session_exited"}), "Allowed for the session, but not sent: that session has ended."),
+        ('y', "allow", true, json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "chain_depth"}), "Allowed for the session, but not sent: the chain of agents is too long; a person has to start it again."),
     ];
     for (key, what, keep, reply, said) in cases {
         let dir = Scratch::new("cardview");
@@ -267,7 +267,7 @@ fn the_letter_in_the_view_answers_the_request_that_was_read_even_when_another_on
     app.card_key('y');
     let asked = host.join().unwrap();
     assert_eq!(asked.len(), 2, "{asked:?}");
-    assert_eq!(asked[1], answer("allow", false), "it is request 7 that was read, and the one that is first is not touched");
+    assert_eq!(asked[1], answer("allow", true), "it is request 7 that was read, and the one that is first is not touched");
     assert_eq!(app.ui.rows[0].approvals.iter().map(|a| a.0).collect::<Vec<_>>(), [3]);
 }
 
@@ -405,12 +405,12 @@ fn a_request_to_read_a_history_can_be_allowed_for_the_session_and_the_window_say
     assert_eq!(host.join().unwrap(), [read(0)]);
     let not_done = json!({"ok": 1, "session": "session-s0", "approval_id": 7, "state": "answered", "outcome": "not_done", "reason": "unknown_session"});
     let cases = [
-        ("y", false, answered("done"), "Allowed: the records were handed over."),
+        ("y", true, answered("done"), "Allowed for the session: the records were handed over, and later reads of that history are not asked."),
         ("S", true, answered("done"), "Allowed for the session: the records were handed over, and later reads of that history are not asked."),
         ("n", false, answered("declined"), "Declined: nothing was read."),
-        ("y", false, not_done.clone(), "Allowed, but nothing was read: the host does not know that session any more."),
+        ("y", true, not_done.clone(), "Allowed for the session, but nothing was read: the host does not know that session any more."),
         ("S", true, not_done, "Allowed for the session, but nothing was read: the host does not know that session any more."),
-        ("y", false, json!({"ok": 0, "error": "expired"}), "Request 7 ran out of time: nothing was read."),
+        ("y", true, json!({"ok": 0, "error": "expired"}), "Request 7 ran out of time: nothing was read."),
     ];
     for (key, keep, reply, said) in cases {
         let (path, host) = fake_host(&dir, vec![reply]);
@@ -440,8 +440,8 @@ fn shift_s_in_the_view_of_a_request_to_read_a_history_allows_it_for_the_session(
 /// Every bare key that answers or opens a card of the host's own, with what the host is asked for it and says back.
 fn bare_keys() -> Vec<(&'static str, Value, Value)> {
     vec![
-        ("y", answer("allow", false), answered("done")),
-        ("Y", answer("allow", false), answered("done")),
+        ("y", answer("allow", true), answered("done")),
+        ("Y", answer("allow", true), answered("done")),
         ("n", answer("deny", false), answered("declined")),
         ("N", answer("deny", false), answered("declined")),
         ("S", answer("allow", true), answered("done")),
@@ -600,7 +600,7 @@ fn an_answer_the_host_did_not_confirm_is_not_called_unanswered_and_the_list_is_a
     app.sock = sock;
     peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
     assert!(app.answer_key("y"));
-    assert_eq!(host.join().unwrap(), [answer("allow", false)]);
+    assert_eq!(host.join().unwrap(), [answer("allow", true)]);
     assert_eq!(app.ui.flash.as_deref(), Some(WORDS), "it does not say that the request waits, nor that the answer failed");
     assert_eq!(app.ui.rows[0].approvals.len(), 1, "the row keeps the request until the list says otherwise");
     let mut asked = [0u8; 64];
@@ -610,7 +610,7 @@ fn an_answer_the_host_did_not_confirm_is_not_called_unanswered_and_the_list_is_a
     let (path, host) = fake_host(&dir, vec![json!({"ok": 0, "error": "unknown_approval"})]);
     app.socket = path;
     assert!(app.answer_key("y"));
-    assert_eq!(host.join().unwrap(), [answer("allow", false)]);
+    assert_eq!(host.join().unwrap(), [answer("allow", true)]);
     assert!(app.ui.rows[0].approvals.is_empty() && app.ui.flash.as_deref() == Some("Request 7 is not waiting any more."), "{:?}", app.ui.flash);
     // from the view the words are in the panel, which stays open
     let (path, host) = fake_host(&dir, vec![page("first line", 0, None, 10), silent()]);
@@ -646,8 +646,27 @@ fn a_click_on_a_button_or_the_menu_entry_answers_a_card_of_the_host_only_after_t
         app.socket = path;
         drawn_ms_ago(&mut app, 800);
         app.answer_approval(allow);
-        assert_eq!(host.join().unwrap(), [answer(word, false)], "{word} at 800 ms");
+        assert_eq!(host.join().unwrap(), [answer(word, allow)], "{word} at 800 ms");
         assert!(app.ui.rows[0].approvals.is_empty());
+    }
+}
+
+#[test]
+fn one_shot_screen_and_clipboard_tools_never_send_session_keep_on_allow() {
+    for tool in ["capture", "clipboard_read", "clipboard_write"] {
+        let entry = json!({"session": "session-s0", "provider": "claude", "approvals": [{"approval_id": 7, "prompt": "capture of the whole screen", "tool": tool}]});
+        let row = Row::of_status(&entry).unwrap();
+        assert_eq!(row.screen_tools, vec![7], "{tool}");
+        let dir = Scratch::new("cardview");
+        let (path, host) = fake_host(&dir, vec![answered("done")]);
+        let mut app = app(1.0, false);
+        app.ui.rows = vec![row];
+        app.ui.numbered = vec!["session-s0".into()];
+        app.socket = path;
+        drawn_ms_ago(&mut app, 800);
+        app.answer_approval(true);
+        assert_eq!(host.join().unwrap(), [answer("allow", false)], "{tool}");
+        assert_eq!(app.ui.flash.as_deref(), Some("Allowed: one request was granted."));
     }
 }
 

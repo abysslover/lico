@@ -91,7 +91,7 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     }
     // what is already known to be refused is refused now, so that the person is not asked for a send that could not happen
     let label = receiver_label(shared, caller, to).map_err(|code| refusal(shared, caller, code))?;
-    if pending::kept(shared, caller, "send", to) {
+    if pending::kept(shared, caller, "send", to) || peer_reply_authorized(shared, caller, to) {
         return match transfer::send(shared, Some(caller), to, "text", text, By::Session) {
             Ok(done) => Ok(json!({"sent": true, "to": to, "delivery": done["delivery"], "size": done["size"], "receiver": done["receiver"]}).to_string()),
             Err(code) => Err(refusal(shared, caller, code)),
@@ -171,12 +171,18 @@ impl PeerTurn {
         }
     }
 
-    pub fn note_outbound_to(&mut self, target_id: &str) {
+    pub fn is_answering(&self, target_id: &str) -> bool {
+        self.active.as_ref().is_some_and(|(c, _)| c == target_id)
+    }
+
+    pub fn note_outbound_to(&mut self, target_id: &str) -> bool {
         if let Some((caller, sent)) = self.active.as_mut() {
             if caller == target_id {
                 *sent = true;
+                return true;
             }
         }
+        false
     }
 
     pub fn push_line(&mut self, raw_line: &str) {
@@ -204,20 +210,29 @@ impl PeerTurn {
     }
 }
 
-pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) {
+fn peer_reply_authorized(shared: &Shared, caller: &str, to: &str) -> bool {
+    let answering = core::find(shared, caller).is_some_and(|f| {
+        let s = f.lock().unwrap();
+        s.busy && s.peer_turn.is_answering(to)
+    });
+    answering && pending::kept(shared, to, "send", caller)
+}
+
+pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) -> bool {
     if by != By::Session {
-        return;
+        return false;
     }
-    let Some(caller_id) = from else { return };
-    if let Some(found) = core::find(shared, caller_id) {
-        found.lock().unwrap().peer_turn.note_outbound_to(to);
-    }
-    if let Some(found) = core::find(shared, to) {
-        let mut s = found.lock().unwrap();
-        if matches!(s.provider, "claude" | "codex") && !(s.made_by.is_some() && s.finished_seq < 0) {
-            s.peer_turn.begin_or_queue(caller_id);
+    let Some(caller_id) = from else { return false };
+    let is_reply = core::find(shared, caller_id).is_some_and(|found| found.lock().unwrap().peer_turn.note_outbound_to(to));
+    if !is_reply {
+        if let Some(found) = core::find(shared, to) {
+            let mut s = found.lock().unwrap();
+            if matches!(s.provider, "claude" | "codex") && !(s.made_by.is_some() && s.finished_seq < 0) {
+                s.peer_turn.begin_or_queue(caller_id);
+            }
         }
     }
+    is_reply
 }
 
 pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By, ok: bool) {
@@ -247,7 +262,7 @@ pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<(String, String, 
     );
     let payload = format!("{head}\n{body}");
     let req_id = format!("pr-{}", core::random_hex(8));
-    let _ = core::input(shared, &caller_id, None, &req_id, &payload, crate::session::Origin::Host, None);
+    let _ = core::input(shared, &caller_id, None, &req_id, &payload, crate::session::Origin::PeerReply, None);
 }
 
 /// What a card says after its head: how much text there is (the cleaned text, which is what is sent), what the cleaning took out, and the opening quote of the start of it.

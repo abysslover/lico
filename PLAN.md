@@ -17,7 +17,7 @@ Updated: 2026-11-13
 | Renderer and runtime | Selected and accepted | Measured in M01 reports and accepted by the owner at G3 on 2026-11-11 |
 | Implementation | On `main` through M06-P03 (`lico 0.2.2`); M07-P01 to M07-P05 (`lico 0.2.3`) ready on branch | Merged to `main` through M06-P03 on 2026-11-12; M07-P01..P05 awaiting G3/G4 |
 | Branches | Phase branches kept; `milestone/M01-measured-linux-foundation`, `milestone/M02-agentic-coding-basics`, `milestone/M03-admin-gui-and-control-parity`, `milestone/M04-workspace-workbench-and-conversation-ux`, `milestone/M05-workspace-continuity-and-file-navigation`, and `milestone/M06-hidden-files-and-ssh-remote-sessions` created | A branch `milestone/Mxx-<name>` is created at each milestone's closing commit and listed in its milestone document (rule of 2026-10-27) |
-| Resource budgets | Measured through M07-P05 (`lico 0.2.3`) | Idle window RSS `24.37..24.67` / `35.50..35.80 MiB` (`< 50 MiB`; `lico host` `7.79 MiB`), 10->100 hidden growth `+0.36 MiB` (`<= +10 MiB`), cold 486-test suite `103.5 s` (`<= 180 s`, 4-worker test-runner tree peak `1,767.2 MiB` `<= 2,048 MiB`) |
+| Resource budgets | Measured through M07-P05 (`lico 0.2.3`) | Idle window RSS `24.65..25.00` / `35.84..35.89 MiB` (`< 50 MiB`; `lico host` `7.64 MiB`), 10->100 hidden growth `+0.26 MiB` (`<= +10 MiB`), cold 486-test suite `104.4 s` (`<= 180 s`, 4-worker test-runner tree peak `1,697.3 MiB` `<= 2,048 MiB`) |
 | Release and product acceptance | Accepted on `main` (`lico 0.2.2`, 2026-11-12); `lico 0.2.3` verified on branch | Two clean clones build byte-for-byte identical `lico 0.2.3` binaries (`suite acceptance`); standalone binary installed to `~/bin/lico`; M07 awaiting owner G3/G4 |
 
 | Gate | State | Unlocks |

@@ -350,7 +350,9 @@ def turn(message):
         out(result())
     elif text.startswith("tool:"):
         name, _, arguments = text[len("tool:"):].partition(" ")
-        say("tool %s %s" % mcp(SERVER, "tools/call", {"name": name, "arguments": json.loads(arguments or "{}")}, 4))
+        parsed_args = json.loads(arguments or "{}")
+        out(assistant(tool=(f"mcp__lico__{name}", parsed_args)))
+        say("tool %s %s" % mcp(SERVER, "tools/call", {"name": name, "arguments": parsed_args}, 4))
         out(result())
     elif text.startswith("linger:"):
         count, _, inject = text[len("linger:"):].partition(":")

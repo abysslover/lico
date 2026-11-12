@@ -39,8 +39,8 @@ pub const TOOLS: [Tool; 9] = [
     },
     Tool {
         name: "send",
-        description: concat!("Send text to another Lico session. The person approves each send. Up to 4 KiB arrives with the message, longer text as a file the receiver is told to read. \
-                      Any answer comes later as a new message in this session, not as this result. ", names!()),
+        description: concat!("Send text to another Lico session. Once the person allows a receiver, later sends to it in this session go at once. Up to 4 KiB arrives inline, longer text as a file. \
+                      Any reply arrives later as a message here, not in this result. ", names!()),
         args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send; the whole request may be 128 KiB, so about 100 KiB of plain text at most, and longer is refused with too_large")],
         optional: &[],
     },

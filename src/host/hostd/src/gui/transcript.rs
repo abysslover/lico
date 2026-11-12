@@ -78,6 +78,7 @@ pub fn classify(text: &str) -> LineKind {
                     | "exit 0"
                     | "account changed"
                     | "peer turn started"
+                    | "peer reply"
                     | "host notice"
             ) {
                 return LineKind::ControlEvent;
@@ -175,6 +176,8 @@ pub fn compute_visible_transcript(
     let mut in_peer_turn = false;
     let mut in_peer_echo = false;
     let mut in_host_notice = false;
+    let mut in_peer_card = false;
+    let starts_peer_card = |t: &str| matches!(super::panel::sendto::header_look(t), Some(super::panel::sendto::Look::Session(_)));
     let is_echo_line = |t: &str| {
         !t.starts_with(crate::leads::TAG)
             && (t == ">>"
@@ -189,12 +192,21 @@ pub fn compute_visible_transcript(
                 in_peer_turn = true;
                 in_peer_echo = true;
                 in_host_notice = false;
+                in_peer_card = false;
                 in_cmd = false;
                 if !show_events {
                     continue;
                 }
             } else if text == "[host notice]" {
                 in_host_notice = true;
+                in_peer_card = false;
+                in_cmd = false;
+                if !show_events {
+                    continue;
+                }
+            } else if text == "[peer reply]" {
+                in_host_notice = false;
+                in_peer_card = false;
                 in_cmd = false;
                 if !show_events {
                     continue;
@@ -239,6 +251,7 @@ pub fn compute_visible_transcript(
         let kind = classify(text);
         if is_exit_note(text) {
             in_cmd = false;
+            in_peer_card = false;
             if !show_events && kind == LineKind::ControlEvent {
                 continue;
             }
@@ -252,7 +265,22 @@ pub fn compute_visible_transcript(
         }
         if !show_events && kind == LineKind::ControlEvent {
             in_cmd = false;
+            in_peer_card = false;
             continue;
+        }
+        if starts_peer_card(text) {
+            in_cmd = false;
+            in_peer_card = true;
+            out.push((i, *seq, text.clone(), STYLE_USER | ROLE_PEER_BG));
+            continue;
+        }
+        if in_peer_card {
+            if is_echo_line(text) && super::panel::sendto::header_look(text).is_none() {
+                let style = if kind == LineKind::Tool { STYLE_TOOL } else { STYLE_USER };
+                out.push((i, *seq, text.clone(), style | ROLE_PEER_BG));
+                continue;
+            }
+            in_peer_card = false;
         }
         let role = if text == "$" || text.starts_with("$ ") {
             in_cmd = true;
@@ -277,6 +305,19 @@ pub fn compute_visible_transcript(
         if out[idx].3 & ROLE_BOX != 0 {
             let prev_same = idx > 0 && (out[idx - 1].3 & ROLE_BOX != 0) && !starts_new_card(&out[idx].2);
             let next_same = idx + 1 < out.len() && (out[idx + 1].3 & ROLE_BOX != 0) && !starts_new_card(&out[idx + 1].2);
+            if !prev_same {
+                out[idx].3 |= ROLE_BOX_TOP;
+            } else {
+                out[idx].3 &= !ROLE_BOX_TOP;
+            }
+            if !next_same {
+                out[idx].3 |= ROLE_BOX_BOT;
+            } else {
+                out[idx].3 &= !ROLE_BOX_BOT;
+            }
+        } else if out[idx].3 & ROLE_PEER_BG != 0 {
+            let prev_same = idx > 0 && (out[idx - 1].3 & ROLE_PEER_BG != 0) && !starts_peer_card(&out[idx].2);
+            let next_same = idx + 1 < out.len() && (out[idx + 1].3 & ROLE_PEER_BG != 0) && !starts_peer_card(&out[idx + 1].2);
             if !prev_same {
                 out[idx].3 |= ROLE_BOX_TOP;
             } else {
@@ -373,8 +414,9 @@ pub fn paint_transcript_decorations(
                 buf[row_start + x0..row_start + width].fill(USER_BG);
             } else if role & ROLE_PEER_BG != 0 {
                 if bx0 < bx1 {
-                    let is_edge = py == raw_r0 || py == raw_r1 - 1;
-                    buf[row_start + bx0..row_start + bx1].fill(if is_edge { PEER_BORDER } else { PEER_BG });
+                    let top_edge = (role & ROLE_BOX_TOP != 0) && py == raw_r0;
+                    let bot_edge = (role & ROLE_BOX_BOT != 0) && py == raw_r1 - 1;
+                    buf[row_start + bx0..row_start + bx1].fill(if top_edge || bot_edge { PEER_BORDER } else { PEER_BG });
                     let rx1 = (bx0 + rail_w).min(bx1);
                     buf[row_start + bx0..row_start + rx1].fill(PEER_RAIL);
                     if bx1 > bx0 + 1 {
@@ -504,9 +546,10 @@ mod tests {
         let vis = compute_visible_transcript(&raw, raw.len(), false);
         let by_text = |needle: &str| vis.iter().find(|(_, _, t, _)| t == needle).expect(needle).3;
 
-        // User prompt vs incoming peer session banner
+        // User prompt vs incoming peer session card (header + body grouped in one teal card)
         assert_eq!(by_text(">> 지금은 lico 다른 메신저와 대화 할 수 있나?"), STYLE_USER | ROLE_USER_BG);
-        assert_eq!(by_text(">> [from session 'codex_initial' (se76be5) | 14:05 | message | 18 B]"), STYLE_USER | ROLE_PEER_BG);
+        assert_eq!(by_text(">> [from session 'codex_initial' (se76be5) | 14:05 | message | 18 B]"), STYLE_USER | ROLE_PEER_BG | ROLE_BOX_TOP);
+        assert_eq!(by_text(">> 안녕 Claude! 잘 들리니?"), STYLE_USER | ROLE_PEER_BG | ROLE_BOX_BOT);
 
         // First `$ ...` command + stdout lines form one card; hidden `[exit 0]` closes `in_cmd` so prose stays unboxed!
         assert_eq!(by_text("$ /bin/bash -lc 'cat SKILL.md'"), STYLE_CMD | ROLE_BOX | ROLE_BOX_TOP);
@@ -533,7 +576,7 @@ mod tests {
     }
 
     #[test]
-    fn multiline_peer_turn_and_host_notice_echo_are_hidden_until_turn_completes_unless_events_shown() {
+    fn unsolicited_peer_turn_and_host_notice_hide_while_peer_reply_card_and_caller_turn_render_visibly() {
         let raw: VecDeque<(i64, String)> = [
             ">> 사용자가 직접 질문한 항목",
             "사람 질문에 대한 답변입니다.",
@@ -546,8 +589,11 @@ mod tests {
             "반갑습니다 Claude!",
             "[turn completed]",
             "[host notice]",
+            ">> [from lico | 05:31 | approval 1]",
+            ">> approved and done: 121 B delivered to session 'CodexWorker' (s999999) (inline); the receiver was idle",
+            "[peer reply]",
             ">> [peer reply from 'CodexWorker' (s999999) | 05:31 | 24 B]",
-            ">> 반갑습니다 Claude!",
+            ">> 받았음.",
             "Codex로부터 답장이 도착했습니다.",
             "[turn completed]",
         ]
@@ -556,15 +602,22 @@ mod tests {
         .map(|(i, s)| (i as i64, s.to_string()))
         .collect();
 
-        let hidden: Vec<String> = compute_visible_transcript(&raw, raw.len(), false).into_iter().map(|(_, _, t, _)| t).collect();
+        let vis = compute_visible_transcript(&raw, raw.len(), false);
+        let texts: Vec<String> = vis.iter().map(|(_, _, t, _)| t.clone()).collect();
         assert_eq!(
-            hidden,
+            texts,
             vec![
                 ">> 사용자가 직접 질문한 항목",
                 "사람 질문에 대한 답변입니다.",
+                ">> [peer reply from 'CodexWorker' (s999999) | 05:31 | 24 B]",
+                ">> 받았음.",
                 "Codex로부터 답장이 도착했습니다.",
             ]
         );
+        let by_text = |needle: &str| vis.iter().find(|(_, _, t, _)| t == needle).expect(needle).3;
+        assert_eq!(by_text(">> [peer reply from 'CodexWorker' (s999999) | 05:31 | 24 B]"), STYLE_USER | ROLE_PEER_BG | ROLE_BOX_TOP);
+        assert_eq!(by_text(">> 받았음."), STYLE_USER | ROLE_PEER_BG | ROLE_BOX_BOT);
+        assert_eq!(by_text("Codex로부터 답장이 도착했습니다."), STYLE_AGENT);
         let shown = compute_visible_transcript(&raw, raw.len(), true);
         assert_eq!(shown.len(), raw.len());
     }

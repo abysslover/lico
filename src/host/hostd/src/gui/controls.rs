@@ -47,6 +47,8 @@ pub enum Action {
     SidebarBookmarkRemove(usize),
     Allow,
     Deny,
+    ReadCard,
+    ModalBackdrop,
     StopRealScreen,
 }
 
@@ -120,18 +122,6 @@ impl Controls {
         self.hits.push(Hit { rect: r, action });
     }
 
-    /// The Allow and Deny buttons of the first pending approval, at the right edge of its row: drawn dimmed while `live` is false (a card of the host's own that
-    /// has not been on screen for the dwell yet; a click on them answers nothing then).
-    #[allow(clippy::too_many_arguments)]
-    pub fn answer_buttons(&mut self, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, y: f32, ink: Color, live: bool) {
-        let fp = if self.font_px <= 0.0 { FONT_PX } else { self.font_px };
-        let (s, lh) = (self.scale, (fp + 4.0) * self.scale);
-        let (allow, deny, ink) = if live { (0xFF2E_6B3A, 0xFF7A_2E2E, ink) } else { (0xFF26_3A2C, 0xFF3A_2828, Color::rgb(0x9A, 0xA4, 0xB0)) };
-        self.dimmed = !live;
-        self.button(fs, swash, buf, width, height, [width as f32 - 190.0 * s, y, width as f32 - 100.0 * s, y + lh], "Allow", allow, ink, Action::Allow);
-        self.button(fs, swash, buf, width, height, [width as f32 - 95.0 * s, y, width as f32 - 5.0 * s, y + lh], "Deny", deny, ink, Action::Deny);
-    }
-
     /// A row of a list: highlighted when selected, its text cut at the row's right edge.
     #[allow(clippy::too_many_arguments)]
     pub fn row(&mut self, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, r: Rect, label: &str, selected: bool, ink: Color, action: Action) {
@@ -198,17 +188,4 @@ pub fn wrap_cols(text: &str, max_cols: usize) -> Vec<String> {
         out.push(cur);
     }
     out
-}
-
-/// Paint the card banner behind a pending approval prompt (`[x0, y0, width, y1]`) before blitting text.
-pub fn paint_approval_banner(buf: &mut [u32], width: usize, height: usize, x0: usize, span: Option<(f32, f32)>, scale: f32) {
-    let Some((y0, y1)) = span else { return };
-    if y1 <= y0 || x0 >= width {
-        return;
-    }
-    let rail = (3.0 * scale.max(1.0)).round().max(2.0);
-    fill(buf, width, height, [x0 as f32, y0, width as f32, y1], 0xFF28_2216);
-    fill(buf, width, height, [x0 as f32, y0, width as f32, (y0 + 1.0).min(y1)], 0xFF4E_3F22);
-    fill(buf, width, height, [x0 as f32, (y1 - 1.0).max(y0), width as f32, y1], 0xFF4E_3F22);
-    fill(buf, width, height, [x0 as f32, y0, (x0 as f32 + rail).min(width as f32), y1], 0xFFE5_A93C);
 }

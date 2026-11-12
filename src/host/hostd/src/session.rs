@@ -472,6 +472,8 @@ pub const HOPS_MEMORY: u64 = 600;
 pub enum Origin {
     Person,
     Session(u32),
+    PeerReply,
+    PeerReplySession(u32),
     Host,
 }
 
@@ -703,6 +705,8 @@ impl Session {
             self.peer_turn.clear();
         } else if matches!(origin, Origin::Session(hops) if hops >= 1) && !(self.made_by.is_some() && self.finished_seq < 0) {
             self.append(b"[peer turn started]".to_vec());
+        } else if matches!(origin, Origin::PeerReply | Origin::PeerReplySession(_)) {
+            self.append(b"[peer reply]".to_vec());
         } else if origin == Origin::Host {
             self.append(b"[host notice]".to_vec());
         }
@@ -724,9 +728,9 @@ impl Session {
     /// is read: a chain whose turn takes a quarter of an hour is still as deep.
     fn count_hops(&mut self, origin: Origin, now: u64) {
         let (hops, taken) = match origin {
-            Origin::Person | Origin::Session(0) => (0, true), // zero is made only by a person's act that names a session; a session's own text carries 1 or more
-            Origin::Session(hops) => (hops, hops > self.incoming_hops || self.hops_set_at == 0 || now.saturating_sub(self.hops_set_at) > HOPS_MEMORY),
-            Origin::Host => return,
+            Origin::Person | Origin::Session(0) | Origin::PeerReplySession(0) => (0, true), // zero is made only by a person's act that names a session; a session's own text carries 1 or more
+            Origin::Session(hops) | Origin::PeerReplySession(hops) => (hops, hops > self.incoming_hops || self.hops_set_at == 0 || now.saturating_sub(self.hops_set_at) > HOPS_MEMORY),
+            Origin::Host | Origin::PeerReply => return,
         };
         if taken {
             (self.incoming_hops, self.hops_set_at) = (hops, now);

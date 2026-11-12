@@ -466,7 +466,17 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
                     }
                     Some("tool_use") => match (block["name"].as_str(), block["input"]["command"].as_str()) {
                         (Some("Bash"), Some(command)) => record_text(&mut s, "$ ", command),
-                        (name, _) => record(&mut s, &format!("[tool] {}", clip(name.unwrap_or(""), 60))),
+                        (name, _) => {
+                            record(&mut s, &format!("[tool] {}", clip(name.unwrap_or(""), 60)));
+                            if name == Some("mcp__lico__send") {
+                                if let (Some(to), Some(txt)) = (block["input"]["to"].as_str(), block["input"]["text"].as_str()) {
+                                    let first = sanitize(txt.lines().find(|l| !l.trim().is_empty()).unwrap_or(""));
+                                    if !to.is_empty() && !first.is_empty() {
+                                        record(&mut s, &format!("> [to {}] {}", crate::transfer::id7(&sanitize(to)), clip(&first, 240)));
+                                    }
+                                }
+                            }
+                        }
                     },
                     _ => {}
                 }

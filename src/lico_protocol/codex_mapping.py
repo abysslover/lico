@@ -26,7 +26,7 @@ _CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u061c\u200b\u200e\u2
 TAG = "[agent] "
 LEADS = (">>", "$", ">")                                     # a lead counts when a space or the end of the record follows it
 NOTES = ("session started", "session closed", "provider reconnected", "provider disconnected", "tool", "tool error", "error", "patch", "input refused",
-         "account changed", "account issue")
+         "account changed", "account issue", "peer turn started", "peer reply", "host notice")
 NOTE_STEMS = ("turn ", "exit ", "log recovered:")
 _IGNORABLE = re.compile("[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0"
                         "\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"       # the default-ignorable characters
@@ -120,6 +120,13 @@ class Mapper:
                 srv = sanitize(str(item.get("server", ""))).encode()[:24].decode(errors="ignore")
                 tool = sanitize(str(item.get("tool", ""))).encode()[:40].decode(errors="ignore")
                 _emit(self.out, f"[tool] mcp__{srv}__{tool}")
+                if srv == "lico" and tool == "send" and isinstance(item.get("arguments"), dict):
+                    to_val, txt_val = item["arguments"].get("to"), item["arguments"].get("text")
+                    if isinstance(to_val, str) and isinstance(txt_val, str):
+                        first = sanitize(next((ln for ln in txt_val.splitlines() if ln.strip()), ""))
+                        if to_val and first:
+                            clipped = first.encode()[:240].decode(errors="ignore")
+                            _emit(self.out, f"> [to {sanitize(to_val)[:7]}] {clipped}")
         elif method == "item/completed":
             item = params["item"]
             self._flush(item["id"])

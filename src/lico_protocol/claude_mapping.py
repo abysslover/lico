@@ -67,7 +67,15 @@ def map_stream(messages: list[dict]) -> Mapped:
                     if block.get("name") == "Bash" and isinstance(tool_input.get("command"), str):
                         _emit(out, "$ " + tool_input["command"])
                     else:
-                        _emit(out, "[tool] " + str(block.get("name", ""))[:60])
+                        name = str(block.get("name", ""))[:60]
+                        _emit(out, "[tool] " + name)
+                        if block.get("name") == "mcp__lico__send" and isinstance(tool_input, dict):
+                            to_val, txt_val = tool_input.get("to"), tool_input.get("text")
+                            if isinstance(to_val, str) and isinstance(txt_val, str):
+                                first = sanitize(next((ln for ln in txt_val.splitlines() if ln.strip()), ""))
+                                if to_val and first:
+                                    clipped = first.encode()[:240].decode(errors="ignore")
+                                    _emit(out, f"> [to {sanitize(to_val)[:7]}] {clipped}")
         elif kind == "user":
             for block in message.get("message", {}).get("content", []) if isinstance(message.get("message", {}).get("content"), list) else []:
                 if block.get("type") == "tool_result":

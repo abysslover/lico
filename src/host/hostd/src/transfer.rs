@@ -306,10 +306,10 @@ fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str
     };
     let request_id = format!("x-{}", core::random_hex(8));
     let sender_id = sender.as_ref().map(|s| s.id.as_str());
-    crate::calls::before_peer_deliver(shared, sender_id, to, by);
-    let origin = if sender.is_some() { Origin::Session(hops) } else { Origin::Person };
+    let is_reply = crate::calls::before_peer_deliver(shared, sender_id, to, by);
+    let origin = if is_reply { Origin::PeerReplySession(hops) } else if sender.is_some() { Origin::Session(hops) } else { Origin::Person };
     let res = core::input(shared, to, None, &request_id, &delivered, origin, None);
-    crate::calls::after_peer_deliver(shared, sender_id, to, by, res.is_ok());
+    crate::calls::after_peer_deliver(shared, sender_id, to, by, res.is_ok() || is_reply);
     let file_path = stored.map(|(_, path)| path);
     drop(delivered);
     drop(body);

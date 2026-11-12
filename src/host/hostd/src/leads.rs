@@ -14,7 +14,7 @@ const LEADS: &[&str] = &[">>", "$", ">"];
 /// The host's own notes, whole bracket texts (`[session started] model=…` is one of them).
 const NOTES: &[&str] = &[
     "session started", "session closed", "provider reconnected", "provider disconnected", "tool", "tool error", "error", "patch", "input refused",
-    "account changed", "account issue", "peer turn started", "host notice",
+    "account changed", "account issue", "peer turn started", "peer reply", "host notice",
 ];
 /// Bracket texts that begin like this: `[turn started]`, `[turn completed]`, `[turn failed] …`, `[exit 0]`, `[exit unknown]`,
 /// `[log recovered: 12 byte(s) of a damaged tail and 1 segment(s) set aside]` (written by `registry` when a log is recovered).

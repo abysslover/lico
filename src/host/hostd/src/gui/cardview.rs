@@ -87,6 +87,7 @@ pub(crate) enum Asks {
     Make,
     Read,
     RealScreen,
+    ScreenTool,
 }
 
 impl Asks {
@@ -96,11 +97,11 @@ impl Asks {
             Asks::Send => "sent",
             Asks::Make => "made",
             Asks::Read => "read",
-            Asks::RealScreen => "granted",
+            Asks::RealScreen | Asks::ScreenTool => "granted",
         }
     }
-    fn no_keep(self) -> bool {
-        matches!(self, Asks::Make | Asks::RealScreen)
+    pub(crate) fn no_keep(self) -> bool {
+        matches!(self, Asks::Make | Asks::RealScreen | Asks::ScreenTool)
     }
 }
 
@@ -110,6 +111,9 @@ fn answered_words(reply: &Value, keep: bool, asks: Asks) -> String {
         (Some("done"), _) if asks == Asks::RealScreen => "Allowed: real-screen control is active for 15 minutes (Ctrl+Alt+Esc stops).".into(),
         (Some("declined"), _) if asks == Asks::RealScreen => "Declined: real-screen control stays off.".into(),
         (Some("not_done"), reason) if asks == Asks::RealScreen => format!("Allowed, but real-screen control did not start: {}.", failure(reason.unwrap_or("bad_request"))),
+        (Some("done"), _) if asks == Asks::ScreenTool => "Allowed: one request was granted.".into(),
+        (Some("declined"), _) if asks == Asks::ScreenTool => "Declined: request was refused.".into(),
+        (Some("not_done"), reason) if asks == Asks::ScreenTool => format!("Allowed, but not carried out: {}.", failure(reason.unwrap_or("bad_request"))),
         (Some("done"), _) if asks == Asks::Make => "Allowed: the session was made and is working on its first prompt.".into(),
         (Some("declined"), _) if asks == Asks::Make => "Declined: no session was made.".into(),
         (Some("not_done"), reason) if asks == Asks::Make => format!("Allowed, but no session was made: {}.", failure(reason.unwrap_or("bad_request"))),
@@ -126,9 +130,31 @@ fn answered_words(reply: &Value, keep: bool, asks: Asks) -> String {
 }
 
 impl App {
-    /// The first request of the open session, when it is a question of the host's own (the one Y and N answer, and the only one with a text of ours).
+    /// Active approval target row: the open session first, or (in `lico gui` workbench tab mode) any open tab waiting for approval.
+    pub(crate) fn approval_row_any_panel(&self) -> Option<&super::super::ui::Row> {
+        self.selected_row()
+            .filter(|r| !r.approvals.is_empty())
+            .or_else(|| {
+                if self.tabs_shown() {
+                    self.ui.rows.iter().find(|r| !r.tab_closed && !r.approvals.is_empty())
+                } else {
+                    None
+                }
+            })
+    }
+
+    /// Approval row shown as a window modal (hidden while a full-pane panel such as `Step::Card` or `Step::Accounts` is open).
+    pub(crate) fn modal_approval_row(&self) -> Option<&super::super::ui::Row> {
+        if self.ui.panel.is_some() {
+            None
+        } else {
+            self.approval_row_any_panel()
+        }
+    }
+
+    /// The first request of the active approval session, when it is a question of the host's own (the one Y and N answer, and the only one with a text of ours).
     pub(crate) fn lico_card(&self) -> Option<i64> {
-        let row = self.selected_row()?;
+        let row = self.approval_row_any_panel()?;
         let (id, _) = row.approvals.first()?;
         row.asks.contains(id).then_some(*id)
     }
@@ -138,16 +164,20 @@ impl App {
         self.ui.clock.unwrap_or_else(Instant::now)
     }
 
-    /// A frame with the first request of the open session was shown: the dwell of that request counts from the first such frame.
+    /// A frame with the first request was shown: the dwell of that request counts from the first such frame.
     pub(crate) fn card_drawn(&mut self) {
+        let Some(target_session) = self.approval_row_any_panel().map(|r| r.session.clone()) else {
+            self.ui.card_seen = None;
+            return;
+        };
         let Some(id) = self.lico_card() else {
             self.ui.card_seen = None;
             return;
         };
-        if self.ui.card_seen.as_ref().is_some_and(|(session, seen, _)| *session == self.session && *seen == id) {
+        if self.ui.card_seen.as_ref().is_some_and(|(session, seen, _)| *session == target_session && *seen == id) {
             return;
         }
-        self.ui.card_seen = Some((self.session.clone(), id, self.card_now()));
+        self.ui.card_seen = Some((target_session, id, self.card_now()));
     }
 
     /// A session was selected: its card has not been on screen yet.
@@ -178,10 +208,11 @@ impl App {
         self.dirty = true;
     }
 
-    /// Whether the first request of the open session is a card of the host's own that has been on screen for the dwell.
+    /// Whether the first request is a card of the host's own that has been on screen for the dwell.
     pub(crate) fn card_ready(&self) -> bool {
+        let Some(target_session) = self.approval_row_any_panel().map(|r| r.session.as_str()) else { return false };
         let Some(id) = self.lico_card() else { return false };
-        self.ui.card_seen.as_ref().is_some_and(|(session, seen, at)| *session == self.session && *seen == id && self.card_now().saturating_duration_since(*at) >= DWELL)
+        self.ui.card_seen.as_ref().is_some_and(|(session, seen, at)| session == target_session && *seen == id && self.card_now().saturating_duration_since(*at) >= DWELL)
     }
 
     /// Whether the first request may be answered now: the question of the program at once, a card of the host's own once it has been on screen for the dwell.
@@ -205,26 +236,25 @@ impl App {
         }
     }
 
-    /// Whether the first request of the open session has no session-long `Shift+S` allowance (`create` or real-screen `computer`).
+    /// Whether the first request has no session-long allowance (`create`, real-screen `computer`, or one-shot `screentools`).
     fn makes_card(&self) -> bool {
         self.lico_card().is_some_and(|id| self.card_asks(id).no_keep())
     }
 
-    /// What request `id` of the open session asks for.
-    fn card_asks(&self, id: i64) -> Asks {
-        match self.selected_row() {
+    /// What request `id` asks for.
+    pub(crate) fn card_asks(&self, id: i64) -> Asks {
+        match self.approval_row_any_panel().or_else(|| self.selected_row()) {
             Some(r) if r.makes.contains(&id) => Asks::Make,
             Some(r) if r.reads.contains(&id) => Asks::Read,
             Some(r) if r.real_screens.contains(&id) => Asks::RealScreen,
+            Some(r) if r.screen_tools.contains(&id) => Asks::ScreenTool,
             _ => Asks::Send,
         }
     }
 
-    /// A key of the open session's list while it has a request: true when it was one of the answers (S only for a send of the host's own, V for any of
-    /// them). A card of the host's own is answered only once it has been on screen for the dwell (before that the key is typing: the person was writing
-    /// when the card came up; a click or the menu waits the same dwell, in `answer_approval`), and S needs the capital and the Shift key held (with Caps Lock on, a sentence in capitals is not an answer). The question of the program keeps the old rule: Y and N at once.
+    /// A key while a request is active: `Y` / `Allow` grants session-long permission when supported (`!no_keep()`), `N` denies, `Shift+S` also allows for the session, `V` reads all.
     pub(crate) fn answer_key(&mut self, key: &str) -> bool {
-        if self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
+        if self.approval_row_any_panel().is_none() {
             return false;
         }
         let ours = self.lico_card().is_some();
@@ -234,7 +264,7 @@ impl App {
         match key {
             "y" | "Y" => self.answer_approval(true),
             "n" | "N" => self.answer_approval(false),
-            "S" if ours && !self.makes_card() && self.ui.mods.shift_key() => self.answer_card(true, true), // Caps Lock makes every letter a capital: Shift must be held as well
+            "S" if ours && !self.makes_card() && self.ui.mods.shift_key() => self.answer_card(true, true),
             "v" | "V" if ours => self.card_open(),
             _ => return false,
         }
@@ -242,33 +272,32 @@ impl App {
     }
 
     pub(crate) fn answer_approval(&mut self, allow: bool) {
-        let Some(row) = self.selected_row() else { return };
+        let Some(row) = self.approval_row_any_panel().cloned() else { return };
         let Some((id, _)) = row.approvals.first().cloned() else { return };
         if self.lico_card() == Some(id) {
-            // the host's own: answered on a call that says what came of it, and only once the card has been on screen for the dwell, whether the answer is a key, a click or the menu
             if self.card_ready() {
-                self.answer_card(allow, false);
+                let keep = allow && !self.card_asks(id).no_keep();
+                self.answer_card(allow, keep);
             }
             return;
         }
         let msg = format!(
             "{{\"op\":\"approval.answer\",\"session\":\"{}\",\"generation\":{},\"approval_id\":{},\"answer\":\"{}\"}}",
-            self.session, row.generation, id, if allow { "allow" } else { "deny" }
+            row.session, row.generation, id, if allow { "allow" } else { "deny" }
         );
         self.send(&msg);
-        if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == self.session) {
-            row.approvals.remove(0); // answered once: it is not offered again; the next status confirms
+        if let Some(r) = self.ui.rows.iter_mut().find(|r| r.session == row.session) {
+            r.approvals.remove(0);
         }
         self.refresh_list();
     }
 
-    /// Y allows and N denies the first pending approval of the selected session, while the input line is empty (so typing a word that starts with
-    /// one of them is never taken for an answer) and no panel is open; for a card of the host's own `answer_key` adds the dwell and the capital S.
+    /// Y allows and N denies the active pending approval while the input line is empty and no panel is open.
     pub(crate) fn approval_key(&mut self, event: &winit::event::KeyEvent) -> bool {
         if self.ui.panel.is_some() || !self.ed.is_empty() || !self.preedit.is_empty() || event.repeat {
             return false;
         }
-        if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.selected_row().map_or(true, |r| r.approvals.is_empty()) {
+        if self.ui.mods.control_key() || self.ui.mods.alt_key() || self.approval_row_any_panel().is_none() {
             return false;
         }
         let key_buf;
@@ -295,24 +324,25 @@ impl App {
         }
     }
 
-    /// The answer to one request, asked of the host on a connection of its own: what is said of it is what the host did, and the request is dropped from
-    /// the row only when the host took the answer (or says it is gone), so that one that was not answered is asked again.
+    /// The answer to one request, asked of the host on a connection of its own.
     fn answer_id(&mut self, id: i64, allow: bool, keep: bool) {
-        let generation = self.selected_row().map_or(1, |r| r.generation);
+        let target_row = self.approval_row_any_panel().or_else(|| self.selected_row());
+        let target_session = target_row.map(|r| r.session.clone()).unwrap_or_else(|| self.session.clone());
+        let generation = target_row.map_or(1, |r| r.generation);
         let asks = self.card_asks(id);
-        let mut request = json!({"op": "approval.answer", "session": self.session, "generation": generation, "approval_id": id, "answer": if allow { "allow" } else { "deny" }});
-        if keep && !asks.no_keep() {
+        let keep = keep && !asks.no_keep();
+        let mut request = json!({"op": "approval.answer", "session": target_session, "generation": generation, "approval_id": id, "answer": if allow { "allow" } else { "deny" }});
+        if keep {
             request["keep"] = json!(true);
         }
         let reply = self.host_call(request);
         if reply["ok"] == json!(1) {
-            return self.card_gone(id, answered_words(&reply, keep, asks));
+            return self.card_gone_for(&target_session, id, answered_words(&reply, keep, asks));
         }
         match reply["error"].as_str().unwrap_or("bad_request") {
-            "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-            "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
+            "unknown_approval" => self.card_gone_for(&target_session, id, format!("Request {id} is not waiting any more.")),
+            "expired" => self.card_gone_for(&target_session, id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
             "host_timeout" => {
-                // the answer was written and nothing came back: it may have been taken, so the request is not called unanswered and the list is asked at once
                 self.card_say("The host has not said yet whether it took your answer; the list shows it when it has.".into());
                 self.send("{\"op\":\"status\"}");
             }
@@ -329,14 +359,14 @@ impl App {
         self.dirty = true;
     }
 
-    /// The request does not wait any more (answered, expired, or answered somewhere else): the row forgets it, the view is closed, and the person is told.
-    fn card_gone(&mut self, id: i64, said: String) {
-        if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == self.session) {
+    fn card_gone_for(&mut self, target_session: &str, id: i64, said: String) {
+        if let Some(row) = self.ui.rows.iter_mut().find(|r| r.session == target_session) {
             row.approvals.retain(|a| a.0 != id);
             row.asks.retain(|a| *a != id);
             row.makes.retain(|a| *a != id);
             row.reads.retain(|a| *a != id);
             row.real_screens.retain(|a| *a != id);
+            row.screen_tools.retain(|a| *a != id);
         }
         if self.ui.panel.as_ref().is_some_and(|p| p.step == Step::Card) {
             self.panel_close();
@@ -352,19 +382,21 @@ impl App {
         if self.selected_row().is_some_and(|r| r.approvals.iter().any(|a| a.0 == id)) {
             return Some(id);
         }
-        self.card_gone(id, format!("Request {id} is not waiting any more."));
+        let cur_session = self.session.clone();
+        self.card_gone_for(&cur_session, id, format!("Request {id} is not waiting any more."));
         None
     }
 
     /// One page of the text, asked from `offset`; what the host refuses is said and nothing changes.
     fn card_fetch(&mut self, id: i64, offset: usize) -> Option<Page> {
         let generation = self.selected_row()?.generation;
+        let cur_session = self.session.clone();
         let asks = self.card_asks(id);
-        let reply = self.host_call(json!({"op": "approval.text", "session": self.session, "generation": generation, "approval_id": id, "offset": offset}));
+        let reply = self.host_call(json!({"op": "approval.text", "session": cur_session, "generation": generation, "approval_id": id, "offset": offset}));
         let (Some(text), Some(total), true) = (reply["text"].as_str(), reply["total"].as_u64(), reply["ok"] == json!(1)) else {
             match reply["error"].as_str().unwrap_or("bad_request") {
-                "unknown_approval" => self.card_gone(id, format!("Request {id} is not waiting any more.")),
-                "expired" => self.card_gone(id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
+                "unknown_approval" => self.card_gone_for(&cur_session, id, format!("Request {id} is not waiting any more.")),
+                "expired" => self.card_gone_for(&cur_session, id, format!("Request {id} ran out of time: nothing was {}.", asks.undone())),
                 other => self.card_say(format!("Not shown: {}.", failure(other))),
             }
             return None;
@@ -372,9 +404,16 @@ impl App {
         Some(Page { start: offset, end: offset + text.len(), next: reply["next"].as_u64().map(|n| n as usize), total: total as usize, lines: wrapped(text) })
     }
 
-    /// V: the text behind the first request, from its start.
+    /// V (or Read Full button): the text behind the first request, from its start.
     pub(crate) fn card_open(&mut self) {
         let Some(id) = self.lico_card() else { return };
+        if !self.card_ready() {
+            return;
+        }
+        let Some(target_session) = self.approval_row_any_panel().map(|r| r.session.clone()) else { return };
+        if target_session != self.session {
+            self.switch_to(&target_session);
+        }
         let Some(card) = self.selected_row().and_then(|r| r.approvals.iter().find(|a| a.0 == id)).map(|a| a.1.clone()) else { return };
         let Some(page) = self.card_fetch(id, 0) else { return };
         self.panel_open(Step::Card);
@@ -403,10 +442,11 @@ impl App {
     /// A letter in the view answers the request that is shown (and not whichever one comes first by then).
     pub(crate) fn card_key(&mut self, key: char) {
         let Some(id) = self.card_current() else { return };
+        let keep_default = !self.card_asks(id).no_keep();
         match key {
-            'y' | 'Y' => self.answer_id(id, true, false),
+            'y' | 'Y' => self.answer_id(id, true, keep_default),
             'n' | 'N' => self.answer_id(id, false, false),
-            'S' if self.ui.mods.shift_key() && !self.card_asks(id).no_keep() => self.answer_id(id, true, true),
+            'S' if self.ui.mods.shift_key() && keep_default => self.answer_id(id, true, true),
             _ => {}
         }
     }

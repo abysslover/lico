@@ -380,6 +380,8 @@ impl App {
                             Some(Action::FocusSessionDir) => self.focus_active_session_dir(),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
+                            Some(Action::ReadCard) => self.card_open(),
+                            Some(Action::ModalBackdrop) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPastEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -552,7 +554,7 @@ impl App {
         let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
         let dump = json!({
             "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
-            "approval_bar": self.selected_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
+            "approval_bar": self.approval_row_any_panel().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
             "card_seen": self.ui.card_seen.is_some(), "card_ready": self.card_ready(),
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()), "shown_lines": shown_lines,
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
@@ -619,10 +621,8 @@ impl App {
         let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
-        // what the main area says: the target beside the input, an approval for it, the transcript window, the draft
-        let row = self.selected_row().cloned();
+        // what the main area says: the target beside the input, an approval modal if pending, the transcript window, the draft
         let hint = self.hint_text(width, s);
-        let live = self.answers_live();
         let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
         let area_rows = ((height as f32 - chat_top) / lh) as usize;
@@ -649,15 +649,12 @@ impl App {
         let list_items = self.ui.list_items.clone();
         let total = memrow::total(&self.ui.rows, &self.ui.mem);
         let session_sel = self.session.clone();
-        let bar = if panel_view.is_some() { None } else { row.as_ref().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
-        let bar_cols = (((main_w as f32 - 208.0 * s).max(80.0 * s)) / (self.char_w() * s)).max(16.0) as usize;
-        let bar_lines = bar.as_deref().map(|b| controls::wrap_cols(&clean(b), bar_cols)).unwrap_or_default();
-        let bar_n = bar_lines.len();
+        let bar = if panel_view.is_some() { None } else { self.modal_approval_row().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))) };
         let search_bar = if self.ui.panel.is_some() { None } else { self.search_bar_line() };
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let rows_avail = area_rows.saturating_sub(4 + bar_n + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
+        let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
         let is_tx = panel_view.is_none();
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
@@ -687,15 +684,11 @@ impl App {
             }
         }
         let mut text = header;
-        for bl in &bar_lines {
-            text.push('\n');
-            text.push_str(bl);
-        }
         if let Some(sb) = &search_bar {
             text.push('\n');
             text.push_str(&clean(sb));
         }
-        let base = 1 + bar_n + search_bar.is_some() as usize;
+        let base = 1 + search_bar.is_some() as usize;
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text and style are unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by (style_tag, text), and only new text is shaped.
         let mut prev_styles = std::mem::take(&mut self.ui.line_styles);
@@ -753,15 +746,9 @@ impl App {
         let laid_out = Instant::now();
         // click boxes of the lines on screen, from the layout that was just made
         self.ui.hit_lines.clear();
-        let mut approval_span: Option<(f32, f32)> = None;
         let mut search_y: Option<(f32, f32)> = None;
-        let search_line_i = 1 + bar_n;
         for run in view.buffer.layout_runs() {
-            if bar_n > 0 && run.line_i >= 1 && run.line_i < 1 + bar_n {
-                let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
-                approval_span = Some(approval_span.map_or((y0, y1), |(a, _)| (a, y1)));
-            }
-            if search_bar.is_some() && run.line_i == search_line_i {
+            if search_bar.is_some() && run.line_i == 1 {
                 let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
                 search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
@@ -862,7 +849,6 @@ impl App {
         if is_tx {
             super::transcript::paint_transcript_decorations(&mut buf, width, height, list_w, s, oy, hint_row, &self.ui.hit_lines, plan.is_ok().then_some(cleared.as_slice()));
         }
-        controls::paint_approval_banner(&mut buf, width, height, list_w, approval_span, s);
         if let Some((sy0, sy1)) = search_y {
             rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
         }
@@ -921,9 +907,6 @@ impl App {
         for (line, extent) in frame.lines.iter_mut().zip(extents) {
             line.ext = extent;
         }
-        if let Some((ay0, _)) = approval_span {
-            controls.answer_buttons(fs, swash, &mut buf, width, height, ay0, ink, live);
-        }
         if let Some([x, y, w, h]) = self.ed.caret {
             controls::fill(&mut buf, width, height, [x, y, x + w, y + h], 0xFFE0_E0E0); // the caret of the input box: a bar, never blinking
         }
@@ -943,6 +926,7 @@ impl App {
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_sidebar_host_popup(&mut buf, width, height);
         self.draw_sidebar_bookmarks_popup(&mut buf, width, height);
+        self.draw_approval_modal(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);

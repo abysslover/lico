@@ -383,17 +383,25 @@ pub enum Look {
 }
 
 const SESSION: &str = ">> [from session '";
+const PEER_REPLY: &str = ">> [peer reply from '";
 const PERSON: &str = ">> [from the person | ";
+
+fn session_header(rest: &str, prefix_len: usize, has_kind: bool) -> Option<Look> {
+    let len = rest.find('\'').filter(|&n| n > 0)?;
+    if rest[..len].contains(['[', ']', '|', '(', ')']) {
+        return None; // the host turns these into `_` in a name
+    }
+    let (id, tail) = rest[len..].strip_prefix("' (")?.split_once(") | ")?;
+    let id_ok = id.len() == 7 && id.starts_with('s') && id[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let tail_ok = if has_kind { fields(tail) } else { reply_fields(tail) };
+    (id_ok && tail_ok).then(|| Look::Session(prefix_len..prefix_len + len))
+}
 
 pub fn header_look(text: &str) -> Option<Look> {
     if let Some(rest) = text.strip_prefix(SESSION) {
-        let len = rest.find('\'').filter(|&n| n > 0)?;
-        if rest[..len].contains(['[', ']', '|', '(', ')']) {
-            return None; // the host turns these into `_` in a name
-        }
-        let (id, tail) = rest[len..].strip_prefix("' (")?.split_once(") | ")?;
-        let id_ok = id.len() == 7 && id.starts_with('s') && id[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
-        (id_ok && fields(tail)).then(|| Look::Session(SESSION.len()..SESSION.len() + len))
+        session_header(rest, SESSION.len(), true)
+    } else if let Some(rest) = text.strip_prefix(PEER_REPLY) {
+        session_header(rest, PEER_REPLY.len(), false)
     } else {
         text.strip_prefix(PERSON).filter(|tail| fields(tail)).map(|_| Look::Person)
     }
@@ -406,6 +414,14 @@ fn fields(tail: &str) -> bool {
     let [clock, kind, size] = parts.as_slice() else { return false };
     let c = clock.as_bytes();
     c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && matches!(*kind, "message" | "selection" | "conversation") && size_shape(size)
+}
+
+/// `14:02 | 9 B]` for `[peer reply from 'NAME' (ID) | HH:MM | SIZE]`.
+fn reply_fields(tail: &str) -> bool {
+    let Some(body) = tail.strip_suffix(']') else { return false };
+    let Some((clock, size)) = body.split_once(" | ") else { return false };
+    let c = clock.as_bytes();
+    c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && size_shape(size)
 }
 
 /// What `size_text` and `lines_word` write: `27 B`, `3.1 KiB`, `1.0 MiB`, each with `, 24 lines` (or `, 1 line`) after it for a selection.

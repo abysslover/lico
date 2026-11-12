@@ -97,7 +97,7 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
                 text=f"tool:send {json.dumps({'to': s_codex, 'text': greeting}, ensure_ascii=False)}",
             )["ok"] == 1
 
-            # 3. Verify `Allow` / `Deny` banner & button geometry on wrapped prompt, then click `Allow`.
+            # 3. Verify centered modal notification window & `Allow` / `Deny` button geometry, then click `Allow` once.
             u_card = wait_for(
                 lambda: (u := w.ui())
                 and u["approval_bar"]
@@ -108,16 +108,14 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
             )
             allow_r = u_card["layout"]["allow"]
             deny_r = u_card["layout"]["deny"]
-            win_w, _win_h = u_card["layout"]["window_size"]
+            win_w, win_h = u_card["layout"]["window_size"]
             assert u_card["layout"]["list_w"] < allow_r[0] < allow_r[2] < deny_r[0] < deny_r[2] <= win_w
-            # Transcript hit lines start strictly below the approval banner.
-            if u_card["layout"]["lines"]:
-                assert u_card["layout"]["lines"][0][0] >= allow_r[3] - 2.0
+            assert win_h * 0.25 <= allow_r[1] < allow_r[3] <= win_h * 0.80, (allow_r, win_h)
 
             w.click(*_centre(allow_r))
 
             # 4. CodexWorker runs the peer turn AND its assistant reply is auto-delivered back to ClaudeMain
-            #    without creating a second approval card on either session!
+            #    visibly inside a teal peer card in ClaudeMain's chat window (1 event-driven turn, no loop)!
             wait_for(
                 lambda: any("[peer reply from 'CodexWorker'" in r for r in records(log_dir, s_claude))
                 and records(log_dir, s_claude).count("[turn completed]") >= 3
@@ -125,19 +123,48 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
             assert status_of(conn, s_codex).get("approvals") is None
             assert status_of(conn, s_claude).get("approvals") is None
 
-            # Verify ClaudeMain's normal view shows Claude's assistant reaction to the peer reply,
-            # while hiding raw `[host notice]` `>> [from lico ...]` / `>> [peer reply from ...]` headers!
+            # Verify ClaudeMain's chat window visibly shows:
+            # (a) outgoing `[to <id7>] <greeting>` line inside `[tool] mcp__lico__send` card,
+            # (b) incoming `>> [peer reply from 'CodexWorker' ...]` + `>> echo: ...` peer reply lines,
+            # (c) Claude's 1 event-driven response turn, while hiding internal `>> [from lico | ...]` host notices!
             u_claude_after = wait_for(
                 lambda: (u := w.ui())
+                and any(ln.startswith(">> [peer reply from 'CodexWorker'") for ln in u["shown_lines"])
+                and any(ln.startswith(">> echo: [from session 'ClaudeMain'") for ln in u["shown_lines"])
                 and any("echo: [peer reply from 'CodexWorker'" in ln for ln in u["shown_lines"])
                 and u
             )
+            assert any(f"> [to {s_codex[:7]}] {greeting}" in ln for ln in u_claude_after["shown_lines"]), u_claude_after["shown_lines"]
             assert not any(ln.startswith(">> [from lico |") for ln in u_claude_after["shown_lines"])
-            assert not any(ln.startswith(">> [peer reply from ") for ln in u_claude_after["shown_lines"])
+            # Strictly 1 round-trip turn on CodexWorker (human-1 + 1 peer turn = 2 completed turns, never an infinite loop)
+            assert records(log_dir, s_codex).count("[turn completed]") == 2
 
-            # 5. Switch GUI to CodexWorker: unsolicited peer turn is HIDDEN in normal chat view,
-            #    while the earlier human question & answer remain visible!
-            tab_x = next(t for t in u_claude_after["tabs"]["items"] if t["session"] == s_codex)
+            # 5. Session-persistent `Allow`: sending a SECOND message from ClaudeMain -> CodexWorker goes through
+            #    IMMEDIATELY without popping a second approval modal!
+            second_msg = "두 번째 확인 인사입니다!"
+            assert conn.call(
+                op="input",
+                session=s_claude,
+                generation=g_claude,
+                request_id="c-send-2",
+                text=f"tool:send {json.dumps({'to': s_codex, 'text': second_msg}, ensure_ascii=False)}",
+            )["ok"] == 1
+            wait_for(
+                lambda: any(f">> {second_msg}" in r for r in records(log_dir, s_codex))
+                and records(log_dir, s_codex).count("[turn completed]") == 3
+            )
+            assert status_of(conn, s_claude).get("approvals") is None
+            assert not w.ui()["approval_bar"]
+            wait_for(
+                lambda: (u := w.ui())
+                and sum(1 for ln in u["shown_lines"] if ln.startswith(">> [peer reply from 'CodexWorker'")) >= 2
+                and u
+            )
+
+            # 6. Switch GUI to CodexWorker: unsolicited peer turns are HIDDEN in normal chat view,
+            #    while the earlier human question & answer remain visible; also verify a background-tab
+            #    approval modal still surfaces when viewing CodexWorker!
+            tab_x = next(t for t in w.ui()["tabs"]["items"] if t["session"] == s_codex)
             w.click(*_tab_click_xy(tab_x))
             u_codex = wait_for(
                 lambda: (u := w.ui())
@@ -146,6 +173,7 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
                 and u
             )
             assert not any("안녕하세요 Codex!" in ln for ln in u_codex["shown_lines"]), u_codex["shown_lines"]
+            assert not any(second_msg in ln for ln in u_codex["shown_lines"]), u_codex["shown_lines"]
             assert not any("[from session 'ClaudeMain'" in ln for ln in u_codex["shown_lines"]), u_codex["shown_lines"]
             # Durable `.seg` still holds the peer turn, and `Ctrl+Shift+E` reveals it on demand!
             assert any("안녕하세요 Codex!" in r for r in records(log_dir, s_codex))
@@ -155,6 +183,32 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
             assert any("[peer turn started]" in ln for ln in u_codex_ev["shown_lines"])
             w.key("ctrl+shift+e")
             wait_for(lambda: w.ui()["settings"]["show_events"] is False)
+
+            # Background-tab modal notification: create a 3rd session `CodexExtra`, stay focused on `CodexWorker`,
+            # and trigger `ClaudeMain -> CodexExtra`; the centered modal surfaces immediately over `CodexWorker`!
+            x2_made = conn.call(op="session.create", kind="codex", account=x_acc, mode="auto", name="CodexExtra")
+            assert x2_made["ok"] == 1
+            s_extra = x2_made["session"]
+            u_tabs3 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 3 and u)
+            w.click(*_tab_click_xy(next(t for t in u_tabs3["tabs"]["items"] if t["session"] == s_codex)))
+            wait_for(lambda: w.ui()["selected"] == s_codex)
+            assert conn.call(
+                op="input",
+                session=s_claude,
+                generation=g_claude,
+                request_id="c-send-bg",
+                text=f"tool:send {json.dumps({'to': s_extra, 'text': '백그라운드 탭 승인 테스트'}, ensure_ascii=False)}",
+            )["ok"] == 1
+            u_bg_modal = wait_for(
+                lambda: (u := w.ui())
+                and u["selected"] == s_codex
+                and u["approval_bar"]
+                and "CodexExtra" in u["approval_bar"]
+                and u["card_ready"] is True
+                and u
+            )
+            w.click(*_centre(u_bg_modal["layout"]["deny"]))
+            wait_for(lambda: not w.ui()["approval_bar"])
 
 
 def test_mouse_drag_auto_copies_and_all_right_pane_panels_are_copyable_while_keeping_click_activation():

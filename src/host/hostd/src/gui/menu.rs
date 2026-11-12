@@ -106,7 +106,7 @@ impl App {
                     let what = row.map_or(String::new(), |r| format!("{} / {}", r.provider, self.label_of(&r.account)));
                     v.push(Entry { label: format!("Session {}  {title}  {what}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: None });
                 }
-                let pending = if self.selected_row().map_or(false, |r| !r.approvals.is_empty()) { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
+                let pending = if self.approval_row_any_panel().is_some() { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
                 let mode_label = match self.selected_row().map(|r| r.mode.as_str()) {
                     Some("default") => "Permission mode: approval",
                     _ => "Permission mode: auto",
