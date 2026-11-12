@@ -1,6 +1,6 @@
 # M05-P03 Report — Unified file activation, remove `V` HTML-source shortcut, and `0.2.1` patch release
 
-- Status: done
+- Status: done (owner G3 accepted and G4 merged on 2026-11-12)
 - Version: 1.0.0
 - Date: 2026-11-12
 - Milestone: [M05 — Working-directory restore across restarts, paged directory navigation, and unified file opening (`lico 0.2.1`)](../../../milestones/202611/20261112/20261112_02_M05_workspace_continuity_and_file_navigation_milestone.md)
@@ -45,4 +45,4 @@ two-clone reproducible build (`suite acceptance`).
 
 ## Gate status
 
-All three phases of Milestone `M05` (`M05-P01` through `M05-P03`, `lico 0.2.1`) are complete on `phase/M05-P03-smart-file-open-and-0-2-1` and await owner G3 inspection acceptance and G4 merge approval.
+All three phases of Milestone `M05` (`M05-P01` through `M05-P03`, `lico 0.2.1`) were accepted by the owner at G3 and fast-forward merged and published on `main` (`milestone/M05-workspace-continuity-and-file-navigation`) at G4 on 2026-11-12.
