@@ -84,6 +84,8 @@ pub fn run(args: Vec<String>) {
         job_bin: if args.iter().any(|a| a == "--job-bin") { PathBuf::from(arg("--job-bin", "")) } else { std::env::current_exe().unwrap_or_default() }, // an X job is this very program, called as `xjob`
         accounts_dir: PathBuf::from(arg("--accounts-dir", base.join("accounts").to_str().unwrap_or("accounts"))),
         registry_dir: PathBuf::from(arg("--registry-dir", base.join("registry").to_str().unwrap_or("registry"))),
+        ssh_bin: PathBuf::from(arg("--ssh", "ssh")),
+        ssh_config: if args.iter().any(|a| a == "--ssh-config") { Some(PathBuf::from(arg("--ssh-config", ""))) } else { None },
         text: args.iter().any(|a| a == "--text" || a == "--realistic-text"),
         realistic_text: args.iter().any(|a| a == "--realistic-text"),
     };

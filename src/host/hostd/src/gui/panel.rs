@@ -379,6 +379,12 @@ impl App {
                         }
                         return true;
                     }
+                    "h" if !self.ui.mods.alt_key() && !self.ui.mods.shift_key() => {
+                        if !event.repeat {
+                            self.toggle_hidden_files();
+                        }
+                        return true;
+                    }
                     "=" | "+" if !self.ui.mods.alt_key() => {
                         if !event.repeat {
                             self.step_font_px(1);
@@ -612,6 +618,8 @@ mod admin_ui;
 pub(super) mod cardview;
 #[path = "confirm.rs"]
 pub(super) mod confirm;
+#[path = "files_render.rs"]
+mod files_render;
 #[path = "files_ui.rs"]
 pub(super) mod files_ui;
 #[path = "newsession.rs"]

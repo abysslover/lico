@@ -126,7 +126,7 @@ mod tests {
             retain: 500, window: 20, queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(),
             claude: PathBuf::new(), claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(),
             cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
-            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: true, realistic_text: false,
+            accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), ssh_bin: PathBuf::new(), ssh_config: None, text: true, realistic_text: false,
         };
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap();
         Shared {

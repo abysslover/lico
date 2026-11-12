@@ -101,6 +101,7 @@
 "tests/test_quota_display.py" = ["cli", "gui", "host"]
 "tests/test_workspace_files.py" = ["cli", "gui", "host"]
 "tests/test_workspace_restore.py" = ["cli", "gui", "host"]
+"tests/test_hidden_and_ssh.py" = ["cli", "gui", "host"]
 
 [rust.modules]
 # The area in which each top-level module's own code runs. Users of a module (`crate::name`) are added when it changes.
@@ -153,6 +154,7 @@ quota = ["host"]
 registry = ["host"]
 search = ["host"]
 session = ["host"]
+ssh = ["host"]
 tools = ["host"]
 transfer = ["host"]
 worktree = ["gui", "host"]

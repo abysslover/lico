@@ -300,18 +300,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 if !valid_request("settings.set", &map) {
                     return Err(bad("bad_request"));
                 }
-                crate::clipboard::settings::apply_settings(
-                    shared,
-                    crate::clipboard::settings::Patch {
-                        clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
-                        notifications: map.get("notifications").and_then(Value::as_bool),
-                        group_by: map.get("group_by").and_then(Value::as_str),
-                        font_px: int(&map, "font_px"),
-                        last_cwd: map.get("last_cwd").and_then(Value::as_str),
-                        last_view: map.get("last_view").and_then(Value::as_str),
-                        last_session: map.get("last_session").and_then(Value::as_str),
-                    },
-                )
+                crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch::of_map(&map))
             }
             _ => return Err((405, "bad_request")),
         },
@@ -392,15 +381,36 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
         ["v1", "files"] => {
             allowed(method == "GET")?;
             let qmap = query_map(&request.query).map_err(bad)?;
-            if qmap.len() != 1 || !qmap.contains_key("cwd") {
+            if !qmap.contains_key("cwd") || qmap.keys().any(|k| k != "cwd" && k != "hidden") {
                 return Err(bad("bad_request"));
             }
             let cwd = qmap.get("cwd").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
-            let req: Map<String, Value> = json!({"op": "folder.list", "cwd": cwd}).as_object().cloned().unwrap_or_default();
+            let show_hidden = match qmap.get("hidden").and_then(Value::as_str) {
+                None | Some("0" | "false") => false,
+                Some("1" | "true") => true,
+                Some(_) => return Err(bad("bad_request")),
+            };
+            let req: Map<String, Value> = json!({"op": "folder.list", "cwd": cwd, "show_hidden": show_hidden})
+                .as_object()
+                .cloned()
+                .unwrap_or_default();
             if !valid_request("folder.list", &req) {
                 return Err(bad("bad_request"));
             }
-            crate::fsview::folder_list(shared, cwd)
+            crate::fsview::folder_list(shared, cwd, show_hidden)
+        }
+        ["v1", "ssh", "hosts"] => {
+            allowed(method == "GET")?;
+            crate::ssh::ssh_hosts(shared)
+        }
+        ["v1", "ssh", "check"] => {
+            allowed(method == "POST")?;
+            let mut map = body_map(request).map_err(bad)?;
+            map.insert("op".into(), json!("ssh.check"));
+            if !valid_request("ssh.check", &map) {
+                return Err(bad("bad_request"));
+            }
+            crate::ssh::ssh_check(shared, crate::ipc::text(&map, "host"))
         }
         ["v1", "files", "read"] => {
             allowed(method == "GET")?;

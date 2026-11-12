@@ -111,7 +111,7 @@ pub struct UiState {
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
     pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
-    pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, // view settings
+    pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, pub show_hidden: bool, // view settings
     pub tx_range: std::ops::Range<usize>, // buffer line slice shaped with transcript role colors
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
     pub window_title: String, // last X11 title set by `sync_window_title`

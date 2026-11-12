@@ -52,12 +52,14 @@ impl App {
         let in_files = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Files);
         if in_files {
             let (has_prev, has_next) = self.files_page_nav_state();
+            let hidden_label = if self.ui.show_hidden { "Hidden: on" } else { "Hidden: off" };
             return vec![
                 ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
                 ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
                 ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: true, reason: None },
                 ToolBtn { label: "+ New here".into(), id: "new_here", cmd: Cmd::NewInViewedDir, active: false, reason: None },
                 ToolBtn { label: "Refresh".into(), id: "refresh_files", cmd: Cmd::RefreshFiles, active: false, reason: None },
+                ToolBtn { label: hidden_label.into(), id: "toggle_hidden", cmd: Cmd::ToggleHiddenFiles, active: self.ui.show_hidden, reason: None },
                 ToolBtn { label: "< Prev".into(), id: "prev_page", cmd: Cmd::FilesPrevPage, active: false, reason: if has_prev { None } else { Some("already on first page") } },
                 ToolBtn { label: "Next >".into(), id: "next_page", cmd: Cmd::FilesNextPage, active: false, reason: if has_next { None } else { Some("already on last page") } },
                 ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
@@ -88,7 +90,14 @@ impl App {
         if self.ui.panel.is_some()
             && !matches!(
                 cmd,
-                Cmd::NewSession | Cmd::Accounts | Cmd::Files | Cmd::RefreshFiles | Cmd::NewInViewedDir | Cmd::FilesPrevPage | Cmd::FilesNextPage
+                Cmd::NewSession
+                    | Cmd::Accounts
+                    | Cmd::Files
+                    | Cmd::RefreshFiles
+                    | Cmd::NewInViewedDir
+                    | Cmd::FilesPrevPage
+                    | Cmd::FilesNextPage
+                    | Cmd::ToggleHiddenFiles
             )
         {
             self.panel_close();

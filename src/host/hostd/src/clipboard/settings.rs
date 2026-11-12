@@ -34,6 +34,22 @@ pub struct Patch<'a> {
     pub last_cwd: Option<&'a str>,
     pub last_view: Option<&'a str>,
     pub last_session: Option<&'a str>,
+    pub show_hidden: Option<bool>,
+}
+
+impl<'a> Patch<'a> {
+    pub fn of_map(map: &'a Map<String, Value>) -> Self {
+        Self {
+            clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
+            notifications: map.get("notifications").and_then(Value::as_bool),
+            group_by: map.get("group_by").and_then(Value::as_str),
+            font_px: map.get("font_px").and_then(Value::as_i64),
+            last_cwd: map.get("last_cwd").and_then(Value::as_str),
+            last_view: map.get("last_view").and_then(Value::as_str),
+            last_session: map.get("last_session").and_then(Value::as_str),
+            show_hidden: map.get("show_hidden").and_then(Value::as_bool),
+        }
+    }
 }
 
 pub fn valid_session_ref(text: &str) -> bool {
@@ -129,6 +145,11 @@ pub fn last_cwd_value(path: &Path) -> Option<String> {
     canon.to_str().filter(|s| crate::folders::valid_path_shape(s)).map(str::to_string)
 }
 
+/// Whether dot-prefixed directory entries (`.git`, `.env`, etc.) are shown in `lico gui` (`Files`). Default `false`.
+pub fn show_hidden_enabled(path: &Path) -> bool {
+    read_object(path).is_some_and(|map| map.get("show_hidden") == Some(&Value::Bool(true)))
+}
+
 /// The settings object reported in `status` and `settings.set`.
 pub fn status_json(handoff_dir: &Path) -> Value {
     let path = settings_path(handoff_dir);
@@ -138,6 +159,9 @@ pub fn status_json(handoff_dir: &Path) -> Value {
         "group_by": group_by_value(&path),
         "font_px": font_px_value(&path),
     });
+    if show_hidden_enabled(&path) {
+        out["show_hidden"] = Value::Bool(true);
+    }
     let view = last_view_value(&path);
     if view != "start" {
         out["last_view"] = Value::String(view.into());
@@ -171,6 +195,7 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
         && patch.last_cwd.is_none()
         && patch.last_view.is_none()
         && patch.last_session.is_none()
+        && patch.show_hidden.is_none()
     {
         return Err("bad_request");
     }
@@ -235,6 +260,13 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
             map.remove("last_session");
         } else {
             map.insert("last_session".into(), Value::String(sid.into()));
+        }
+    }
+    if let Some(sh) = patch.show_hidden {
+        if sh {
+            map.insert("show_hidden".into(), Value::Bool(true));
+        } else {
+            map.remove("show_hidden");
         }
     }
     let mut text = Value::Object(map).to_string();

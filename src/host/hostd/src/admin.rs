@@ -47,6 +47,8 @@ pub const HTTP_ROUTES: &[&str] = &[
     "GET /v1/search",
     "GET /v1/files",
     "GET /v1/files/read",
+    "GET /v1/ssh/hosts",
+    "POST /v1/ssh/check",
     "POST /v1/approvals/<id>/response",
     "POST /v1/views",
     "DELETE /v1/views/<view>",

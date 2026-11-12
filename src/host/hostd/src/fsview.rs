@@ -102,7 +102,8 @@ pub fn uses_system_opener(name: &str) -> bool {
 }
 
 /// Lists one directory on demand: directories first, then files/symlinks in case-insensitive name order.
-pub fn folder_list(shared: &Shared, cwd: &str) -> Reply {
+/// Dot-prefixed entries (`.git`, `.env`, etc.) are hidden by default (`show_hidden = false`), and `.` / `..` are never listed.
+pub fn folder_list(shared: &Shared, cwd: &str, show_hidden: bool) -> Reply {
     let canon = crate::folders::check_folder(shared, cwd)?;
     let canon_path = Path::new(&canon);
     let parent = canon_path
@@ -115,7 +116,13 @@ pub fn folder_list(shared: &Shared, cwd: &str) -> Reply {
     let mut items: Vec<EntryItem> = Vec::new();
     for entry in iter.flatten() {
         let Ok(name) = entry.file_name().into_string() else { continue };
-        if name.is_empty() || name.chars().count() > 255 || name.chars().any(crate::folders::refused_char) {
+        if name.is_empty()
+            || name == "."
+            || name == ".."
+            || (!show_hidden && name.starts_with('.'))
+            || name.chars().count() > 255
+            || name.chars().any(crate::folders::refused_char)
+        {
             continue;
         }
         let Ok(ft) = entry.file_type() else { continue };
@@ -152,6 +159,7 @@ pub fn folder_list(shared: &Shared, cwd: &str) -> Reply {
         "parent": parent,
         "entries": entries,
         "truncated": truncated,
+        "show_hidden": show_hidden,
     })))
 }
 
@@ -315,6 +323,8 @@ mod tests {
             handoff_dir: state_root.join("handoff"),
             accounts_dir: accounts_dir.clone(),
             registry_dir: state_root.join("reg"),
+            ssh_bin: PathBuf::from("/bin/false"),
+            ssh_config: None,
             text: true,
             realistic_text: false,
         };
@@ -331,20 +341,23 @@ mod tests {
     }
 
     #[test]
-    fn folder_list_sorts_dirs_first_marks_html_and_skips_hidden_names() {
+    fn folder_list_sorts_dirs_first_marks_html_and_hides_dotfiles_by_default() {
         let tree = TempTree::new();
         let state = tree.0.join("state");
         let shared = dummy_shared(&state);
         let work = tree.0.join("work");
         std::fs::create_dir_all(work.join("zeta")).unwrap();
         std::fs::create_dir_all(work.join("Alpha")).unwrap();
+        std::fs::create_dir_all(work.join(".git")).unwrap();
+        std::fs::write(work.join(".env"), b"KEY=1").unwrap();
         std::fs::write(work.join("report.HTML"), b"<h1>ok</h1>").unwrap();
         std::fs::write(work.join("slides.pptx"), b"PK\x03\x04").unwrap();
         std::fs::write(work.join("notes.md"), b"hello").unwrap();
         std::fs::write(work.join("bad\u{202E}name.txt"), b"skip").unwrap();
         std::os::unix::fs::symlink(work.join("notes.md"), work.join("shortcut")).unwrap();
 
-        let res = folder_list(&shared, work.to_str().unwrap()).expect("folder_list ok");
+        let res = folder_list(&shared, work.to_str().unwrap(), false).expect("folder_list default");
+        assert_eq!(res["show_hidden"], json!(false));
         let entries = res["entries"].as_array().unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e["name"].as_str().unwrap()).collect();
         assert_eq!(names, vec!["Alpha", "zeta", "notes.md", "report.HTML", "shortcut", "slides.pptx"]);
@@ -356,6 +369,15 @@ mod tests {
         assert_eq!(entries[4]["kind"], json!("link"));
         assert_eq!(entries[5]["is_html"], json!(false));
         assert_eq!(entries[5]["external"], json!(true));
+
+        let res_all = folder_list(&shared, work.to_str().unwrap(), true).expect("folder_list hidden on");
+        assert_eq!(res_all["show_hidden"], json!(true));
+        let all_names: Vec<&str> = res_all["entries"].as_array().unwrap().iter().map(|e| e["name"].as_str().unwrap()).collect();
+        assert_eq!(
+            all_names,
+            vec![".git", "Alpha", "zeta", ".env", "notes.md", "report.HTML", "shortcut", "slides.pptx"]
+        );
+        assert!(!all_names.contains(&".") && !all_names.contains(&".."));
     }
 
     #[test]
@@ -372,7 +394,7 @@ mod tests {
         let link = work.join("link.txt");
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
-        assert_eq!(folder_list(&shared, state.join("logs").to_str().unwrap()), Err("folder_protected"));
+        assert_eq!(folder_list(&shared, state.join("logs").to_str().unwrap(), false), Err("folder_protected"));
         assert_eq!(folder_read(&shared, secret.to_str().unwrap()), Err("folder_protected"));
         assert_eq!(folder_read(&shared, link.to_str().unwrap()), Err("file_not_regular"));
         assert_eq!(folder_read(&shared, work.to_str().unwrap()), Err("file_not_regular"));
@@ -422,7 +444,7 @@ mod tests {
         for i in 0..620 {
             std::fs::write(work.join(format!("item_{i:04}.txt")), b"x").unwrap();
         }
-        let res = folder_list(&shared, work.to_str().unwrap()).expect("large folder_list");
+        let res = folder_list(&shared, work.to_str().unwrap(), false).expect("large folder_list");
         assert_eq!(res["truncated"], json!(false));
         assert_eq!(res["entries"].as_array().unwrap().len(), 620);
     }

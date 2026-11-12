@@ -22,7 +22,7 @@ pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
-    "folder.git", "folder.list", "folder.read", "session.search", "account.rename", "session.mode", "capabilities",
+    "folder.git", "folder.list", "folder.read", "session.search", "account.rename", "session.mode", "capabilities", "ssh.hosts", "ssh.check",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -46,8 +46,8 @@ pub struct Config {
     pub cred_args: Vec<String>,   // its leading arguments (`cred`, when the command is this very program)
     pub cred_dir: PathBuf, pub job_bin: PathBuf, // the credential metadata directory; the program an X job runs as (`xjob`)
     pub workspace_root: PathBuf, pub handoff_dir: PathBuf, // the second: the files of long text one session sent another (`handoff`)
-    pub accounts_dir: PathBuf,
-    pub registry_dir: PathBuf,
+    pub accounts_dir: PathBuf, pub registry_dir: PathBuf,
+    pub ssh_bin: PathBuf, pub ssh_config: Option<PathBuf>,
     pub text: bool, // synthetic sessions produce UTF-8 text lines (a measurement option)
     pub realistic_text: bool, // ... with ordinary words only: no right-to-left word, no combining accent (implies text)
 }

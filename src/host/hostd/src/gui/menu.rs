@@ -43,6 +43,7 @@ pub enum Cmd {
     NewInViewedDir,
     FilesPrevPage,
     FilesNextPage,
+    ToggleHiddenFiles,
     CaptureToInput,
     ToggleGroupBy,
     ToggleEvents,
@@ -135,8 +136,19 @@ impl App {
             }
             2 => {
                 let fpx = self.font_px() as i64;
+                let files_or_none = if panel && self.ui.panel.as_ref().is_some_and(|p| p.step != Step::Files) {
+                    Some("close the open panel first")
+                } else {
+                    None
+                };
                 vec![
                     Self::entry("Working directory files", "Ctrl+E", Cmd::Files, None),
+                    Entry {
+                        label: format!("Hidden files: {}", if self.ui.show_hidden { "shown" } else { "hidden" }),
+                        key: "Ctrl+H",
+                        cmd: Cmd::ToggleHiddenFiles,
+                        reason: files_or_none,
+                    },
                     Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
                     Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
                     Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
@@ -265,6 +277,7 @@ impl App {
             Cmd::NewInViewedDir => self.files_new_session_here(),
             Cmd::FilesPrevPage => self.files_step_page(-1),
             Cmd::FilesNextPage => self.files_step_page(1),
+            Cmd::ToggleHiddenFiles => self.toggle_hidden_files(),
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleGroupBy => self.toggle_group_by(),
             Cmd::ToggleEvents => self.toggle_show_events(),

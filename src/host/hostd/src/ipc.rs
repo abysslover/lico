@@ -93,7 +93,8 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" => &[],
+        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" => &[],
+        "ssh.check" => &["host"],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
         "session.mode" => &["session", "generation", "mode"],
@@ -179,7 +180,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "error") => valid_str(value, 32),
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
-            ("settings.set", "clipboard_write" | "notifications") => value.is_boolean(),
+            ("settings.set", "clipboard_write" | "notifications" | "show_hidden") => value.is_boolean(),
             ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
             ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
             ("settings.set", "last_cwd") => matches!(value, Value::String(s) if s.is_empty() || crate::folders::valid_path_shape(s)),
@@ -187,6 +188,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("settings.set", "last_session") => matches!(value, Value::String(s) if s.is_empty() || crate::clipboard::settings::valid_session_ref(s)),
             ("folder.git", "cwd") => valid_str(value, 1024),
             ("folder.list", "cwd") | ("folder.read", "path") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
+            ("folder.list", "show_hidden") => value.is_boolean(),
+            ("ssh.check", "host") => matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
             _ => false,
@@ -199,7 +202,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         && (op != "transfer.send" || transfer_shape(request))
         && (op != "clipboard.write" || clipboard_shape(request))
         && (op != "settings.set"
-            || ["clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session"]
+            || ["clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden"]
                 .iter()
                 .any(|k| request.contains_key(*k)))
 }
@@ -273,21 +276,12 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "input.status" => core::input_status(shared, session, text(request, "request_id")),
         "approval.text" => crate::pending::text_page(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), int(request, "offset").unwrap_or(0) as usize, int(request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), text(request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
-        "settings.set" => crate::clipboard::settings::apply_settings(
-            shared,
-            crate::clipboard::settings::Patch {
-                clipboard_write: request.get("clipboard_write").and_then(Value::as_bool),
-                notifications: request.get("notifications").and_then(Value::as_bool),
-                group_by: request.get("group_by").and_then(Value::as_str),
-                font_px: int(request, "font_px"),
-                last_cwd: request.get("last_cwd").and_then(Value::as_str),
-                last_view: request.get("last_view").and_then(Value::as_str),
-                last_session: request.get("last_session").and_then(Value::as_str),
-            },
-        ),
+        "settings.set" => crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch::of_map(request)),
         "folder.git" => crate::worktree::folder_git_op(shared, text(request, "cwd")),
-        "folder.list" => crate::fsview::folder_list(shared, text(request, "cwd")),
+        "folder.list" => crate::fsview::folder_list(shared, text(request, "cwd"), request.get("show_hidden").and_then(Value::as_bool).unwrap_or(false)),
         "folder.read" => crate::fsview::folder_read(shared, text(request, "path")),
+        "ssh.hosts" => crate::ssh::ssh_hosts(shared),
+        "ssh.check" => crate::ssh::ssh_check(shared, text(request, "host")),
         "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
         "display.ensure" => crate::vdisplay::ensure(shared, session),
         "display.status" => crate::vdisplay::status_op(shared, session),

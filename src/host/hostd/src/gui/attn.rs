@@ -101,6 +101,7 @@ impl App {
     pub(crate) fn sync_settings(&mut self, settings: &Value) {
         self.ui.clipboard_write = settings["clipboard_write"] == json!(true);
         self.ui.notifications_off = settings["notifications"] == json!(false);
+        self.ui.show_hidden = settings["show_hidden"] == json!(true);
         let ws = settings["group_by"] == json!("workspace");
         if ws != self.ui.group_by_workspace {
             self.ui.group_by_workspace = ws;

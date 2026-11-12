@@ -32,9 +32,10 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   host stop [--force]            end the host of this socket (refused while sessions or a sign-in exist, unless forced)\n\
   history ID BEFORE [LIMIT]      older records of a session\n\
   search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
-  files [DIR] | files --read FILE   list a working directory or read up to 64 KiB of a regular file (on demand)\n\
+  files [DIR] [--hidden|-a] | files --read FILE   list a working directory (hidden off by default) or read up to 64 KiB of a regular file\n\
+  ssh hosts | ssh check HOST     list SSH hosts from ~/.ssh/config or probe connectivity and installed claude/codex\n\
   settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
-           [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
+           [--show-hidden on|off] [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
                                  show or update host and window settings\n\
   session show ID                one session
   session delete ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -330,11 +331,31 @@ pub fn run(args: Vec<String>) {
             let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
             expect_ok(call(&mut connect(&socket), json!({"op": "folder.read", "path": abs.to_string_lossy()})));
         }
-        ["files", rest @ ..] if rest.len() <= 1 && rest.first().is_none_or(|a| !a.starts_with('-')) => {
-            let raw = rest.first().copied().unwrap_or(".");
+        ["files", rest @ ..] => {
+            let mut dir_arg: Option<&str> = None;
+            let mut show_hidden = false;
+            for tok in rest {
+                match *tok {
+                    "--hidden" | "-a" => show_hidden = true,
+                    "--no-hidden" => show_hidden = false,
+                    s if !s.starts_with('-') && dir_arg.is_none() => dir_arg = Some(s),
+                    _ => die(1, USAGE),
+                }
+            }
+            let raw = dir_arg.unwrap_or(".");
             let p = std::path::Path::new(raw);
             let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
-            expect_ok(call(&mut connect(&socket), json!({"op": "folder.list", "cwd": abs.to_string_lossy()})));
+            let mut request = json!({"op": "folder.list", "cwd": abs.to_string_lossy()});
+            if show_hidden {
+                request["show_hidden"] = json!(true);
+            }
+            expect_ok(call(&mut connect(&socket), request));
+        }
+        ["ssh", "hosts"] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "ssh.hosts"})));
+        }
+        ["ssh", "check", host] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "ssh.check", "host": host})));
         }
         ["settings", rest @ ..] => {
             if rest.is_empty() {
@@ -387,6 +408,10 @@ pub fn run(args: Vec<String>) {
                 }
                 if let Some(v) = flag(&args, "--last-session") {
                     request["last_session"] = json!(v);
+                    any = true;
+                }
+                if let Some(v) = flag(&args, "--show-hidden") {
+                    request["show_hidden"] = json!(parse_on_off(v));
                     any = true;
                 }
                 if !any {

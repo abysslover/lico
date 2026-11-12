@@ -67,6 +67,8 @@ INVENTORY = {
     "folder.git": {"state": "host", "mutates": False},
     "folder.list": {"state": "host", "mutates": False},
     "folder.read": {"state": "host", "mutates": False},
+    "ssh.hosts": {"state": "host", "mutates": False},
+    "ssh.check": {"state": "host", "mutates": False},
     "session.search": {"state": "host", "mutates": False},
     "display.ensure": {"state": "host", "mutates": True},
     "display.status": {"state": "host", "mutates": False},
@@ -108,6 +110,7 @@ SETTINGS_BODY = _obj(
         "last_cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
         "last_view": {"type": STR, "enum": ["start", "files", "session"]},
         "last_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+        "show_hidden": {"type": BOOL},
     },
 )
 
@@ -252,11 +255,21 @@ REPLIES = {
                                                                      "kind": {"type": STR, "enum": ["dir", "file", "link"]},
                                                                      "size": {"type": INT, "minimum": 0}, "is_html": {"type": BOOL},
                                                                      "external": {"type": BOOL}})},
-                         "truncated": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
+                         "truncated": {"type": BOOL}, "show_hidden": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
     "folder.read": _obj({"v": _V, "ok": _OK, "path": {"type": STR, "max_length": MAX_PATH}, "cwd": {"type": STR, "max_length": MAX_PATH},
                          "name": {"type": STR, "min_length": 1, "max_length": 255}, "size": {"type": INT, "minimum": 0},
                          "binary": {"type": BOOL}, "truncated": {"type": BOOL}, "text": {"type": STR, "max_bytes": MAX_INPUT_TEXT}},
                         COMMON_REPLY_OPTIONAL),
+    "ssh.hosts": _obj({"v": _V, "ok": _OK, "hosts": {"type": "array", "items": _obj({
+        "host": {"type": STR, "min_length": 1, "max_length": 128, "charset": "model"},
+        "hostname": {"type": [STR, "null"], "max_length": 255},
+        "user": {"type": [STR, "null"], "max_length": 128},
+        "port": {"type": [INT, "null"], "minimum": 1, "maximum": 65535},
+    })}}, COMMON_REPLY_OPTIONAL),
+    "ssh.check": _obj({"v": _V, "ok": _OK, "host": {"type": STR, "min_length": 1, "max_length": 128, "charset": "model"},
+                       "reachable": {"type": BOOL}, "providers": {"type": "array", "items": {"type": STR, "enum": ["codex", "claude"]}},
+                       "home": {"type": [STR, "null"], "max_length": MAX_PATH},
+                       "error": {"type": [STR, "null"], "max_length": 240}}, COMMON_REPLY_OPTIONAL),
     "session.search": _obj({"v": _V, "ok": _OK, "query": {"type": STR, "max_length": 256}, "scope": {"type": STR, "enum": ["session", "all"]},
                             "matches": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME},
                                                                         "seq": {"type": INT, "minimum": 0}, "text": {"type": STR, "max_length": 240}})},
@@ -353,11 +366,15 @@ REQUESTS = {
             "last_cwd": {"type": STR, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
             "last_view": {"type": STR, "enum": ["start", "files", "session"]},
             "last_session": {"type": STR, "max_length": 64, "charset": "id"},
+            "show_hidden": {"type": BOOL},
         },
     ),
     "folder.git": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True}}, _COMMON_REQ),
-    "folder.list": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
+    "folder.list": _obj({"cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True}},
+                        {**_COMMON_REQ, "show_hidden": {"type": BOOL}}),
     "folder.read": _obj({"path": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True}}, _COMMON_REQ),
+    "ssh.hosts": _obj({}, _COMMON_REQ),
+    "ssh.check": _obj({"host": {"type": STR, "min_length": 1, "max_length": 128, "charset": "model"}}, _COMMON_REQ),
     "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
                            {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
     "display.ensure": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
@@ -460,7 +477,7 @@ def validate_request(op: str, message: dict) -> list[str]:
     validate_object(body, REQUESTS[op], "$", errors)
     if op == "transfer.send":
         errors += _transfer_shape(body)
-    if op == "settings.set" and not any(k in body for k in ("clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session")):
+    if op == "settings.set" and not any(k in body for k in ("clipboard_write", "notifications", "group_by", "font_px", "last_cwd", "last_view", "last_session", "show_hidden")):
         errors.append("$.settings.set: at least one setting field required")
     return errors
 

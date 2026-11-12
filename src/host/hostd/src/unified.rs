@@ -50,6 +50,7 @@ mod quota;
 mod registry;
 mod search;
 mod session;
+mod ssh;
 mod tools;
 mod transfer;
 mod vdisplay;

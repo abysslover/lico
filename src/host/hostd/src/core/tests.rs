@@ -89,7 +89,7 @@ fn the_stop_reply_does_not_wait_for_a_session_lock_that_is_held() {
         login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(), retain: 100, window: 100,
         queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(), claude: PathBuf::new(),
         claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(), cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
-        accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), text: false, realistic_text: false,
+        accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), ssh_bin: PathBuf::new(), ssh_config: None, text: false, realistic_text: false,
     };
     let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
     let shared = Arc::new(Shared {
