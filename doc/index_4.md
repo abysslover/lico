@@ -43,5 +43,6 @@
 | [M07 milestone](milestones/202611/20261112/20261112_04_M07_two_pane_workbench_and_past_sessions_milestone.md) | Two-pane tabbed workbench (`[ Directories \| Past ]` + multi-session chat tabs), `Global` general sessions, bottom telemetry bar, and paginated past-session resume (`M07-P01` to `M07-P03`, `0.2.3`); in progress 2026-11-12 |
 | [M07-P01 plan](plans/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_plan.md) | Maximized launch, `Global` general sessions, token/quota telemetry, chat session tab bar, and bottom telemetry strip; done 2026-11-12 |
 | [M07-P01 report](reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `tokens.rs` + `tabs.rs` + `telemetry.rs` (maximized launch, `G·` Global scope, multi-session top tabs, color-coded token/quota/CWD strip, `ui.rs` `1,079` lines, `444/444` changed-area tests); pending G3 2026-11-12 |
+| [M07-P02 plan](plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview; G2 approved 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
