@@ -45,5 +45,6 @@
 | [M07-P01 report](reports/202611/20261112/20261112_11_M07-P01_session_tabs_and_telemetry_bar_report.md) | `tokens.rs` + `tabs.rs` + `telemetry.rs` (maximized launch, `G·` Global scope, multi-session top tabs, color-coded token/quota/CWD strip, `ui.rs` `1,079` lines, `444/444` changed-area tests); pending G3 2026-11-12 |
 | [M07-P02 plan](plans/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_plan.md) | Two-column workbench left `[ Directories \| Past ]` sidebar with highlighted active `cwd`, filter, pagination, and inline preview; done 2026-11-12 |
 | [M07-P02 report](reports/202611/20261112/20261112_12_M07-P02_left_directory_sidebar_report.md) | `sidebar.rs` + `sidebar_render.rs` (`[ Directories \| Past ]` 2-tab left column, gold `★` active CWD + `-> active` jump-back, SSH `Host` popup, filename filter, wide inline UTF-8 preview, `445/445` changed-area tests); pending G3 2026-11-12 |
+| [M07-P03 plan](plans/202611/20261112/20261112_13_M07-P03_past_sessions_and_0_2_3_plan.md) | Full-pagination `session.past` discovery, one-click `claude`/`codex` resume, and `lico 0.2.3` release; in progress 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
