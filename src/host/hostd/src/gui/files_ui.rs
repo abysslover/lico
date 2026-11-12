@@ -1,9 +1,10 @@
-//! In-window Working Directory File Viewer (`M04-P04`, paged navigation `M05-P02`).
+//! In-window Working Directory File Viewer (`M04-P04`, paged navigation `M05-P02`, unified open `M05-P03`).
 //!
 //! Opens a working directory strictly on demand (`Files` toolbar button, `View > Working directory files`, `Ctrl+E`),
 //! refreshes only on explicit `F5` or toolbar `Refresh`, starts a new session directly in the viewed directory
 //! (`+ New here` / `N`), navigates multi-page directories and UTF-8 file previews via `< Prev` / `Next >`,
-//! `PgUp`/`PgDn`, `[`/`]`, and mouse wheel, and launches `.html`/`.htm` files in the external browser.
+//! `PgUp`/`PgDn`, `[`/`]`, and mouse wheel, and opens text-family files directly in-window while delegating
+//! `.html`, documents, images, media, archives, and binary files to the OS default application (`xdg-open`).
 
 use std::process::{Command, Stdio};
 
@@ -24,6 +25,7 @@ pub struct FileItem {
     pub kind: String,
     pub size: u64,
     pub is_html: bool,
+    pub external: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -177,7 +179,8 @@ impl Explorer {
             match item.kind.as_str() {
                 "dir" => format!("{mark} [dir]   {}/", item.name),
                 "link" => format!("{mark} [link]  {}  (symlink)", item.name),
-                _ if item.is_html => format!("{mark} [html]  {}  ({})  [open in browser]", item.name, format_bytes(item.size)),
+                _ if item.is_html => format!("{mark} [html]  {}  ({})  [system default]", item.name, format_bytes(item.size)),
+                _ if item.external => format!("{mark} [open]  {}  ({})  [system default]", item.name, format_bytes(item.size)),
                 _ => format!("{mark} [file]  {}  ({})", item.name, format_bytes(item.size)),
             }
         };
@@ -348,11 +351,15 @@ impl App {
             .as_array()
             .into_iter()
             .flatten()
-            .map(|e| FileItem {
-                name: e["name"].as_str().unwrap_or("").to_string(),
-                kind: e["kind"].as_str().unwrap_or("file").to_string(),
-                size: e["size"].as_u64().unwrap_or(0),
-                is_html: e["is_html"] == json!(true),
+            .map(|e| {
+                let is_html = e["is_html"] == json!(true);
+                FileItem {
+                    name: e["name"].as_str().unwrap_or("").to_string(),
+                    kind: e["kind"].as_str().unwrap_or("file").to_string(),
+                    size: e["size"].as_u64().unwrap_or(0),
+                    is_html,
+                    external: e["external"] == json!(true) || is_html,
+                }
             })
             .collect();
         let canon = reply["cwd"].as_str().unwrap_or(dir).to_string();
@@ -373,10 +380,16 @@ impl App {
         true
     }
 
-    fn files_load_preview(&mut self, path: &str) -> bool {
+    fn files_load_preview(&mut self, path: &str, delegate_binary: bool) -> bool {
         let reply = self.host_call_within(json!({"op": "folder.read", "path": path}), 4);
         let max_cols = self.files_row_cols();
         let ps = calc_page_size(self.ui.panel_rows, true);
+        if reply["ok"] == json!(1) && reply["binary"] == json!(true) && delegate_binary {
+            let full = reply["path"].as_str().unwrap_or(path).to_string();
+            let name = reply["name"].as_str().unwrap_or(path).to_string();
+            self.open_external_target(&full, &name);
+            return true;
+        }
         let Some(p) = self.ui.panel.as_mut() else { return false };
         if reply["ok"] != json!(1) {
             let err = reply["error"].as_str().unwrap_or("unknown").to_string();
@@ -424,7 +437,7 @@ impl App {
             return;
         };
         let ok = match preview_path {
-            Some(path) => self.files_load_preview(&path),
+            Some(path) => self.files_load_preview(&path, false),
             None => self.files_load_dir(&cwd, true),
         };
         if let Some(p) = self.ui.panel.as_mut() {
@@ -457,14 +470,14 @@ impl App {
         let custom = std::env::var("LICO_OPEN_CMD").ok().filter(|s| !s.trim().is_empty());
         let notice = if let Some(cmd) = custom {
             if spawn_external(&cmd, target) {
-                format!("Opened in browser: {display_name}")
+                format!("Opened with system default: {display_name}")
             } else {
                 format!("Could not run {cmd} for {display_name}.")
             }
         } else if std::env::var_os("LICO_NO_AUTO_OPEN").is_some() {
-            format!("Browser open suppressed (LICO_NO_AUTO_OPEN): {display_name}")
+            format!("System open suppressed (LICO_NO_AUTO_OPEN): {display_name}")
         } else if spawn_external("xdg-open", target) {
-            format!("Opened in browser: {display_name}")
+            format!("Opened with system default: {display_name}")
         } else {
             format!("xdg-open is not available: {target}")
         };
@@ -477,7 +490,7 @@ impl App {
         self.dirty = true;
     }
 
-    fn files_activate(&mut self, force_preview: bool) {
+    fn files_activate(&mut self) {
         let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
             return;
         };
@@ -502,11 +515,11 @@ impl App {
                 }
                 self.dirty = true;
             }
-            _ if item.is_html && !force_preview => {
+            _ if item.external => {
                 self.open_external_target(&full, &item.name);
             }
             _ => {
-                let _ = self.files_load_preview(&full);
+                let _ = self.files_load_preview(&full, true);
             }
         }
     }
@@ -549,7 +562,7 @@ impl App {
         body.push(String::new());
         body.push(clip_cols(
             &format!(
-                "Page {} / {total_pages}  ({} entries{})   |   PgUp/PgDn or [/] or wheel   F5 refresh   N new session   Enter open   V view HTML source",
+                "Page {} / {total_pages}  ({} entries{})  |  PgUp/PgDn or [/] or wheel  F5 refresh  N new  Enter open",
                 page_idx + 1,
                 ex.entries.len(),
                 if ex.truncated { ", first 10000 shown" } else { "" }
@@ -572,7 +585,7 @@ impl App {
             .entries
             .iter()
             .take(1000)
-            .map(|e| json!({"name": e.name, "kind": e.kind, "size": e.size, "is_html": e.is_html}))
+            .map(|e| json!({"name": e.name, "kind": e.kind, "size": e.size, "is_html": e.is_html, "external": e.external}))
             .collect();
         let (page, total_pages, page_size, vis_start, vis_end) = if let Some(pv) = &ex.preview {
             let ps = calc_page_size(self.ui.panel_rows, true);
@@ -642,7 +655,7 @@ impl App {
                 ex.cursor = target;
             }
         }
-        self.files_activate(false);
+        self.files_activate();
         true
     }
 
@@ -699,7 +712,7 @@ impl App {
                     let _ = self.files_load_dir(&parent, false);
                 }
             }
-            Key::Named(NamedKey::Enter) if !event.repeat => self.files_activate(false),
+            Key::Named(NamedKey::Enter) if !event.repeat => self.files_activate(),
             Key::Named(NamedKey::ArrowUp) => self.files_move_cursor(-1),
             Key::Named(NamedKey::ArrowDown) => self.files_move_cursor(1),
             Key::Named(NamedKey::PageUp) => self.files_step_page(-1),
@@ -710,21 +723,6 @@ impl App {
                 "[" => self.files_step_page(-1),
                 "]" => self.files_step_page(1),
                 "n" => self.files_new_session_here(),
-                "v" => self.files_activate(true),
-                "o" => {
-                    if let Some((cwd, item)) = self
-                        .ui
-                        .panel
-                        .as_ref()
-                        .and_then(|p| p.files.as_ref())
-                        .and_then(|ex| Some((ex.cwd.clone(), ex.selected_entry()?.clone())))
-                    {
-                        if item.is_html {
-                            let full = if cwd == "/" { format!("/{}", item.name) } else { format!("{cwd}/{}", item.name) };
-                            self.open_external_target(&full, &item.name);
-                        }
-                    }
-                }
                 _ => {}
             },
             _ => {}

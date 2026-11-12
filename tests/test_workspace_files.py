@@ -47,6 +47,7 @@ def test_folder_list_and_read_parity_and_security_across_socket_cli_and_http():
         work = root / "workspace"
         (work / "src").mkdir(parents=True, exist_ok=True)
         (work / "index.html").write_text("<!doctype html><title>Demo</title>\n", encoding="utf-8")
+        (work / "guide.pdf").write_bytes(b"%PDF-1.7\n")
         (work / "notes.md").write_text("alpha\r\nbeta\t한글\n", encoding="utf-8")
         (work / "binary.bin").write_bytes(b"\x00\x01\x02\x03")
         os.symlink(work / "notes.md", work / "link.md")
@@ -71,12 +72,13 @@ def test_folder_list_and_read_parity_and_security_across_socket_cli_and_http():
             assert v1.validate_request("folder.list", req_list) == []
             sock_list = conn.call(**req_list)
             assert v1.validate_response("folder.list", sock_list) == []
-            assert [e["name"] for e in sock_list["entries"]] == ["src", "binary.bin", "index.html", "link.md", "notes.md"]
+            assert [e["name"] for e in sock_list["entries"]] == ["src", "binary.bin", "guide.pdf", "index.html", "link.md", "notes.md"]
             by_name = {e["name"]: e for e in sock_list["entries"]}
-            assert by_name["src"]["kind"] == "dir"
-            assert by_name["index.html"]["is_html"] is True
-            assert by_name["notes.md"]["is_html"] is False
-            assert by_name["link.md"]["kind"] == "link"
+            assert by_name["src"]["kind"] == "dir" and by_name["src"]["external"] is False
+            assert by_name["index.html"]["is_html"] is True and by_name["index.html"]["external"] is True
+            assert by_name["guide.pdf"]["is_html"] is False and by_name["guide.pdf"]["external"] is True
+            assert by_name["notes.md"]["is_html"] is False and by_name["notes.md"]["external"] is False
+            assert by_name["link.md"]["kind"] == "link" and by_name["link.md"]["external"] is False
 
             st_post, post_list = _http(port, "POST", "/v1", token, req_list)
             assert st_post == 200 and post_list == sock_list
@@ -135,6 +137,8 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
         (proj / "initial.txt").write_text("first file\n", encoding="utf-8")
         (sub / "readme.md").write_text("# Subfolder Guide\nLine two of preview.\n", encoding="utf-8")
         (sub / "report.html").write_text("<!doctype html><h1>Inspection OK</h1>\n", encoding="utf-8")
+        (sub / "slides.pdf").write_bytes(b"%PDF-1.7\n")
+        (sub / "raw_blob.bin").write_bytes(b"\x7fELF\x00\x01\x02")
 
         opened_log = root / "opened_targets.log"
         opener = root / "record_open.sh"
@@ -221,7 +225,8 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
                 and len(u["layout"]["lines"]) >= 4
                 and u
             )
-            assert [e["name"] for e in u_sub["panel"]["files"]["entries"]] == ["readme.md", "report.html"]
+            assert [e["name"] for e in u_sub["panel"]["files"]["entries"]] == ["raw_blob.bin", "readme.md", "report.html", "slides.pdf"]
+            assert "V view HTML source" not in "\n".join(u_sub["panel"]["body"])
 
             # 5. Click 'readme.md' -> in-window text preview; Escape returns to sub/ directory listing
             md_idx = next(i for i, line in enumerate(u_sub["panel"]["body"]) if "readme.md" in line)
@@ -232,20 +237,21 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             u_back = wait_for(lambda: (u := w.ui())["panel"]["files"]["mode"] == "dir" and u)
             assert u_back["panel"]["files"]["cwd"] == str(sub.resolve())
 
-            # 6. Click 'report.html' -> invokes LICO_OPEN_CMD external browser opener; 'v' previews HTML source
-            html_idx = next(i for i, line in enumerate(u_back["panel"]["body"]) if "report.html" in line)
-            w.click(*_line_centre(u_back, html_idx))
-            expected_html = str((sub / "report.html").resolve())
-            wait_for(lambda: opened_log.exists() and expected_html in opened_log.read_text(encoding="utf-8"))
-            u_opened = wait_for(lambda: (u := w.ui())["panel"]["files"]["last_opened"] == expected_html and u)
-            assert any("Opened in browser: report.html" in line for line in u_opened["panel"]["body"])
+            # 6. Click 'report.html', 'slides.pdf', and binary 'raw_blob.bin' -> all invoke LICO_OPEN_CMD; 'v' does NOT preview HTML source
+            for target_name in ("report.html", "slides.pdf", "raw_blob.bin"):
+                cur_ui = w.ui()
+                t_idx = next(i for i, line in enumerate(cur_ui["panel"]["body"]) if target_name in line)
+                w.click(*_line_centre(cur_ui, t_idx))
+                expected = str((sub / target_name).resolve())
+                wait_for(lambda exp=expected: opened_log.exists() and exp in opened_log.read_text(encoding="utf-8"))
+                u_opened = wait_for(lambda exp=expected: (u := w.ui())["panel"]["files"]["last_opened"] == exp and u)
+                assert u_opened["panel"]["files"]["mode"] == "dir"
+                assert any(f"Opened with system default: {target_name}" in line for line in u_opened["panel"]["body"])
 
             _fast_key(w, "v")
-            u_html_src = wait_for(lambda: (u := w.ui())["panel"]["files"]["mode"] == "preview" and u)
-            assert any("<h1>Inspection OK</h1>" in line for line in u_html_src["panel"]["body"])
-            # Click line 0 ('[<- Back to directory]') to step back to directory listing
-            w.click(*_line_centre(u_html_src, 0))
-            u_dir_again = wait_for(lambda: (u := w.ui())["panel"]["files"]["mode"] == "dir" and u)
+            time.sleep(0.12)
+            u_dir_again = w.ui()
+            assert u_dir_again["panel"]["files"]["mode"] == "dir"
 
             # 7. Click Toolbar '+ New here' -> opens New session pre-filled with sub/ and launches session there!
             w.click(*_centre(_tool_btn(u_dir_again, "new_here")["rect"]))

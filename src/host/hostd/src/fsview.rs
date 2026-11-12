@@ -22,11 +22,83 @@ struct EntryItem {
     kind: &'static str,
     size: u64,
     is_html: bool,
+    external: bool,
 }
 
 fn is_html_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".html") || lower.ends_with(".htm")
+}
+
+/// Returns `true` when a regular file name belongs to a web, document, image, media, archive, database, or native-binary
+/// family that should open in the operating system's default application (`xdg-open`) rather than the text viewer.
+pub fn uses_system_opener(name: &str) -> bool {
+    let Some((_, ext)) = name.rsplit_once('.') else {
+        return false;
+    };
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "html"
+            | "htm"
+            | "xhtml"
+            | "pdf"
+            | "epub"
+            | "rtf"
+            | "pptx"
+            | "ppt"
+            | "docx"
+            | "doc"
+            | "xlsx"
+            | "xls"
+            | "odt"
+            | "ods"
+            | "odp"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "gif"
+            | "webp"
+            | "svg"
+            | "bmp"
+            | "ico"
+            | "tiff"
+            | "tif"
+            | "avif"
+            | "heic"
+            | "mp3"
+            | "wav"
+            | "ogg"
+            | "flac"
+            | "m4a"
+            | "aac"
+            | "mp4"
+            | "webm"
+            | "mkv"
+            | "mov"
+            | "avi"
+            | "zip"
+            | "tar"
+            | "gz"
+            | "tgz"
+            | "bz2"
+            | "xz"
+            | "zst"
+            | "7z"
+            | "rar"
+            | "sqlite"
+            | "sqlite3"
+            | "db"
+            | "parquet"
+            | "wasm"
+            | "so"
+            | "dylib"
+            | "dll"
+            | "exe"
+            | "dmg"
+            | "deb"
+            | "rpm"
+            | "appimage"
+    )
 }
 
 /// Lists one directory on demand: directories first, then files/symlinks in case-insensitive name order.
@@ -47,17 +119,17 @@ pub fn folder_list(shared: &Shared, cwd: &str) -> Reply {
             continue;
         }
         let Ok(ft) = entry.file_type() else { continue };
-        let (kind, size, is_html) = if ft.is_symlink() {
-            ("link", 0, false)
+        let (kind, size, is_html, external) = if ft.is_symlink() {
+            ("link", 0, false, false)
         } else if ft.is_dir() {
-            ("dir", 0, false)
+            ("dir", 0, false, false)
         } else if ft.is_file() {
             let len = entry.metadata().map_or(0, |m| m.len());
-            ("file", len, is_html_name(&name))
+            ("file", len, is_html_name(&name), uses_system_opener(&name))
         } else {
             continue;
         };
-        items.push(EntryItem { name, kind, size, is_html });
+        items.push(EntryItem { name, kind, size, is_html, external });
     }
 
     items.sort_by(|a, b| {
@@ -72,7 +144,7 @@ pub fn folder_list(shared: &Shared, cwd: &str) -> Reply {
     items.truncate(MAX_ENTRIES);
     let entries: Vec<Value> = items
         .into_iter()
-        .map(|e| json!({"name": e.name, "kind": e.kind, "size": e.size, "is_html": e.is_html}))
+        .map(|e| json!({"name": e.name, "kind": e.kind, "size": e.size, "is_html": e.is_html, "external": e.external}))
         .collect();
 
     Ok(obj(json!({
@@ -267,6 +339,7 @@ mod tests {
         std::fs::create_dir_all(work.join("zeta")).unwrap();
         std::fs::create_dir_all(work.join("Alpha")).unwrap();
         std::fs::write(work.join("report.HTML"), b"<h1>ok</h1>").unwrap();
+        std::fs::write(work.join("slides.pptx"), b"PK\x03\x04").unwrap();
         std::fs::write(work.join("notes.md"), b"hello").unwrap();
         std::fs::write(work.join("bad\u{202E}name.txt"), b"skip").unwrap();
         std::os::unix::fs::symlink(work.join("notes.md"), work.join("shortcut")).unwrap();
@@ -274,11 +347,15 @@ mod tests {
         let res = folder_list(&shared, work.to_str().unwrap()).expect("folder_list ok");
         let entries = res["entries"].as_array().unwrap();
         let names: Vec<&str> = entries.iter().map(|e| e["name"].as_str().unwrap()).collect();
-        assert_eq!(names, vec!["Alpha", "zeta", "notes.md", "report.HTML", "shortcut"]);
+        assert_eq!(names, vec!["Alpha", "zeta", "notes.md", "report.HTML", "shortcut", "slides.pptx"]);
         assert_eq!(entries[0]["kind"], json!("dir"));
         assert_eq!(entries[2]["is_html"], json!(false));
+        assert_eq!(entries[2]["external"], json!(false));
         assert_eq!(entries[3]["is_html"], json!(true));
+        assert_eq!(entries[3]["external"], json!(true));
         assert_eq!(entries[4]["kind"], json!("link"));
+        assert_eq!(entries[5]["is_html"], json!(false));
+        assert_eq!(entries[5]["external"], json!(true));
     }
 
     #[test]

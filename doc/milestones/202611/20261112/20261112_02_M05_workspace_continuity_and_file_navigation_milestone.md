@@ -1,10 +1,10 @@
 # M05 — Working-directory restore across restarts, paged directory navigation, and unified file opening (`lico 0.2.1`)
 
-- Status: in_progress
+- Status: in_review
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; patch version bump `0.2.0` -> `0.2.1` on completion)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: In progress in `M05-P03` (`phase/M05-P03-smart-file-open-and-0-2-1`)
+- Implementation: Complete through `M05-P03` (`lico 0.2.1` on `phase/M05-P03-smart-file-open-and-0-2-1`); awaiting owner G3/G4
 - Next gate: G3 inspection acceptance and G4 merge approval after `M05-P03` (`lico 0.2.1`)
 
 ## Goal
@@ -60,7 +60,7 @@ makes workspace browsing seamless.
 |---|---|---|---|---|---|---|
 | M05-P01 | Persist and restore previous working directory and workspace view across `lico` restarts | [Plan](../../../plans/202611/20261112/20261112_05_M05-P01_restore_working_directory_plan.md) | [Report](../../../reports/202611/20261112/20261112_05_M05-P01_restore_working_directory_report.md) | Captured (awaits G3) | — | in_review |
 | M05-P02 | Top-anchored panel layout, large-directory listing, and page/wheel navigation (`Page X / Y`, `< Prev` / `Next >`) | [Plan](../../../plans/202611/20261112/20261112_06_M05-P02_directory_pagination_plan.md) | [Report](../../../reports/202611/20261112/20261112_06_M05-P02_directory_pagination_report.md) | Captured (awaits G3) | — | in_review |
-| M05-P03 | Unified file activation (direct text preview vs system default `xdg-open`), remove `V` shortcut, and `0.2.1` patch release | [Plan](../../../plans/202611/20261112/20261112_07_M05-P03_smart_file_open_and_0_2_1_plan.md) | pending | pending | — | in_progress |
+| M05-P03 | Unified file activation (direct text preview vs system default `xdg-open`), remove `V` shortcut, and `0.2.1` patch release | [Plan](../../../plans/202611/20261112/20261112_07_M05-P03_smart_file_open_and_0_2_1_plan.md) | [Report](../../../reports/202611/20261112/20261112_07_M05-P03_smart_file_open_and_0_2_1_report.md) | Captured (awaits G3) | — | in_review |
 
 ## Gates
 
