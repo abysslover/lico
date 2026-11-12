@@ -4,7 +4,7 @@
 - Approved: 2026-11-12 (G1 and G2 approved by the owner for continuous execution; patch version bump `0.2.1` -> `0.2.2` on completion)
 - Project: Lico
 - Updated: 2026-11-12
-- Implementation: In progress in `M06-P01` (`phase/M06-P01-hidden-files-and-ssh-discovery`)
+- Implementation: In progress in `M06-P02` (`phase/M06-P02-ssh-remote-accounts-and-login`)
 - Next gate: G3 inspection acceptance and G4 merge approval after `M06-P03` (`lico 0.2.2`)
 
 ## Goal
@@ -65,7 +65,7 @@ single local `lico gui` administer both local and SSH workspaces seamlessly.
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M06-P01 | Hidden-file (`.dotfiles`) toggle (default off) and `~/.ssh/config` host discovery & probing (`ssh.hosts`, `ssh.check`) | [Plan](../../../plans/202611/20261112/20261112_08_M06-P01_hidden_files_and_ssh_discovery_plan.md) | [Report](../../../reports/202611/20261112/20261112_08_M06-P01_hidden_files_and_ssh_discovery_report.md) | `00010_M06-P01_hidden_files_and_ssh_discovery` | — | done |
-| M06-P02 | SSH remote provider accounts (`[ssh: <host>]`) and supervised remote `Sign in` over SSH | pending | pending | pending | — | planned |
+| M06-P02 | SSH remote provider accounts (`[ssh: <host>]`) and supervised remote `Sign in` over SSH | [Plan](../../../plans/202611/20261112/20261112_09_M06-P02_ssh_remote_accounts_and_login_plan.md) | pending | pending | — | in_progress |
 | M06-P03 | SSH remote directory browsing, remote `claude`/`codex` session execution & resume, and `0.2.2` patch release | pending | pending | pending | — | planned |
 
 ## Gates

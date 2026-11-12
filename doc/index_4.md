@@ -36,5 +36,6 @@
 | [M06 milestone](milestones/202611/20261112/20261112_03_M06_hidden_files_and_ssh_remote_sessions_milestone.md) | Hidden-file toggle in directory viewer and SSH remote host accounts, directory browsing, and sessions (`M06-P01` to `M06-P03`, `0.2.2`); G1 and G2 approved 2026-11-12 |
 | [M06-P01 plan](plans/202611/20261112/20261112_08_M06-P01_hidden_files_and_ssh_discovery_plan.md) | Default-off dotfile toggle (`Hidden: off/on`) and `~/.ssh/config` host discovery & connectivity probing (`ssh.hosts`, `ssh.check`); done 2026-11-12 |
 | [M06-P01 report](reports/202611/20261112/20261112_08_M06-P01_hidden_files_and_ssh_discovery_report.md) | `show_hidden` default-off dotfile toggle across GUI/CLI/IPC/HTTP, `files_render.rs` split, and `ssh.rs` (`ssh.hosts` + bounded `ssh.check`); done 2026-11-12 |
+| [M06-P02 plan](plans/202611/20261112/20261112_09_M06-P02_ssh_remote_accounts_and_login_plan.md) | SSH remote provider accounts (`[ssh: <host>]`) and supervised remote `Sign in` over SSH; in_progress 2026-11-12 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
