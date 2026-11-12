@@ -16,6 +16,7 @@ pub enum Action {
     Menu(usize),
     Item(usize, usize),
     Toolbar(usize),
+    HostItem(usize),
     Session(String),
     Allow,
     Deny,

@@ -25,7 +25,7 @@ struct EntryItem {
     external: bool,
 }
 
-fn is_html_name(name: &str) -> bool {
+pub(crate) fn is_html_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".html") || lower.ends_with(".htm")
 }
@@ -163,7 +163,7 @@ pub fn folder_list(shared: &Shared, cwd: &str, show_hidden: bool) -> Reply {
     })))
 }
 
-fn decode_utf8_preview(raw: &[u8], truncated: bool) -> Option<&str> {
+pub(crate) fn decode_utf8_preview(raw: &[u8], truncated: bool) -> Option<&str> {
     if raw.contains(&0) {
         return None;
     }
@@ -174,7 +174,7 @@ fn decode_utf8_preview(raw: &[u8], truncated: bool) -> Option<&str> {
     }
 }
 
-fn sanitize_preview_text(raw_str: &str) -> String {
+pub(crate) fn sanitize_preview_text(raw_str: &str) -> String {
     let lf = raw_str.replace("\r\n", "\n").replace('\r', "\n");
     lf.chars()
         .filter(|&c| c == '\n' || c == '\t' || !crate::folders::refused_char(c))

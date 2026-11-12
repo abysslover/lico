@@ -38,5 +38,7 @@
 | [M06-P01 report](reports/202611/20261112/20261112_08_M06-P01_hidden_files_and_ssh_discovery_report.md) | `show_hidden` default-off dotfile toggle across GUI/CLI/IPC/HTTP, `files_render.rs` split, and `ssh.rs` (`ssh.hosts` + bounded `ssh.check`); done 2026-11-12 |
 | [M06-P02 plan](plans/202611/20261112/20261112_09_M06-P02_ssh_remote_accounts_and_login_plan.md) | SSH remote provider accounts (`[ssh: <host>]`) and supervised remote `Sign in` over SSH; done 2026-11-12 |
 | [M06-P02 report](reports/202611/20261112/20261112_09_M06-P02_ssh_remote_accounts_and_login_report.md) | `ssh_host` account bindings (`[ssh: <host>]`), in-window SSH target selector, and supervised remote `Sign in` inside `0700` remote account homes; done 2026-11-12 |
+| [M06-P03 plan](plans/202611/20261112/20261112_10_M06-P03_ssh_remote_files_and_sessions_0_2_2_plan.md) | SSH remote directory browsing, remote `claude`/`codex` session execution & resume, and `0.2.2` patch release; done 2026-11-12 |
+| [M06-P03 report](reports/202611/20261112/20261112_10_M06-P03_ssh_remote_files_and_sessions_0_2_2_report.md) | Remote `folder.list`/`folder.read`/`folder.git`, `Files` `Host` combo-box dropdown & non-blocking `ssh_unreachable` handling, persistent SSH remote `claude`/`codex` sessions & resume, `475/475` cold suite (`97.8 s`), `24.52`/`35.53 MiB` idle RSS, `+0.26 MiB` hidden growth, and two-clone `0.2.2` match; awaiting G3/G4 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

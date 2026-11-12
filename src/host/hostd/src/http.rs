@@ -381,7 +381,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
         ["v1", "files"] => {
             allowed(method == "GET")?;
             let qmap = query_map(&request.query).map_err(bad)?;
-            if !qmap.contains_key("cwd") || qmap.keys().any(|k| k != "cwd" && k != "hidden") {
+            if !qmap.contains_key("cwd") || qmap.keys().any(|k| !matches!(k.as_str(), "cwd" | "hidden" | "ssh_host")) {
                 return Err(bad("bad_request"));
             }
             let cwd = qmap.get("cwd").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
@@ -390,14 +390,21 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 Some("1" | "true") => true,
                 Some(_) => return Err(bad("bad_request")),
             };
-            let req: Map<String, Value> = json!({"op": "folder.list", "cwd": cwd, "show_hidden": show_hidden})
+            let ssh_host = qmap.get("ssh_host").and_then(Value::as_str);
+            let mut req: Map<String, Value> = json!({"op": "folder.list", "cwd": cwd, "show_hidden": show_hidden})
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
+            if let Some(h) = ssh_host {
+                req.insert("ssh_host".into(), json!(h));
+            }
             if !valid_request("folder.list", &req) {
                 return Err(bad("bad_request"));
             }
-            crate::fsview::folder_list(shared, cwd, show_hidden)
+            match ssh_host {
+                Some(h) => crate::ssh_remote::folder_list(shared, h, cwd, show_hidden),
+                None => crate::fsview::folder_list(shared, cwd, show_hidden),
+            }
         }
         ["v1", "ssh", "hosts"] => {
             allowed(method == "GET")?;
@@ -415,15 +422,22 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
         ["v1", "files", "read"] => {
             allowed(method == "GET")?;
             let qmap = query_map(&request.query).map_err(bad)?;
-            if qmap.len() != 1 || !qmap.contains_key("path") {
+            if !qmap.contains_key("path") || qmap.keys().any(|k| !matches!(k.as_str(), "path" | "ssh_host")) {
                 return Err(bad("bad_request"));
             }
             let path = qmap.get("path").and_then(Value::as_str).ok_or_else(|| bad("bad_request"))?;
-            let req: Map<String, Value> = json!({"op": "folder.read", "path": path}).as_object().cloned().unwrap_or_default();
+            let ssh_host = qmap.get("ssh_host").and_then(Value::as_str);
+            let mut req: Map<String, Value> = json!({"op": "folder.read", "path": path}).as_object().cloned().unwrap_or_default();
+            if let Some(h) = ssh_host {
+                req.insert("ssh_host".into(), json!(h));
+            }
             if !valid_request("folder.read", &req) {
                 return Err(bad("bad_request"));
             }
-            crate::fsview::folder_read(shared, path)
+            match ssh_host {
+                Some(h) => crate::ssh_remote::folder_read(shared, h, path),
+                None => crate::fsview::folder_read(shared, path),
+            }
         }
         ["v1", "sessions", id, "input"] if id_ok(id) => {
             allowed(method == "POST")?;

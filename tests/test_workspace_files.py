@@ -190,6 +190,7 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
                 "new_session",
                 "accounts",
                 "files",
+                "files_host",
                 "new_here",
                 "refresh_files",
                 "toggle_hidden",

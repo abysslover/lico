@@ -228,9 +228,12 @@ pub fn run(args: Vec<String>) {
                 }
             }
             if let Some(folder) = flag(&args, "--cwd") {
-                // the host takes absolute paths only: a relative one is relative to where this command runs
-                let absolute = std::env::current_dir().map(|here| here.join(&folder)).unwrap_or_else(|_| folder.clone().into());
-                request["cwd"] = json!(absolute.to_string_lossy());
+                if folder == "~" || folder.starts_with("~/") || folder.starts_with('/') {
+                    request["cwd"] = json!(folder);
+                } else {
+                    let absolute = std::env::current_dir().map(|here| here.join(&folder)).unwrap_or_else(|_| folder.clone().into());
+                    request["cwd"] = json!(absolute.to_string_lossy());
+                }
             }
             if let Some(branch) = flag(&args, "--worktree") {
                 request["worktree_branch"] = json!(branch);
@@ -330,30 +333,58 @@ pub fn run(args: Vec<String>) {
             }
             expect_ok(call(&mut connect(&socket), request));
         }
-        ["files", "--read", file] => {
-            let p = std::path::Path::new(file);
-            let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
-            expect_ok(call(&mut connect(&socket), json!({"op": "folder.read", "path": abs.to_string_lossy()})));
-        }
         ["files", rest @ ..] => {
+            let mut read_arg: Option<&str> = None;
             let mut dir_arg: Option<&str> = None;
+            let mut ssh_host: Option<&str> = None;
             let mut show_hidden = false;
-            for tok in rest {
-                match *tok {
+            let mut idx = 0;
+            while idx < rest.len() {
+                match rest[idx] {
+                    "--read" => {
+                        idx += 1;
+                        read_arg = Some(*rest.get(idx).unwrap_or_else(|| die(1, USAGE)));
+                    }
+                    "--ssh-host" => {
+                        idx += 1;
+                        ssh_host = Some(*rest.get(idx).unwrap_or_else(|| die(1, USAGE)));
+                    }
                     "--hidden" | "-a" => show_hidden = true,
                     "--no-hidden" => show_hidden = false,
                     s if !s.starts_with('-') && dir_arg.is_none() => dir_arg = Some(s),
                     _ => die(1, USAGE),
                 }
+                idx += 1;
             }
-            let raw = dir_arg.unwrap_or(".");
-            let p = std::path::Path::new(raw);
-            let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
-            let mut request = json!({"op": "folder.list", "cwd": abs.to_string_lossy()});
-            if show_hidden {
-                request["show_hidden"] = json!(true);
+            if let Some(file) = read_arg {
+                if dir_arg.is_some() || show_hidden {
+                    die(1, USAGE);
+                }
+                let mut request = if let Some(host) = ssh_host {
+                    json!({"op": "folder.read", "path": file, "ssh_host": host})
+                } else {
+                    let p = std::path::Path::new(file);
+                    let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
+                    json!({"op": "folder.read", "path": abs.to_string_lossy()})
+                };
+                if let Some(host) = ssh_host {
+                    request["ssh_host"] = json!(host);
+                }
+                expect_ok(call(&mut connect(&socket), request));
+            } else {
+                let mut request = if let Some(host) = ssh_host {
+                    json!({"op": "folder.list", "cwd": dir_arg.unwrap_or("~"), "ssh_host": host})
+                } else {
+                    let raw = dir_arg.unwrap_or(".");
+                    let p = std::path::Path::new(raw);
+                    let abs = if p.is_absolute() { p.to_path_buf() } else { std::env::current_dir().map(|d| d.join(p)).unwrap_or_else(|_| p.to_path_buf()) };
+                    json!({"op": "folder.list", "cwd": abs.to_string_lossy()})
+                };
+                if show_hidden {
+                    request["show_hidden"] = json!(true);
+                }
+                expect_ok(call(&mut connect(&socket), request));
             }
-            expect_ok(call(&mut connect(&socket), request));
         }
         ["ssh", "hosts"] => {
             expect_ok(call(&mut connect(&socket), json!({"op": "ssh.hosts"})));

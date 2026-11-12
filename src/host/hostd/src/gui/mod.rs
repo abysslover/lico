@@ -50,6 +50,7 @@ enum Ev {
     Cmd(String),
     Tick, // once a second in the first view: ask the host for the sessions again
     Paste(picture::Pasted), // the answer to a paste key: the selection's text or a picture, or why there is none
+    Async(panel::AsyncDone), // non-blocking host RPC result (e.g. SSH remote files, login status check, session start)
     Host(update::Update), // the worker that brings the host to this build reports
     SockEnded(u64), // the reader of the host connection with this serial ended: the host is gone, or was replaced
 }
@@ -662,6 +663,7 @@ impl ApplicationHandler<Ev> for App {
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
             Ev::Tick => self.ui_tick(),
             Ev::Paste(answer) => self.on_paste_answer(answer),
+            Ev::Async(done) => self.on_async_done(done),
             Ev::Host(update::Update::Line(line)) => {
                 self.ui.host_notice = Some(line);
                 self.dirty = true;

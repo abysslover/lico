@@ -188,6 +188,7 @@ impl App {
             .as_ref()
             .filter(|p| p.step == super::super::panel::Step::Files)
             .and_then(|p| p.files.as_ref())
+            .filter(|ex| ex.ssh_host.is_none() && !ex.unreachable && ex.loading.is_none())
             .map(|ex| ex.cwd.clone())
             .filter(|c| !c.is_empty())
         {

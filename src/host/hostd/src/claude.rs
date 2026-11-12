@@ -164,110 +164,130 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     if session.lock().unwrap().purged {
         return Err("busy"); // a deleted session gets no workspace and no process
     }
-    let workspace = crate::folders::working_dir(shared, session)?;
-    let mut command = Command::new(&shared.cfg.claude);
-    command.args(&shared.cfg.claude_args).args([
-        "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
-    ]);
-    // A new session skips permission checks (the owner's rule of 2026-10-25) and the prompt tool is ALWAYS on: what the program still asks about
-    // (a question to the person, a plan, an explicit ask rule) reaches the window instead of failing with "requires approval". `default` asks for everything.
-    // `-p` skips the program's "do you trust this folder?" question, so a chosen folder's own settings (hooks, `env`, `apiKeyHelper`, its `.mcp.json`) would run
-    // without the person's decision; only the user's settings are read (the folder's CLAUDE.md still is) and `--settings` below still applies.
-    command.args(["--setting-sources", "user"]);
-    let mode = session.lock().unwrap().mode;
-    command.args(["--permission-mode", if mode == "default" { "default" } else { "bypassPermissions" }, "--permission-prompt-tool", "stdio"]);
-    if let Some(provider_session) = &resume {
-        command.args(["--resume", provider_session]);
-    }
-    {
+    let (id, generation, mode, bound, model_opt, effort_opt) = {
         let s = session.lock().unwrap();
-        for (flag, chosen) in [("--model", &s.settings.model), ("--effort", &s.settings.effort)] {
-            if let Some(value) = chosen {
-                command.args([flag, value]);
-            }
-        }
-    }
-    command.current_dir(&workspace).env_clear();
-    for key in ["PATH", "LANG"] {
-        if let Some(value) = std::env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-    // The tool connection is on the loopback. A proxy that the person's own Claude settings give the program (the `env` block of the user settings, which
-    // `--setting-sources user` still reads) would catch that connection and the tool would fail without a word, so the loopback is exempt at every start and
-    // every resume. A `NO_PROXY` the person's settings set themselves replaces this one: the host does not read their settings.
-    command.env("NO_PROXY", LOOPBACK).env("no_proxy", LOOPBACK);
+        (s.id.clone(), s.generation, s.mode, s.account.clone(), s.settings.model.clone(), s.settings.effort.clone())
+    };
+    let remote_acct = bound
+        .as_deref()
+        .and_then(|acc| shared.accounts.lock().unwrap().ssh_host(acc).map(|h| (acc.to_string(), h)));
     let mut broker: Option<std::sync::Arc<std::sync::atomic::AtomicBool>> = None;
-    let bound = session.lock().unwrap().account.clone();
-    match bound {
-        // a session bound to an account sees only that account's private home
-        Some(account) => {
-            let (homes, credential) = {
-                let accounts = shared.accounts.lock().unwrap();
-                (accounts.homes(&account).ok_or("busy")?, accounts.credential_ref(&account))
-            };
-            command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
-            if let Some(reference) = credential {
-                // the key reaches the provider only through a helper that asks this session's broker: the command names a
-                // private socket, never the key, and the provider gets no part of the keyring's bus
-                let name = format!("lico-broker-{}", core::random_hex(12));
-                let stop = crate::broker::serve(shared.cfg.cred_bin.clone(), shared.cfg.cred_args.clone(), shared.cfg.cred_dir.clone(), name.clone(), reference).map_err(|_| "busy")?;
-                broker = Some(stop);
-                let helper = format!("{} {} --data-dir {} broker --name {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shared.cfg.cred_args.join(" "), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), name);
-                command.arg("--settings").arg(json!({"apiKeyHelper": helper}).to_string());
-            }
-        }
-        None => {
-            for key in ["HOME", "CLAUDE_CONFIG_DIR"] {
-                if let Some(value) = std::env::var_os(key) {
-                    command.env(key, value);
-                }
-            }
-        }
-    }
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     let stop_broker = |broker: &Option<std::sync::Arc<std::sync::atomic::AtomicBool>>| {
         if let Some(stop) = broker {
             stop.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     };
-    // The tool connection: a key of its own for this process, in a config file that only the program reads (the key is in no argument, environment or log).
-    // Every tool of it is allowed without a question: the connection is the host's own, and only this session's key opens it.
-    let (id, generation) = {
-        let s = session.lock().unwrap();
-        (s.id.clone(), s.generation)
+    let (command, grant_key): (Command, Option<String>) = if let Some((account, host)) = remote_acct {
+        let remote_cwd = crate::ssh_remote::ensure_remote_workspace(shared, &host, session)?;
+        let mut cmd = crate::ssh_remote::remote_claude_command(
+            shared,
+            &host,
+            &account,
+            &remote_cwd,
+            mode,
+            resume.as_deref(),
+            model_opt.as_deref(),
+            effort_opt.as_deref(),
+        )?;
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        (cmd, None)
+    } else {
+        let workspace = crate::folders::working_dir(shared, session)?;
+        let mut command = Command::new(&shared.cfg.claude);
+        command.args(&shared.cfg.claude_args).args([
+            "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--replay-user-messages",
+        ]);
+        // A new session skips permission checks (the owner's rule of 2026-10-25) and the prompt tool is ALWAYS on: what the program still asks about
+        // (a question to the person, a plan, an explicit ask rule) reaches the window instead of failing with "requires approval". `default` asks for everything.
+        // `-p` skips the program's "do you trust this folder?" question, so a chosen folder's own settings (hooks, `env`, `apiKeyHelper`, its `.mcp.json`) would run
+        // without the person's decision; only the user's settings are read (the folder's CLAUDE.md still is) and `--settings` below still applies.
+        command.args(["--setting-sources", "user"]);
+        command.args(["--permission-mode", if mode == "default" { "default" } else { "bypassPermissions" }, "--permission-prompt-tool", "stdio"]);
+        if let Some(provider_session) = &resume {
+            command.args(["--resume", provider_session]);
+        }
+        for (flag, chosen) in [("--model", &model_opt), ("--effort", &effort_opt)] {
+            if let Some(value) = chosen {
+                command.args([flag, value]);
+            }
+        }
+        command.current_dir(&workspace).env_clear();
+        for key in ["PATH", "LANG"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        // The tool connection is on the loopback. A proxy that the person's own Claude settings give the program (the `env` block of the user settings, which
+        // `--setting-sources user` still reads) would catch that connection and the tool would fail without a word, so the loopback is exempt at every start and
+        // every resume. A `NO_PROXY` the person's settings set themselves replaces this one: the host does not read their settings.
+        command.env("NO_PROXY", LOOPBACK).env("no_proxy", LOOPBACK);
+        match bound {
+            // a session bound to an account sees only that account's private home
+            Some(account) => {
+                let (homes, credential) = {
+                    let accounts = shared.accounts.lock().unwrap();
+                    (accounts.homes(&account).ok_or("busy")?, accounts.credential_ref(&account))
+                };
+                command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
+                if let Some(reference) = credential {
+                    // the key reaches the provider only through a helper that asks this session's broker: the command names a
+                    // private socket, never the key, and the provider gets no part of the keyring's bus
+                    let name = format!("lico-broker-{}", core::random_hex(12));
+                    let stop = crate::broker::serve(shared.cfg.cred_bin.clone(), shared.cfg.cred_args.clone(), shared.cfg.cred_dir.clone(), name.clone(), reference).map_err(|_| "busy")?;
+                    broker = Some(stop);
+                    let helper = format!("{} {} --data-dir {} broker --name {}", shell_quote(&shared.cfg.cred_bin.to_string_lossy()), shared.cfg.cred_args.join(" "), shell_quote(&shared.cfg.cred_dir.to_string_lossy()), name);
+                    command.arg("--settings").arg(json!({"apiKeyHelper": helper}).to_string());
+                }
+            }
+            None => {
+                for key in ["HOME", "CLAUDE_CONFIG_DIR"] {
+                    if let Some(value) = std::env::var_os(key) {
+                        command.env(key, value);
+                    }
+                }
+            }
+        }
+        command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+        // The tool connection: a key of its own for this process, in a config file that only the program reads (the key is in no argument, environment or log).
+        // Every tool of it is allowed without a question: the connection is the host's own, and only this session's key opens it.
+        let grant = match crate::tools::issue(shared, &id, generation) {
+            Ok(grant) => grant,
+            Err(code) => {
+                stop_broker(&broker);
+                return Err(code);
+            }
+        };
+        // the program may read files other sessions send it, in its own inbox and nowhere else of the host's
+        match crate::handoff::inbox(&shared.cfg.handoff_dir, &id) {
+            Ok(inbox) => {
+                command.arg("--add-dir").arg(inbox);
+            }
+            Err(_) => {
+                stop_broker(&broker);
+                crate::tools::release(&grant.key);
+                return Err("busy");
+            }
+        }
+        command.arg("--mcp-config").arg(&grant.path).args(["--allowedTools", "mcp__lico__*"]);
+        (command, Some(grant.key))
     };
-    let grant = match crate::tools::issue(shared, &id, generation) {
-        Ok(grant) => grant,
-        Err(code) => {
-            stop_broker(&broker);
-            return Err(code);
+    let release_grant = |gk: &Option<String>| {
+        if let Some(k) = gk {
+            crate::tools::release(k);
         }
     };
-    // the program may read files other sessions send it, in its own inbox and nowhere else of the host's
-    match crate::handoff::inbox(&shared.cfg.handoff_dir, &id) {
-        Ok(inbox) => {
-            command.arg("--add-dir").arg(inbox);
-        }
-        Err(_) => {
-            stop_broker(&broker);
-            crate::tools::release(&grant.key);
-            return Err("busy");
-        }
-    }
-    command.arg("--mcp-config").arg(&grant.path).args(["--allowedTools", "mcp__lico__*"]);
     let mut child = match core::spawn_provider_process(command) {
         Ok(child) => child,
         Err(_) => {
             stop_broker(&broker);
-            crate::tools::release(&grant.key);
+            release_grant(&grant_key);
             return Err("busy");
         }
     };
     let pid = child.id();
     let (Some(stdout), Some(mut stdin)) = (child.stdout.take(), child.stdin.take()) else {
         stop_broker(&broker);
-        crate::tools::release(&grant.key);
+        release_grant(&grant_key);
         unsafe { kill(-(pid as i32), 9) };
         let _ = child.wait();
         return Err("busy");
@@ -279,7 +299,7 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
             // the session was purged while this process started: it is stopped, never attached
             drop(s);
             stop_broker(&broker);
-            crate::tools::release(&grant.key);
+            release_grant(&grant_key);
             unsafe { kill(-(pid as i32), 9) };
             let _ = child.wait();
             return Err("busy");
@@ -307,7 +327,6 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
     });
     let reader_session = session.clone();
     let reader_shared = shared.clone();
-    let key = grant.key;
     thread::spawn(move || {
         for line in lines::lines(stdout, MAX_LINE) {
             match line {
@@ -321,7 +340,9 @@ fn spawn(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: Option<Str
         }
         unsafe { kill(-(pid as i32), 9) }; // its output ended: nothing of it, helpers included, is kept alive
         let _ = child.wait();
-        crate::tools::release(&key); // only its own key: what a resume made after it stays
+        if let Some(k) = &grant_key {
+            crate::tools::release(k); // only its own key: what a resume made after it stays
+        }
         let mut s = reader_session.lock().unwrap();
         let mine = s.agent_pid == pid; // a close or a purge zeroed it, and a resume may have put its own process there
         if mine {

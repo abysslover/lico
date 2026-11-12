@@ -22,6 +22,7 @@ pub struct ToolBtn {
 #[derive(Default)]
 pub struct ToolbarGeom {
     pub rects: Vec<[f32; 4]>,
+    pub host_items: Vec<(usize, [f32; 4])>,
 }
 
 /// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).
@@ -53,11 +54,14 @@ impl App {
         if in_files {
             let (has_prev, has_next) = self.files_page_nav_state();
             let hidden_label = if self.ui.show_hidden { "Hidden: on" } else { "Hidden: off" };
+            let (host_label, host_active, host_reason) = self.files_host_toolbar_state();
+            let new_here_reason = self.files_new_here_reason();
             return vec![
                 ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
                 ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
                 ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: true, reason: None },
-                ToolBtn { label: "+ New here".into(), id: "new_here", cmd: Cmd::NewInViewedDir, active: false, reason: None },
+                ToolBtn { label: host_label, id: "files_host", cmd: Cmd::CycleFilesHost, active: host_active, reason: host_reason },
+                ToolBtn { label: "+ New here".into(), id: "new_here", cmd: Cmd::NewInViewedDir, active: false, reason: new_here_reason },
                 ToolBtn { label: "Refresh".into(), id: "refresh_files", cmd: Cmd::RefreshFiles, active: false, reason: None },
                 ToolBtn { label: hidden_label.into(), id: "toggle_hidden", cmd: Cmd::ToggleHiddenFiles, active: self.ui.show_hidden, reason: None },
                 ToolBtn { label: "< Prev".into(), id: "prev_page", cmd: Cmd::FilesPrevPage, active: false, reason: if has_prev { None } else { Some("already on first page") } },
@@ -82,6 +86,7 @@ impl App {
         let Some(btn) = entries.get(index) else { return };
         let (cmd, label, reason) = (btn.cmd, btn.label.clone(), btn.reason);
         self.menu_close();
+        self.close_files_host_popup();
         if let Some(why) = reason {
             self.ui.flash = Some(format!("{label}: {why}"));
             self.dirty = true;
@@ -98,12 +103,25 @@ impl App {
                     | Cmd::FilesPrevPage
                     | Cmd::FilesNextPage
                     | Cmd::ToggleHiddenFiles
+                    | Cmd::CycleFilesHost
             )
         {
             self.panel_close();
         }
         self.run_cmd(cmd);
         self.dirty = true;
+    }
+
+    pub(crate) fn host_popup_click(&mut self, hit: Option<Action>) -> bool {
+        if !self.files_host_popup_open() {
+            return false;
+        }
+        match hit {
+            Some(Action::HostItem(idx)) => self.select_files_host_index(idx),
+            Some(Action::Menu(m)) => self.menu_open_at(m),
+            _ => self.close_files_host_popup(),
+        }
+        true
     }
 
     pub(crate) fn toolbar_json(&self) -> Value {
@@ -122,7 +140,7 @@ impl App {
                 })
             })
             .collect();
-        json!({"shown": self.ui.menu, "buttons": buttons})
+        json!({"shown": self.ui.menu, "buttons": buttons, "host_popup": self.files_host_popup_json()})
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -141,9 +159,11 @@ impl App {
         self.ui.menu_geom.titles.clear();
         self.ui.menu_geom.items.clear();
         self.ui.toolbar_geom.rects.clear();
+        self.ui.toolbar_geom.host_items.clear();
         if !self.ui.menu {
             return;
         }
+        let host_popup = if menu_open.is_none() { self.files_host_popup_draw_state() } else { None };
         let s = self.ui.scale.max(1.0);
         let lh = self.line_h() * s;
         let Some(fs) = self.font_system.as_mut() else { return };
@@ -191,7 +211,7 @@ impl App {
             tx += bw + 5.0 * s;
         }
 
-        // 3. Open dropdown menu (on top of toolbar and main area)
+        // 3. Open dropdown menu OR Files Host combo-box popup (on top of toolbar and main area)
         if let Some(m) = menu_open {
             let (ih, pad) = (lh + 2.0 * s, 8.0 * s);
             let mut inner = 0.0f32;
@@ -223,6 +243,54 @@ impl App {
                 }
                 controls.target(r, Action::Item(m, i));
                 self.ui.menu_geom.items.push(r);
+            }
+        } else if let Some((choices, cur_host, sel, top)) = host_popup {
+            let (ih, pad) = (lh + 2.0 * s, 8.0 * s);
+            let host_btn_idx = tool_entries.iter().position(|b| b.id == "files_host").unwrap_or(3);
+            let (anchor_x, btn_w) = self
+                .ui
+                .toolbar_geom
+                .rects
+                .get(host_btn_idx)
+                .map_or((80.0 * s, 120.0 * s), |r| (r[0], r[2] - r[0]));
+            let max_vis = super::super::panel::files_ui::HOST_POPUP_MAX_VIS;
+            let start = top.min(choices.len().saturating_sub(1));
+            let end = (start + max_vis).min(choices.len());
+            let mut inner = (btn_w - 2.0 * pad).max(0.0);
+            let mut rows_txt: Vec<(usize, String)> = Vec::with_capacity(end.saturating_sub(start));
+            for (idx, ch) in choices.iter().enumerate().take(end).skip(start) {
+                let active = *ch == cur_host;
+                let mark = if active { "* " } else { "  " };
+                let label = match ch {
+                    None => format!("{mark}local (this machine)"),
+                    Some(h) => format!("{mark}ssh: {h}"),
+                };
+                inner = inner.max(controls.width(fs, &label) + 12.0 * s);
+                rows_txt.push((idx, label));
+            }
+            let footer = (choices.len() > max_vis).then(|| {
+                let ft = format!("  Up/Down or wheel  ({}/{})", sel + 1, choices.len());
+                inner = inner.max(controls.width(fs, &ft) + 12.0 * s);
+                ft
+            });
+            let w = inner + 2.0 * pad;
+            let x = anchor_x.min(width as f32 - 4.0 * s - w).max(4.0 * s);
+            let total_rows = rows_txt.len() + usize::from(footer.is_some());
+            let box_r = [x, bar_h, x + w, bar_h + ih * total_rows as f32 + 4.0 * s];
+            controls::fill(buf, width, height, [box_r[0] - 1.0, box_r[1], box_r[2] + 1.0, box_r[3] + 1.0], 0xFF3A_4A60);
+            controls::fill(buf, width, height, box_r, 0xFF1C_2430);
+            for (vis_i, (idx, label)) in rows_txt.iter().enumerate() {
+                let r = [x, bar_h + 2.0 * s + ih * vis_i as f32, x + w, bar_h + 2.0 * s + ih * (vis_i + 1) as f32];
+                if *idx == sel {
+                    controls::fill(buf, width, height, r, 0xFF2C_4A78);
+                }
+                controls.text(fs, swash, buf, width, height, x + pad, r[1] + s, r[2] as i32, label, ink);
+                controls.target(r, Action::HostItem(*idx));
+                self.ui.toolbar_geom.host_items.push((*idx, r));
+            }
+            if let Some(ft) = footer {
+                let fy = bar_h + 2.0 * s + ih * rows_txt.len() as f32;
+                controls.text(fs, swash, buf, width, height, x + pad, fy + s, (x + w) as i32, &ft, dim);
             }
         }
     }

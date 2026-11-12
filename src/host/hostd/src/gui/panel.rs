@@ -30,6 +30,36 @@ pub enum Step {
     Files,         // on-demand working-directory file viewer (files_ui.rs)
 }
 
+pub(crate) enum AsyncJob {
+    FilesDir {
+        req_id: u64,
+        ssh_host: String,
+        dir: String,
+        keep_cursor: bool,
+        fallback_tilde: bool,
+        refreshed: bool,
+    },
+    FilesPreview {
+        req_id: u64,
+        ssh_host: String,
+        path: String,
+        refreshed: bool,
+    },
+    AccountCheck {
+        req_id: u64,
+        account: String,
+    },
+    SessionStart {
+        req_id: u64,
+        created_cwd: Option<String>,
+    },
+}
+
+pub(crate) struct AsyncDone {
+    pub job: AsyncJob,
+    pub reply: Value,
+}
+
 pub struct Panel {
     pub step: Step,
     pub provider: String,
@@ -38,6 +68,7 @@ pub struct Panel {
     pub accounts: Vec<(String, String, String, bool)>, // id, provider, label, default
     pub new_ssh_host: Option<String>, // None = local, Some(alias) = SSH remote target when adding an account
     pub ssh_hosts: Vec<String>,       // discovered SSH host aliases from `ssh.hosts`
+    pub pending_check_req: u64,       // non-zero while checking SSH Codex login status asynchronously
     pub login: Value,
     pub confirm: Option<char>,
     pub last_error: String, // the host's raw error word of the last failed step: in the ui dump only
@@ -59,6 +90,32 @@ fn auto_open_off() -> bool {
 /// How long the window waits for an ordinary reply of the host.
 const CALL_SECONDS: u64 = 8;
 
+/// One request on a connection of its own, waiting at most `seconds` for the reply.
+pub(crate) fn call_socket_within(socket: &str, request: Value, seconds: u64) -> Value {
+    let Ok(mut conn) = UnixStream::connect(socket) else { return json!({"ok": 0, "error": "host_unreachable"}) };
+    conn.set_read_timeout(Some(Duration::from_secs(seconds))).ok();
+    conn.set_write_timeout(Some(Duration::from_secs(seconds))).ok();
+    let mut line = request.to_string();
+    line.push('\n');
+    if conn.write_all(line.as_bytes()).is_err() {
+        return json!({"ok": 0, "error": "host_unreachable"});
+    }
+    let mut reader = BufReader::new(conn);
+    loop {
+        let mut reply = String::new();
+        match reader.read_line(&mut reply) {
+            Ok(n) if n > 0 => {
+                if let Ok(value) = serde_json::from_str::<Value>(&reply) {
+                    if value.get("ok").is_some() {
+                        return value;
+                    }
+                }
+            }
+            _ => return json!({"ok": 0, "error": "host_timeout"}),
+        }
+    }
+}
+
 impl App {
     pub(crate) fn host_call(&self, request: Value) -> Value {
         self.host_call_within(request, CALL_SECONDS)
@@ -66,27 +123,43 @@ impl App {
 
     /// One request on a connection of its own, waiting at most `seconds` for the reply (the window stands still meanwhile).
     pub(crate) fn host_call_within(&self, request: Value, seconds: u64) -> Value {
-        let Ok(mut conn) = UnixStream::connect(&self.socket) else { return json!({"ok": 0, "error": "host_unreachable"}) };
-        conn.set_read_timeout(Some(Duration::from_secs(seconds))).ok();
-        conn.set_write_timeout(Some(Duration::from_secs(seconds))).ok();
-        let mut line = request.to_string();
-        line.push('\n');
-        if conn.write_all(line.as_bytes()).is_err() {
-            return json!({"ok": 0, "error": "host_unreachable"});
+        call_socket_within(&self.socket, request, seconds)
+    }
+
+    /// Non-blocking host call on a background worker thread, delivering `Ev::Async(AsyncDone)` back to the event loop.
+    pub(crate) fn spawn_host_call(&mut self, request: Value, seconds: u64, make_job: impl FnOnce(u64) -> AsyncJob) -> u64 {
+        self.ui.async_seq = self.ui.async_seq.wrapping_add(1).max(1);
+        let req_id = self.ui.async_seq;
+        let job = make_job(req_id);
+        if let Some(proxy) = self.ui.proxy.clone() {
+            let socket = self.socket.clone();
+            std::thread::spawn(move || {
+                let reply = call_socket_within(&socket, request, seconds);
+                let _ = proxy.send_event(super::Ev::Async(AsyncDone { job, reply }));
+            });
+        } else {
+            let reply = call_socket_within(&self.socket, request, seconds);
+            self.on_async_done(AsyncDone { job, reply });
         }
-        let mut reader = BufReader::new(conn);
-        loop {
-            let mut reply = String::new();
-            match reader.read_line(&mut reply) {
-                Ok(n) if n > 0 => {
-                    if let Ok(value) = serde_json::from_str::<Value>(&reply) {
-                        if value.get("ok").is_some() {
-                            return value;
-                        }
-                    }
+        req_id
+    }
+
+    pub(crate) fn on_async_done(&mut self, done: AsyncDone) {
+        match done.job {
+            AsyncJob::FilesDir { .. } | AsyncJob::FilesPreview { .. } => self.on_files_async(done.job, done.reply),
+            AsyncJob::AccountCheck { req_id, account } => {
+                if let Some(p) = self
+                    .ui
+                    .panel
+                    .as_mut()
+                    .filter(|p| p.step == Step::Actions && p.account == account && p.pending_check_req == req_id)
+                {
+                    p.pending_check_req = 0;
+                    p.login = json!({"signed_in": done.reply["signed_in"]});
+                    self.dirty = true;
                 }
-                _ => return json!({"ok": 0, "error": "host_timeout"}),
             }
+            AsyncJob::SessionStart { req_id, created_cwd } => self.on_form_start_done(req_id, created_cwd, done.reply),
         }
     }
 
@@ -113,7 +186,7 @@ impl App {
         self.panel_close(); // one panel at a time: the one that was open gives back the draft it took and ends its sign-in
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), pending_check_req: 0, login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();
@@ -268,7 +341,9 @@ impl App {
                 if let Some(h) = self.ui.ssh_hosts.get(&p.account) {
                     body.push(format!("host: ssh:{h} (authenticates on {h}; connects directly to provider)"));
                 }
-                if let Some(s) = p.login["signed_in"].as_bool() {
+                if p.login["checking"] == json!(true) {
+                    body.push("provider says: checking over ssh...".into());
+                } else if let Some(s) = p.login["signed_in"].as_bool() {
                     body.push(format!("provider says: {}", if s { "signed in" } else { "not signed in" }));
                 } else if p.login.get("signed_in").is_some() {
                     body.push("provider says: unknown (no status command)".into());
@@ -576,14 +651,34 @@ impl App {
                 }
                 let Some(p) = self.ui.panel.as_ref() else { return };
                 if let Some(a) = key.to_digit(10).and_then(|d| p.accounts.get((d as usize).wrapping_sub(1))).cloned() {
-                    let status = self.host_call(json!({"op": "account.login.status", "account": a.0, "check": true}));
-                    if let Some(p) = self.ui.panel.as_mut() {
-                        p.account = a.0;
-                        p.provider = a.1;
-                        p.login = json!({"signed_in": status["signed_in"]});
-                        p.step = Step::Actions;
-                        p.confirm = None;
-                        p.notice.clear();
+                    if self.ui.ssh_hosts.contains_key(&a.0) && a.1 == "codex" {
+                        let acct_id = a.0.clone();
+                        if let Some(p) = self.ui.panel.as_mut() {
+                            p.account = a.0;
+                            p.provider = a.1;
+                            p.login = json!({"checking": true});
+                            p.step = Step::Actions;
+                            p.confirm = None;
+                            p.notice.clear();
+                        }
+                        let req = json!({"op": "account.login.status", "account": acct_id.clone(), "check": true});
+                        let has_proxy = self.ui.proxy.is_some();
+                        let req_id = self.spawn_host_call(req, 6, move |req_id| AsyncJob::AccountCheck { req_id, account: acct_id });
+                        if has_proxy {
+                            if let Some(p) = self.ui.panel.as_mut() {
+                                p.pending_check_req = req_id;
+                            }
+                        }
+                    } else {
+                        let status = self.host_call(json!({"op": "account.login.status", "account": a.0, "check": true}));
+                        if let Some(p) = self.ui.panel.as_mut() {
+                            p.account = a.0;
+                            p.provider = a.1;
+                            p.login = json!({"signed_in": status["signed_in"]});
+                            p.step = Step::Actions;
+                            p.confirm = None;
+                            p.notice.clear();
+                        }
                     }
                 }
             }
@@ -675,6 +770,8 @@ mod admin_ui;
 pub(super) mod cardview;
 #[path = "confirm.rs"]
 pub(super) mod confirm;
+#[path = "files_host.rs"]
+mod files_host;
 #[path = "files_render.rs"]
 mod files_render;
 #[path = "files_ui.rs"]

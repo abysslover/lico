@@ -63,6 +63,10 @@ pub fn ssh_base_command(shared: &Shared, host: &str, connect_timeout_secs: u64) 
         "-o",
         "BatchMode=yes",
         "-o",
+        "ControlMaster=no",
+        "-o",
+        "ControlPath=none",
+        "-o",
         &format!("ConnectTimeout={connect_timeout_secs}"),
         "--",
         host,
@@ -409,19 +413,21 @@ pub(crate) fn ssh_check_within(shared: &Shared, host: &str, timeout: Duration) -
 
     let out_pipe = child.stdout.take();
     let err_pipe = child.stderr.take();
-    let out_handle = std::thread::spawn(move || {
+    let (out_tx, out_rx) = std::sync::mpsc::sync_channel(1);
+    let (err_tx, err_rx) = std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(p) = out_pipe {
             let _ = p.take(16 * 1024).read_to_end(&mut buf);
         }
-        String::from_utf8_lossy(&buf).into_owned()
+        let _ = out_tx.send(String::from_utf8_lossy(&buf).into_owned());
     });
-    let err_handle = std::thread::spawn(move || {
+    std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(p) = err_pipe {
             let _ = p.take(16 * 1024).read_to_end(&mut buf);
         }
-        String::from_utf8_lossy(&buf).into_owned()
+        let _ = err_tx.send(String::from_utf8_lossy(&buf).into_owned());
     });
 
     let deadline = Instant::now() + timeout;
@@ -440,9 +446,6 @@ pub(crate) fn ssh_check_within(shared: &Shared, host: &str, timeout: Duration) -
         }
     };
 
-    let stdout = out_handle.join().unwrap_or_default();
-    let stderr = err_handle.join().unwrap_or_default();
-
     let Some(exit) = status else {
         return Ok(obj(json!({
             "host": host,
@@ -452,6 +455,10 @@ pub(crate) fn ssh_check_within(shared: &Shared, host: &str, timeout: Duration) -
             "error": "timed out",
         })));
     };
+
+    let pipe_grace = Duration::from_millis(200);
+    let stdout = out_rx.recv_timeout(pipe_grace).unwrap_or_default();
+    let stderr = err_rx.recv_timeout(pipe_grace).unwrap_or_default();
 
     if !exit.success() {
         let msg = if !stderr.trim().is_empty() {
@@ -632,6 +639,7 @@ mod tests {
                  printf 'LICO_HOME=/remote/alice\\nLICO_PROV=claude\\nLICO_PROV=codex\\n'\n\
                  exit 0 ;;\n\
                hang-box)\n\
+                 python3 -c 'import os, time; os.setsid(); time.sleep(1.5)' &\n\
                  sleep 10\n\
                  exit 0 ;;\n\
                *)\n\

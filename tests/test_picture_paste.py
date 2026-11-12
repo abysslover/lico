@@ -306,7 +306,7 @@ def test_a_slot_the_host_refuses_and_an_input_it_refuses_give_the_text_and_the_c
                 subprocess.run(["xdotool", "key", "Return"], env=w.env, check=True)
             finally:
                 os.kill(window_pid, signal.SIGCONT)
-            state = wait_for(lambda: editor(w) if editor(w)["note"] and "Not sent" in editor(w)["note"] else None)
+            state = wait_for(lambda: (e := editor(w)) and e["note"] and "Not sent" in e["note"] and e)
             assert state["note"] == "Not sent: the session changed meanwhile; look at it and send again. The text is back in the box.", state["note"]
             assert state["text"] == "kept text" and state["picture"] is not None, state
             assert len(picture_sent(received)) == 0 and os.listdir(pasted_dir(w)) == []

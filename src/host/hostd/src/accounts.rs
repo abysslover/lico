@@ -141,6 +141,17 @@ impl Accounts {
         self.get(id).and_then(|a| a.ssh_host.clone())
     }
 
+    /// Returns `Some(ssh_host)` when a `session.create` target (`requested` or provider default) resolves to an SSH remote account.
+    pub fn target_ssh_host(&self, kind: &str, requested: Option<&str>) -> Option<String> {
+        if !matches!(kind, "claude" | "codex") {
+            return None;
+        }
+        match requested {
+            Some(id) => self.get(id).filter(|a| a.provider == kind).and_then(|a| a.ssh_host.clone()),
+            None => self.default_for(kind).and_then(|a| a.ssh_host.clone()),
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<&Account> {
         self.list.iter().find(|a| a.id == id)
     }

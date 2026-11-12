@@ -12,6 +12,7 @@ pub struct Row {
     pub session: String,
     pub provider: String,
     pub account: String,
+    pub ssh_host: String,
     pub model: String,
     pub state: String,
     pub state_at: u64,
@@ -123,7 +124,7 @@ impl Row {
         let state_at = number("state_at");
         let last_active_at = entry["last_active_at"].as_u64().unwrap_or(state_at).max(state_at);
         Some(Row {
-            session: text("session"), provider: text("provider"), account: text("account"), model: clean(&text("model")), state: text("state"), state_at,
+            session: text("session"), provider: text("provider"), account: text("account"), ssh_host: clean(&text("ssh_host")), model: clean(&text("model")), state: text("state"), state_at,
             activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1), approvals, asks, makes, reads, real_screens,
             virtual_display: clean(&text("virtual_display")), issue: text("account_issue"), mode: text("mode"),
             busy_since: number("busy_since"), last_event_at: number("last_event_at"), stalled: entry["stalled"].as_bool().unwrap_or(false),
@@ -173,8 +174,15 @@ impl Row {
         }
     }
 
-    /// Working directory or `repo@branch` summary for the session header; empty for scratch sessions.
+    /// Working directory or `repo@branch` summary for the session header; empty for local scratch sessions.
     pub fn workspace_label(&self) -> String {
+        if !self.ssh_host.is_empty() {
+            return if self.cwd.is_empty() {
+                format!("ssh:{}", self.ssh_host)
+            } else {
+                format!("ssh:{}:{}", self.ssh_host, self.cwd)
+            };
+        }
         if !self.worktree_branch.is_empty() {
             let repo = self.worktree_repo.trim_end_matches('/').rsplit('/').next().unwrap_or(self.worktree_repo.as_str());
             if !repo.is_empty() {

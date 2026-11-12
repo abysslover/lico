@@ -331,6 +331,7 @@ fn status_entry(shared: &Shared, s: &Session) -> Value {
     if let Some(account) = &s.account {
         entry["account"] = json!(account);
         entry["credential_generation"] = json!(s.credential_generation);
+        if let Some(h) = shared.accounts.lock().unwrap().ssh_host(account) { entry["ssh_host"] = json!(h); }
     }
     if let Some(issue) = &s.account_issue {
         entry["account_issue"] = json!(issue);
@@ -444,7 +445,7 @@ pub fn session_list(shared: &Shared) -> Reply {
 
 pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str, chosen: crate::folders::Settings) -> Reply {
     let mode: &'static str = if mode == "default" { "default" } else { "auto" };
-    let chosen = crate::folders::prepare(shared, kind, chosen)?; // the folder, the model and the effort are checked before anything starts
+    let chosen = crate::ssh_remote::prepare_session(shared, kind, account, chosen)?; // the folder, the model and the effort are checked before anything starts
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
     let bound = match resolve_account(shared, kind, account) {
         Ok(bound) => bound,

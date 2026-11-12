@@ -303,7 +303,9 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
     crate::registry::save(shared);
     let last = {
         let s = session.lock().unwrap();
-        last_of(s.provider, s.account.as_deref(), s.mode, &s.settings)
+        let is_ssh = s.account.as_deref().is_some_and(|id| shared.accounts.lock().unwrap().ssh_host(id).is_some());
+        let local_settings = if is_ssh { Settings { cwd: None, worktree_repo: None, ..s.settings.clone() } } else { s.settings.clone() };
+        last_of(s.provider, s.account.as_deref(), s.mode, &local_settings)
     };
     remember(shared, last);
     Ok(session)

@@ -1,10 +1,10 @@
-//! Rendering, layout helpers, and UI-dump serialization for the `Files` panel (`M06-P01`, split from `files_ui.rs`).
+//! Rendering, layout helpers, and UI-dump serialization for the `Files` panel (`M06-P01`..`M06-P03`).
 
 use serde_json::{json, Value};
 
 use super::super::editor::{hidden, wide};
 use super::super::App;
-use super::files_ui::{Explorer, FileItem};
+use super::files_ui::{Explorer, FileItem, HOST_POPUP_MAX_VIS};
 use super::Step;
 
 pub(super) const DEFAULT_PAGE_SIZE: usize = 18;
@@ -78,6 +78,9 @@ pub(super) fn wrap_preview(text: &str, max_cols: usize) -> Vec<String> {
 
 pub(super) fn refusal_text(code: &str) -> String {
     match code {
+        "ssh_unreachable" | "host_timeout" | "host_unreachable" => {
+            "Could not connect to that SSH host (unreachable, removed, or SSH auth failed).".into()
+        }
         "folder_missing" => "That folder no longer exists.".into(),
         "folder_not_directory" => "That path is not a directory.".into(),
         "folder_unreadable" => "That directory cannot be read.".into(),
@@ -90,8 +93,47 @@ pub(super) fn refusal_text(code: &str) -> String {
 }
 
 impl Explorer {
+    pub(crate) fn host_choices(&self) -> Vec<Option<String>> {
+        let mut choices: Vec<Option<String>> = vec![None];
+        for h in &self.ssh_hosts {
+            if !choices.iter().any(|c| c.as_deref() == Some(h.as_str())) {
+                choices.push(Some(h.clone()));
+            }
+        }
+        if let Some(cur) = &self.ssh_host {
+            if !choices.iter().any(|c| c.as_deref() == Some(cur.as_str())) {
+                choices.push(Some(cur.clone()));
+            }
+        }
+        choices
+    }
+
+    pub(crate) fn sync_popup_scroll(&mut self, max_vis: usize) {
+        let total = self.host_choices().len();
+        if total == 0 {
+            self.host_popup_sel = 0;
+            self.host_popup_top = 0;
+            return;
+        }
+        let vis = max_vis.max(1);
+        self.host_popup_sel = self.host_popup_sel.min(total - 1);
+        let max_top = total.saturating_sub(vis);
+        if self.host_popup_sel < self.host_popup_top {
+            self.host_popup_top = self.host_popup_sel;
+        } else if self.host_popup_sel >= self.host_popup_top + vis {
+            self.host_popup_top = self.host_popup_sel + 1 - vis;
+        }
+        self.host_popup_top = self.host_popup_top.min(max_top);
+    }
+
     pub(super) fn nav_len(&self) -> usize {
-        1 + usize::from(self.parent.is_some()) + self.entries.len()
+        if self.loading.is_some() && self.entries.is_empty() && self.preview.is_none() {
+            1
+        } else if self.unreachable {
+            1 + usize::from(self.prev_host.is_some())
+        } else {
+            1 + usize::from(self.parent.is_some()) + self.entries.len()
+        }
     }
 
     pub(super) fn page_window(&self, page_size: usize) -> (usize, usize, usize, usize) {
@@ -143,11 +185,90 @@ impl App {
         }
     }
 
+    pub(crate) fn files_host_popup_draw_state(&self) -> Option<(Vec<Option<String>>, Option<String>, usize, usize)> {
+        let ex = self
+            .ui
+            .panel
+            .as_ref()
+            .filter(|p| p.step == Step::Files)
+            .and_then(|p| p.files.as_ref())
+            .filter(|ex| ex.host_popup_open)?;
+        let choices = ex.host_choices();
+        if choices.is_empty() {
+            return None;
+        }
+        Some((choices, ex.ssh_host.clone(), ex.host_popup_sel, ex.host_popup_top))
+    }
+
+    pub(crate) fn files_host_popup_json(&self) -> Value {
+        let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
+            return json!({"open": false, "selected": 0, "top": 0, "items": []});
+        };
+        let choices = ex.host_choices();
+        let items: Vec<Value> = choices
+            .iter()
+            .enumerate()
+            .map(|(idx, ch)| {
+                let active = *ch == ex.ssh_host;
+                let mark = if active { "* " } else { "  " };
+                let label = match ch {
+                    None => format!("{mark}local (this machine)"),
+                    Some(h) => format!("{mark}ssh: {h}"),
+                };
+                let rect = self.ui.toolbar_geom.host_items.iter().find(|(i, _)| *i == idx).map(|(_, r)| *r);
+                json!({"index": idx, "host": ch, "label": label, "active": active, "rect": rect})
+            })
+            .collect();
+        json!({
+            "open": ex.host_popup_open,
+            "selected": ex.host_popup_sel.min(choices.len().saturating_sub(1)),
+            "top": ex.host_popup_top,
+            "max_visible": HOST_POPUP_MAX_VIS,
+            "items": items,
+        })
+    }
+
     pub(crate) fn files_view(&self, p: &super::Panel) -> (String, Vec<String>) {
         let Some(ex) = p.files.as_ref() else {
             return ("Files".into(), Vec::new());
         };
         let max_cols = self.files_row_cols();
+        let host_prefix = ex.ssh_host.as_deref().map_or_else(String::new, |h| format!(" [ssh:{h}]"));
+
+        if let Some(msg) = ex.loading.as_deref().filter(|_| ex.entries.is_empty() && ex.preview.is_none()) {
+            let body = vec![
+                clip_cols("> [Choose another host...]   (Enter, H, or click Host)", max_cols),
+                String::new(),
+                clip_cols(msg, max_cols),
+                clip_cols("Press Esc to cancel, or click 'Host' (H) to choose another host.", max_cols),
+            ];
+            return (format!("Files{host_prefix}: connecting..."), body);
+        }
+
+        if ex.unreachable {
+            let m0 = if ex.cursor == 0 { '>' } else { ' ' };
+            let mut body = vec![clip_cols(&format!("{m0} [Choose another host...]   (Enter, H, or click Host)"), max_cols)];
+            if let Some(prev) = &ex.prev_host {
+                let m1 = if ex.cursor == 1 { '>' } else { ' ' };
+                let prev_lbl = prev.ssh_host.as_deref().map_or_else(|| "local".to_string(), |h| format!("ssh:{h}"));
+                body.push(clip_cols(&format!("{m1} [<- Back to {prev_lbl}: {}]   (Backspace or click)", prev.cwd), max_cols));
+            }
+            body.push(String::new());
+            body.push(clip_cols(
+                &format!("Could not connect to ssh:{}.", ex.ssh_host.as_deref().unwrap_or("remote")),
+                max_cols,
+            ));
+            body.push(clip_cols(
+                "The host may be offline, removed, or missing BatchMode SSH key authentication.",
+                max_cols,
+            ));
+            body.push(clip_cols(
+                "Click 'Host' (H) to pick another host, F5 to retry, or Backspace to go back.",
+                max_cols,
+            ));
+            return (format!("Files{host_prefix}: unreachable"), body);
+        }
+
         if let Some(pv) = &ex.preview {
             let ps = calc_page_size(self.ui.panel_rows, true);
             let mut body = vec!["[<- Back to directory]   (Backspace or Esc)".into(), String::new()];
@@ -172,7 +293,7 @@ impl App {
                     max_cols,
                 ));
             }
-            return (format!("File: {}  ({})", pv.path, format_bytes(pv.size)), body);
+            return (format!("File{host_prefix}: {}  ({})", pv.path, format_bytes(pv.size)), body);
         }
 
         let ps = calc_page_size(self.ui.panel_rows, false);
@@ -182,7 +303,7 @@ impl App {
         let hidden_tag = if self.ui.show_hidden { "hidden: shown" } else { "hidden: off" };
         body.push(clip_cols(
             &format!(
-                "Page {} / {total_pages}  ({} entries{}, {hidden_tag})  |  . or Ctrl+H hidden  PgUp/PgDn  F5 refresh  N new  Enter open",
+                "Page {} / {total_pages}  ({} entries{}, {hidden_tag})  |  H host  . or Ctrl+H hidden  PgUp/PgDn  F5 refresh  N new  Enter open",
                 page_idx + 1,
                 ex.entries.len(),
                 if ex.truncated { ", first 10000 shown" } else { "" }
@@ -190,9 +311,9 @@ impl App {
             max_cols,
         ));
         let heading = if total_pages > 1 {
-            format!("Files: {}  [Page {} / {total_pages}]", ex.cwd, page_idx + 1)
+            format!("Files{host_prefix}: {}  [Page {} / {total_pages}]", ex.cwd, page_idx + 1)
         } else {
-            format!("Files: {}", ex.cwd)
+            format!("Files{host_prefix}: {}", ex.cwd)
         };
         (heading, body)
     }
@@ -228,11 +349,24 @@ impl App {
                 "top": pv.top,
             })
         });
+        let mode = if ex.loading.is_some() && ex.entries.is_empty() && ex.preview.is_none() {
+            "loading"
+        } else if ex.unreachable {
+            "unreachable"
+        } else if ex.preview.is_some() {
+            "preview"
+        } else {
+            "dir"
+        };
         json!({
+            "ssh_host": ex.ssh_host,
             "cwd": ex.cwd,
             "parent": ex.parent,
             "show_hidden": self.ui.show_hidden,
-            "mode": if ex.preview.is_some() { "preview" } else { "dir" },
+            "mode": mode,
+            "loading": ex.loading,
+            "unreachable": ex.unreachable,
+            "host_popup": self.files_host_popup_json(),
             "cursor": ex.cursor,
             "page": page,
             "total_pages": total_pages,

@@ -126,13 +126,18 @@ impl App {
     /// The mouse moved: which session's row it is over (none outside the list); true when that changed, and the hint line has to be drawn again.
     pub(crate) fn hover_moved(&mut self) -> bool {
         let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
-        let over = match self.ui.controls.hit_at(x, y) {
+        let hit = self.ui.controls.hit_at(x, y);
+        let popup_changed = match &hit {
+            Some(Action::HostItem(idx)) => self.hover_files_host_item(*idx),
+            _ => false,
+        };
+        let over = match hit {
             Some(Action::Session(id)) => Some(id),
             _ => None,
         };
         let changed = over != self.ui.mem.hover;
         self.ui.mem.hover = over;
-        changed
+        changed || popup_changed
     }
 
     /// The memory sentence of the row under the mouse, in place of the keys.

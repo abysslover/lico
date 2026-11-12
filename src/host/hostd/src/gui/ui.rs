@@ -117,7 +117,7 @@ pub struct UiState {
     pub window_title: String, // last X11 title set by `sync_window_title`
     pub search: search::SearchBar, // on-demand find bar (`Ctrl+F` / `Ctrl+Shift+F`)
     pub real_screen: Vec<super::realbar::RealEntry>, // active time-bounded real-screen grants
-    pub saved_cwd: String, pub saved_view: String, pub saved_session: String, pub restored_once: bool, pub panel_rows: usize, pub panel_cols: usize, // M05 workspace state
+    pub saved_cwd: String, pub saved_view: String, pub saved_session: String, pub restored_once: bool, pub panel_rows: usize, pub panel_cols: usize, pub async_seq: u64, // M05/M06 workspace & async state
 }
 
 fn display_cols(text: &str) -> usize {
@@ -369,6 +369,7 @@ impl App {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             _ => self.menu_close(), // a click elsewhere only closes the menu
                         }
+                    } else if self.host_popup_click(hit.clone()) {
                     } else {
                         match hit {
                             Some(Action::Menu(m)) => self.menu_open_at(m),
@@ -377,7 +378,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
-                            Some(Action::Item(..)) => {}
+                            Some(Action::Item(..) | Action::HostItem(..)) => {}
                             None if x < LIST_W as f32 * self.ui.scale.max(1.0) => {}
                             None if self.ed_mouse_press(x, y) => {}
                             None => match self.line_at(y) {
@@ -697,6 +698,7 @@ impl App {
             }
         }
         let menu_open = self.ui.menu_open;
+        let overlay_menu = menu_open.is_some() || self.files_host_popup_open();
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
         let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
@@ -861,7 +863,7 @@ impl App {
             hint_y: hint_row,
             corner: if self.ui.markers { 16 } else { 0 },
             overlay: Overlay {
-                menu: menu_open.is_some(),
+                menu: overlay_menu,
                 selection: self.ui.sel.is_some() || !self.ed.sel_rects.is_empty(), search: self.ui.search.open || search_bar.is_some(),
                 panel: panel_view.is_some(),
                 approval: bar.is_some(),

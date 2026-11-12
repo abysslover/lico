@@ -244,30 +244,40 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     if session.lock().unwrap().purged {
         return Err("busy"); // a deleted session gets no workspace and no process
     }
-    let workspace = crate::folders::working_dir(shared, session)?;
-    let mut command = Command::new(&shared.cfg.codex);
-    command.args(&shared.cfg.codex_args).current_dir(&workspace).env_clear();
-    for key in ["PATH", "LANG"] {
-        if let Some(value) = std::env::var_os(key) {
-            command.env(key, value);
-        }
-    }
     let bound = session.lock().unwrap().account.clone();
-    match bound {
-        // a session bound to an account sees only that account's private home: its own HOME and its own provider home
-        Some(account) => {
-            let homes = shared.accounts.lock().unwrap().homes(&account).ok_or("busy")?;
-            command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
+    let remote_acct = bound
+        .as_deref()
+        .and_then(|acc| shared.accounts.lock().unwrap().ssh_host(acc).map(|h| (acc.to_string(), h)));
+    let (mut command, cwd): (Command, String) = if let Some((account, host)) = remote_acct {
+        let remote_cwd = crate::ssh_remote::ensure_remote_workspace(shared, &host, session)?;
+        let cmd = crate::ssh_remote::remote_codex_command(shared, &host, &account, &remote_cwd)?;
+        (cmd, remote_cwd)
+    } else {
+        let workspace = crate::folders::working_dir(shared, session)?;
+        let mut command = Command::new(&shared.cfg.codex);
+        command.args(&shared.cfg.codex_args).current_dir(&workspace).env_clear();
+        for key in ["PATH", "LANG"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
         }
-        // a session without an account keeps the host's own provider home (the owner's, as before accounts existed)
-        None => {
-            for key in ["HOME", "CODEX_HOME"] {
-                if let Some(value) = std::env::var_os(key) {
-                    command.env(key, value);
+        match bound {
+            // a session bound to an account sees only that account's private home: its own HOME and its own provider home
+            Some(account) => {
+                let homes = shared.accounts.lock().unwrap().homes(&account).ok_or("busy")?;
+                command.env("HOME", homes.home).env(homes.variable, homes.provider_home);
+            }
+            // a session without an account keeps the host's own provider home (the owner's, as before accounts existed)
+            None => {
+                for key in ["HOME", "CODEX_HOME"] {
+                    if let Some(value) = std::env::var_os(key) {
+                        command.env(key, value);
+                    }
                 }
             }
         }
-    }
+        (command, workspace.to_string_lossy().to_string())
+    };
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     let mut child = core::spawn_provider_process(command).map_err(|_| "busy")?;
     let pid = child.id();
@@ -315,7 +325,6 @@ fn spawn_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>, resume: O
     });
     let reader_session = session.clone();
     let reader_shared = shared.clone();
-    let cwd = workspace.to_string_lossy().to_string();
     thread::spawn(move || {
         for line in lines::lines(stdout, MAX_PROVIDER_LINE) {
             match line {

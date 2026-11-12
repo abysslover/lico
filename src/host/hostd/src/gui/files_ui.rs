@@ -1,5 +1,5 @@
 //! In-window Working Directory File Viewer (`M04-P04`, paged navigation `M05-P02`, unified open `M05-P03`,
-//! hidden-file `.dotfiles` toggle `M06-P01`; rendering helpers live in `files_render.rs`).
+//! hidden-file `.dotfiles` toggle `M06-P01`; `Host` combo-box & async SSH live in `files_host.rs`).
 
 use std::process::{Command, Stdio};
 
@@ -10,6 +10,8 @@ use winit::keyboard::{Key, NamedKey};
 use super::super::App;
 use super::files_render::{calc_page_size, refusal_text, wrap_preview};
 use super::Step;
+
+pub const HOST_POPUP_MAX_VIS: usize = 12;
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -31,7 +33,26 @@ pub struct FilePreview {
     pub top: usize,
 }
 
+#[derive(Clone, Debug)]
+pub struct PrevHostSnap {
+    pub ssh_host: Option<String>,
+    pub cwd: String,
+    pub parent: Option<String>,
+    pub entries: Vec<FileItem>,
+    pub truncated: bool,
+    pub cursor: usize,
+}
+
 pub struct Explorer {
+    pub ssh_host: Option<String>,
+    pub ssh_hosts: Vec<String>,
+    pub host_popup_open: bool,
+    pub host_popup_sel: usize,
+    pub host_popup_top: usize,
+    pub pending_req: u64,
+    pub loading: Option<String>,
+    pub unreachable: bool,
+    pub prev_host: Option<PrevHostSnap>,
     pub cwd: String,
     pub parent: Option<String>,
     pub entries: Vec<FileItem>,
@@ -41,6 +62,31 @@ pub struct Explorer {
     pub load_count: u64,
     pub refresh_count: u64,
     pub last_opened: Option<String>,
+}
+
+impl Explorer {
+    pub(super) fn new(ssh_host: Option<String>, ssh_hosts: Vec<String>, cwd: String) -> Self {
+        Self {
+            ssh_host,
+            ssh_hosts,
+            host_popup_open: false,
+            host_popup_sel: 0,
+            host_popup_top: 0,
+            pending_req: 0,
+            loading: None,
+            unreachable: false,
+            prev_host: None,
+            cwd,
+            parent: None,
+            entries: Vec::new(),
+            truncated: false,
+            cursor: 0,
+            preview: None,
+            load_count: 0,
+            refresh_count: 0,
+            last_opened: None,
+        }
+    }
 }
 
 fn spawn_external(program: &str, target: &str) -> bool {
@@ -61,11 +107,32 @@ fn spawn_external(program: &str, target: &str) -> bool {
     }
 }
 
+pub(super) fn parse_entries(reply: &Value) -> Vec<FileItem> {
+    reply["entries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|e| {
+            let is_html = e["is_html"] == json!(true);
+            FileItem {
+                name: e["name"].as_str().unwrap_or("").to_string(),
+                kind: e["kind"].as_str().unwrap_or("file").to_string(),
+                size: e["size"].as_u64().unwrap_or(0),
+                is_html,
+                external: e["external"] == json!(true) || is_html,
+            }
+        })
+        .collect()
+}
+
 impl App {
     pub(crate) fn files_page_nav_state(&self) -> (bool, bool) {
         let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
             return (false, false);
         };
+        if ex.unreachable || (ex.loading.is_some() && ex.entries.is_empty()) {
+            return (false, false);
+        }
         if let Some(pv) = &ex.preview {
             let ps = calc_page_size(self.ui.panel_rows, true);
             return (pv.top > 0, pv.top + ps < pv.lines.len());
@@ -76,6 +143,10 @@ impl App {
     }
 
     pub(crate) fn files_step_page(&mut self, dir: isize) {
+        if self.files_host_popup_open() {
+            self.move_host_popup_sel(dir.saturating_mul(HOST_POPUP_MAX_VIS as isize));
+            return;
+        }
         let panel_rows = self.ui.panel_rows;
         let Some(ex) = self
             .ui
@@ -118,8 +189,11 @@ impl App {
         if lines == 0 {
             return true;
         }
-        // In winit, wheel-up yields `lines > 0` (`Older`); in top-down file lists that moves toward index 0 (`-lines`).
         let step = -lines;
+        if self.files_host_popup_open() {
+            self.move_host_popup_sel(step.clamp(-4, 4));
+            return true;
+        }
         let in_preview = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).is_some_and(|ex| ex.preview.is_some());
         if in_preview {
             self.files_scroll_preview(step);
@@ -129,8 +203,8 @@ impl App {
         true
     }
 
-    fn initial_files_cwd(&self) -> String {
-        if let Some(row) = self.selected_row() {
+    pub(super) fn initial_files_cwd(&self) -> String {
+        if let Some(row) = self.selected_row().filter(|r| r.ssh_host.is_empty()) {
             if !row.worktree_repo.is_empty() {
                 return row.worktree_repo.clone();
             }
@@ -156,40 +230,29 @@ impl App {
     }
 
     pub(crate) fn files_open(&mut self) {
-        let start = self.initial_files_cwd();
+        let remote_sel = self
+            .selected_row()
+            .filter(|r| !r.ssh_host.is_empty())
+            .map(|r| (r.ssh_host.clone(), if r.cwd.is_empty() { "~".to_string() } else { r.cwd.clone() }));
+        let start = remote_sel.as_ref().map_or_else(|| self.initial_files_cwd(), |(_, d)| d.clone());
+        let init_host = remote_sel.map(|(h, _)| h);
+        let ssh_hosts = self.fetch_ssh_host_aliases();
         self.panel_open(Step::Files);
         if let Some(p) = self.ui.panel.as_mut() {
-            p.files = Some(Explorer {
-                cwd: start.clone(),
-                parent: None,
-                entries: Vec::new(),
-                truncated: false,
-                cursor: 0,
-                preview: None,
-                load_count: 0,
-                refresh_count: 0,
-                last_opened: None,
-            });
+            p.files = Some(Explorer::new(init_host.clone(), ssh_hosts, start.clone()));
         }
-        if !self.files_load_dir(&start, false) && start != "/" {
+        if let Some(host) = init_host {
+            self.files_start_remote_dir(&host, &start, false, start != "~", false);
+        } else if !self.files_load_dir(&start, false) && start != "/" {
             let _ = self.files_load_dir("/", false);
         }
     }
 
     pub(crate) fn files_open_at(&mut self, dir: &str) {
+        let ssh_hosts = self.fetch_ssh_host_aliases();
         self.panel_open(Step::Files);
         if let Some(p) = self.ui.panel.as_mut() {
-            p.files = Some(Explorer {
-                cwd: dir.to_string(),
-                parent: None,
-                entries: Vec::new(),
-                truncated: false,
-                cursor: 0,
-                preview: None,
-                load_count: 0,
-                refresh_count: 0,
-                last_opened: None,
-            });
+            p.files = Some(Explorer::new(None, ssh_hosts, dir.to_string()));
         }
         if !self.files_load_dir(dir, false) {
             self.panel_close();
@@ -198,6 +261,11 @@ impl App {
     }
 
     pub(crate) fn files_load_dir(&mut self, dir: &str, keep_cursor: bool) -> bool {
+        let ssh_host = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).and_then(|ex| ex.ssh_host.clone());
+        if let Some(host) = ssh_host {
+            self.files_start_remote_dir(&host, dir, keep_cursor, false, false);
+            return true;
+        }
         let mut req = json!({"op": "folder.list", "cwd": dir});
         if self.ui.show_hidden {
             req["show_hidden"] = json!(true);
@@ -211,21 +279,7 @@ impl App {
             self.dirty = true;
             return false;
         }
-        let entries: Vec<FileItem> = reply["entries"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .map(|e| {
-                let is_html = e["is_html"] == json!(true);
-                FileItem {
-                    name: e["name"].as_str().unwrap_or("").to_string(),
-                    kind: e["kind"].as_str().unwrap_or("file").to_string(),
-                    size: e["size"].as_u64().unwrap_or(0),
-                    is_html,
-                    external: e["external"] == json!(true) || is_html,
-                }
-            })
-            .collect();
+        let entries = parse_entries(&reply);
         let canon = reply["cwd"].as_str().unwrap_or(dir).to_string();
         if let Some(ex) = p.files.as_mut() {
             ex.cwd = canon.clone();
@@ -233,6 +287,8 @@ impl App {
             ex.entries = entries;
             ex.truncated = reply["truncated"] == json!(true);
             ex.preview = None;
+            ex.unreachable = false;
+            ex.loading = None;
             ex.load_count += 1;
             let max_idx = ex.nav_len().saturating_sub(1);
             ex.cursor = if keep_cursor { ex.cursor.min(max_idx) } else { 0 };
@@ -245,7 +301,13 @@ impl App {
     }
 
     fn files_load_preview(&mut self, path: &str, delegate_binary: bool) -> bool {
-        let reply = self.host_call_within(json!({"op": "folder.read", "path": path}), 4);
+        let ssh_host = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).and_then(|ex| ex.ssh_host.clone());
+        if let Some(host) = ssh_host {
+            self.files_start_remote_preview(&host, path, false);
+            return true;
+        }
+        let req = json!({"op": "folder.read", "path": path});
+        let reply = self.host_call_within(req, 4);
         let max_cols = self.files_row_cols();
         let ps = calc_page_size(self.ui.panel_rows, true);
         if reply["ok"] == json!(1) && reply["binary"] == json!(true) && delegate_binary {
@@ -263,11 +325,7 @@ impl App {
             return false;
         }
         let binary = reply["binary"] == json!(true);
-        let lines = if binary {
-            Vec::new()
-        } else {
-            wrap_preview(reply["text"].as_str().unwrap_or(""), max_cols)
-        };
+        let lines = if binary { Vec::new() } else { wrap_preview(reply["text"].as_str().unwrap_or(""), max_cols) };
         if let Some(ex) = p.files.as_mut() {
             let prev_top = ex.preview.as_ref().filter(|pv| pv.path == path).map_or(0, |pv| pv.top);
             let max_top = lines.len().saturating_sub(ps);
@@ -302,7 +360,7 @@ impl App {
                 .as_ref()
                 .filter(|p| p.step == Step::Files)
                 .and_then(|p| p.files.as_ref())
-                .filter(|ex| ex.preview.is_none())
+                .filter(|ex| ex.preview.is_none() && !ex.unreachable && ex.loading.is_none())
                 .map(|ex| ex.cwd.clone());
             if let Some(dir) = open_dir {
                 let _ = self.files_load_dir(&dir, true);
@@ -320,25 +378,35 @@ impl App {
 
     /// Explicit refresh (`F5` or toolbar `Refresh`): the only way an already-opened directory or file preview re-reads disk.
     pub(crate) fn files_refresh(&mut self) {
-        let Some((cwd, preview_path)) = self
+        let Some((ssh_host, unreachable, cwd, preview_path)) = self
             .ui
             .panel
             .as_ref()
             .filter(|p| p.step == Step::Files)
             .and_then(|p| p.files.as_ref())
-            .map(|ex| (ex.cwd.clone(), ex.preview.as_ref().map(|pv| pv.path.clone())))
+            .map(|ex| (ex.ssh_host.clone(), ex.unreachable, ex.cwd.clone(), ex.preview.as_ref().map(|pv| pv.path.clone())))
         else {
             return;
-        };
-        let ok = match preview_path {
-            Some(path) => self.files_load_preview(&path, false),
-            None => self.files_load_dir(&cwd, true),
         };
         if let Some(p) = self.ui.panel.as_mut() {
             if let Some(ex) = p.files.as_mut() {
                 ex.refresh_count += 1;
             }
-            if ok {
+        }
+        if let Some(host) = ssh_host {
+            let target_dir = if unreachable || cwd.is_empty() { "~" } else { cwd.as_str() };
+            match preview_path {
+                Some(path) if !unreachable => self.files_start_remote_preview(&host, &path, true),
+                _ => self.files_start_remote_dir(&host, target_dir, !unreachable, false, true),
+            }
+            return;
+        }
+        let ok = match preview_path {
+            Some(path) => self.files_load_preview(&path, false),
+            None => self.files_load_dir(&cwd, true),
+        };
+        if ok {
+            if let Some(p) = self.ui.panel.as_mut() {
                 p.notice = "Refreshed.".into();
             }
         }
@@ -346,16 +414,25 @@ impl App {
     }
 
     pub(crate) fn files_new_session_here(&mut self) {
+        if let Some(why) = self.files_new_here_reason() {
+            self.ui.flash = Some(format!("+ New here: {why}"));
+            self.dirty = true;
+            return;
+        }
         let target = self
             .ui
             .panel
             .as_ref()
             .filter(|p| p.step == Step::Files)
             .and_then(|p| p.files.as_ref())
-            .map(|ex| ex.cwd.clone())
-            .or_else(|| self.selected_row().filter(|r| !r.cwd.is_empty()).map(|r| r.cwd.clone()));
+            .map(|ex| (ex.cwd.clone(), ex.ssh_host.clone()))
+            .or_else(|| {
+                self.selected_row()
+                    .filter(|r| !r.cwd.is_empty())
+                    .map(|r| (r.cwd.clone(), (!r.ssh_host.is_empty()).then(|| r.ssh_host.clone())))
+            });
         match target {
-            Some(cwd) => self.form_open_at(cwd),
+            Some((cwd, ssh_host)) => self.form_open_at_host(cwd, ssh_host),
             None => self.form_open(),
         }
     }
@@ -388,9 +465,21 @@ impl App {
         let Some(ex) = self.ui.panel.as_ref().filter(|p| p.step == Step::Files).and_then(|p| p.files.as_ref()) else {
             return;
         };
+        if ex.loading.is_some() && ex.entries.is_empty() && ex.preview.is_none() {
+            self.toggle_files_host_popup();
+            return;
+        }
+        if ex.unreachable {
+            if ex.cursor == 0 {
+                self.toggle_files_host_popup();
+            } else {
+                let _ = self.restore_prev_files_host();
+            }
+            return;
+        }
         if ex.cursor == 0 {
-            let cwd = ex.cwd.clone();
-            self.form_open_at(cwd);
+            let (cwd, ssh_host) = (ex.cwd.clone(), ex.ssh_host.clone());
+            self.form_open_at_host(cwd, ssh_host);
             return;
         }
         if let (1, Some(parent)) = (ex.cursor, ex.parent.clone()) {
@@ -398,6 +487,7 @@ impl App {
             return;
         }
         let Some(item) = ex.selected_entry().cloned() else { return };
+        let ssh_host = ex.ssh_host.clone();
         let full = if ex.cwd == "/" { format!("/{}", item.name) } else { format!("{}/{}", ex.cwd, item.name) };
         match item.kind.as_str() {
             "dir" => {
@@ -410,7 +500,14 @@ impl App {
                 self.dirty = true;
             }
             _ if item.external => {
-                self.open_external_target(&full, &item.name);
+                if let Some(h) = ssh_host {
+                    if let Some(p) = self.ui.panel.as_mut() {
+                        p.notice = format!("Remote non-text file on ssh:{h} ({}) — local system opener applies only to local files.", item.name);
+                    }
+                    self.dirty = true;
+                } else {
+                    self.open_external_target(&full, &item.name);
+                }
             }
             _ => {
                 let _ = self.files_load_preview(&full, true);
@@ -455,6 +552,26 @@ impl App {
         if !is_files {
             return false;
         }
+        if self.files_host_popup_open() {
+            match &event.logical_key {
+                Key::Named(NamedKey::Escape) if !event.repeat => self.close_files_host_popup(),
+                Key::Named(NamedKey::Enter | NamedKey::Space) if !event.repeat => {
+                    let sel = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).map_or(0, |ex| ex.host_popup_sel);
+                    self.select_files_host_index(sel);
+                }
+                Key::Named(NamedKey::ArrowUp) => self.move_host_popup_sel(-1),
+                Key::Named(NamedKey::ArrowDown) => self.move_host_popup_sel(1),
+                Key::Named(NamedKey::PageUp) => self.move_host_popup_sel(-(HOST_POPUP_MAX_VIS as isize)),
+                Key::Named(NamedKey::PageDown) => self.move_host_popup_sel(HOST_POPUP_MAX_VIS as isize),
+                Key::Named(NamedKey::Home) => self.move_host_popup_sel(isize::MIN / 2),
+                Key::Named(NamedKey::End) => self.move_host_popup_sel(isize::MAX / 2),
+                Key::Character(c) if !event.repeat && c.eq_ignore_ascii_case("h") && !self.ui.mods.control_key() => {
+                    self.close_files_host_popup();
+                }
+                _ => {}
+            }
+            return true;
+        }
         if self.ui.mods.control_key() && !self.ui.mods.alt_key() && !self.ui.mods.shift_key() {
             if let Key::Character(c) = &event.logical_key {
                 if c.eq_ignore_ascii_case("h") {
@@ -472,6 +589,11 @@ impl App {
             if !event.repeat {
                 self.files_refresh();
             }
+            return true;
+        }
+        let is_loading = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).is_some_and(|ex| ex.loading.is_some());
+        if is_loading && matches!(&event.logical_key, Key::Named(NamedKey::Escape)) && !event.repeat {
+            self.cancel_files_loading();
             return true;
         }
         let in_preview = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).is_some_and(|ex| ex.preview.is_some());
@@ -495,6 +617,7 @@ impl App {
                 Key::Character(c) if !event.repeat => match c.as_str() {
                     "[" => self.files_step_page(-1),
                     "]" => self.files_step_page(1),
+                    _ if c.eq_ignore_ascii_case("h") => self.toggle_files_host_popup(),
                     _ if c.eq_ignore_ascii_case("n") => self.files_new_session_here(),
                     _ => {}
                 },
@@ -509,7 +632,10 @@ impl App {
                 self.sync_view_after_panel_close();
             }
             Key::Named(NamedKey::Backspace) if !event.repeat => {
-                if let Some(parent) = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).and_then(|ex| ex.parent.clone()) {
+                let is_unreach = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).is_some_and(|ex| ex.unreachable);
+                if is_unreach {
+                    let _ = self.restore_prev_files_host();
+                } else if let Some(parent) = self.ui.panel.as_ref().and_then(|p| p.files.as_ref()).and_then(|ex| ex.parent.clone()) {
                     let _ = self.files_load_dir(&parent, false);
                 }
             }
@@ -524,6 +650,7 @@ impl App {
                 "[" => self.files_step_page(-1),
                 "]" => self.files_step_page(1),
                 "." => self.toggle_hidden_files(),
+                "h" => self.toggle_files_host_popup(),
                 "n" => self.files_new_session_here(),
                 _ => {}
             },

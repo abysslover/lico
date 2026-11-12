@@ -190,6 +190,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("folder.git", "cwd") => valid_str(value, 1024),
             ("folder.list", "cwd") | ("folder.read", "path") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
             ("folder.list", "show_hidden") => value.is_boolean(),
+            ("folder.git" | "folder.list" | "folder.read", "ssh_host") => {
+                matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s))
+            }
             ("ssh.check", "host") => matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
@@ -278,9 +281,21 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "approval.text" => crate::pending::text_page(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), int(request, "offset").unwrap_or(0) as usize, int(request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), text(request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
         "settings.set" => crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch::of_map(request)),
-        "folder.git" => crate::worktree::folder_git_op(shared, text(request, "cwd")),
-        "folder.list" => crate::fsview::folder_list(shared, text(request, "cwd"), request.get("show_hidden").and_then(Value::as_bool).unwrap_or(false)),
-        "folder.read" => crate::fsview::folder_read(shared, text(request, "path")),
+        "folder.git" => match request.get("ssh_host").and_then(Value::as_str) {
+            Some(host) => crate::ssh_remote::folder_git(shared, host, text(request, "cwd")),
+            None => crate::worktree::folder_git_op(shared, text(request, "cwd")),
+        },
+        "folder.list" => {
+            let show_hidden = request.get("show_hidden").and_then(Value::as_bool).unwrap_or(false);
+            match request.get("ssh_host").and_then(Value::as_str) {
+                Some(host) => crate::ssh_remote::folder_list(shared, host, text(request, "cwd"), show_hidden),
+                None => crate::fsview::folder_list(shared, text(request, "cwd"), show_hidden),
+            }
+        }
+        "folder.read" => match request.get("ssh_host").and_then(Value::as_str) {
+            Some(host) => crate::ssh_remote::folder_read(shared, host, text(request, "path")),
+            None => crate::fsview::folder_read(shared, text(request, "path")),
+        },
         "ssh.hosts" => crate::ssh::ssh_hosts(shared),
         "ssh.check" => crate::ssh::ssh_check(shared, text(request, "host")),
         "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),

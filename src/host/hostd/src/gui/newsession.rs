@@ -67,6 +67,7 @@ pub struct Form {
     pub models: Vec<String>, // what the program names (aliases), and the one the last session used
     pub efforts: Vec<String>,
     pub recent: Vec<String>,
+    pub pending_start_req: u64, // non-zero while starting an SSH remote session asynchronously
 }
 
 impl Form {
@@ -136,6 +137,7 @@ fn refusal(code: &str) -> String {
         "folder_not_directory" => "That path is not a folder.".into(),
         "folder_unreadable" => "That folder cannot be read.".into(),
         "folder_protected" => "Lico keeps its own files there: choose another folder.".into(),
+        "ssh_unreachable" => "Could not connect to that SSH host (unreachable, removed, or SSH auth failed).".into(),
         "worktree_needs_folder" => "Choose a git repository folder before asking for a worktree.".into(),
         "not_git_repo" => "That folder is not a git repository.".into(),
         "invalid_branch" => "Git refused that branch name.".into(),
@@ -200,14 +202,34 @@ impl App {
             models,
             efforts,
             recent: list("recent"),
+            pending_start_req: 0,
         });
         self.form_check_git();
         self.form_resume();
     }
 
-    /// Opens the new-session form pre-populated with a specific working directory (e.g., from the file viewer's `+ New here`).
-    pub(crate) fn form_open_at(&mut self, folder: String) {
+    /// Opens the new-session form pre-populated with a specific working directory and optional SSH remote host target.
+    pub(crate) fn form_open_at_host(&mut self, folder: String, ssh_host: Option<String>) {
         self.form_open();
+        if let Some(host) = ssh_host {
+            let ssh_map = self.ui.ssh_hosts.clone();
+            self.with_form(|p, _| {
+                if let Some(found) = p
+                    .accounts
+                    .iter()
+                    .find(|a| a.1 == p.provider && ssh_map.get(&a.0).map(String::as_str) == Some(host.as_str()))
+                    .or_else(|| p.accounts.iter().find(|a| ssh_map.get(&a.0).map(String::as_str) == Some(host.as_str())))
+                    .cloned()
+                {
+                    p.provider = found.1;
+                    p.account = found.0;
+                    p.new_ssh_host = None;
+                } else {
+                    p.account.clear();
+                    p.new_ssh_host = Some(host);
+                }
+            });
+        }
         self.with_form(|_, f| {
             f.folder = folder;
             f.checked_folder = "\x00".to_string();
@@ -216,22 +238,27 @@ impl App {
         self.form_resume();
     }
 
-    /// Refreshes whether `f.folder` is inside a git repository when `f.folder` changed.
+    /// Refreshes whether `f.folder` is inside a local git repository when `f.folder` or account target changed.
     pub(crate) fn form_check_git(&mut self) {
-        let Some((folder, already)) = self.ui.panel.as_ref().and_then(|p| p.form.as_ref().map(|f| (f.folder.trim().to_string(), f.checked_folder.clone()))) else {
+        let Some((folder, already, is_ssh)) = self.ui.panel.as_ref().and_then(|p| {
+            let f = p.form.as_ref()?;
+            let is_ssh = self.ui.ssh_hosts.contains_key(&p.account) || (p.account.is_empty() && p.new_ssh_host.is_some());
+            Some((f.folder.trim().to_string(), f.checked_folder.clone(), is_ssh))
+        }) else {
             return;
         };
-        if folder == already {
+        let cache_key = if is_ssh { format!("ssh:{folder}") } else { folder.clone() };
+        if cache_key == already {
             return;
         }
-        let (is_git, repo) = if folder.is_empty() || !folder.starts_with('/') || !crate::folders::valid_path_shape(&folder) || self.socket.is_empty() {
+        let (is_git, repo) = if is_ssh || folder.is_empty() || !folder.starts_with('/') || !crate::folders::valid_path_shape(&folder) || self.socket.is_empty() {
             (false, String::new())
         } else {
             let reply = self.host_call_within(json!({"op": "folder.git", "cwd": folder}), 2);
             (reply["ok"] == json!(1) && reply["is_git"] == json!(true), reply["repo"].as_str().unwrap_or("").to_string())
         };
         self.with_form(|_, f| {
-            f.checked_folder = folder;
+            f.checked_folder = cache_key;
             f.is_git = is_git;
             f.git_repo = repo;
             if !is_git {
@@ -265,10 +292,14 @@ impl App {
     /// Why the session cannot be started yet, from what the form can see.
     fn form_problem(&self, p: &Panel, f: &Form) -> Option<String> {
         let folder = self.live(p, f, Field::Folder);
+        let trimmed_folder = folder.trim();
+        let is_ssh = self.ui.ssh_hosts.contains_key(&p.account);
+        let folder_ok = trimmed_folder.starts_with('/')
+            || (is_ssh && (trimmed_folder == "~" || trimmed_folder.starts_with("~/")));
         let branch = self.live(p, f, Field::Branch);
         if p.chosen_account().is_none() {
             Some("add an account first (Enter on the Account row)".into())
-        } else if !folder.trim().is_empty() && !(folder.trim().starts_with('/') && crate::folders::valid_path_shape(folder.trim())) {
+        } else if !trimmed_folder.is_empty() && !(folder_ok && crate::folders::valid_path_shape(trimmed_folder)) {
             Some("the folder must be a full path that starts with /".into())
         } else if f.is_git && f.worktree && branch.trim().is_empty() {
             Some("enter a new branch name on the Branch row".into())
@@ -407,6 +438,7 @@ impl App {
             Field::Permission => p.mode = if p.mode == "auto" { "default" } else { "auto" },
             _ => {}
         });
+        self.form_check_git();
         self.dirty = true;
     }
 
@@ -460,7 +492,11 @@ impl App {
         self.form_store();
         self.load_ssh_hosts();
         if let Some(p) = self.ui.panel.as_mut() {
-            p.new_ssh_host = None;
+            if let Some(pre) = &p.new_ssh_host {
+                if !p.ssh_hosts.iter().any(|h| h == pre) {
+                    p.new_ssh_host = None;
+                }
+            }
             p.step = Step::Label;
             p.notice.clear();
         }
@@ -516,6 +552,9 @@ impl App {
     }
 
     fn form_start(&mut self) {
+        if self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).is_some_and(|f| f.pending_start_req != 0) {
+            return;
+        }
         self.form_store();
         self.form_resume(); // (the text stays on the input line while the form is shown)
         let Some((problem, request)) = self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))).map(|(p, f)| {
@@ -529,8 +568,49 @@ impl App {
             }
             return;
         }
+        let ssh_host = self
+            .ui
+            .panel
+            .as_ref()
+            .and_then(|p| self.ui.ssh_hosts.get(&p.account).cloned());
+        if let Some(host) = ssh_host {
+            if let Some(p) = self.ui.panel.as_mut() {
+                p.notice = format!("Connecting to ssh:{host} to start session...");
+            }
+            self.dirty = true;
+            let has_proxy = self.ui.proxy.is_some();
+            let req_id = self.spawn_host_call(request, 8, |req_id| super::AsyncJob::SessionStart { req_id, created_cwd: None });
+            if has_proxy {
+                self.with_form(|_, f| {
+                    if f.pending_start_req == 0 {
+                        f.pending_start_req = req_id;
+                    }
+                });
+            }
+            return;
+        }
         let created_cwd = request.get("cwd").and_then(Value::as_str).map(str::to_string);
         let reply = self.host_call(request);
+        self.finish_form_start(created_cwd, reply);
+    }
+
+    pub(super) fn on_form_start_done(&mut self, req_id: u64, created_cwd: Option<String>, reply: Value) {
+        let matched = self
+            .ui
+            .panel
+            .as_ref()
+            .filter(|p| p.step == Step::NewSession)
+            .and_then(|p| p.form.as_ref())
+            .is_some_and(|f| f.pending_start_req == req_id || self.ui.proxy.is_none());
+        if !matched {
+            return;
+        }
+        self.with_form(|_, f| f.pending_start_req = 0);
+        self.finish_form_start(created_cwd, reply);
+        self.dirty = true;
+    }
+
+    fn finish_form_start(&mut self, created_cwd: Option<String>, reply: Value) {
         if reply["ok"] == json!(1) {
             let id = reply["session"].as_str().unwrap_or("").to_string();
             self.panel_close();

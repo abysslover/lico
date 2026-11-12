@@ -44,6 +44,7 @@ pub enum Cmd {
     FilesPrevPage,
     FilesNextPage,
     ToggleHiddenFiles,
+    CycleFilesHost,
     CaptureToInput,
     ToggleGroupBy,
     ToggleEvents,
@@ -210,6 +211,7 @@ impl App {
     }
 
     pub(crate) fn menu_open_at(&mut self, menu: usize) {
+        self.close_files_host_popup();
         self.ui.menu_open = Some(menu);
         self.ui.menu_sel = self.menu_entries(menu).iter().position(|e| e.reason.is_none()).unwrap_or(0);
         self.dirty = true;
@@ -278,6 +280,7 @@ impl App {
             Cmd::FilesPrevPage => self.files_step_page(-1),
             Cmd::FilesNextPage => self.files_step_page(1),
             Cmd::ToggleHiddenFiles => self.toggle_hidden_files(),
+            Cmd::CycleFilesHost => self.toggle_files_host_popup(),
             Cmd::CaptureToInput => self.capture_to_input(),
             Cmd::ToggleGroupBy => self.toggle_group_by(),
             Cmd::ToggleEvents => self.toggle_show_events(),

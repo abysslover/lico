@@ -96,9 +96,12 @@ def test_gui_workspace_grouping_rolls_worktrees_up_and_font_size_persists_across
             lines = state["list_text"].splitlines()
             assert "workspace / alpha-repo" in lines and "workspace / (scratch)" in lines
             repo_idx = lines.index("workspace / alpha-repo")
-            scratch_idx = lines.index("workspace / (scratch)")
-            # Both main-work and wt-work appear under `workspace / alpha-repo` before `workspace / (scratch)`
-            under_repo = "\n".join(lines[repo_idx + 1 : scratch_idx])
+            next_hdr = next(
+                (i for i in range(repo_idx + 1, len(lines)) if lines[i].startswith("workspace / ")),
+                len(lines),
+            )
+            # Both main-work and wt-work roll up together under `workspace / alpha-repo`
+            under_repo = "\n".join(lines[repo_idx + 1 : next_hdr])
             assert "main-work" in under_repo and "wt-work" in under_repo and "(wt)" in under_repo
 
             # Increase font size twice via Ctrl+= and once via View menu -> 17 px; row height grows measurably
