@@ -1,6 +1,6 @@
 # M11-P01 Plan — The Native Account
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M11-P01-native-account`
@@ -15,10 +15,10 @@
 
 ## Steps
 
-- [ ] S01: Red tests: `rig.Host` default synthetic homes; Rust units (state, ids, label, counts-only probe); host tests (list, resume, create, session environment, `native_off`, the old rule gone); GUI tests (dialog list, first-run prompt).
-- [ ] S02: `native.rs`, `collect` rule, `resolve_account`, `account.list` `native` array, settings and CLI, status label, MCP `account` choice.
-- [ ] S03: Dialog entries, first-run prompt, Settings menu entries, header label.
-- [ ] S04: Docs, report, mailbox.
+- [x] S01: Red tests: `rig.Host` default synthetic homes; Rust units (state, ids, label, counts-only probe); host tests (list, resume, create, session environment, `native_off`, the old rule gone); GUI tests (dialog list, first-run prompt).
+- [x] S02: `native.rs`, `collect` rule, `resolve_account`, `account.list` `native` array, settings and CLI, status label, MCP `account` choice.
+- [x] S03: Dialog entries, first-run prompt, Settings menu entries, header label.
+- [x] S04: Docs, report, mailbox.
 
 ## Acceptance Criteria
 
