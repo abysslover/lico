@@ -90,5 +90,10 @@
 | [M12-P02 report](reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | `llm/remote.rs`, the Python script, the failure words, parity with the local engine |
 | [M12-P03 plan](plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | End-to-end verification, measurements, `lico 0.3.0` |
 | [M12-P03 report](reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md) | Measured budgets, the three cold runs, install, the proposed spec requirements LLM-01 to LLM-03 |
+| [M13 milestone](milestones/202611/20261114/20261114_02_M13_discovery_follow_up_chat_list_polish_and_test_split_milestone.md) | Discovery dialog follow-up, chat list polish, and the split of the big GUI tests (`lico 0.3.1`) |
+| [M13-P01 plan](plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | Split the big GUI tests, reproduce the flaky ones |
+| [M13-P02 plan](plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | Cache, speed, fold and readable rows in the discovery dialog |
+| [M13-P03 plan](plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | Chat list: title and age of a live row, `Native` shown once |
+| [M13-P04 plan](plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | End-to-end verification, measurements, `lico 0.3.1` |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).
