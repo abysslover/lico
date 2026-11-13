@@ -211,7 +211,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.chats", "ssh_host") => matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.chats", "account") => valid_request_id(value),
             ("session.chats", "query") => crate::chats::valid_query(value),
-            ("session.chats", "recorded") => value.is_boolean(),
+            ("session.chats", "recorded" | "others") => value.is_boolean(),
             ("session.chats", "offset") => in_range(value, 0, 1_000_000),
             ("session.chats", "limit") => in_range(value, 1, crate::chats::MAX_LIMIT as i64),
             ("call.list", "include_closed") => value.is_boolean(),

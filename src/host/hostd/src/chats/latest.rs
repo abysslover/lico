@@ -15,6 +15,7 @@ pub struct Latest {
     pub updated_at: u64,
     pub open_session: Option<String>,
     pub open_state: Option<&'static str>,
+    pub live: Option<&'static str>, // why another program is thought to be writing it (`live.rs`)
 }
 
 impl Latest {
@@ -40,13 +41,18 @@ pub fn latest_chat(shared: &Shared, provider: &str, account: Option<&str>, cwd: 
         request.insert("ssh_host".into(), json!(host));
     }
     let collected = collect(shared, &request)?;
-    Ok(pick(&collected.items, provider, account).map(|it| Latest {
-        provider_session: it.provider_session.clone(),
-        title: it.title.clone(),
-        turns: it.file.as_deref().and_then(|f| turns::count(&it.provider, f)),
-        updated_at: it.updated_at,
-        open_session: it.open_session.clone(),
-        open_state: it.open_state,
+    Ok(pick(&collected.items, provider, account).map(|it| {
+        let mut one = [it.clone()];
+        super::live::mark(&mut one);
+        Latest {
+            provider_session: it.provider_session.clone(),
+            title: it.title.clone(),
+            turns: it.file.as_deref().and_then(|f| turns::count(&it.provider, f)),
+            updated_at: it.updated_at,
+            open_session: it.open_session.clone(),
+            open_state: it.open_state,
+            live: one[0].live,
+        }
     }))
 }
 
@@ -70,6 +76,7 @@ mod tests {
             file: None,
             turns: None,
             recorded: true,
+            live: None,
         }
     }
 

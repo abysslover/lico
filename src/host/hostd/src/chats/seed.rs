@@ -187,6 +187,7 @@ pub(super) fn scan_ssh_chats(
                     file: None,
                     turns: None,
                     recorded: true,
+                    live: None,
                 });
             }
             return Ok((canon, out));

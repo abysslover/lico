@@ -25,6 +25,7 @@ pub struct ChatEntry {
     pub updated_at: u64,
     pub open_session: Option<String>,
     pub open_state: Option<String>,
+    pub running_elsewhere: bool,
 }
 
 #[derive(Clone, Default)]
@@ -37,6 +38,7 @@ pub struct ChatEntryGeom {
     pub title: String,
     pub open_session: Option<String>,
     pub open_state: Option<String>,
+    pub running_elsewhere: bool,
     pub rect: Rect,
 }
 
@@ -82,6 +84,7 @@ fn rel_age(now: u64, updated_at: u64) -> String {
 /// What the sidebar says for a refused request: a host of another build does not know the operation, which is not a fault of the folder.
 pub(super) fn chats_error_text(code: &str) -> String {
     match code {
+        "chat_running_elsewhere" => "That chat is running in another terminal; it cannot be resumed from here. Use + New chat for a new one.".into(),
         "unknown_op" => "This host is another build than this window and does not know chats; run `lico host stop`, then reopen the window.".into(),
         other => other.to_string(),
     }
@@ -108,6 +111,7 @@ fn parse_chat_items(reply: &Value) -> Vec<ChatEntry> {
                 updated_at: it["updated_at"].as_u64().unwrap_or(0),
                 open_session: it["open_session"].as_str().map(str::to_string),
                 open_state: it["open_state"].as_str().map(str::to_string),
+                running_elsewhere: it["running_elsewhere"] == json!(true),
             })
         })
         .collect()
@@ -216,6 +220,11 @@ impl App {
         let Some(entry) = self.ui.sidebar.chats.items.get(idx).cloned() else {
             return;
         };
+        if entry.running_elsewhere && entry.open_session.is_none() {
+            self.ui.flash = Some(chats_error_text("chat_running_elsewhere"));
+            self.dirty = true;
+            return;
+        }
         if let Some(ref sid) = entry.open_session {
             if let Some(row_state) = self.ui.rows.iter_mut().find(|r| r.session == *sid).map(|r| {
                 r.tab_closed = false;
@@ -337,6 +346,7 @@ impl App {
                     "title": e.title,
                     "open_session": e.open_session,
                     "open_state": e.open_state,
+                    "running_elsewhere": e.running_elsewhere,
                     "rect": e.rect,
                 })
             })
@@ -561,6 +571,7 @@ impl App {
                     Some("running") => (Some("[open]"), Color::rgb(0x68, 0xE0, 0xA8)),
                     Some("disconnected") => (Some("[closed]"), gold_ink),
                     Some("exited") => (Some("[ended]"), muted),
+                    _ if it.running_elsewhere => (Some("[elsewhere]"), Color::rgb(0xF2, 0xB1, 0x3C)), // another program is writing it: it cannot be resumed from here
                     _ => (None, dim),
                 };
                 let pill_w = pill_txt.map_or(0.0, |p| controls.width(fs, p) + 8.0 * s);
@@ -592,6 +603,7 @@ impl App {
                     title: it.title.clone(),
                     open_session: it.open_session.clone(),
                     open_state: it.open_state.clone(),
+                    running_elsewhere: it.running_elsewhere,
                     rect: r,
                 });
                 y += card_h;

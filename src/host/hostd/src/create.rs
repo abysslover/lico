@@ -449,7 +449,8 @@ fn resume_words(asked: bool, answer: Option<&Map<String, Value>>) -> (bool, Stri
     }
     let Some(answer) = answer else { return (false, String::new()) };
     if answer.get("resumed") != Some(&json!(true)) {
-        return (false, "; there was no earlier chat there, so it is a new one".into());
+        let extra = answer.get("others").and_then(crate::chats::sentence).map_or(String::new(), |hint| format!(" ({hint})"));
+        return (false, format!("; there was no earlier chat there, so it is a new one{extra}"));
     }
     let chat = &answer["resumed_chat"];
     let turns = chat["turns"].as_u64().map_or(String::new(), |n| format!(", {n} turns"));
@@ -466,6 +467,7 @@ fn start_words(code: &str) -> String {
     let what = match code {
         "busy" => "the host could not start the session just now; try again in a moment",
         "unknown_account" => "the account of this session is not there any more",
+        "chat_running_elsewhere" => "that chat is being written by a program running elsewhere (another terminal); it is not resumed from here, and nothing was started. Ask again without resume for a new session",
         "option_unavailable" => "the model or the effort of this session is not offered by the program any more",
         folder if folder.starts_with("folder_") => "the folder of this session is not usable any more",
         _ => "the host refused it",

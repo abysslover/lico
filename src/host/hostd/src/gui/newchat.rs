@@ -14,6 +14,9 @@ use super::panel::AsyncJob;
 use super::sidebar_chats::chats_error_text;
 use super::App;
 
+/// What the dialog says of a chat that another program is writing: Resume is refused, New is not.
+pub(super) const LIVE_TEXT: &str = "running in another terminal; it cannot be resumed from here. Choose New.";
+
 /// How many accounts the modal lists at once (it scrolls with the selection beyond this).
 pub(super) const MAX_ROWS: usize = 8;
 
@@ -31,13 +34,14 @@ pub(crate) struct Last {
     pub updated_at: u64,
     pub title: String,
     pub turns: Option<u64>,
+    pub live: bool, // another program is writing it right now: it cannot be resumed from here (SES-07)
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Preview {
     Idle,
     Loading,
-    Nothing,
+    Nothing(Option<String>), // no chat for this account here; where the other chats of the folder are, if there are any
     Found(Last),
     Failed(String),
 }
@@ -126,8 +130,14 @@ impl NewChat {
         match &self.preview {
             Preview::Idle => String::new(),
             Preview::Loading => "Looking for the latest chat...".into(),
-            Preview::Nothing => "No earlier chat in this directory for this account; Resume will open a new one.".into(),
-            Preview::Found(last) => last_session_line(&last.provider, last.updated_at, crate::transfer::utc_offset(last.updated_at as i64), &last.title, last.turns),
+            Preview::Nothing(hint) => match hint {
+                Some(hint) => format!("No earlier chat in this directory for this account; Resume will open a new one. {hint}."),
+                None => "No earlier chat in this directory for this account; Resume will open a new one.".into(),
+            },
+            Preview::Found(last) => {
+                let line = last_session_line(&last.provider, last.updated_at, crate::transfer::utc_offset(last.updated_at as i64), &last.title, last.turns);
+                if last.live { format!("{line} - {LIVE_TEXT}") } else { line }
+            }
             Preview::Failed(why) => format!("Could not look for chats: {why}"),
         }
     }
@@ -222,7 +232,7 @@ impl App {
             return;
         }
         let account = nc.accounts[nc.sel].id.clone();
-        let mut request = json!({"op": "session.chats", "cwd": nc.folder, "account": account, "recorded": true, "limit": 1});
+        let mut request = json!({"op": "session.chats", "cwd": nc.folder, "account": account, "recorded": true, "limit": 1, "others": true});
         if let Some(host) = &nc.ssh_host {
             request["ssh_host"] = json!(host);
         }
@@ -238,6 +248,11 @@ impl App {
     fn newchat_confirm(&mut self) {
         let Some(nc) = self.ui.sidebar.newchat.as_mut() else { return };
         if nc.busy || nc.accounts.is_empty() {
+            return;
+        }
+        if nc.resume && matches!(&nc.preview, Preview::Found(last) if last.live) {
+            nc.error = Some(format!("This chat is {LIVE_TEXT}"));
+            self.dirty = true;
             return;
         }
         let account = nc.accounts[nc.sel].clone();
@@ -361,9 +376,10 @@ impl App {
                         updated_at: item["updated_at"].as_u64().unwrap_or(0),
                         title: super::clean(item["title"].as_str().unwrap_or("")),
                         turns: item["turns"].as_u64(),
+                        live: item["running_elsewhere"] == json!(true),
                     })
                 } else {
-                    Preview::Nothing
+                    Preview::Nothing(crate::chats::sentence(&reply["others"]))
                 };
             }
             AsyncJob::NewChatStart { req_id, created_cwd, resume } => {
@@ -486,8 +502,12 @@ mod tests {
         let mut m = modal(2);
         m.preview = Preview::Loading;
         assert!(m.info_line().starts_with("Looking"));
-        m.preview = Preview::Nothing;
+        m.preview = Preview::Nothing(None);
         assert!(m.info_line().starts_with("No earlier chat"));
+        m.preview = Preview::Nothing(Some("2 chats of this folder exist under other accounts or homes (Busy: 2)".into()));
+        assert!(m.info_line().ends_with("(Busy: 2)."), "{}", m.info_line());
+        m.preview = Preview::Found(Last { provider: "claude".into(), updated_at: 1_000_000_000, title: "t".into(), turns: Some(2), live: true });
+        assert!(m.info_line().contains("running in another terminal") && m.info_line().starts_with("Last Session : claude"), "{}", m.info_line());
         m.resume = false;
         assert!(m.info_line().starts_with("New starts"));
         m.error = Some("Could not open the chat: busy".into());

@@ -3,6 +3,8 @@
 //! for both local and `[ssh: <host>]` accounts (`M07-P03`).
 
 mod latest;
+mod live;
+mod others;
 mod seed;
 mod turns;
 
@@ -10,6 +12,7 @@ mod turns;
 type Scanned = (String, String, String, u64, PathBuf);
 
 pub use latest::latest_chat;
+pub use others::{others, sentence};
 pub use seed::seed_resumed_transcript;
 
 use std::collections::HashMap;
@@ -50,6 +53,7 @@ pub(super) struct ChatItem {
     pub(super) file: Option<PathBuf>, // the transcript on this machine (none for a remote chat or a tab without one)
     pub(super) turns: Option<u32>,    // visible user and assistant messages; filled for the items of a returned page only
     pub(super) recorded: bool,        // the provider has a saved transcript of it (an open tab that has said nothing yet has none)
+    pub(super) live: Option<&'static str>, // why another program is thought to be writing it right now (`live.rs`); filled for the items of a returned page and the candidate of a creation
 }
 
 pub fn valid_query(value: &Value) -> bool {
@@ -397,6 +401,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
 
     // the provider's own default home (`Native`) is one more account of the same rule: named by its reserved id, or listed with the others once it is open
     let native_filter = account_filter.and_then(crate::native::provider_of);
+    let all_native = request.get("_all_native") == Some(&Value::Bool(true)); // internal (the hint counts the default homes before they are chosen); the wire refuses the field
     if native_filter.is_some_and(|provider| !crate::native::enabled(shared, provider)) {
         return Err("native_off");
     }
@@ -471,6 +476,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             file: None,
             turns: None,
             recorded: false,
+            live: None,
         });
     }
 
@@ -534,13 +540,14 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                         file: Some(file),
                         turns: None,
                         recorded: true,
+                        live: None,
                     },
                 );
             }
         }
 
         for provider in ["claude", "codex"] {
-            if !(native_filter == Some(provider) || (account_filter.is_none() && crate::native::enabled(shared, provider))) {
+            if !(native_filter == Some(provider) || (account_filter.is_none() && (all_native || crate::native::enabled(shared, provider)))) {
                 continue;
             }
             let (Some(nhome), Some(nid)) = (crate::native::home(shared, provider), crate::native::id_of(provider)) else { continue };
@@ -563,6 +570,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                     file: Some(file),
                     turns: None,
                     recorded: true,
+                    live: None,
                 });
             }
         }
@@ -642,8 +650,13 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
     for it in page.iter_mut() {
         it.turns = it.file.as_deref().and_then(|f| turns::count(&it.provider, f));
     }
+    live::mark(page);
     let items_json: Vec<Value> = page.iter().map(item_json).collect();
-    Ok(obj(json!({
+    let hint = match (total, request.get("others") == Some(&Value::Bool(true)), canon_cwd.as_deref(), request.get("account").and_then(Value::as_str)) {
+        (0, true, Some(folder), Some(chosen)) => Some(others(shared, folder, ssh_host.as_deref(), Some(chosen))?), // an empty list: where the other chats of the folder are
+        _ => None,
+    };
+    let mut reply = obj(json!({
         "scope": if is_global { "global" } else { "folder" },
         "cwd": canon_cwd,
         "ssh_host": ssh_host,
@@ -652,7 +665,26 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
         "limit": limit,
         "has_more": end < total,
         "items": items_json,
-    })))
+    }));
+    if let Some(hint) = hint {
+        reply.insert("others".into(), hint);
+    }
+    Ok(reply)
+}
+
+/// Why the chat `session` of `provider` is thought to be written by another program right now, if it is (`live.rs`): looked up in the same list the other operations read.
+pub fn live_reason_of(shared: &Shared, account: Option<&str>, cwd: &str, ssh_host: Option<&str>, session: &str) -> Result<Option<&'static str>, &'static str> {
+    let mut request = Map::new();
+    request.insert("cwd".into(), json!(cwd));
+    if let Some(account) = account {
+        request.insert("account".into(), json!(account));
+    }
+    if let Some(host) = ssh_host {
+        request.insert("ssh_host".into(), json!(host));
+    }
+    let mut found: Vec<ChatItem> = collect(shared, &request)?.items.into_iter().filter(|i| i.provider_session == session).take(1).collect();
+    live::mark(&mut found);
+    Ok(found.first().and_then(|i| i.live))
 }
 
 pub(super) fn item_json(it: &ChatItem) -> Value {
@@ -669,6 +701,8 @@ pub(super) fn item_json(it: &ChatItem) -> Value {
         "open_session": it.open_session,
         "open_state": it.open_state,
         "turns": it.turns,
+        "running_elsewhere": it.live.is_some(),
+        "live_reason": it.live,
     })
 }
 

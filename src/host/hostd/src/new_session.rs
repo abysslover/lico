@@ -26,7 +26,16 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
         Err(code) => return Err(code), // refused before anything starts
     };
     let mut resumed: Option<Value> = None;
-    let mut note: Option<&str> = None;
+    let mut note: Option<String> = None;
+    let mut others: Option<Value> = None;
+    // an explicit chat id is checked the same way: a chat that another program is writing is not resumed from here (SES-07)
+    if let (Some(sid), Some(folder), false) = (chosen.resume_id.as_deref(), chosen.cwd.as_deref(), asked_latest) {
+        let chat_account = bound.as_ref().map(|(id, _)| id.clone()).or_else(|| crate::native::id_of(kind).map(str::to_string));
+        let ssh_host = chat_account.as_deref().and_then(|id| shared.accounts.lock().unwrap().ssh_host(id));
+        if crate::chats::live_reason_of(shared, chat_account.as_deref(), folder, ssh_host.as_deref(), sid).ok().flatten().is_some() {
+            return Err("chat_running_elsewhere");
+        }
+    }
     if asked_latest {
         // a session without an account runs in the provider's own default home: its chats are those of the Native entry
         let chat_account = bound.as_ref().map(|(id, _)| id.clone()).or_else(|| crate::native::id_of(kind).map(str::to_string));
@@ -34,12 +43,23 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
         let ssh_host = account_id.and_then(|id| shared.accounts.lock().unwrap().ssh_host(id));
         let folder = chosen.cwd.clone().unwrap_or_default();
         match crate::chats::latest_chat(shared, kind, account_id, &folder, ssh_host.as_deref())? {
-            None => note = Some("no earlier chat for this directory and account; created a new one"),
+            None => {
+                // nothing to continue: a new session, and where the other chats of the folder are
+                let found = crate::chats::others(shared, &folder, ssh_host.as_deref(), account_id).ok();
+                note = Some(match found.as_ref().and_then(crate::chats::sentence) {
+                    Some(hint) => format!("no earlier chat for this directory and account; created a new one. {hint}"),
+                    None => "no earlier chat for this directory and account; created a new one".to_string(),
+                });
+                others = found.filter(|o| o["total"].as_u64().unwrap_or(0) > 0);
+            }
             Some(latest) => {
+                if latest.live.is_some() {
+                    return Err("chat_running_elsewhere"); // a running external process is never adopted: no silent pick of an older chat either
+                }
                 resumed = Some(latest.json());
                 if let (Some(open), Some(state)) = (latest.open_session.as_deref(), latest.open_state) {
                     if let Some(reply) = reopen(shared, open, state)? {
-                        return Ok(with_resumed(reply, Some(&latest.json()), true, None));
+                        return Ok(with_resumed(reply, Some(&latest.json()), true, None, None));
                     }
                 }
                 chosen.resume_id = Some(latest.provider_session);
@@ -62,7 +82,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
         (s.id.clone(), s.generation)
     };
     let reply = obj(json!({"session": id, "generation": generation}));
-    Ok(if asked_latest { with_resumed(reply, resumed.as_ref(), false, note) } else { reply })
+    Ok(if asked_latest { with_resumed(reply, resumed.as_ref(), false, note.as_deref(), others) } else { reply })
 }
 
 /// The tab that already holds the latest chat: a running one is shown again (a closed tab is reopened), a disconnected one is resumed in place;
@@ -87,7 +107,7 @@ fn reopen(shared: &Arc<Shared>, session: &str, state: &str) -> Result<Option<ser
 }
 
 /// The answer to a creation that asked for the latest chat: whether one was continued, which, whether its tab was already open, or why not.
-fn with_resumed(mut reply: serde_json::Map<String, Value>, chat: Option<&Value>, already_open: bool, note: Option<&str>) -> serde_json::Map<String, Value> {
+fn with_resumed(mut reply: serde_json::Map<String, Value>, chat: Option<&Value>, already_open: bool, note: Option<&str>, others: Option<Value>) -> serde_json::Map<String, Value> {
     reply.insert("resumed".into(), json!(chat.is_some()));
     if let Some(chat) = chat {
         reply.insert("resumed_chat".into(), chat.clone());
@@ -97,6 +117,9 @@ fn with_resumed(mut reply: serde_json::Map<String, Value>, chat: Option<&Value>,
     }
     if let Some(note) = note {
         reply.insert("note".into(), json!(note));
+    }
+    if let Some(others) = others {
+        reply.insert("others".into(), others);
     }
     reply
 }
