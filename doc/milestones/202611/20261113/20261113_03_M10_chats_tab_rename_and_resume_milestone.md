@@ -35,7 +35,7 @@ Make the left sidebar easier to read and the way back into earlier conversations
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M10-P01 | Tab colors and the full rename, with old/new build mismatch handling | [Plan](../../plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md) | pending | in progress |
+| M10-P01 | Tab colors and the full rename, with old/new build mismatch handling | [Plan](../../plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md) | [Report](../../reports/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_report.md) | implemented |
 | M10-P02 | Resume core: `turns`, one `latest_chat` rule, `--resume-latest`, MCP `resume` | [Plan](../../plans/202611/20261113/20261113_10_M10-P02_resume_core_plan.md) | pending | planned |
 | M10-P03 | GUI "+ New chat" row and modal | [Plan](../../plans/202611/20261113/20261113_11_M10-P03_gui_new_chat_plan.md) | pending | planned |
 | M10-P04 | End-to-end verification, measurements, and `lico 0.2.6` | [Plan](../../plans/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_plan.md) | pending | planned |

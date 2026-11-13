@@ -1,6 +1,6 @@
 # M10-P01 Plan — Tab Colors and the Full `past` -> `chats` Rename
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M10-P01-tab-colors-and-chats-rename`
@@ -24,10 +24,10 @@ An old host answers `unknown_op` to `session.chats`, and an old CLI gets `unknow
 
 ## Steps
 
-- [ ] S01: Red tests: tab colors and labels in the UI json, label contrast `>= 4.5:1`, retired-names scan, `session.past` -> `unknown_op`, CLI mismatch sentence.
-- [ ] S02: Tab colors (Directories blue, Chats amber, Calls teal; faint own-color tint when inactive).
-- [ ] S03: The rename across Rust, Python protocol, tests, `tests/testmap.toml`, user strings, capabilities lists and living docs.
-- [ ] S04: Mismatch sentence in the CLI and the sidebar; Xvfb screenshot of the three tabs; report.
+- [x] S01: Red tests: tab colors and labels in the UI json, label contrast `>= 4.5:1`, retired-names scan, `session.past` -> `unknown_op`, CLI mismatch sentence.
+- [x] S02: Tab colors (Directories blue, Chats amber, Calls teal; faint own-color tint when inactive).
+- [x] S03: The rename across Rust, Python protocol, tests, `tests/testmap.toml`, user strings, capabilities lists and living docs.
+- [x] S04: Mismatch sentence in the CLI and the sidebar; Xvfb screenshot of the three tabs; report.
 
 ## Acceptance Criteria
 
