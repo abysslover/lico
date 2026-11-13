@@ -19,10 +19,12 @@ use x11rb::wrapper::ConnectionExt as _;
 pub(crate) struct Xvfb {
     child: Child,
     pub(crate) name: String,
+    _pass: crate::testgate::Pass,
 }
 
 impl Xvfb {
     pub(crate) fn start() -> Xvfb {
+        let pass = crate::testgate::X_SERVERS.enter(); // at most a few private X servers at once: each is 65 to 95 MiB
         let mut child = Command::new("Xvfb")
             .args(["-displayfd", "1", "-screen", "0", "320x200x24", "-nolisten", "tcp", "-noreset"])
             .stdout(Stdio::piped())
@@ -31,7 +33,7 @@ impl Xvfb {
             .expect("Xvfb must be installed for these tests (they never skip)");
         let mut line = String::new();
         BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
-        Xvfb { child, name: format!(":{}", line.trim()) }
+        Xvfb { child, name: format!(":{}", line.trim()), _pass: pass }
     }
 }
 

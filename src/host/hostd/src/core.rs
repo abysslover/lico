@@ -356,11 +356,7 @@ pub fn status(shared: &Shared) -> Reply {
 pub fn build_id() -> &'static str {
     static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     ID.get_or_init(|| {
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for b in std::fs::read("/proc/self/exe").unwrap_or_default() {
-            h ^= u64::from(b);
-            h = h.wrapping_mul(0x0100_0000_01b3);
-        }
+        let h = std::fs::File::open("/proc/self/exe").map_or(crate::ident::FNV_BASIS, |f| crate::ident::fnv1a(f).0); // in pieces: the file is the whole program
         format!("{h:016x}")
     })
 }

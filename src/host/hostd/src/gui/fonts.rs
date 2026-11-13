@@ -266,6 +266,7 @@ mod tests {
         plain_faces: Faces,
         swash: SwashCache,
         plain_swash: SwashCache,
+        _pass: crate::testgate::Pass,
     }
 
     fn draw(fs: &mut FontSystem, swash: &mut SwashCache, faces: &mut Faces, text: &str) -> Drawn {
@@ -289,7 +290,8 @@ mod tests {
 
     impl Pair {
         fn new() -> Self {
-            Pair { fast: system(false), plain: system(true), faces: Faces::new(false), plain_faces: Faces::new(true), swash: SwashCache::new(), plain_swash: SwashCache::new() }
+            let pass = crate::testgate::FONT_SYSTEMS.enter(); // a font database is about 130 MiB, two for a pair: one pair at a time
+            Pair { fast: system(false), plain: system(true), faces: Faces::new(false), plain_faces: Faces::new(true), swash: SwashCache::new(), plain_swash: SwashCache::new(), _pass: pass }
         }
 
         /// None when the two draw the same, else what differs.

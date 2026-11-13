@@ -449,6 +449,7 @@ mod tests {
 
     #[test]
     fn two_sessions_get_distinct_displays_survive_caller_thread_exit_and_leave_no_process_after_stop() {
+        let _pass = crate::testgate::X_SERVERS.enter(); // its servers are started below by the program itself
         let a = format!("vd-test-a-{}", core::random_hex(4));
         let b = format!("vd-test-b-{}", core::random_hex(4));
         let a_clone = a.clone();

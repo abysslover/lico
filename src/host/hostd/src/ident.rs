@@ -39,9 +39,58 @@ pub fn builds(old: Option<&str>) -> String {
     builds_of(crate::core::build_id(), old)
 }
 
+pub const FNV_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+
+/// FNV-1a (64 bit) of everything `source` yields, and the largest buffer held to get it (what the build id costs in memory: one piece, never the file).
+pub fn fnv1a(mut source: impl std::io::Read) -> (u64, usize) {
+    let mut h = FNV_BASIS;
+    let mut piece = [0u8; 64 << 10];
+    loop {
+        match source.read(&mut piece) {
+            Ok(0) => break,
+            Ok(n) => {
+                for b in &piece[..n] {
+                    h ^= u64::from(*b);
+                    h = h.wrapping_mul(0x0100_0000_01b3);
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(_) => return (FNV_BASIS, piece.len()),
+        }
+    }
+    (h, piece.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A reader of `left` bytes that are made as they are read: the test never holds them.
+    struct Made(usize);
+    impl std::io::Read for Made {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = buf.len().min(self.0).min(7919);
+            for (i, b) in buf[..n].iter_mut().enumerate() {
+                *b = ((self.0 - i) % 251) as u8;
+            }
+            self.0 -= n;
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn the_build_id_hash_is_fnv_1a_and_reads_the_program_file_in_small_pieces_never_whole() {
+        for (text, want) in [("", 0xcbf2_9ce4_8422_2325_u64), ("a", 0xaf63_dc4c_8601_ec8c), ("foobar", 0x8594_4171_f739_67e8)] {
+            assert_eq!(fnv1a(text.as_bytes()).0, want, "{text:?}");
+        }
+        let mut whole = Vec::new();
+        std::io::Read::read_to_end(&mut Made(300_000), &mut whole).unwrap();
+        assert_eq!(whole.len(), 300_000);
+        let by_hand = whole.iter().fold(FNV_BASIS, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3));
+        assert_eq!(fnv1a(Made(300_000)).0, by_hand, "the same hash as over the whole text");
+        let (_, held) = fnv1a(Made(8 << 20));
+        assert!(held <= 64 << 10, "a program file of 8 MiB held {held} bytes at once: it must be read in pieces");
+    }
 
     #[test]
     fn the_identity_line_names_version_commit_and_build_in_the_window_form_and_the_command_line_form() {

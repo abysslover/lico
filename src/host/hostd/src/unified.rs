@@ -58,6 +58,8 @@ mod search;
 mod session;
 mod ssh;
 mod ssh_remote;
+#[cfg(test)]
+mod testgate;
 mod tokens;
 mod tools;
 mod transfer;

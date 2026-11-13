@@ -386,6 +386,7 @@ const RSS_ALLOWANCE_KIB: u64 = 3 * 192;
 struct Xvfb {
     child: std::process::Child,
     name: String,
+    _pass: crate::testgate::Pass,
 }
 
 impl Drop for Xvfb {
@@ -396,6 +397,7 @@ impl Drop for Xvfb {
 }
 
 fn xvfb(geometry: &str) -> Xvfb {
+    let pass = crate::testgate::X_SERVERS.enter(); // at most a few private X servers at once: each is 65 to 95 MiB
     let mut child = Command::new("Xvfb")
         .args(["-displayfd", "1", "-screen", "0", geometry, "-nolisten", "tcp", "-noreset"])
         .stdout(Stdio::piped())
@@ -404,7 +406,7 @@ fn xvfb(geometry: &str) -> Xvfb {
         .expect("Xvfb must be installed for these tests (they never skip)");
     let mut line = String::new();
     BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
-    Xvfb { child, name: format!(":{}", line.trim()) }
+    Xvfb { child, name: format!(":{}", line.trim()), _pass: pass }
 }
 
 #[test]
