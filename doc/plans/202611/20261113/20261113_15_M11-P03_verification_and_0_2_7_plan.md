@@ -1,6 +1,6 @@
 # M11-P03 Plan — End-to-End Verification, Measurements, and `lico 0.2.7`
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M11-P03-verification-and-0-2-7`
@@ -12,9 +12,9 @@ End-to-end tests on a private Xvfb and a private socket with synthetic homes and
 
 ## Steps
 
-- [ ] S01: Bump to `0.2.7`, the end-to-end test and its `tests/testmap.toml` entry.
-- [ ] S02: Release build, screenshots, cold runs, idle and hidden-growth measurements, acceptance.
-- [ ] S03: Docs, report, install, stop at G3 and G4.
+- [x] S01: Bump to `0.2.7`, the end-to-end test and its `tests/testmap.toml` entry.
+- [x] S02: Release build, screenshots, cold runs, idle and hidden-growth measurements, acceptance.
+- [x] S03: Docs, report, install, stop at G3 and G4.
 
 ## Acceptance Criteria
 

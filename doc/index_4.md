@@ -3,7 +3,7 @@
 | Document | Current meaning |
 |---|---|
 | [M01-P05 plan](plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | User-facing workflow, failure recovery, resource acceptance and a single self-contained executable; G2 approved |
-| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M10 stand; updated 2026-11-13, grants no approval |
+| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M11 stand; updated 2026-11-13, grants no approval |
 | [M02 milestone](milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md) | Agentic-coding basics; G1 approved 2026-10-26 with the phase plans of G2 included; closed 2026-11-11 |
 | [M02 planning set](product/202610/20261026/00001_agentic_basics_plan/planning.md) | Scope, order and decisions; its [requirements](product/202610/20261026/00001_agentic_basics_plan/requirements.md), [screens](product/202610/20261026/00001_agentic_basics_plan/screens.md), [test plan](product/202610/20261026/00001_agentic_basics_plan/test_plan.md) and [changes](product/202610/20261026/00001_agentic_basics_plan/changes.md) sit beside it |
 | [M01-P08 plan](plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | Clean public-clone build reproducibility, test-suite bottleneck optimization, and `0.1.0` version bump; done 2026-11-12 |
@@ -76,5 +76,12 @@
 | [M10-P03 report](reports/202611/20261113/20261113_11_M10-P03_gui_new_chat_report.md) | `gui/newchat.rs`, `gui/newchat_draw.rs`, the click-area race |
 | [M10-P04 plan](plans/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_plan.md) | End-to-end verification, measurements, `lico 0.2.6` |
 | [M10-P04 report](reports/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_report.md) | Measured budgets, acceptance, install |
+| [M11 milestone](milestones/202611/20261113/20261113_04_M11_native_provider_home_chats_milestone.md) | The provider's own default home as a visible `Native` choice, running-elsewhere safety, and the empty-Resume hint (`lico 0.2.7`) |
+| [M11-P01 plan](plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md) | The Native account: virtual ids, one listing rule, settings, label, dialog, first-run question |
+| [M11-P01 report](reports/202611/20261113/20261113_13_M11-P01_native_account_report.md) | `native.rs`, `gui/native_prompt.rs`, the synthetic-HOME hygiene |
+| [M11-P02 plan](plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md) | Running-elsewhere signals, refusal, the empty-Resume hint |
+| [M11-P02 report](reports/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_report.md) | `chats/live.rs`, `chats/others.rs`, the measured scan cost |
+| [M11-P03 plan](plans/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_plan.md) | End-to-end verification, measurements, `lico 0.2.7` |
+| [M11-P03 report](reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md) | Measured budgets, acceptance, install, the flaky-test tally |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

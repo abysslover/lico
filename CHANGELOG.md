@@ -9,6 +9,16 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.2.7 — 2026-11-13 (`M11`)
+
+- **Milestone**: [M11 The provider's own default home as a visible "Native" choice, running-elsewhere safety, and the empty-Resume hint](doc/milestones/202611/20261113/20261113_04_M11_native_provider_home_chats_milestone.md) (`milestone/M11-native-provider-home-chats` once accepted, [M11-P03 report](doc/reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md)); stacked on the M10 branches, which are not yet accepted
+- **Measured resources**: idle window `25.01..25.10` / `35.91..36.29 MiB`, `10 -> 100` hidden growth `+0.23 MiB`
+- **Highlights**:
+  - **Earlier chats are found again.** The provider's own default home (`~/.claude`, `~/.codex`, or `CLAUDE_CONFIG_DIR` / `CODEX_HOME`) is a visible entry named `Native (~/.claude)` / `Native (~/.codex)` next to the managed accounts: in `+ New chat`, the Chats tab, beside the input target, in `lico session create --account native-claude|native-codex`, `lico chat --account`, and `mcp__lico__create` (`account: "native"`). It is closed until you choose (first-run question once per window start: Yes / No / Ask later, counts only before the answer; View menu entries; `lico settings --native-claude|--native-codex`). The provider runs in place with its own login: Lico never reads, copies, links or decrypts it. The old rule "default home only when no managed account exists" is gone.
+  - **Running elsewhere.** A chat that another program is writing right now (modified in the last 180 s, or a Claude Code or Codex process of yours that Lico did not start names it or runs in its folder since before its last write) is marked `[elsewhere]`; its Resume is refused (`chat_running_elsewhere`) in the dialog, the CLI and the tool, and nothing is adopted or started; `New` always works; closed chats of the same folder resume normally.
+  - **Empty-Resume hint.** When Resume finds no chat for the chosen account, the dialog, `--resume-latest` and the tool say how many chats of the folder exist under other accounts and homes (counts only).
+  - A Native caller's new session of the same kind through the tool stays Native (it no longer moves to the managed default). Host tests start with a private synthetic `HOME`, so no test can read the real default homes.
+
 ## 0.2.6 — 2026-11-13 (`M10`)
 
 - **Milestone**: [M10 Chats tab, full `past` -> `chats` rename, "+ New chat" with Resume, and resume parity](doc/milestones/202611/20261113/20261113_03_M10_chats_tab_rename_and_resume_milestone.md) (`milestone/M10-chats-tab-rename-and-resume` once accepted, [M10-P04 report](doc/reports/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_report.md))
