@@ -1,6 +1,6 @@
 # M09-P01 Report — Strip `[call done]` Control Markers and Add Collapsible Tool Cards
 
-- Status: pending (awaiting owner G3/G4 verdict on `M09`)
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 - Date: 2026-11-13
 - Branch: `phase/M09-P01-clean-markers-and-collapsible-tools`
 - Plan: [M09-P01 Plan](../../../plans/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_plan.md)

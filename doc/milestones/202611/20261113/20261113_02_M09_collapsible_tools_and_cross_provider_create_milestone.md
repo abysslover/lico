@@ -1,12 +1,12 @@
 # M09 — Clean Call Control Markers, Collapsible Tool Cards, and Cross-Provider Session Creation (`lico 0.2.5`)
 
-- Status: done (awaiting G3/G4)
-- Approved: 2026-11-13 (G1 and G2 approved by the owner on 2026-11-13)
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-13)
+- Approved: 2026-11-13 (G1, G2, G3, and G4 approved by the owner on 2026-11-13)
 - Project: Lico
 - Updated: 2026-11-13
 - Milestone branch: `milestone/M09-collapsible-tools-and-cross-provider-create`
 - Implementation: `phase/M09-P01-clean-markers-and-collapsible-tools` .. `phase/M09-P03-verification-and-0-2-5` (`lico 0.2.5`)
-- Next gate: G3 / G4 after `M09-P03`
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-13)
 
 ## Goal
 
@@ -39,6 +39,6 @@ Live inspection of `0.2.4` with named `Claude-L` and `Codex-L` sessions confirme
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M09-P01 | Strip `[call done]` control markers across send/reply/view paths and add default-collapsed click-to-expand tool/command cards with distinct palette | [Plan](../../plans/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_plan.md) | [Report](../../reports/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done |
-| M09-P02 | Cross-provider `mcp__lico__create` (`Claude` <-> `Codex`, optional `prompt`, optional `scope`, new GUI tab) | [Plan](../../plans/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_plan.md) | [Report](../../reports/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done |
-| M09-P03 | End-to-end verification, Xvfb inspection bundle, memory budgets, and `lico 0.2.5` release | [Plan](../../plans/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_plan.md) | [Report](../../reports/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done (awaiting G3/G4) |
+| M09-P01 | Strip `[call done]` control markers across send/reply/view paths and add default-collapsed click-to-expand tool/command cards with distinct palette | [Plan](../../plans/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_plan.md) | [Report](../../reports/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | accepted & merged |
+| M09-P02 | Cross-provider `mcp__lico__create` (`Claude` <-> `Codex`, optional `prompt`, optional `scope`, new GUI tab) | [Plan](../../plans/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_plan.md) | [Report](../../reports/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | accepted & merged |
+| M09-P03 | End-to-end verification, Xvfb inspection bundle, memory budgets, and `lico 0.2.5` release | [Plan](../../plans/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_plan.md) | [Report](../../reports/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | accepted & merged |

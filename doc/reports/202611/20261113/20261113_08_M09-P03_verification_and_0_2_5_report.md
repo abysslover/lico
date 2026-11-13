@@ -1,6 +1,6 @@
 # M09-P03 Report — End-to-End GUI & MCP Verification, Xvfb Inspection Bundle, Memory Budgets, and `lico 0.2.5` Release
 
-- Status: done (awaiting G3 inspection and G4 merge)
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 - Version: 1.2.0
 - Date: 2026-11-13
 - Milestone: [M09 — Clean Call Control Markers, Collapsible Tool Cards, and Cross-Provider Session Creation (`lico 0.2.5`)](../../../milestones/202611/20261113/20261113_02_M09_collapsible_tools_and_cross_provider_create_milestone.md)
@@ -82,4 +82,4 @@ installing the standalone `0.2.5` executable:
 
 ## Gate status
 
-Implemented on `phase/M09-P03-verification-and-0-2-5` with standalone `lico 0.2.5` installed; awaiting owner G3 inspection and G4 merge approval.
+Accepted by the owner at G3 and merged and published on `main` (`milestone/M09-collapsible-tools-and-cross-provider-create`) at G4 on 2026-11-13.

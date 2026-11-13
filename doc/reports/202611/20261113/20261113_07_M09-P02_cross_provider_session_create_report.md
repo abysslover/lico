@@ -1,6 +1,6 @@
 # M09-P02 Report — Cross-Provider `mcp__lico__create` (`Claude` <-> `Codex`, Optional `prompt`, New GUI Tab)
 
-- Status: done
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 - Date: 2026-11-13
 - Branch: `phase/M09-P02-cross-provider-session-create`
 - Milestone: [M09 — Clean Call Control Markers, Collapsible Tool Cards, and Cross-Provider Session Creation (`lico 0.2.5`)](../../../milestones/202611/20261113/20261113_02_M09_collapsible_tools_and_cross_provider_create_milestone.md)
