@@ -64,7 +64,7 @@ def test_capabilities_matches_across_socket_cli_and_http():
             assert v1.validate_response("capabilities", sock_cap) == []
             assert sock_cap["id"] == "cap-sock"
             assert sock_cap["protocol"] == 1
-            assert sock_cap["version"] == "0.2.4"
+            assert sock_cap["version"] == "0.2.5"
             assert "capabilities" in sock_cap["ops"]
             assert "account.rename" in sock_cap["ops"]
             assert "session.mode" in sock_cap["ops"]

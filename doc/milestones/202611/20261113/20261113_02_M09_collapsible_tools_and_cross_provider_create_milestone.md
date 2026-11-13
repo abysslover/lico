@@ -1,6 +1,6 @@
 # M09 — Clean Call Control Markers, Collapsible Tool Cards, and Cross-Provider Session Creation (`lico 0.2.5`)
 
-- Status: in_progress
+- Status: done (awaiting G3/G4)
 - Approved: 2026-11-13 (G1 and G2 approved by the owner on 2026-11-13)
 - Project: Lico
 - Updated: 2026-11-13
@@ -39,6 +39,6 @@ Live inspection of `0.2.4` with named `Claude-L` and `Codex-L` sessions confirme
 
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
-| M09-P01 | Strip `[call done]` control markers across send/reply/view paths and add default-collapsed click-to-expand tool/command cards with distinct palette | [Plan](../../plans/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_plan.md) | — | — | — | in_progress |
-| M09-P02 | Cross-provider `mcp__lico__create` (`Claude` <-> `Codex`, optional `prompt`, optional `scope`, new GUI tab) | — | — | — | — | not_started |
-| M09-P03 | End-to-end verification, Xvfb inspection bundle, memory budgets, and `lico 0.2.5` release | — | — | — | — | not_started |
+| M09-P01 | Strip `[call done]` control markers across send/reply/view paths and add default-collapsed click-to-expand tool/command cards with distinct palette | [Plan](../../plans/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_plan.md) | [Report](../../reports/202611/20261113/20261113_06_M09-P01_clean_markers_and_collapsible_tools_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done |
+| M09-P02 | Cross-provider `mcp__lico__create` (`Claude` <-> `Codex`, optional `prompt`, optional `scope`, new GUI tab) | [Plan](../../plans/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_plan.md) | [Report](../../reports/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done |
+| M09-P03 | End-to-end verification, Xvfb inspection bundle, memory budgets, and `lico 0.2.5` release | [Plan](../../plans/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_plan.md) | [Report](../../reports/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_report.md) | `202611/20261113/00004_M09-P03_collapsible_tools_and_create/` | — | done (awaiting G3/G4) |

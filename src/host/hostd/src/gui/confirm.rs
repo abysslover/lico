@@ -82,7 +82,7 @@ impl App {
         if closed_panel {
             self.panel_close();
         }
-        if id != self.session {
+        if id != self.session || self.active_call_open() || self.view.is_none() {
             self.switch_to(&id);
         }
         if closed_panel {
@@ -102,7 +102,7 @@ impl App {
         if self.ui.panel.is_some() {
             self.panel_close();
         }
-        if id != self.session {
+        if id != self.session || self.active_call_open() || self.view.is_none() {
             self.switch_to(&id);
         }
         self.ask_open(Act::CloseTab);

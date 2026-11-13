@@ -47,7 +47,7 @@ def test_the_single_executable_runs_every_role_alone_in_an_empty_directory():
         for form in ("version", "--version"):
             line = run(exe, env, form).stdout.strip()                       # the package version as it is, the commit it was built from, and the build id
             assert re.fullmatch(r"lico \S+ \(commit ([0-9a-f]{7,}(-dirty)?|unknown), build [0-9a-f]{16}\)", line), line
-            assert line.startswith("lico 0.2.4 (commit "), line              # owner-approved 0.2.4 patch bump upon M08 completion
+            assert line.startswith("lico 0.2.5 (commit "), line              # owner-approved 0.2.5 patch bump upon M09 completion
         text = run(exe, env, "licenses").stdout
         assert "Permission is hereby granted, free of charge" in text and "THIRD-PARTY NOTICES" in text and len(text) > 100_000   # its own and every crate's, inside the file
         status = run(exe, env, "cred", "--data-dir", str(Path(directory) / "creds"), "status")
