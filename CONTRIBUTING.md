@@ -49,10 +49,11 @@ catch-up of `main` on that day.
    milestone's status to done, a branch `milestone/Mxx-<name>` is created at that
    commit and listed in the milestone document. Each milestone is then a named
    point that can be opened while `main` stays current.
-6. The status documents are updated in the same change as the phase: PLAN.md, the
-   "Current status" paragraph of README.md, the phase table and the gate rows of
-   the milestone document, and the state cells of the roadmap. A phase is not
-   finished while they show an older state.
+6. The status documents are updated in the same change as the phase: PLAN.md,
+   CHANGELOG.md (and README.md when the current version or top-level summary
+   changes), the phase table and the gate rows of the milestone document, and
+   the state cells of the roadmap. A phase is not finished while they show an
+   older state.
 
 Moving `main` is not publication. A push needs the owner's separate, explicit yes
 for the exact list of what is published.

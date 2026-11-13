@@ -1,11 +1,11 @@
 # Repository layout and navigation
 
-Updated: 2026-10-23. This is the public product layout contract, not a runtime setup.
+Updated: 2026-11-13. This is the public product layout contract, not a runtime setup.
 
 The project has exactly five non-hidden root directories: `doc`, `exp`, `private`,
 `src` and `tests`. `private` exists locally and is never tracked, so a public
 checkout creates it only when local evidence is needed. Root files may hold the
-README, license, contributor guide, status and a future stack manifest. Generated
+README, changelog, license, contributor guide, status and stack manifest. Generated
 build/dependency directories and Git metadata are separate from authored modules.
 
 | Root | Content |
