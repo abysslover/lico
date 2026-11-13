@@ -52,13 +52,15 @@ fn call(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &
 
 fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &Mutex<Window>, now: Instant, held: &Arc<AtomicUsize>) -> Result<String, String> {
     calls::counted(window, caller, now)?;
-    let target = arguments.get("session").and_then(Value::as_str).filter(|id| !id.is_empty() && id.len() <= 64);
+    let raw_target = arguments.get("session").and_then(Value::as_str).filter(|id| !id.is_empty() && id.chars().count() <= 64);
     let wanted = match number(arguments, "last_n") {
         Ok(None) => Some(DEFAULT),
         Ok(Some(n)) if n > 0 => Some(n.min(MOST as u64) as usize),
         _ => None,
     };
-    let (Some(target), Some(wanted)) = (target, wanted) else { return Err(needs()) };
+    let (Some(raw_target), Some(wanted)) = (raw_target, wanted) else { return Err(needs()) };
+    let target_owned = crate::mention::resolve_agent_target(shared, caller, raw_target).map_err(|code| calls::refusal(shared, caller, code))?;
+    let target = target_owned.as_str();
     let label = described(shared, target).filter(|(_, readable)| *readable).map(|(label, _)| label).ok_or_else(|| calls::refusal(shared, caller, "unknown_session"))?;
     if pending::kept(shared, caller, "history", target) {
         return read(shared, caller, target, wanted);

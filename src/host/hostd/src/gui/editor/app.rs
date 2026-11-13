@@ -340,6 +340,38 @@ impl App {
             self.dirty = true;
             return;
         }
+        if let Some(slash_rename) = crate::mention::parse_slash_rename(self.ed.text()) {
+            match slash_rename {
+                Ok(None) => {
+                    self.ed.clear();
+                    emit_ime("text", "");
+                    self.run_cmd(super::super::menu::Cmd::Rename);
+                }
+                Ok(Some(new_name)) => {
+                    let sid = self.session.clone();
+                    let reply = self.host_call(json!({"op": "session.rename", "session": sid, "name": new_name}));
+                    if reply["ok"] == json!(1) {
+                        let raw_sent = self.ed.text().to_string();
+                        self.ed.clear();
+                        emit_ime("sent", &raw_sent);
+                        emit_ime("text", "");
+                        self.send("{\"op\":\"status\"}");
+                        self.ui.flash = Some(if new_name.trim().is_empty() {
+                            "The name is taken away.".into()
+                        } else {
+                            format!("Renamed to '{}'.", new_name.trim())
+                        });
+                    } else {
+                        self.ui.flash = Some("Rename refused: at most 60 characters.".into());
+                    }
+                }
+                Err(_) => {
+                    self.ui.flash = Some("Usage: /rename <name> (single line, at most 60 characters).".into());
+                }
+            }
+            self.dirty = true;
+            return;
+        }
         if self.reconnect_instead() {
             return;
         }

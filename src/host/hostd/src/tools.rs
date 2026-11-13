@@ -315,13 +315,34 @@ fn sessions(shared: &Shared, caller: &str) -> String {
     json!({"sessions": rows}).to_string()
 }
 
+fn mcp_rename(shared: &Arc<Shared>, caller: &str, arguments: &Map<String, Value>) -> Result<String, String> {
+    crate::calls::counted(crate::calls::window(), caller, Instant::now())?;
+    let Some(raw) = arguments.get("name").and_then(Value::as_str) else {
+        return Err("bad_request: rename needs `name` (at most 60 characters; empty clears the name)".into());
+    };
+    if !crate::folders::valid_name(raw) {
+        return Err("bad_request: name may be at most 60 characters, with no control or invisible characters".into());
+    }
+    let done = crate::folders::rename(shared, caller, raw).map_err(|code| crate::calls::refusal(shared, caller, code))?;
+    Ok(json!({"renamed": true, "session": caller, "name": done["name"]}).to_string())
+}
+
 fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
     match name {
         "sessions" => Ok(Answer::Text(sessions(shared, caller))),
-        "send" => crate::calls::send(shared, caller, arguments).map(Answer::Text),
+        "send" => {
+            let res = crate::calls::send(shared, caller, arguments);
+            if res.is_ok() {
+                if let Some(f) = core::find(shared, caller) {
+                    f.lock().unwrap().peer_turn.sent_in_turn = true;
+                }
+            }
+            res.map(Answer::Text)
+        }
         "create" => crate::create::create(shared, caller, arguments).map(Answer::Text),
         "history" => crate::history::history(shared, caller, arguments).map(Answer::Text),
         "read_handoff" => crate::inbox_read::read_handoff(shared, caller, arguments).map(Answer::Text),
+        "rename" => mcp_rename(shared, caller, arguments).map(Answer::Text),
         "capture" => crate::screentools::capture(shared, caller, arguments),
         "clipboard_read" => crate::screentools::clipboard_read(shared, caller, arguments),
         "clipboard_write" => crate::screentools::clipboard_write(shared, caller, arguments),

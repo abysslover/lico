@@ -84,6 +84,7 @@ def test_capabilities_matches_across_socket_cli_and_http():
                 "create",
                 "history",
                 "read_handoff",
+                "rename",
                 "capture",
                 "clipboard_read",
                 "clipboard_write",

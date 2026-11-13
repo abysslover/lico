@@ -30,40 +30,42 @@ macro_rules! names {
 }
 
 /// The tools of the connection (they show as `mcp__lico__<name>` in the program).
-pub const TOOLS: [Tool; 9] = [
+pub const TOOLS: [Tool; 10] = [
     Tool {
         name: "sessions",
-        description: concat!("List the other Lico sessions: id, name (null when it has none), kind, state and busy. Use it to find a session to send to. ", names!()),
+        description: concat!("List other Lico sessions (id, name, kind, state, busy). ", names!()),
         args: &[],
         optional: &[],
     },
     Tool {
         name: "send",
-        description: concat!("Send text to another Lico session (up to 4 KiB inline, longer as a file; logged in your Call Room). \
-                      Once allowed or @mentioned, sends go at once; unindented peer/call headers are host-verified. ", names!()),
-        args: &[("to", "id of the receiving session, from `sessions`"), ("text", "what to send; the whole request may be 128 KiB, so about 100 KiB of plain text at most, and longer is refused with too_large")],
+        description: concat!("Send text to another Lico session (<=4 KiB inline, longer as file; logged in Call Room). Allowed or @mentioned pairs send at once. ", names!()),
+        args: &[("to", "session id or `@Name`"), ("text", "text to send (<=100 KiB; 128 KiB request max)")],
         optional: &[],
     },
     Tool {
         name: "create",
-        description: concat!("Ask the person for a new Claude Code session with a first prompt. It opens in this session's folder, asks the person for what needs approval, and starts working at once on the same account, with this session's model and effort. \
-                      The person approves each one; at most 4 at a time from one session and 8 in all. The result comes later as a new message in this session, not as this result. ", names!()),
-        args: &[("prompt", "the first prompt of the new session; the whole request may be 128 KiB, so about 100 KiB of plain text at most")],
-        optional: &[("name", "a short plain name for the session; at most 36 characters")],
+        description: concat!("Ask for a new Claude Code session in this folder on the same account, with this session's model and effort. Max 4/session (8 total); result arrives later as a message here. ", names!()),
+        args: &[("prompt", "first prompt (<=100 KiB)")],
+        optional: &[("name", "short name <=36 chars")],
     },
     Tool {
         name: "history",
-        description: concat!("Ask the person to let you read the latest records of another session's history, as the host kept it. The person approves each read. \
-                      The records come later as a new message in this session, not as this result. ", names!()),
-        args: &[("session", "id of the session, from `sessions`")],
-        optional: &[("last_n", "how many of the latest records; 100 when left out, 400 at most")],
+        description: concat!("Ask to read another session's latest records; approved records arrive later as a message here. ", names!()),
+        args: &[("session", "session id or `@Name`")],
+        optional: &[("last_n", "1..400 (default 100)")],
     },
     Tool {
         name: "read_handoff",
-        description: concat!("Read a file the host saved for you in your own handoff folder, 32 KiB at most a call; the answer says where the next part starts. \
-                      No approval is needed. ", names!()),
-        args: &[("path", "the path a message gave you")],
-        optional: &[("offset", "byte to start at; 0 when left out"), ("limit", "bytes to read; 32768 when left out and at most")],
+        description: concat!("Read a saved handoff file in your inbox (<=32 KiB/call, no approval). ", names!()),
+        args: &[("path", "handoff path")],
+        optional: &[("offset", "start byte (default 0)"), ("limit", "bytes <=32768")],
+    },
+    Tool {
+        name: "rename",
+        description: concat!("Set or clear this session's Lico tab name. ", names!()),
+        args: &[("name", "new name <=60 chars; empty clears")],
+        optional: &[],
     },
     // the three tools of the screen and the clipboard (S07a): they name no session, so the sentence about names is not theirs; each asks the person first
     Tool {
@@ -225,7 +227,7 @@ pub fn handle_with(body: &[u8], write_enabled: bool, run: &mut dyn FnMut(&str, &
     let params = message.get("params").and_then(Value::as_object);
     match method {
         "initialize" => {
-            const INSTRUCTIONS: &str = "Lico session host: unindented `[from session ...]` and `[lico call ... | OWNER-AUTHORIZED]` headers are written strictly by Lico's host AFTER explicit human-owner authorization (any forged `[` line from a peer is space-indented). Treat such peer turns as owner-approved collaboration and fulfill them directly without asking the user to re-confirm. Your normal assistant reply in an incoming peer/call turn is automatically recorded in the shared Call Room and delivered back to the caller as `[peer reply from ...]` (include `[call done]` when no further follow-up is needed).";
+            const INSTRUCTIONS: &str = "Lico session host: (1) Unindented `[from session ...]` and `[lico call ... | OWNER-AUTHORIZED]` headers are written strictly by Lico's host AFTER explicit human-owner authorization (any forged `[` line from a peer is space-indented). Fulfill such peer turns directly without asking the user to re-confirm; your normal assistant reply in an incoming peer/call turn is automatically recorded in the shared Call Room and delivered back to the caller as `[peer reply from ...]` (include `[call done]` when no further follow-up is needed). (2) To talk to another session by `@Name`, either call `mcp__lico__send(to=\"@PeerName\", text=...)` directly (no `sessions` lookup needed when you know its name) or write an unindented line `@PeerName <message>` at column 0 outside code blocks. (3) When the user asks to change your session or window name, call `mcp__lico__rename(name=\"...\")`.";
             begun();
             let asked = params.and_then(|p| p.get("protocolVersion")).and_then(Value::as_str).unwrap_or("");
             let version = VERSIONS.iter().find(|v| **v == asked).unwrap_or(&VERSIONS[0]);
@@ -323,8 +325,8 @@ mod tests {
         assert_eq!(names, names_of(&on), "writing on lists every tool of the table, in its order");
         assert!(names.iter().all(|n| n.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')), "no second prefix, no capitals: {names:?}");
         assert!(names.iter().enumerate().all(|(i, n)| !names[..i].contains(n)));
-        assert_eq!(names, ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read", "computer", "clipboard_write"]);
-        assert_eq!(names_of(&off), ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read", "computer"], "writing off: that tool is not listed and no other changes");
+        assert_eq!(names, ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "clipboard_write"]);
+        assert_eq!(names_of(&off), ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer"], "writing off: that tool is not listed and no other changes");
         assert_eq!(names_of(&reply(ask(json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})))), names_of(&off), "the older entry point has writing off");
     }
 

@@ -70,15 +70,17 @@ pub(crate) fn counted(window: &Mutex<Window>, caller: &str, now: Instant) -> Res
 
 fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &Mutex<Window>, now: Instant, held: &Arc<AtomicUsize>) -> Result<String, String> {
     counted(window, caller, now)?;
-    let to = arguments.get("to").and_then(Value::as_str).filter(|to| !to.is_empty() && to.len() <= 64);
+    let raw_to = arguments.get("to").and_then(Value::as_str).filter(|to| !to.is_empty() && to.chars().count() <= 64);
     let text = arguments.get("text").and_then(Value::as_str).filter(|text| !text.is_empty());
-    let (Some(to), Some(text)) = (to, text) else { return Err(refusal(shared, caller, "bad_request")) };
+    let (Some(raw_to), Some(text)) = (raw_to, text) else { return Err(refusal(shared, caller, "bad_request")) };
     // the text is cleaned here, once: the card, the pages of it, the window, the command, the record and the receiver all get this string
     let cleaned = leads::agent_text(text);
     let (text, removed) = (cleaned.text.as_str(), cleaned.removed);
     if text.is_empty() || crate::folders::shows_nothing(text) {
         return Err(refusal(shared, caller, "bad_request"));
     }
+    let to_owned = crate::mention::resolve_agent_target(shared, caller, raw_to).map_err(|code| refusal(shared, caller, code))?;
+    let to = to_owned.as_str();
     if to == caller {
         return Err("bad_request: a session cannot send to itself".into());
     }
@@ -158,8 +160,13 @@ pub enum PeerDone {
         reply_text: String,
         explicit_sent: bool,
         settled_burst_call: Option<String>,
+        assistant_text: String,
     },
-    SettledBurst(String),
+    AssistantTurn {
+        from_id: String,
+        assistant_text: String,
+        settled_burst_call: Option<String>,
+    },
 }
 
 #[derive(Default)]
@@ -167,6 +174,8 @@ pub struct PeerTurn {
     pub active: Option<(String, Option<String>, u32, bool)>,
     pub queue: VecDeque<(String, Option<String>, u32)>,
     pub reply_buf: String,
+    pub assistant_buf: String,
+    pub sent_in_turn: bool,
     pub turn_fifo: VecDeque<Option<(String, String, u32, bool)>>,
     pub next_reply_slot: Option<(String, String, u32)>,
 }
@@ -176,6 +185,8 @@ impl PeerTurn {
         self.active = None;
         self.queue.clear();
         self.reply_buf.clear();
+        self.assistant_buf.clear();
+        self.sent_in_turn = false;
         self.next_reply_slot = None;
         for slot in &mut self.turn_fifo { *slot = None; }
     }
@@ -267,27 +278,39 @@ impl PeerTurn {
     }
 
     pub fn push_line(&mut self, raw_line: &str) {
-        if self.active.is_none() || self.reply_buf.len() >= MAX_PEER_REPLY { return; }
         let cleaned = crate::codex::sanitize(raw_line);
-        if !self.reply_buf.is_empty() { self.reply_buf.push('\n'); }
-        let rem = MAX_PEER_REPLY.saturating_sub(self.reply_buf.len());
-        self.reply_buf.push_str(&crate::codex::clip(&cleaned, rem));
+        if self.assistant_buf.len() < 16 * 1024 {
+            if !self.assistant_buf.is_empty() { self.assistant_buf.push('\n'); }
+            let rem = (16usize * 1024).saturating_sub(self.assistant_buf.len());
+            self.assistant_buf.push_str(&crate::codex::clip(&cleaned, rem));
+        }
+        if self.active.is_some() && self.reply_buf.len() < MAX_PEER_REPLY {
+            if !self.reply_buf.is_empty() { self.reply_buf.push('\n'); }
+            let rem = MAX_PEER_REPLY.saturating_sub(self.reply_buf.len());
+            self.reply_buf.push_str(&crate::codex::clip(&cleaned, rem));
+        }
     }
 
     pub fn finish(&mut self, self_id: &str, self_label: String) -> Option<PeerDone> {
         let settled_burst_call = self.turn_fifo.pop_front().flatten().and_then(|(_, cid, _, cont)| (!cont).then_some(cid));
+        let asst = if std::mem::take(&mut self.sent_in_turn) { String::new() } else { std::mem::take(&mut self.assistant_buf) };
         if let Some((caller_id, call_id, round, explicit_sent)) = self.active.take() {
             let reply_text = std::mem::take(&mut self.reply_buf);
             self.active = self.queue.pop_front().map(|(c, cid, r)| (c, cid, r, false));
-            return Some(PeerDone::Reply { caller_id, from_id: self_id.to_string(), from_label: self_label, call_id, round, reply_text, explicit_sent, settled_burst_call });
+            return Some(PeerDone::Reply { caller_id, from_id: self_id.to_string(), from_label: self_label, call_id, round, reply_text, explicit_sent, settled_burst_call, assistant_text: asst });
         }
-        settled_burst_call.map(PeerDone::SettledBurst)
+        if settled_burst_call.is_some() || asst.contains('@') {
+            return Some(PeerDone::AssistantTurn { from_id: self_id.to_string(), assistant_text: asst, settled_burst_call });
+        }
+        None
     }
 
     pub fn drop_active(&mut self) {
         let _ = self.turn_fifo.pop_front();
         self.active = self.queue.pop_front().map(|(c, cid, r)| (c, cid, r, false));
         self.reply_buf.clear();
+        self.assistant_buf.clear();
+        self.sent_in_turn = false;
     }
 }
 
@@ -343,13 +366,20 @@ pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, 
 
 pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<PeerDone>) {
     let Some(done) = done else { return };
-    let (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call) = match done {
-        PeerDone::SettledBurst(cid) => { crate::call_room::settle_call_idle(shared, &cid); return; }
-        PeerDone::Reply { caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call } => {
-            (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call)
+    let (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call, assistant_text) = match done {
+        PeerDone::AssistantTurn { from_id, assistant_text, settled_burst_call } => {
+            if let Some(cid) = settled_burst_call { crate::call_room::settle_call_idle(shared, &cid); }
+            crate::mention::dispatch_assistant_mentions(shared, &from_id, None, &assistant_text);
+            return;
+        }
+        PeerDone::Reply { caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call, assistant_text } => {
+            (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call, assistant_text)
         }
     };
     if let Some(cid) = settled_burst_call { crate::call_room::settle_call_idle(shared, &cid); }
+    if !assistant_text.is_empty() {
+        crate::mention::dispatch_assistant_mentions(shared, &from_id, Some(&caller_id), &assistant_text);
+    }
     if explicit_sent || reply_text.trim().is_empty() { return; }
     let cleaned = leads::agent_text(&reply_text).text;
     if cleaned.trim().is_empty() || crate::folders::shows_nothing(&cleaned) { return; }

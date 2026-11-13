@@ -362,7 +362,197 @@ pub enum PersonRoute {
     Plain,
 }
 
+/// Parse `/rename` or `/rename <name>` (`--clear` clears the name).
+/// Returns `Some(Ok(None))` for bare `/rename`, `Some(Ok(Some(name)))` for a valid single-line rename,
+/// `Some(Err("bad_request"))` for malformed `/rename ...`, or `None` when not a `/rename` command.
+pub fn parse_slash_rename(text: &str) -> Option<Result<Option<String>, &'static str>> {
+    let trimmed = text.trim();
+    if trimmed == "/rename" {
+        return Some(Ok(None));
+    }
+    let rest = trimmed.strip_prefix("/rename")?;
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    if rest.contains('\n') || rest.contains('\r') {
+        return Some(Err("bad_request"));
+    }
+    let mut arg = rest.trim();
+    if arg.len() >= 2
+        && ((arg.starts_with('"') && arg.ends_with('"')) || (arg.starts_with('\'') && arg.ends_with('\'')))
+    {
+        arg = &arg[1..arg.len() - 1];
+    }
+    if arg == "--clear" {
+        arg = "";
+    }
+    if !crate::folders::valid_name(arg) {
+        return Some(Err("bad_request"));
+    }
+    Some(Ok(Some(arg.trim().to_string())))
+}
+
+/// Resolve `to` / `session` in agent MCP tools (`send`, `history`): accepts exact session IDs,
+/// `@Name` / `@<id5+>` tokens (with Korean particle stripping), or an exact explicit session name.
+pub fn resolve_agent_target(shared: &Shared, caller: &str, raw_to: &str) -> Result<String, &'static str> {
+    let tok = raw_to.trim();
+    if tok.is_empty() {
+        return Err("bad_request");
+    }
+    if tok == caller {
+        return Ok(caller.to_string());
+    }
+    if core::find(shared, tok).is_some() {
+        return Ok(tok.to_string());
+    }
+    if let Some(at_body) = tok.strip_prefix('@') {
+        if resolve_with_particles(shared, None, at_body).as_deref() == Some(caller) {
+            return Ok(caller.to_string());
+        }
+        return resolve_with_particles(shared, Some(caller), at_body).ok_or("unknown_session");
+    }
+    let low = tok.to_lowercase();
+    let list = shared.sessions.read().unwrap().clone();
+    let mut running_hits = Vec::new();
+    let mut all_hits = Vec::new();
+    for arc in list {
+        let s = arc.lock().unwrap();
+        if s.purged {
+            continue;
+        }
+        if s.settings.name.as_deref().is_some_and(|n| n.to_lowercase() == low) {
+            if s.state == State::Running && s.id != caller {
+                running_hits.push(s.id.clone());
+            }
+            all_hits.push(s.id.clone());
+        }
+    }
+    if running_hits.len() == 1 {
+        return Ok(running_hits.remove(0));
+    }
+    if all_hits.len() == 1 {
+        return Ok(all_hits.remove(0));
+    }
+    Err("unknown_session")
+}
+
+fn resolve_explicit_named_peer(shared: &Shared, caller: &str, raw_tok: &str) -> Option<(String, String)> {
+    let candidates = {
+        let list = shared.sessions.read().unwrap().clone();
+        let mut out = Vec::new();
+        for arc in list {
+            let s = arc.lock().unwrap();
+            if s.purged || s.id == caller || s.state != State::Running || !matches!(s.provider, "claude" | "codex") {
+                continue;
+            }
+            if let Some(name) = s.settings.name.clone().filter(|n| !n.trim().is_empty()) {
+                out.push((s.id.clone(), name));
+            }
+        }
+        out
+    };
+    let check = |stem: &str| -> Option<(String, String)> {
+        let low = stem.to_lowercase();
+        let mut hits: Vec<(String, String)> = candidates
+            .iter()
+            .filter(|(_, n)| n.to_lowercase() == low)
+            .cloned()
+            .collect();
+        (hits.len() == 1).then(|| hits.remove(0))
+    };
+    if let Some(hit) = check(raw_tok) {
+        return Some(hit);
+    }
+    for suffix in ["에게서", "한테서", "에게", "한테", "님", "야", "아"] {
+        if let Some(stem) = raw_tok.strip_suffix(suffix).filter(|s| !s.is_empty()) {
+            if let Some(hit) = check(stem) {
+                return Some(hit);
+            }
+        }
+    }
+    None
+}
+
+/// Scan an assistant's completed turn output (outside fenced code blocks) for column-0 `@ExactSessionName <msg>`
+/// paragraphs and dispatch them via `calls::send` when `mcp__lico__send` was not already invoked in that turn.
+pub fn dispatch_assistant_mentions(shared: &Shared, from_id: &str, exclude_peer: Option<&str>, assistant_text: &str) {
+    if !assistant_text.contains('@') {
+        return;
+    }
+    let is_provider = core::find(shared, from_id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex"));
+    if !is_provider {
+        return;
+    }
+    let mut in_fence = false;
+    let mut dispatches: Vec<(String, String, String)> = Vec::new();
+    let lines: Vec<&str> = assistant_text.lines().collect();
+    let mut i = 0usize;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            i += 1;
+            continue;
+        }
+        if !in_fence && !line.starts_with(char::is_whitespace) && line.starts_with('@') {
+            if let Some((tok, rest)) = consume_at_token(line) {
+                let valid_sep = rest.starts_with(char::is_whitespace) || rest.starts_with(':') || rest.starts_with(',');
+                if valid_sep {
+                    if let Some((tid, tname)) = resolve_explicit_named_peer(shared, from_id, tok) {
+                        if exclude_peer != Some(tid.as_str()) && !dispatches.iter().any(|(id, _, _)| id == &tid) {
+                            let first_msg = rest.trim_start_matches([':', ',']).trim();
+                            let mut para = Vec::new();
+                            if !first_msg.is_empty() {
+                                para.push(first_msg);
+                            }
+                            let mut j = i + 1;
+                            while j < lines.len() {
+                                let nl = lines[j];
+                                let nt = nl.trim();
+                                if nt.is_empty() || nt.starts_with("```") || nt.starts_with("~~~") || (!nl.starts_with(char::is_whitespace) && nl.starts_with('@')) {
+                                    break;
+                                }
+                                para.push(nl);
+                                j += 1;
+                            }
+                            let body = para.join("\n").trim().to_string();
+                            if !body.is_empty() && dispatches.len() < 4 {
+                                dispatches.push((tid, tname, body));
+                            }
+                            i = j;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    for (tid, tname, body) in dispatches {
+        let args = obj(json!({"to": tid, "text": body}));
+        if let Ok(ans) = crate::calls::send(shared, from_id, &args) {
+            if ans.contains("\"sent\":true") {
+                if let Some(cid) = crate::call_room::peek_pair_call_id(shared, from_id, &tid) {
+                    let from_lbl = core::find(shared, from_id)
+                        .map(|f| transfer::session_label(&f.lock().unwrap()))
+                        .unwrap_or_else(|| transfer::id7(from_id).to_string());
+                    let title = format!("{from_lbl} \u{00b7} {tname}");
+                    crate::call_room::append_call_summary_card(
+                        shared,
+                        from_id,
+                        &title,
+                        &cid,
+                        &format!("@{tname} ({})", transfer::id7(&tid)),
+                    );
+                }
+            }
+        }
+    }
+}
+
 /// Inspect a human `Origin::Person` input to `session`:
+/// - `/rename <name>` (`--clear`): renames `session` directly without sending `/rename` to the provider.
 /// - Leading `@Target <msg>`: records the prompt in `session`, bundles recent context before this prompt,
 ///   dispatches the `OWNER-AUTHORIZED` Call Room turn to `Target`, and returns `PersonRoute::Handled`.
 /// - Inline `@Target`: connects & pre-authorizes the Call Room (`keep = true` both ways) and appends a
@@ -374,6 +564,43 @@ pub fn route_person_input(
     request_id: &str,
     text: &str,
 ) -> PersonRoute {
+    if let Some(slash) = parse_slash_rename(text) {
+        let Ok(Some(new_name)) = slash else {
+            return PersonRoute::Handled(Err("bad_request"));
+        };
+        let Some(found) = core::find(shared, session) else {
+            return PersonRoute::Handled(Err("unknown_session"));
+        };
+        {
+            let mut s = found.lock().unwrap();
+            if let Err(code) = check_generation(&s, generation) {
+                return PersonRoute::Handled(Err(code));
+            }
+            if let Some(state) = s.input_state(request_id) {
+                return PersonRoute::Handled(Ok(obj(json!({
+                    "session": s.id,
+                    "request_id": request_id,
+                    "state": state.name(),
+                    "duplicate": true,
+                }))));
+            }
+            if s.purged {
+                return PersonRoute::Handled(Err("unknown_session"));
+            }
+            s.record_input(request_id, text, Origin::Host, now_secs());
+            let _ = s.peer_turn.turn_fifo.pop_back();
+            s.advance_input(request_id, InputState::Observed);
+        }
+        return match crate::folders::rename(shared, session, &new_name) {
+            Ok(_) => PersonRoute::Handled(Ok(obj(json!({
+                "session": session,
+                "request_id": request_id,
+                "state": "observed",
+                "duplicate": false,
+            })))),
+            Err(code) => PersonRoute::Handled(Err(code)),
+        };
+    }
     if !text.contains('@') {
         return PersonRoute::Plain;
     }
@@ -417,6 +644,7 @@ pub fn route_person_input(
                 }))));
             }
             s.record_input(request_id, text, Origin::Person, now_secs());
+            let _ = s.peer_turn.turn_fifo.pop_back();
             s.advance_input(request_id, InputState::Observed);
             if s.tab_closed {
                 s.tab_closed = false;

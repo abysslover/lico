@@ -349,7 +349,7 @@ pub fn annotate(entry: &mut Value, s: &Session) {
 }
 
 /// Give a session a name, or take it away again (an empty name). Nothing the agent sees changes.
-pub fn rename(shared: &Arc<Shared>, session: &str, name: &str) -> Reply {
+pub fn rename(shared: &Shared, session: &str, name: &str) -> Reply {
     let found = crate::core::find(shared, session).ok_or("unknown_session")?;
     let shown = {
         let mut s = found.lock().unwrap();
@@ -360,6 +360,7 @@ pub fn rename(shared: &Arc<Shared>, session: &str, name: &str) -> Reply {
         s.settings.name.clone()
     };
     crate::registry::save(shared);
+    crate::call_room::sync_labels(shared);
     Ok(obj(json!({"session": session, "name": shown})))
 }
 

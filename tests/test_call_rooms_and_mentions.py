@@ -377,3 +377,154 @@ def test_mcp_instructions_bounded_four_round_burst_and_call_done_early_settlemen
             assert det_after["active"] is False and det_after["paused"] is False
         finally:
             host.stop()
+
+
+def test_unified_slash_rename_mcp_rename_and_agent_at_mentions():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        state_dir = root / "state"
+        log_dir = state_dir / "log"
+        host_args = _dual_args(root, state_dir)
+
+        with ProductWindow(host_binary=LICO, host_args=host_args, host_sessions=0) as w:
+            conn = Conn(w.socket)
+            c_acc = account(conn, "ClaudeAccP04", "claude")
+            x_acc = account(conn, "CodexAccP04", "codex")
+            c_made = conn.call(op="session.create", kind="claude", account=c_acc, mode="auto")
+            x_made = conn.call(op="session.create", kind="codex", account=x_acc, mode="auto")
+            assert c_made["ok"] == 1 and x_made["ok"] == 1
+            c_id, c_gen = c_made["session"], c_made["generation"]
+            x_id, _ = x_made["session"], x_made["generation"]
+
+            conn.call(op="input", session=c_id, generation=c_gen, request_id="init-c", text="ready-c")
+            conn.call(op="input", session=x_id, generation=x_made["generation"], request_id="init-x", text="ready-x")
+            wait_for(lambda: "[turn completed]" in records(log_dir, c_id))
+            wait_for(lambda: "[turn completed]" in records(log_dir, x_id))
+
+            # 1. Focus Codex tab in GUI and run `/rename Codex-L`: renames tab without forwarding to Codex LLM.
+            w.proc.stdin.write("load\n")
+            w.proc.stdin.flush()
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) >= 2 and u)
+            x_tab = next(t for t in u0["tabs"]["items"] if t["session"] == x_id)
+            w.click(*_tab_click_xy(x_tab))
+            u_x = wait_for(
+                lambda: (u := w.ui())
+                and u["selected"] == x_id
+                and u["editor"]["rect"][2] > u["editor"]["rect"][0]
+                and u
+            )
+            x_before_len = len(records(log_dir, x_id))
+
+            w.click(*_centre(u_x["editor"]["rect"]))
+            w.type_text("/rename Codex-L")
+            w.key("Return")
+            wait_for(lambda: status_of(conn, x_id).get("name") == "Codex-L")
+            # Codex provider never ran an LLM turn for `/rename Codex-L`:
+            assert not any("echo: /rename" in r for r in records(log_dir, x_id)[x_before_len:])
+
+            # 2. Focus Claude tab: bare `/rename` opens the inline Rename bar (`F2` parity), and `/rename --clear` clears.
+            c_tab = next(t for t in w.ui()["tabs"]["items"] if t["session"] == c_id)
+            w.click(*_tab_click_xy(c_tab))
+            u_c = wait_for(
+                lambda: (u := w.ui())
+                and u["selected"] == c_id
+                and u["editor"]["rect"][2] > u["editor"]["rect"][0]
+                and u
+            )
+            w.click(*_centre(u_c["editor"]["rect"]))
+            w.type_text("/rename")
+            w.key("Return")
+            wait_for(lambda: (p := w.ui().get("panel")) and p.get("text_entry") is True and "Rename" in p.get("title", ""))
+            w.type_text("Temp-Claude")
+            w.key("Return")
+            wait_for(lambda: status_of(conn, c_id).get("name") == "Temp-Claude" and w.ui().get("panel") is None)
+
+            w.click(*_centre(w.ui()["editor"]["rect"]))
+            w.type_text("/rename --clear")
+            w.key("Return")
+            wait_for(lambda: status_of(conn, c_id).get("name") is None)
+
+            # Host IPC `/rename` works identically across CLI/HTTP/IPC callers:
+            rn_ipc = conn.call(op="input", session=c_id, generation=c_gen, request_id="rn-ipc", text="/rename Initial-Claude")
+            assert rn_ipc["ok"] == 1 and status_of(conn, c_id).get("name") == "Initial-Claude"
+
+            # 3. Connect `(Initial-Claude, Codex-L)` via `@Codex-L` mention, then self-rename via `mcp__lico__rename`:
+            assert conn.call(
+                op="input",
+                session=c_id,
+                generation=c_gen,
+                request_id="connect-call-p04",
+                text="@Codex-L 안녕",
+            )["ok"] == 1
+            wait_for(lambda: any("[peer reply from 'Codex-L'" in r for r in records(log_dir, c_id)))
+            call_id = conn.call(op="call.list")["calls"][0]["call_id"]
+
+            assert conn.call(
+                op="input",
+                session=c_id,
+                generation=c_gen,
+                request_id="mcp-rn",
+                text='tool:rename {"name":"Claude-L"}',
+            )["ok"] == 1
+            wait_for(lambda: status_of(conn, c_id).get("name") == "Claude-L")
+            synced_title = conn.call(op="call.get", call=call_id)["call"]["title"]
+            assert "Claude-L" in synced_title and "Codex-L" in synced_title, synced_title
+
+            # 4. Agent-to-agent `mcp__lico__send(to="@Codex-L", ...)` and `mcp__lico__history(session="@Codex-L")`
+            #    resolve `@Name` directly without needing hex session IDs, and `[call done]` settles `active == False`.
+            assert conn.call(
+                op="input",
+                session=c_id,
+                generation=c_gen,
+                request_id="mcp-send-at",
+                text=r'tool:send {"to":"\u0040Codex-L","text":"도구 이름 전송 확인 [call done]"}',
+            )["ok"] == 1
+            wait_for(
+                lambda: any("도구 이름 전송 확인" in r for r in records(log_dir, x_id))
+                and sum(1 for r in records(log_dir, c_id) if "[peer reply from 'Codex-L'" in r) >= 2
+            )
+            assert conn.call(op="call.get", call=call_id)["call"]["active"] is False
+
+            assert conn.call(
+                op="input",
+                session=c_id,
+                generation=c_gen,
+                request_id="mcp-hist-at",
+                text=r'tool:history {"session":"\u0040Codex-L"}',
+            )["ok"] == 1
+            hist_apps = wait_for(lambda: status_of(conn, c_id).get("approvals"))
+            assert any("Codex-L" in ap["prompt"] for ap in hist_apps), hist_apps
+            assert conn.call(
+                op="approval.answer",
+                session=c_id,
+                generation=c_gen,
+                approval_id=hist_apps[0]["approval_id"],
+                answer="allow",
+            )["ok"] == 1
+
+            # 5. Direct assistant `@Codex-L <message>` line (with NO `@` in the user's prompt and NO `send` tool call)
+            #    automatically dispatches to `Codex-L`, while ignoring `@Codex-L` inside fenced code blocks!
+            prev_replies = sum(1 for r in records(log_dir, c_id) if "[peer reply from 'Codex-L'" in r)
+            # Use pure `\u0040` throughout so `route_person_input` takes `PersonRoute::Plain`:
+            auto_prompt = (
+                r'say:["코드 예시:\n```\n\u0040Codex-L 코드블록안은무시\n```\n'
+                r'\u0040Codex-L 직접 멘션으로 오늘 서울 날씨 알려줘!"]'
+            )
+            assert "@" not in auto_prompt
+            assert conn.call(
+                op="input",
+                session=c_id,
+                generation=c_gen,
+                request_id="asst-at-mention",
+                text=auto_prompt,
+            )["ok"] == 1
+
+            wait_for(
+                lambda: sum(1 for r in records(log_dir, c_id) if "[peer reply from 'Codex-L'" in r) > prev_replies
+            )
+            x_recs = records(log_dir, x_id)
+            assert any("직접 멘션으로 오늘 서울 날씨 알려줘!" in r for r in x_recs), x_recs
+            assert not any("코드블록안은무시" in r for r in x_recs), x_recs
+            c_recs = records(log_dir, c_id)
+            assert sum(1 for r in c_recs if r.startswith(">> [⇄ call ")) >= 2, c_recs
+

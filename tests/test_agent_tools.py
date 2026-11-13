@@ -170,7 +170,7 @@ def decode(path_or_bytes, tmp):
 def test_the_list_holds_capture_and_clipboard_read_and_clipboard_write_only_while_the_setting_says_so_and_without_a_restart(world):
     sid, _ = world.session()
     names, size = tools_list(world, sid)
-    assert names == ["sessions", "send", "create", "history", "read_handoff", "capture", "clipboard_read", "computer"] and size <= 5120, (names, size)
+    assert names == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer"] and size <= 5120, (names, size)
     settings(world, json.dumps({"clipboard_write": True}))
     names, size = tools_list(world, sid)
     assert names[-1] == "clipboard_write" and size <= 5120, (names, size)

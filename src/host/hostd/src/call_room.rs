@@ -316,6 +316,18 @@ fn save_inner(registry_dir: &Path, rooms: &[CallRoom]) {
     }
 }
 
+pub fn sync_labels(shared: &Shared) {
+    let snapshot = {
+        let mut guard = shared.calls.inner.lock().unwrap();
+        ensure_loaded_and_sync(shared, &mut guard);
+        if guard.rooms.is_empty() {
+            return;
+        }
+        guard.rooms.clone()
+    };
+    save_inner(&shared.cfg.registry_dir, &snapshot);
+}
+
 pub fn grant_bidirectional_keep(shared: &Shared, a: &str, b: &str) {
     for (caller, target) in [(a, b), (b, a)] {
         if let Some(found) = core::find(shared, caller) {
@@ -494,7 +506,7 @@ pub fn record_session_transfer(shared: &Shared, from: &str, to: &str, text: &str
         round.max(1)
     }
     .min(room.max_rounds);
-    room.active = true;
+    room.active = !text.contains("[call done]");
     room.round = r;
     room.push_entry(from, &sender_label, sender_prov, "agent_send", r, text);
     let out = (room.call_id.clone(), r);
