@@ -312,7 +312,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                     return Err(bad("bad_request"));
                 }
                 let kind = crate::ipc::text(&map, "kind").to_string();
-                core::session_create(shared, &kind, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
+                crate::new_session::session_create(shared, &kind, int(&map, "rate").unwrap_or(0) as u64, int(&map, "history").unwrap_or(0) as u64,
                                      int(&map, "payload").unwrap_or(shared.cfg.payload as i64) as usize,
                                      map.get("account").and_then(|a| a.as_str()), crate::ipc::text(&map, "mode"),
                                      crate::folders::Settings::of_request(&map))
@@ -324,7 +324,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             let qmap = query_map(&request.query).map_err(bad)?;
             if qmap
                 .keys()
-                .any(|k| !matches!(k.as_str(), "cwd" | "global" | "ssh_host" | "account" | "q" | "query" | "offset" | "limit"))
+                .any(|k| !matches!(k.as_str(), "cwd" | "global" | "recorded" | "ssh_host" | "account" | "q" | "query" | "offset" | "limit"))
             {
                 return Err(bad("bad_request"));
             }
@@ -340,6 +340,14 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                     _ => return Err(bad("bad_request")),
                 };
                 req.insert("global".into(), json!(flag));
+            }
+            if let Some(r) = qmap.get("recorded").and_then(Value::as_str) {
+                let flag = match r {
+                    "1" | "true" => true,
+                    "0" | "false" => false,
+                    _ => return Err(bad("bad_request")),
+                };
+                req.insert("recorded".into(), json!(flag));
             }
             if let Some(h) = qmap.get("ssh_host").and_then(Value::as_str) {
                 req.insert("ssh_host".into(), json!(h));

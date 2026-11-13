@@ -33,6 +33,7 @@ pub struct Settings {
     pub worktree_repo: Option<String>,   // canonical parent git repository when started in a worktree (M02-P06)
     pub worktree_branch: Option<String>, // branch created for that worktree (M02-P06)
     pub resume_id: Option<String>,       // provider session/thread id to resume (`M07-P03`)
+    pub resume_latest: bool,             // a request, not a choice that is kept: continue the latest chat of the folder and account (`M10-P02`)
 }
 
 /// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
@@ -110,6 +111,7 @@ impl Settings {
             worktree_repo: None,
             worktree_branch: field("worktree_branch"),
             resume_id: field("resume_id"),
+            resume_latest: request.get("resume_latest").and_then(Value::as_bool).unwrap_or(false),
         }
     }
 
@@ -164,7 +166,7 @@ impl Settings {
             }
             _ => text("name", name_shape)?,
         };
-        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch, resume_id: None })
+        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch, resume_id: None, resume_latest: false })
     }
 }
 

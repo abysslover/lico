@@ -6,4 +6,4 @@ limit = 800
 
 [files]
 "src/host/hostd/src/gui/ui.rs" = 1120
-"src/host/hostd/src/core.rs" = 988
+"src/host/hostd/src/core.rs" = 941

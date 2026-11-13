@@ -30,6 +30,11 @@ const DEFAULT: &str = "the program's default";
 const STARTS: &str = "starts at once on the account's allowance";
 const OPENS_READY: &str = "opens an empty ready tab";
 
+thread_local! {
+    /// What `session.create` answered to the creation made on this thread (read by `make` right after the start: whether a chat was continued).
+    static RESUMED: std::cell::RefCell<Option<Map<String, Value>>> = const { std::cell::RefCell::new(None) };
+}
+
 /// What a new session is started with.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Spec {
@@ -77,19 +82,36 @@ fn parse_optional_scope(value: Option<&Value>) -> Result<&'static str, String> {
     }
 }
 
-fn encode_target(kind: &str, scope: &str, name: &str) -> String {
-    format!("{kind}\t{scope}\t{name}")
+/// `resume`: true continues the latest chat of the folder (a real boolean, or the words true and false from a model that writes strings).
+fn parse_optional_flag(value: Option<&Value>) -> Result<bool, String> {
+    match value {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::Bool(flag)) => Ok(*flag),
+        Some(Value::String(s)) if s.trim().eq_ignore_ascii_case("true") => Ok(true),
+        Some(Value::String(s)) if s.trim().is_empty() || s.trim().eq_ignore_ascii_case("false") => Ok(false),
+        Some(_) => Err(needs()),
+    }
 }
 
-fn decode_target(target: &str) -> (Option<&'static str>, &'static str, &str) {
+fn encode_target(kind: &str, scope: &str, name: &str) -> String {
+    encode_target_with(kind, scope, false, name)
+}
+
+/// The target the approval carries: the resume request rides in the scope field, so what a yes allows is exactly what the card showed.
+fn encode_target_with(kind: &str, scope: &str, resume: bool, name: &str) -> String {
+    format!("{kind}\t{scope}{}\t{name}", if resume { "+resume" } else { "" })
+}
+
+fn decode_target(target: &str) -> (Option<&'static str>, &'static str, bool, &str) {
     let mut parts = target.splitn(3, '\t');
     match (parts.next(), parts.next(), parts.next()) {
         (Some(k), Some(sc), Some(name)) => {
             let kind = if k == "codex" { "codex" } else { "claude" };
+            let (sc, resume) = sc.strip_suffix("+resume").map_or((sc, false), |bare| (bare, true));
             let scope = if sc == "global" { "global" } else { "folder" };
-            (Some(kind), scope, name)
+            (Some(kind), scope, resume, name)
         }
-        _ => (None, "folder", target),
+        _ => (None, "folder", false, target),
     }
 }
 
@@ -140,6 +162,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     calls::counted(window, caller, now)?;
     let requested_kind = parse_optional_kind(arguments.get("kind"))?;
     let scope = parse_optional_scope(arguments.get("scope"))?;
+    let resume = parse_optional_flag(arguments.get("resume"))?;
     let (cleaned_prompt, removed) = match arguments.get("prompt") {
         None | Some(Value::Null) => (String::new(), 0),
         Some(Value::String(raw)) if raw.is_empty() => (String::new(), 0),
@@ -179,15 +202,21 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     within_caps(shared, caller)?;
     let target_kind = requested_kind.unwrap_or(caller_provider);
     let cwd = if scope == "global" { None } else { parent_cwd };
+    if resume && cwd.is_none() {
+        return Err("bad_request: resume continues the latest chat of a folder; the scope is global or this session has no folder".into());
+    }
     let (_, model, effort) = resolve_target_choices(shared, caller_provider, caller_account.as_deref(), &caller_settings, target_kind);
-    let chosen = chosen_words_for(model.as_deref(), effort.as_deref());
+    let mut chosen = chosen_words_for(model.as_deref(), effort.as_deref());
+    if resume {
+        chosen.push_str(" | continues the latest chat here if one exists");
+    }
     let kword = kind_word(caller_provider, target_kind);
     let shown = shown_place(scope, cwd.as_deref(), FOLDER_CHARS);
     let named = if name.is_empty() { String::new() } else { format!(" '{name}'") };
     let who = format!("creation of a new {kword}{named} {shown}");
     let prompt = cleaned_prompt.as_str();
     let card = card_of_spec(kword, scope, &name, cwd.as_deref(), &chosen, prompt, removed);
-    let encoded_target = encode_target(target_kind, scope, &name);
+    let encoded_target = encode_target_with(target_kind, scope, resume, &name);
     let (id, again) = match pending::ask(shared, caller, &Request { tool: "create", target: &encoded_target, who: &who, card: &card, text: prompt }, pending::now(), held)? {
         Asked::New(id) => (id, false),
         Asked::Again(id) => (id, true),
@@ -290,8 +319,10 @@ fn within_caps(shared: &Shared, caller: &str) -> Result<(), String> {
 /// What the person's yes does: make the session, once.
 pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str) -> Result<String, String> {
     perform_with(shared, caller, target, prompt, &|spec| {
-        let made = core::session_create(shared, spec.kind, 0, 0, 0, spec.account.as_deref(), spec.mode, spec.settings.clone())?;
-        Ok(made["session"].as_str().unwrap_or_default().to_string())
+        let made = crate::new_session::session_create(shared, spec.kind, 0, 0, 0, spec.account.as_deref(), spec.mode, spec.settings.clone())?;
+        let id = made["session"].as_str().unwrap_or_default().to_string();
+        RESUMED.with(|slot| *slot.borrow_mut() = Some(made));
+        Ok(id)
     })
 }
 
@@ -304,7 +335,7 @@ fn perform_with(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, 
 }
 
 fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &dyn Fn(&Spec) -> Result<String, &'static str>) -> Result<String, String> {
-    let (requested_kind, scope, name) = decode_target(target);
+    let (requested_kind, scope, resume, name) = decode_target(target);
     let found = core::find(shared, caller).filter(|found| {
         let s = found.lock().unwrap();
         !s.purged && s.state == State::Running
@@ -334,11 +365,17 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
     let composed = if name.is_empty() { format!("made by {made_by}") } else { format!("{name} - made by {made_by}") };
     let spec = Spec {
         kind: target_kind,
-        settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort, ..Settings::default() },
+        settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort, resume_latest: resume, ..Settings::default() },
         account,
         mode: "auto",
     };
+    RESUMED.with(|slot| slot.borrow_mut().take());
     let id = start(&spec).map_err(start_words)?;
+    let answer = RESUMED.with(|slot| slot.borrow_mut().take());
+    let (already_open, resume_words) = resume_words(resume, answer.as_ref());
+    if already_open && !prompt.is_empty() {
+        return Err(format!("conflict: the latest chat there is already open in session {id}, which this call did not make; nothing was sent. Send to it with its id (that asks the person)."));
+    }
     let Some(new) = core::find(shared, &id) else { return Err(calls::refusal(shared, caller, "unknown_session")) };
     let place = match (scope, &cwd) {
         ("global", _) => "in global scope".to_string(),
@@ -352,8 +389,11 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
             s.incoming_hops = hops + 1;
             s.hops_set_at = crate::session::now_secs();
         }
+        if already_open {
+            return Ok(format!("no new session: {resume_words} Session {id} is the tab, open and ready. Send to it with its id to talk to it."));
+        }
         return Ok(format!(
-            "created {target_kind} session {id} '{composed}' {place}, mode: auto (bypass); the new tab is open and ready (no initial prompt sent). Send to it with its id to talk to it."
+            "created {target_kind} session {id} '{composed}' {place}, mode: auto (bypass){resume_words}; the new tab is open and ready (no initial prompt sent). Send to it with its id to talk to it."
         ));
     }
     let generation = {
@@ -365,7 +405,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
         Ok(done) => {
             let kword = kind_word(caller_provider, target_kind);
             Ok(format!(
-                "created {kword} {id} '{composed}' {place}, mode: auto (bypass); the first prompt ({}) was delivered ({}). It is working on it; send to it with its id to talk to it.",
+                "created {kword} {id} '{composed}' {place}, mode: auto (bypass){resume_words}; the first prompt ({}) was delivered ({}). It is working on it; send to it with its id to talk to it.",
                 transfer::size_text(prompt.len()),
                 done["delivery"].as_str().unwrap_or("inline")
             ))
@@ -374,6 +414,25 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
             let _ = core::session_purge(shared, &id, generation);
             Err(calls::refusal(shared, caller, code))
         }
+    }
+}
+
+/// What the model reads about the chat: (the tab was already open, the sentence). Empty when no resume was asked.
+fn resume_words(asked: bool, answer: Option<&Map<String, Value>>) -> (bool, String) {
+    if !asked {
+        return (false, String::new());
+    }
+    let Some(answer) = answer else { return (false, String::new()) };
+    if answer.get("resumed") != Some(&json!(true)) {
+        return (false, "; there was no earlier chat there, so it is a new one".into());
+    }
+    let chat = &answer["resumed_chat"];
+    let turns = chat["turns"].as_u64().map_or(String::new(), |n| format!(", {n} turns"));
+    let said = format!("the latest chat there ('{}'{turns})", chat["title"].as_str().unwrap_or("untitled"));
+    if answer.get("already_open") == Some(&json!(true)) {
+        (true, format!("{said} was already open."))
+    } else {
+        (false, format!("; it continues {said}"))
     }
 }
 

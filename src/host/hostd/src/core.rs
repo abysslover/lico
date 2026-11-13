@@ -446,52 +446,6 @@ pub fn session_list(shared: &Shared) -> Reply {
     Ok(obj(json!({"sessions": entries})))
 }
 
-pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str, chosen: crate::folders::Settings) -> Reply {
-    let mode: &'static str = if mode == "default" { "default" } else { "auto" };
-    let chosen = crate::ssh_remote::prepare_session(shared, kind, account, chosen)?; // the folder, the model and the effort are checked before anything starts
-    // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
-    let bound = match resolve_account(shared, kind, account) {
-        Ok(bound) => bound,
-        Err(code) => return Err(code), // refused before anything starts
-    };
-    let reserved = shared.pending_creates.fetch_add(1, Ordering::SeqCst);
-    let total = shared.sessions.read().unwrap().len() + reserved;
-    let created = if total >= shared.cfg.max_sessions {
-        Err("busy")
-    } else if kind == "codex" || kind == "claude" {
-        crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
-    } else {
-        start_session(shared, rate > 0, rate, history, size, false)
-    };
-    shared.pending_creates.fetch_sub(1, Ordering::SeqCst);
-    let created = created?;
-    let (id, generation) = {
-        let s = created.lock().unwrap();
-        (s.id.clone(), s.generation)
-    };
-    Ok(obj(json!({"session": id, "generation": generation})))
-}
-
-/// The account a new session is bound to: the one asked for, else the provider's default, else none
-/// (a session without an account runs with the host's own provider home, as before accounts existed).
-fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Result<Option<(String, u64)>, &'static str> {
-    let accounts = shared.accounts.lock().unwrap();
-    match (kind, requested) {
-        ("codex" | "claude", Some(id)) => match accounts.get(id) {
-            Some(a) if a.provider == kind => Ok(Some((a.id.clone(), a.credential_generation))),
-            _ => Err("unknown_account"),
-        },
-        ("codex" | "claude", None) => match accounts.default_for(kind) {
-            Some(a) => Ok(Some((a.id.clone(), a.credential_generation))),
-            // accounts exist but none is the default: never fall back to an unbound session (the host's own provider home)
-            None if accounts.any_for(kind) => Err("unknown_account"),
-            None => Ok(None),
-        },
-        (_, Some(_)) => Err("bad_request"),
-        (_, None) => Ok(None),
-    }
-}
-
 pub fn account_list(shared: &Shared) -> Reply {
     let mut entries = shared.accounts.lock().unwrap().entries();
     let sessions: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();

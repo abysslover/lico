@@ -52,6 +52,7 @@ pub const TOOLS: [Tool; 10] = [
             ("prompt", "first prompt <=100 KiB; omit for empty tab"),
             ("name", "short name <=36 chars"),
             ("scope", "folder (default) or global"),
+            ("resume", "true: continue this folder's latest chat if one exists (default false)"),
         ],
     },
     Tool {
@@ -183,7 +184,7 @@ pub fn failure(id: Value, code: i64, message: &str) -> String {
 
 /// The schema of a tool's arguments: strings, the ones in `args` required.
 fn schema(tool: &Tool) -> Value {
-    let properties: Map<String, Value> = tool.args.iter().chain(tool.optional).map(|(name, what)| (name.to_string(), json!({"type": "string", "description": what}))).collect();
+    let properties: Map<String, Value> = tool.args.iter().chain(tool.optional).map(|(name, what)| (name.to_string(), json!({"type": if *name == "resume" { "boolean" } else { "string" }, "description": what}))).collect();
     let mut schema = json!({"type": "object", "properties": properties});
     if !tool.args.is_empty() {
         schema["required"] = tool.args.iter().map(|(name, _)| json!(name)).collect();
@@ -372,8 +373,8 @@ mod tests {
         let create = find("create");
         assert_eq!((create["type"].clone(), create.get("required")), (json!("object"), None), "every argument of create is optional so an empty tab may be opened");
         let properties = create["properties"].as_object().unwrap();
-        assert_eq!(properties.keys().collect::<Vec<_>>(), ["kind", "name", "prompt", "scope"], "no raw cwd, mode, account, model, effort or from");
-        assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
+        assert_eq!(properties.keys().collect::<Vec<_>>(), ["kind", "name", "prompt", "resume", "scope"], "no raw cwd, mode, account, model, effort or from");
+        assert!(properties.iter().all(|(k, p)| p["type"] == if k == "resume" { "boolean" } else { "string" } && !p["description"].as_str().unwrap().is_empty()));
     }
 
     #[test]

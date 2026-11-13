@@ -161,6 +161,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
             ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
             ("session.create", "resume_id") => valid_request_id(value),
+            ("session.create", "resume_latest") => value.is_boolean(),
             ("session.create", "rate") => in_range(value, 0, 10_000),
             ("session.create", "history") => in_range(value, 0, 100_000),
             ("session.create", "payload") => in_range(value, 1, 4096),
@@ -209,6 +210,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.chats", "ssh_host") => matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.chats", "account") => valid_request_id(value),
             ("session.chats", "query") => crate::chats::valid_query(value),
+            ("session.chats", "recorded") => value.is_boolean(),
             ("session.chats", "offset") => in_range(value, 0, 1_000_000),
             ("session.chats", "limit") => in_range(value, 1, crate::chats::MAX_LIMIT as i64),
             ("call.list", "include_closed") => value.is_boolean(),
@@ -285,7 +287,7 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
             request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false),
             request.get("hide_tab").and_then(Value::as_bool).unwrap_or(false),
         ),
-        "session.create" => core::session_create(
+        "session.create" => crate::new_session::session_create(
             shared,
             text(request, "kind"),
             int(request, "rate").unwrap_or(0) as u64,

@@ -184,6 +184,9 @@ pub(super) fn scan_ssh_chats(
                     updated_at: u,
                     open_session: None,
                     open_state: None,
+                    file: None,
+                    turns: None,
+                    recorded: true,
                 });
             }
             return Ok((canon, out));

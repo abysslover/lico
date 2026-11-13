@@ -2,8 +2,14 @@
 //! resumed-transcript seeding (`resume_id` on `session.create`) across `claude` and `codex`
 //! for both local and `[ssh: <host>]` accounts (`M07-P03`).
 
+mod latest;
 mod seed;
+mod turns;
 
+/// What a scan of one transcript file finds: provider session id, directory, title, modification time, and the file itself.
+type Scanned = (String, String, String, u64, PathBuf);
+
+pub use latest::latest_chat;
 pub use seed::seed_resumed_transcript;
 
 use std::collections::HashMap;
@@ -41,6 +47,9 @@ pub(super) struct ChatItem {
     pub(super) updated_at: u64,
     pub(super) open_session: Option<String>,
     pub(super) open_state: Option<&'static str>,
+    pub(super) file: Option<PathBuf>, // the transcript on this machine (none for a remote chat or a tab without one)
+    pub(super) turns: Option<u32>,    // visible user and assistant messages; filled for the items of a returned page only
+    pub(super) recorded: bool,        // the provider has a saved transcript of it (an open tab that has said nothing yet has none)
 }
 
 pub fn valid_query(value: &Value) -> bool {
@@ -196,7 +205,7 @@ pub(super) fn codex_msg_text(v: &Value) -> Option<(bool, String)> {
     }
 }
 
-fn scan_claude_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<(String, String, String, u64)> {
+fn scan_claude_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<Scanned> {
     let name = path.file_name()?.to_str()?;
     let stem = name.strip_suffix(".jsonl")?;
     if !valid_provider_session(stem) {
@@ -232,10 +241,10 @@ fn scan_claude_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<(St
     }
     let cwd = found_cwd?;
     let title = clean_title(first_prompt.as_deref().unwrap_or(""), "claude", stem);
-    Some((stem.to_string(), cwd, title, mtime))
+    Some((stem.to_string(), cwd, title, mtime, path.to_path_buf()))
 }
 
-fn scan_codex_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<(String, String, String, u64)> {
+fn scan_codex_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<Scanned> {
     let name = path.file_name()?.to_str()?;
     let stem = name.strip_suffix(".jsonl")?;
     let (file, _, mtime) = open_regular_nofollow(path)?;
@@ -287,10 +296,10 @@ fn scan_codex_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<(Str
     let cwd = found_cwd?;
     let prov_sid = meta_id.or_else(|| codex_stem_id(stem))?;
     let title = clean_title(first_prompt.as_deref().unwrap_or(""), "codex", &prov_sid);
-    Some((prov_sid, cwd, title, mtime))
+    Some((prov_sid, cwd, title, mtime, path.to_path_buf()))
 }
 
-fn scan_claude_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<(String, String, String, u64)> {
+fn scan_claude_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<Scanned> {
     let mut out = Vec::new();
     let projects = home.join("projects");
     if !real_dir(&projects) {
@@ -317,7 +326,7 @@ fn scan_claude_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<(Strin
     out
 }
 
-fn walk_codex_dir(dir: &Path, depth: usize, left: &mut usize, match_cwd: &dyn Fn(&str) -> bool, out: &mut Vec<(String, String, String, u64)>) {
+fn walk_codex_dir(dir: &Path, depth: usize, left: &mut usize, match_cwd: &dyn Fn(&str) -> bool, out: &mut Vec<Scanned>) {
     if depth > 5 || *left == 0 || !real_dir(dir) {
         return;
     }
@@ -339,7 +348,7 @@ fn walk_codex_dir(dir: &Path, depth: usize, left: &mut usize, match_cwd: &dyn Fn
     }
 }
 
-fn scan_codex_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<(String, String, String, u64)> {
+fn scan_codex_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<Scanned> {
     let mut out = Vec::new();
     let mut left = MAX_SCAN_FILES;
     walk_codex_dir(&home.join("sessions"), 0, &mut left, match_cwd, &mut out);
@@ -353,9 +362,19 @@ pub(super) fn unbound_codex_home() -> Option<PathBuf> {
     p.is_absolute().then_some(p)
 }
 
-/// `session.chats`: enumerate all `claude` and `codex` conversations matching `cwd` or `global`
-/// across local or `[ssh: <host>]` accounts with full `offset` / `limit` / `total` pagination.
-pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
+/// Everything `session.chats` found for a request, sorted newest first and not yet cut to a page.
+pub(super) struct Collected {
+    pub(super) items: Vec<ChatItem>,
+    pub(super) is_global: bool,
+    pub(super) canon_cwd: Option<String>,
+    pub(super) ssh_host: Option<String>,
+    pub(super) offset: usize,
+    pub(super) limit: usize,
+}
+
+/// The one list of chats of a request (`cwd` or `global`, local or `[ssh: <host>]`, optional `account` and `query`), newest first.
+/// `session.chats`, `lico chat latest` and the creation with `resume_latest` all read it, so they cannot disagree.
+pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<Collected, &'static str> {
     let cwd_raw = request.get("cwd").and_then(Value::as_str).filter(|s| !s.is_empty());
     let global_flag = request.get("global").and_then(Value::as_bool).unwrap_or(false);
     if cwd_raw.is_some() && global_flag {
@@ -444,6 +463,9 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
             updated_at: updated,
             open_session: Some(s.id.clone()),
             open_state: Some(st),
+            file: None,
+            turns: None,
+            recorded: false,
         });
     }
 
@@ -488,7 +510,7 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
             } else {
                 scan_codex_home(phome, &match_cwd)
             };
-            for (sid, rec_cwd, title, mtime) in recs {
+            for (sid, rec_cwd, title, mtime, file) in recs {
                 let key = (acc.provider.clone(), acc.id.clone(), sid.clone());
                 merged.insert(
                     key,
@@ -504,6 +526,9 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
                         updated_at: mtime,
                         open_session: None,
                         open_state: None,
+                        file: Some(file),
+                        turns: None,
+                        recorded: true,
                     },
                 );
             }
@@ -511,7 +536,7 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
 
         if account_filter.is_none() && !claude_managed {
             if let Some(chome) = crate::provider_record::home_of(shared, None) {
-                for (sid, rec_cwd, title, mtime) in scan_claude_home(&chome, &match_cwd) {
+                for (sid, rec_cwd, title, mtime, file) in scan_claude_home(&chome, &match_cwd) {
                     let key = ("claude".into(), String::new(), sid.clone());
                     merged.entry(key).or_insert(ChatItem {
                         provider: "claude".into(),
@@ -525,13 +550,16 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
                         updated_at: mtime,
                         open_session: None,
                         open_state: None,
+                        file: Some(file),
+                        turns: None,
+                        recorded: true,
                     });
                 }
             }
         }
         if account_filter.is_none() && !codex_managed {
             if let Some(xhome) = unbound_codex_home() {
-                for (sid, rec_cwd, title, mtime) in scan_codex_home(&xhome, &match_cwd) {
+                for (sid, rec_cwd, title, mtime, file) in scan_codex_home(&xhome, &match_cwd) {
                     let key = ("codex".into(), String::new(), sid.clone());
                     merged.entry(key).or_insert(ChatItem {
                         provider: "codex".into(),
@@ -545,6 +573,9 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
                         updated_at: mtime,
                         open_session: None,
                         open_state: None,
+                        file: Some(file),
+                        turns: None,
+                        recorded: true,
                     });
                 }
             }
@@ -602,6 +633,9 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
         })
         .collect();
 
+    if request.get("recorded").and_then(Value::as_bool).unwrap_or(false) {
+        all_items.retain(|it| it.recorded);
+    }
     all_items.sort_by(|a, b| {
         b.updated_at
             .cmp(&a.updated_at)
@@ -609,38 +643,47 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
             .then_with(|| a.account.cmp(&b.account))
     });
 
-    let total = all_items.len();
-    let end = offset.saturating_add(limit).min(total);
-    let slice = if offset < total { &all_items[offset..end] } else { &[] };
-    let items_json: Vec<Value> = slice
-        .iter()
-        .map(|it| {
-            json!({
-                "provider": it.provider,
-                "provider_session": it.provider_session,
-                "account": it.account,
-                "account_label": it.account_label,
-                "ssh_host": it.ssh_host,
-                "cwd": it.cwd,
-                "global": it.global,
-                "title": it.title,
-                "updated_at": it.updated_at,
-                "open_session": it.open_session,
-                "open_state": it.open_state,
-            })
-        })
-        .collect();
+    Ok(Collected { items: all_items, is_global, canon_cwd, ssh_host: ssh_host_opt.map(str::to_string), offset, limit })
+}
 
+/// `session.chats`: enumerate all `claude` and `codex` conversations matching `cwd` or `global`
+/// across local or `[ssh: <host>]` accounts with full `offset` / `limit` / `total` pagination.
+pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
+    let Collected { mut items, is_global, canon_cwd, ssh_host, offset, limit } = collect(shared, request)?;
+    let total = items.len();
+    let end = offset.saturating_add(limit).min(total);
+    let page = if offset < total { &mut items[offset..end] } else { &mut [] };
+    for it in page.iter_mut() {
+        it.turns = it.file.as_deref().and_then(|f| turns::count(&it.provider, f));
+    }
+    let items_json: Vec<Value> = page.iter().map(item_json).collect();
     Ok(obj(json!({
         "scope": if is_global { "global" } else { "folder" },
         "cwd": canon_cwd,
-        "ssh_host": ssh_host_opt,
+        "ssh_host": ssh_host,
         "total": total,
         "offset": offset,
         "limit": limit,
         "has_more": end < total,
         "items": items_json,
     })))
+}
+
+pub(super) fn item_json(it: &ChatItem) -> Value {
+    json!({
+        "provider": it.provider,
+        "provider_session": it.provider_session,
+        "account": it.account,
+        "account_label": it.account_label,
+        "ssh_host": it.ssh_host,
+        "cwd": it.cwd,
+        "global": it.global,
+        "title": it.title,
+        "updated_at": it.updated_at,
+        "open_session": it.open_session,
+        "open_state": it.open_state,
+        "turns": it.turns,
+    })
 }
 
 #[cfg(test)]

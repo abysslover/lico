@@ -15,9 +15,11 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
   session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
-                 [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID]\n\
+                 [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID | --resume-latest]\n\
+                 (--resume-latest: continue the latest chat of --cwd for the account, or make a new session and say so; the reply says which)\n\
                  (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
-  chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--offset N] [--limit N]\n\
+  chat latest [--cwd DIR] [--ssh-host HOST] [--account ID]   the latest chat of a folder and account that has a saved transcript (the first item of `chat list --recorded`)\n\
+  chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--recorded] [--offset N] [--limit N]\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
@@ -260,10 +262,14 @@ pub fn run(args: Vec<String>) {
             if let Some(rid) = flag(&args, "--resume") {
                 request["resume_id"] = json!(rid);
             }
+            if args.iter().any(|a| a == "--resume-latest") {
+                request["resume_latest"] = json!(true);
+            }
             expect_ok(call(&mut connect(&socket), request));
         }
         ["chat", rest @ ..] => {
-            let rest = rest.strip_prefix(&["list"][..]).unwrap_or(rest);
+            let latest = rest.first() == Some(&"latest"); // `chat latest`: the first chat of the same list, the one `--resume-latest` continues
+            let rest = if latest || rest.first() == Some(&"list") { &rest[1..] } else { rest };
             let mut request = json!({"op": "session.chats"});
             let mut is_global = false;
             let mut cwd_opt: Option<String> = None;
@@ -272,6 +278,7 @@ pub fn run(args: Vec<String>) {
             while idx < rest.len() {
                 match rest[idx] {
                     "--global" => is_global = true,
+                    "--recorded" => request["recorded"] = json!(true),
                     "--cwd" => {
                         idx += 1;
                         cwd_opt = Some((*rest.get(idx).unwrap_or_else(|| die(1, USAGE))).to_string());
@@ -316,6 +323,10 @@ pub fn run(args: Vec<String>) {
                     let abs = std::env::current_dir().map(|d| d.join(&raw)).unwrap_or_else(|_| raw.clone().into());
                     request["cwd"] = json!(abs.to_string_lossy());
                 }
+            }
+            if latest {
+                request["limit"] = json!(1);
+                request["recorded"] = json!(true); // a tab that has said nothing yet is not a chat to continue
             }
             expect_ok(call(&mut connect(&socket), request));
         }
