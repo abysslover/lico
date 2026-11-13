@@ -1,4 +1,4 @@
-# Owner end-to-end guide (`lico 0.2.5`)
+# Owner end-to-end guide (`lico 0.2.6`)
 
 Version: 1.9.0
 

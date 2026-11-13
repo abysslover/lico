@@ -1,6 +1,6 @@
 # M10-P04 Plan — End-to-End Verification, Measurements, and `lico 0.2.6`
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M10-P04-verification-and-0-2-6`
@@ -12,9 +12,9 @@ End-to-end test under a private Xvfb with mocked providers (no billable turn, no
 
 ## Steps
 
-- [ ] S01: Bump to `0.2.6` and add the end-to-end test with its `tests/testmap.toml` entry.
-- [ ] S02: Release build, screenshots, cold suite, idle and hidden-growth measurements.
-- [ ] S03: Docs, report, `suite acceptance`, install, stop at G3 and G4.
+- [x] S01: Bump to `0.2.6` and add the end-to-end test with its `tests/testmap.toml` entry.
+- [x] S02: Release build, screenshots, cold suite, idle and hidden-growth measurements.
+- [x] S03: Docs, report, `suite acceptance`, install, stop at G3 and G4.
 
 ## Acceptance Criteria
 

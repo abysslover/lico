@@ -1,6 +1,6 @@
 # M10 — Chats Tab, Full `past` -> `chats` Rename, "+ New chat" with Resume, and Resume Parity (`lico 0.2.6`)
 
-- Status: approved, in progress
+- Status: implemented (all four phases), awaiting owner G3 and G4
 - Version: 1.0.0
 - Approved: 2026-11-13 (G1 for M10 and G2 for M10-P01 to M10-P04 approved by the owner on 2026-11-13)
 - Project: Lico
@@ -38,4 +38,4 @@ Make the left sidebar easier to read and the way back into earlier conversations
 | M10-P01 | Tab colors and the full rename, with old/new build mismatch handling | [Plan](../../plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md) | [Report](../../reports/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_report.md) | implemented |
 | M10-P02 | Resume core: `turns`, one `latest_chat` rule, `--resume-latest`, MCP `resume` | [Plan](../../plans/202611/20261113/20261113_10_M10-P02_resume_core_plan.md) | [Report](../../reports/202611/20261113/20261113_10_M10-P02_resume_core_report.md) | implemented |
 | M10-P03 | GUI "+ New chat" row and modal | [Plan](../../plans/202611/20261113/20261113_11_M10-P03_gui_new_chat_plan.md) | [Report](../../reports/202611/20261113/20261113_11_M10-P03_gui_new_chat_report.md) | implemented |
-| M10-P04 | End-to-end verification, measurements, and `lico 0.2.6` | [Plan](../../plans/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_plan.md) | pending | planned |
+| M10-P04 | End-to-end verification, measurements, and `lico 0.2.6` | [Plan](../../plans/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_plan.md) | [Report](../../reports/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_report.md) | implemented |

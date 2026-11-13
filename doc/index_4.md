@@ -3,7 +3,7 @@
 | Document | Current meaning |
 |---|---|
 | [M01-P05 plan](plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | User-facing workflow, failure recovery, resource acceptance and a single self-contained executable; G2 approved |
-| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M09 stand; updated 2026-11-13, grants no approval |
+| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M10 stand; updated 2026-11-13, grants no approval |
 | [M02 milestone](milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md) | Agentic-coding basics; G1 approved 2026-10-26 with the phase plans of G2 included; closed 2026-11-11 |
 | [M02 planning set](product/202610/20261026/00001_agentic_basics_plan/planning.md) | Scope, order and decisions; its [requirements](product/202610/20261026/00001_agentic_basics_plan/requirements.md), [screens](product/202610/20261026/00001_agentic_basics_plan/screens.md), [test plan](product/202610/20261026/00001_agentic_basics_plan/test_plan.md) and [changes](product/202610/20261026/00001_agentic_basics_plan/changes.md) sit beside it |
 | [M01-P08 plan](plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | Clean public-clone build reproducibility, test-suite bottleneck optimization, and `0.1.0` version bump; done 2026-11-12 |
@@ -67,5 +67,14 @@
 | [M09-P02 report](reports/202611/20261113/20261113_07_M09-P02_cross_provider_session_create_report.md) | `create.rs` + `create/tests.rs` split, cross-provider account/locality resolution, optional empty-tab creation, `mode: "auto"`, and MCP `TOOLS`/`INSTRUCTIONS` (`608/608` Rust + `70/70` Python tests); accepted at G3 and merged 2026-11-13 |
 | [M09-P03 plan](plans/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_plan.md) | End-to-end GUI & MCP verification, Xvfb inspection bundle, memory budgets, and `lico 0.2.5` release; done 2026-11-13 |
 | [M09-P03 report](reports/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_report.md) | `test_collapsible_tools_and_create_tab.py`, deferred busy peer-reply ordering + mint-emerald peer cards, `492/492` cold suite `137.0 s` (`2,026.2 MiB` peak), `25.25`/`36.32 MiB` idle RSS, `+0.38 MiB` hidden growth, two-clone `0.2.5` match, and `~/bin/lico` install; accepted at G3 and merged 2026-11-13 |
+| [M10 milestone](milestones/202611/20261113/20261113_03_M10_chats_tab_rename_and_resume_milestone.md) | Chats tab colors, full `past` -> `chats` rename without aliases, `+ New chat` dialog with Resume, and resume parity in the CLI and the tool (`lico 0.2.6`) |
+| [M10-P01 plan](plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md) | Tab colors, the final names, the build-mismatch sentence |
+| [M10-P01 report](reports/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_report.md) | `gui/sidebar_tabs.rs`, the rename table, the retired-names test |
+| [M10-P02 plan](plans/202611/20261113/20261113_10_M10-P02_resume_core_plan.md) | `turns`, one latest-chat rule, `resume_latest`, `lico chat latest`, tool `resume` |
+| [M10-P02 report](reports/202611/20261113/20261113_10_M10-P02_resume_core_report.md) | `chats/turns.rs`, `chats/latest.rs`, `new_session.rs`, the measured latency |
+| [M10-P03 plan](plans/202611/20261113/20261113_11_M10-P03_gui_new_chat_plan.md) | The `+ New chat` row and dialog |
+| [M10-P03 report](reports/202611/20261113/20261113_11_M10-P03_gui_new_chat_report.md) | `gui/newchat.rs`, `gui/newchat_draw.rs`, the click-area race |
+| [M10-P04 plan](plans/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_plan.md) | End-to-end verification, measurements, `lico 0.2.6` |
+| [M10-P04 report](reports/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_report.md) | Measured budgets, acceptance, install |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

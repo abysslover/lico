@@ -9,6 +9,16 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.2.6 — 2026-11-13 (`M10`)
+
+- **Milestone**: [M10 Chats tab, full `past` -> `chats` rename, "+ New chat" with Resume, and resume parity](doc/milestones/202611/20261113/20261113_03_M10_chats_tab_rename_and_resume_milestone.md) (`milestone/M10-chats-tab-rename-and-resume` once accepted, [M10-P04 report](doc/reports/202611/20261113/20261113_12_M10-P04_verification_and_0_2_6_report.md))
+- **Measured resources**: idle window `24.80..25.18` / `35.82..36.08 MiB`, `10 -> 100` hidden growth `+0.35 MiB`
+- **Highlights**:
+  - The three sidebar tabs have their own colors: Directories blue, Chats amber, Calls teal, each with a faint own-hue tint when inactive.
+  - **Breaking rename, no alias**: `Past` is `Chats` everywhere. Wire op `session.past` -> `session.chats`, HTTP `/v1/sessions/past` -> `/v1/sessions/chats`, CLI `lico session past` -> `lico chat [list]`. The old names answer `unknown_op` or a usage error; a command line and a host of different builds say so in one sentence (`run lico host stop and retry`).
+  - A `+ New chat` row above the parent row of the Directories tab opens a dialog: choose an account, then `Resume` (default) or `New`. `Resume` shows `Last Session : <provider> / <YYYY-MM-DD HH:MM> / <title> (<N> turns)` and continues the latest chat of the directory for that account (a tab that already holds it is shown again); with none it opens a new one and says so. Up/Down, Left/Right, Enter, Esc; `Options...` opens the full form.
+  - Chats carry `turns` (bounded count, `null` when unknown). One host rule, `latest chat of a folder and account that has a saved transcript`, serves the list, `lico chat latest`, the dialog and creation. `lico session create --resume-latest` and `mcp__lico__create` with `resume: true` use it (default off).
+
 ## 0.2.5 — 2026-11-13 (`M09`)
 
 - **Milestone**: [M09 Clean Call control markers, collapsible tool cards, and cross-provider session creation](doc/milestones/202611/20261113/20261113_02_M09_collapsible_tools_and_cross_provider_create_milestone.md) (`milestone/M09-collapsible-tools-and-cross-provider-create`, [M09-P03 report](doc/reports/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_report.md))
