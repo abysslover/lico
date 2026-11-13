@@ -335,7 +335,7 @@ impl App {
         if self.ui.sidebar.tab != clamped {
             self.ui.sidebar.tab = clamped;
             if clamped == 1 {
-                self.chats_sync_if_open(false);
+                self.chats_sync_if_open(true); // the tab shows what is true now: a chat opened since is shown as open
             }
             self.dirty = true;
         }

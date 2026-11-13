@@ -33,10 +33,11 @@ def _tracked_text_files() -> list[Path]:
 
 
 def test_no_retired_name_is_left_in_the_source_the_tests_or_the_living_docs():
-    me = Path(__file__).resolve()
+    # this file names the retired words to look for, and the end-to-end test asserts that the old operation is refused: both are meant to say them
+    says_it_on_purpose = {Path(__file__).resolve(), (REPO / "tests" / "test_chats_end_to_end.py").resolve()}
     found = []
     for path in _tracked_text_files():
-        if path.resolve() == me or not path.exists():
+        if path.resolve() in says_it_on_purpose or not path.exists():
             continue
         for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             if RETIRED.search(line):
