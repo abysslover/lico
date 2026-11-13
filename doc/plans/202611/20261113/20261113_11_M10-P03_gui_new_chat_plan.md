@@ -1,6 +1,6 @@
 # M10-P03 Plan — GUI "+ New chat" Row and Modal
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M10-P03-gui-new-chat`
@@ -12,9 +12,9 @@ A "+ New chat" button on its own row above `[..]  parent directory` (also when t
 
 ## Steps
 
-- [ ] S01: Red tests for the row, the modal states, keys, mouse, the Last Session line, the fallback, unreachable and ssh directories.
-- [ ] S02: Row, page-size change, modal, async preview, create paths.
-- [ ] S03: Report.
+- [x] S01: Red tests for the row, the modal states, keys, mouse, the Last Session line, the fallback, unreachable and ssh directories.
+- [x] S02: Row, page-size change, modal, async preview, create paths.
+- [x] S03: Report.
 
 ## Acceptance Criteria
 
