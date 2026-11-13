@@ -1,14 +1,14 @@
 # M12 — Find OpenAI-Compatible Local LLM Endpoints on This Machine and on ssh Hosts (read-only, on demand) (`lico 0.3.0`)
 
-- Status: implemented (all three phases), awaiting owner G3 and G4
-- Version: 1.0.0
-- Approved: 2026-11-14 (G1 for M12 and G2 for M12-P01 to M12-P03 approved by the owner on 2026-11-14)
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-14)
+- Version: 1.0.1
+- Approved: 2026-11-14 (G1 for M12 and G2 for M12-P01 to M12-P03 approved by the owner on 2026-11-14; G3 and G4, with publication, approved on 2026-11-14)
 - Project: Lico
 - Updated: 2026-11-14
 - Base: `main` at `ece5706` (M10 and M11 merged and published); later phases are stacked on the previous phase tip
-- Milestone branch: `milestone/M12-local-llm-endpoint-discovery` (created by the lead at the closing commit)
+- Milestone branch: `milestone/M12-local-llm-endpoint-discovery` (created at the closing commit)
 - Implementation: `phase/M12-P01-local-endpoint-discovery` .. `phase/M12-P03-verification-and-0-3-0` (`lico 0.3.0`)
-- Next gate: G3 and G4 stay with the owner
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-14)
 
 ## Goal
 
@@ -35,6 +35,13 @@ GET only, short timeouts, a response read to at most 64 KiB, no request body, no
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M12-P01 | Discovery engine for this machine: wire op, CLI, HTTP, tool, dialog | [Plan](../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_report.md) | implemented |
-| M12-P02 | The same discovery on an ssh host through a bounded remote script | [Plan](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | implemented |
-| M12-P03 | End-to-end verification, measurements, and `lico 0.3.0` | [Plan](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | [Report](../../reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md) | implemented |
+| M12-P01 | Discovery engine for this machine: wire op, CLI, HTTP, tool, dialog | [Plan](../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_report.md) | accepted & merged |
+| M12-P02 | The same discovery on an ssh host through a bounded remote script | [Plan](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | accepted & merged |
+| M12-P03 | End-to-end verification, measurements, and `lico 0.3.0` | [Plan](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | [Report](../../reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md) | accepted & merged |
+
+## Gate record
+
+- G3 and G4 (with publication) for this milestone were given by the owner in the chat on 2026-11-14 ("merge and push"), after the owner had run the dialog themselves: `main` moved by fast-forward to the M12-P03 tip `bba9bfc`, and this closing commit then recorded the acceptance. The owner named no individual tip.
+- What the owner had observed before giving it: `Session > Find Local LLM servers...` used on the real machine (46 listening sockets, 46 looked at, 1,061 ms) and, in the same dialog, rows found on a real ssh host. The measurements in the phase reports were not independently reproduced at the gate.
+- What the owner found missing, not blocking this gate (all for later minor releases): the result is not cached (every opening scans again) and there is no Refresh that forces a new scan; the scan could be faster; the list is noisy (listeners such as `ssh`, `python` or an MCP HTTP server appear beside the servers that matter) and should be filtered or folded by default; the rows of the ssh host are longer than the dialog, so their content cannot be read; and "no model listed" does not say whether the server can be run.
+- The owner's correction of what this feature is for: it is not about connecting Claude or Codex to a local model (those keep their existing OAuth sign-in unchanged). The purpose is to let a found Local LLM server itself (an Ollama or llama.cpp style server) appear as its own kind of choice in `+ New chat`. That is the later "use a found endpoint" milestone that this milestone's Out of scope already names; it needs its own G1 and a requirement in the spec (the proposed LLM-01 to LLM-03 in the P03 report are not in the spec yet and wait for the owner's yes).

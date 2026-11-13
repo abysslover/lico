@@ -1,7 +1,7 @@
 # M12-P03 Report — End-to-End Verification, Measurements, and `lico 0.3.0`
 
-- Status: implemented, awaiting owner inspection (G3) and merge (G4)
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M12-P03-verification-and-0-3-0` (stacked on the P02 tip; code commit `e57f790`)
 - Plan: [M12-P03](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md)
 

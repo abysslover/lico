@@ -11,7 +11,7 @@ binaries (`python3 -m lico_measure.suite acceptance`).
 
 ## 0.3.0 — 2026-11-14 (`M12`)
 
-- **Milestone**: [M12 Find OpenAI-compatible Local LLM endpoints on this machine and on ssh hosts](doc/milestones/202611/20261114/20261114_01_M12_local_llm_endpoint_discovery_milestone.md) (`milestone/M12-local-llm-endpoint-discovery` once accepted, [M12-P03 report](doc/reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md))
+- **Milestone**: [M12 Find OpenAI-compatible Local LLM endpoints on this machine and on ssh hosts](doc/milestones/202611/20261114/20261114_01_M12_local_llm_endpoint_discovery_milestone.md) (`milestone/M12-local-llm-endpoint-discovery`, [M12-P03 report](doc/reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md))
 - **Measured resources**: idle window `24.76..25.11` / `35.82..36.23 MiB`, `10 -> 100` hidden growth `+0.41 MiB`
 - **Highlights**:
   - **Find Local LLM servers, read-only and on demand.** `Session > Find Local LLM servers...` (a dialog that scans only on Enter or a click), `lico llm discover [--ssh-host HOST] [--all-users]`, `POST /v1/llm/discover`, and the tool `llm_endpoints` (which asks the person each time). It lists the listening TCP ports of your own processes (all users' ports only when asked) that answer like an OpenAI-compatible server (`GET /v1/models`) or an Ollama server (`GET /api/tags`): kind, address and whether it listens on loopback or all addresses, whether it wants a key (reported, never tried), its model ids and the name of its process.
