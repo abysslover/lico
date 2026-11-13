@@ -1,6 +1,6 @@
 # M12-P02 Plan — The Same Discovery on an ssh Host
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-14 (G2 approved by the owner on 2026-11-14)
 - Branch: `phase/M12-P02-ssh-endpoint-discovery`
@@ -15,10 +15,10 @@
 
 ## Steps
 
-- [ ] S01: Red tests with fake hosts (`gpu-box`, `offline-box`, `hang-box`, `nopy-box`, `slow-box`, `huge-box`, `bsd-box`) and a parity test against the local engine.
-- [ ] S02: The remote script and its runner; error mapping.
-- [ ] S03: CLI, dialog host chooser, tool `host`.
-- [ ] S04: Report, mailbox.
+- [x] S01: Red tests with fake hosts (`gpu-box`, `offline-box`, `hang-box`, `nopy-box`, `slow-box`, `huge-box`, `bsd-box`) and a parity test against the local engine.
+- [x] S02: The remote script and its runner; error mapping.
+- [x] S03: CLI, dialog host chooser, tool `host`.
+- [x] S04: Report, mailbox.
 
 ## Acceptance Criteria
 

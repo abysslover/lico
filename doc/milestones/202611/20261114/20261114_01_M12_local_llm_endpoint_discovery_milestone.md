@@ -36,5 +36,5 @@ GET only, short timeouts, a response read to at most 64 KiB, no request body, no
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
 | M12-P01 | Discovery engine for this machine: wire op, CLI, HTTP, tool, dialog | [Plan](../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_report.md) | implemented |
-| M12-P02 | The same discovery on an ssh host through a bounded remote script | [Plan](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | pending | planned |
+| M12-P02 | The same discovery on an ssh host through a bounded remote script | [Plan](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | implemented |
 | M12-P03 | End-to-end verification, measurements, and `lico 0.3.0` | [Plan](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | pending | planned |
