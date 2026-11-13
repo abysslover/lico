@@ -1,6 +1,6 @@
 # M11-P02 Plan — Running Elsewhere and the Empty-Resume Hint
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M11-P02-running-elsewhere-and-hint`
@@ -14,10 +14,10 @@
 
 ## Steps
 
-- [ ] S01: Red tests with fake processes (a copy of `sleep` named `claude` with its `cwd` in a synthetic folder) and transcripts of fresh and old modification time: live and not-live, list mark, refusals (dialog, CLI, tool, `resume_latest`), the hint.
-- [ ] S02: `chats/live.rs` (bounded `/proc` scan, cache), `chats/others.rs`, refusal in `new_session.rs`.
-- [ ] S03: List mark, dialog text, CLI and tool reports, manual text; measure the scan cost.
-- [ ] S04: Report, mailbox.
+- [x] S01: Red tests with fake processes (a copy of `sleep` named `claude` with its `cwd` in a synthetic folder) and transcripts of fresh and old modification time: live and not-live, list mark, refusals (dialog, CLI, tool, `resume_latest`), the hint.
+- [x] S02: `chats/live.rs` (bounded `/proc` scan, cache), `chats/others.rs`, refusal in `new_session.rs`.
+- [x] S03: List mark, dialog text, CLI and tool reports, manual text; measure the scan cost.
+- [x] S04: Report, mailbox.
 
 ## Acceptance Criteria
 

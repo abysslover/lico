@@ -39,5 +39,5 @@ AUTH-08 (no migration, copy, symlink or decryption of another application's cred
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
 | M11-P01 | The Native account: virtual entry, one listing rule, settings, label, dialog and first-run prompt | [Plan](../../plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md) | [Report](../../reports/202611/20261113/20261113_13_M11-P01_native_account_report.md) | implemented |
-| M11-P02 | Running-elsewhere detection and refusal, the empty-Resume hint | [Plan](../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md) | pending | planned |
+| M11-P02 | Running-elsewhere detection and refusal, the empty-Resume hint | [Plan](../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md) | [Report](../../reports/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_report.md) | implemented |
 | M11-P03 | End-to-end verification, measurements, and `lico 0.2.7` | [Plan](../../plans/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_plan.md) | pending | planned |
