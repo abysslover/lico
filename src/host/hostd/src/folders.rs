@@ -302,7 +302,7 @@ pub fn start_provider_session(shared: &Arc<Shared>, kind: &str, bound: Option<(S
         }
         if let Some(ref rid) = resume_id {
             s.codex_thread = Some(rid.clone());
-            crate::past::seed_resumed_transcript(shared, &mut s, rid);
+            crate::chats::seed_resumed_transcript(shared, &mut s, rid);
         }
     }
     let started = if kind == "claude" {

@@ -37,8 +37,8 @@ pub(crate) enum AsyncJob {
     SessionStart { req_id: u64, created_cwd: Option<String> },
     SidebarDir { req_id: u64, ssh_host: Option<String>, dir: String, keep_page: bool, fallback_root: bool },
     SidebarNavSave,
-    SidebarPast { req_id: u64, scope_key: String, page: usize },
-    PastResume { req_id: u64, created_cwd: Option<String> },
+    SidebarChats { req_id: u64, scope_key: String, page: usize },
+    ChatResume { req_id: u64, created_cwd: Option<String> },
     CallGet { call_id: String }, CallSay { call_id: String, text: String },
     CallStart, CallAction,
 }
@@ -150,7 +150,7 @@ impl App {
             AsyncJob::SessionStart { req_id, created_cwd } => self.on_form_start_done(req_id, created_cwd, done.reply),
             AsyncJob::SidebarDir { .. } => self.on_sidebar_async(done.job, done.reply),
             AsyncJob::SidebarNavSave => self.on_sidebar_nav_saved(done.reply),
-            AsyncJob::SidebarPast { .. } | AsyncJob::PastResume { .. } => self.on_past_async(done.job, done.reply),
+            AsyncJob::SidebarChats { .. } | AsyncJob::ChatResume { .. } => self.on_chats_async(done.job, done.reply),
             AsyncJob::CallGet { .. } | AsyncJob::CallSay { .. } | AsyncJob::CallStart | AsyncJob::CallAction => self.on_call_async(done.job, done.reply),
         }
     }

@@ -1,4 +1,4 @@
-//! Full-pagination `[ Past ]` sidebar tab (`session.past`, zero top-N truncation) and 1-click
+//! Full-pagination `[ Chats ]` sidebar tab (`session.chats`, zero top-N truncation) and 1-click
 //! session resume (`session.resume` for disconnected tabs, `session.create` with `resume_id` for
 //! external/closed `claude` and `codex` `.jsonl` transcripts) (`M07-P03`).
 
@@ -13,7 +13,7 @@ use super::ui::memrow;
 use super::App;
 
 #[derive(Clone, Debug)]
-pub struct PastEntry {
+pub struct ChatEntry {
     pub provider: String,
     pub provider_session: String,
     pub account: Option<String>,
@@ -28,7 +28,7 @@ pub struct PastEntry {
 }
 
 #[derive(Clone, Default)]
-pub struct PastEntryGeom {
+pub struct ChatEntryGeom {
     pub index: usize,
     pub provider: String,
     pub provider_session: String,
@@ -39,9 +39,9 @@ pub struct PastEntryGeom {
 }
 
 #[derive(Default)]
-pub struct PastSidebarState {
+pub struct ChatsSidebarState {
     pub scope_key: String,
-    pub items: Vec<PastEntry>,
+    pub items: Vec<ChatEntry>,
     pub total: usize,
     pub page: usize,
     pub page_size: usize,
@@ -50,10 +50,10 @@ pub struct PastSidebarState {
     pub error: Option<String>,
     pub load_count: u64,
     pub resume_pending_req: u64,
-    pub entries_geom: Vec<PastEntryGeom>,
+    pub entries_geom: Vec<ChatEntryGeom>,
 }
 
-pub(super) fn calc_past_ps(tab_y1: f32, hint_y: f32, lh: f32, s: f32) -> usize {
+pub(super) fn calc_chats_ps(tab_y1: f32, hint_y: f32, lh: f32, s: f32) -> usize {
     let list_top = tab_y1 + 4.0 * lh + 26.0 * s;
     let nav_y = hint_y - 2.0 * lh - 4.0 * s;
     let avail = (nav_y - list_top).max(0.0);
@@ -77,7 +77,15 @@ fn rel_age(now: u64, updated_at: u64) -> String {
     }
 }
 
-fn parse_past_items(reply: &Value) -> Vec<PastEntry> {
+/// What the sidebar says for a refused request: a host of another build does not know the operation, which is not a fault of the folder.
+fn chats_error_text(code: &str) -> String {
+    match code {
+        "unknown_op" => "This host is another build than this window and does not know chats; run `lico host stop`, then reopen the window.".into(),
+        other => other.to_string(),
+    }
+}
+
+fn parse_chat_items(reply: &Value) -> Vec<ChatEntry> {
     reply["items"]
         .as_array()
         .into_iter()
@@ -86,7 +94,7 @@ fn parse_past_items(reply: &Value) -> Vec<PastEntry> {
             let provider = it["provider"].as_str()?.to_string();
             let provider_session = it["provider_session"].as_str()?.to_string();
             let title = it["title"].as_str().unwrap_or(&provider_session).to_string();
-            Some(PastEntry {
+            Some(ChatEntry {
                 provider,
                 provider_session,
                 account: it["account"].as_str().map(str::to_string),
@@ -103,7 +111,7 @@ fn parse_past_items(reply: &Value) -> Vec<PastEntry> {
         .collect()
 }
 
-impl PastSidebarState {
+impl ChatsSidebarState {
     pub fn total_pages(&self) -> usize {
         let step = self.page_size.max(1);
         self.total.div_ceil(step).max(1)
@@ -111,7 +119,7 @@ impl PastSidebarState {
 }
 
 impl App {
-    fn past_target_scope(&self) -> Option<(bool, Option<String>, Option<String>, String)> {
+    fn chats_target_scope(&self) -> Option<(bool, Option<String>, Option<String>, String)> {
         let sb = &self.ui.sidebar;
         let host = sb.ssh_host.clone();
         let host_s = host.as_deref().unwrap_or("");
@@ -130,29 +138,29 @@ impl App {
         Some((false, host, Some(dir), key))
     }
 
-    pub(crate) fn past_sync_if_open(&mut self, force: bool) {
+    pub(crate) fn chats_sync_if_open(&mut self, force: bool) {
         if !self.sidebar_shown() || self.socket.is_empty() || self.ui.sidebar.tab != 1 {
             return;
         }
-        let Some((_, _, _, key)) = self.past_target_scope() else {
+        let Some((_, _, _, key)) = self.chats_target_scope() else {
             return;
         };
-        if force || self.ui.sidebar.past.load_count == 0 || self.ui.sidebar.past.scope_key != key {
-            self.past_start_fetch(0, false);
+        if force || self.ui.sidebar.chats.load_count == 0 || self.ui.sidebar.chats.scope_key != key {
+            self.chats_start_fetch(0, false);
         }
     }
 
-    pub(crate) fn past_start_fetch(&mut self, page: usize, refreshed: bool) {
+    pub(crate) fn chats_start_fetch(&mut self, page: usize, refreshed: bool) {
         if self.socket.is_empty() {
             return;
         }
-        let Some((is_glob, ssh_host, cwd_opt, scope_key)) = self.past_target_scope() else {
+        let Some((is_glob, ssh_host, cwd_opt, scope_key)) = self.chats_target_scope() else {
             return;
         };
-        let limit = self.ui.sidebar.past.page_size.max(12).clamp(1, 100);
+        let limit = self.ui.sidebar.chats.page_size.max(12).clamp(1, 100);
         let offset = page.saturating_mul(limit);
         let mut req = json!({
-            "op": "session.past",
+            "op": "session.chats",
             "offset": offset as i64,
             "limit": limit as i64,
         });
@@ -171,39 +179,39 @@ impl App {
         if refreshed {
             self.ui.sidebar.refresh_count += 1;
         }
-        self.ui.sidebar.past.scope_key = scope_key.clone();
-        self.ui.sidebar.past.page = page;
-        self.ui.sidebar.past.loading = true;
-        self.ui.sidebar.past.error = None;
+        self.ui.sidebar.chats.scope_key = scope_key.clone();
+        self.ui.sidebar.chats.page = page;
+        self.ui.sidebar.chats.loading = true;
+        self.ui.sidebar.chats.error = None;
         self.dirty = true;
 
         let has_proxy = self.ui.proxy.is_some();
-        let req_id = self.spawn_host_call(req, 7, move |req_id| AsyncJob::SidebarPast {
+        let req_id = self.spawn_host_call(req, 7, move |req_id| AsyncJob::SidebarChats {
             req_id,
             scope_key,
             page,
         });
         if has_proxy {
-            self.ui.sidebar.past.pending_req = req_id;
+            self.ui.sidebar.chats.pending_req = req_id;
         }
     }
 
-    pub(crate) fn past_step_page(&mut self, delta: isize) {
+    pub(crate) fn chats_step_page(&mut self, delta: isize) {
         if delta == 0 {
             return;
         }
-        let total_pages = self.ui.sidebar.past.total_pages();
-        let cur = self.ui.sidebar.past.page.min(total_pages.saturating_sub(1));
+        let total_pages = self.ui.sidebar.chats.total_pages();
+        let cur = self.ui.sidebar.chats.page.min(total_pages.saturating_sub(1));
         let next = (cur as isize + delta).clamp(0, total_pages.saturating_sub(1) as isize) as usize;
         if next != cur {
-            self.past_start_fetch(next, false);
+            self.chats_start_fetch(next, false);
         }
     }
 
-    pub(crate) fn past_activate_entry(&mut self, idx: usize) {
+    pub(crate) fn chats_activate_entry(&mut self, idx: usize) {
         self.ui.sidebar.host_popup_open = false;
         self.ui.sidebar.filter_focused = false;
-        let Some(entry) = self.ui.sidebar.past.items.get(idx).cloned() else {
+        let Some(entry) = self.ui.sidebar.chats.items.get(idx).cloned() else {
             return;
         };
         if let Some(ref sid) = entry.open_session {
@@ -246,51 +254,50 @@ impl App {
 
         let local_created_cwd = if entry.ssh_host.is_some() { None } else { created_cwd };
         let has_proxy = self.ui.proxy.is_some();
-        let req_id = self.spawn_host_call(req, 8, move |req_id| AsyncJob::PastResume {
+        let req_id = self.spawn_host_call(req, 8, move |req_id| AsyncJob::ChatResume {
             req_id,
             created_cwd: local_created_cwd,
         });
         if has_proxy {
-            self.ui.sidebar.past.resume_pending_req = req_id;
+            self.ui.sidebar.chats.resume_pending_req = req_id;
         }
     }
 
-    pub(crate) fn on_past_async(&mut self, job: AsyncJob, reply: Value) {
+    pub(crate) fn on_chats_async(&mut self, job: AsyncJob, reply: Value) {
         let has_proxy = self.ui.proxy.is_some();
         match job {
-            AsyncJob::SidebarPast { req_id, scope_key, page } => {
-                if (has_proxy && self.ui.sidebar.past.pending_req != req_id)
-                    || self.ui.sidebar.past.scope_key != scope_key
+            AsyncJob::SidebarChats { req_id, scope_key, page } => {
+                if (has_proxy && self.ui.sidebar.chats.pending_req != req_id)
+                    || self.ui.sidebar.chats.scope_key != scope_key
                 {
                     return;
                 }
-                self.ui.sidebar.past.pending_req = 0;
-                self.ui.sidebar.past.loading = false;
+                self.ui.sidebar.chats.pending_req = 0;
+                self.ui.sidebar.chats.loading = false;
                 if reply["ok"] != json!(1) {
-                    let err = reply["error"].as_str().unwrap_or("unknown").to_string();
-                    self.ui.sidebar.past.error = Some(err);
+                    self.ui.sidebar.chats.error = Some(chats_error_text(reply["error"].as_str().unwrap_or("unknown")));
                     self.dirty = true;
                     return;
                 }
                 let total = reply["total"].as_u64().unwrap_or(0) as usize;
-                let items = parse_past_items(&reply);
-                self.ui.sidebar.past.total = total;
-                self.ui.sidebar.past.items = items;
-                self.ui.sidebar.past.page = page;
-                self.ui.sidebar.past.error = None;
-                self.ui.sidebar.past.load_count += 1;
-                let tp = self.ui.sidebar.past.total_pages();
+                let items = parse_chat_items(&reply);
+                self.ui.sidebar.chats.total = total;
+                self.ui.sidebar.chats.items = items;
+                self.ui.sidebar.chats.page = page;
+                self.ui.sidebar.chats.error = None;
+                self.ui.sidebar.chats.load_count += 1;
+                let tp = self.ui.sidebar.chats.total_pages();
                 if page >= tp && total > 0 {
-                    self.past_start_fetch(tp - 1, false);
+                    self.chats_start_fetch(tp - 1, false);
                     return;
                 }
                 self.dirty = true;
             }
-            AsyncJob::PastResume { req_id, created_cwd } => {
-                if has_proxy && self.ui.sidebar.past.resume_pending_req != req_id {
+            AsyncJob::ChatResume { req_id, created_cwd } => {
+                if has_proxy && self.ui.sidebar.chats.resume_pending_req != req_id {
                     return;
                 }
-                self.ui.sidebar.past.resume_pending_req = 0;
+                self.ui.sidebar.chats.resume_pending_req = 0;
                 if reply["ok"] == json!(1) {
                     let id = reply["session"].as_str().unwrap_or("").to_string();
                     self.panel_close();
@@ -299,13 +306,13 @@ impl App {
                     self.show(&id, None);
                     self.ui.tab_ensure_visible = true;
                     self.persist_workspace(created_cwd.as_deref(), Some("session"), Some(&id));
-                    self.ui.flash = Some("Resumed past session.".into());
+                    self.ui.flash = Some("Resumed chat.".into());
                     if self.ui.sidebar.tab == 1 {
-                        self.past_start_fetch(self.ui.sidebar.past.page, false);
+                        self.chats_start_fetch(self.ui.sidebar.chats.page, false);
                     }
                 } else {
-                    let err = reply["error"].as_str().unwrap_or("unknown");
-                    self.ui.flash = Some(format!("Could not resume past session: {err}"));
+                    let err = chats_error_text(reply["error"].as_str().unwrap_or("unknown"));
+                    self.ui.flash = Some(format!("Could not resume chat: {err}"));
                 }
                 self.dirty = true;
             }
@@ -313,8 +320,8 @@ impl App {
         }
     }
 
-    pub(super) fn insert_past_json(&self, out: &mut Value) {
-        let p = &self.ui.sidebar.past;
+    pub(super) fn insert_chats_json(&self, out: &mut Value) {
+        let p = &self.ui.sidebar.chats;
         let entries: Vec<Value> = p
             .entries_geom
             .iter()
@@ -330,18 +337,18 @@ impl App {
                 })
             })
             .collect();
-        out["past_total"] = json!(p.total);
-        out["past_page"] = json!(p.page + 1);
-        out["past_page_size"] = json!(p.page_size);
-        out["past_total_pages"] = json!(p.total_pages());
-        out["past_loading"] = json!(p.loading);
-        out["past_load_count"] = json!(p.load_count);
-        out["past_error"] = json!(p.error);
-        out["past_entries"] = json!(entries);
+        out["chats_total"] = json!(p.total);
+        out["chats_page"] = json!(p.page + 1);
+        out["chats_page_size"] = json!(p.page_size);
+        out["chats_total_pages"] = json!(p.total_pages());
+        out["chats_loading"] = json!(p.loading);
+        out["chats_load_count"] = json!(p.load_count);
+        out["chats_error"] = json!(p.error);
+        out["chats_entries"] = json!(entries);
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn draw_past_sidebar(
+    pub(super) fn draw_chats_sidebar(
         &mut self,
         buf: &mut [u32],
         width: usize,
@@ -352,7 +359,7 @@ impl App {
         total_mem: &str,
         mut geom: SidebarGeom,
     ) {
-        self.ui.sidebar.past.entries_geom.clear();
+        self.ui.sidebar.chats.entries_geom.clear();
         let s = self.ui.scale.max(1.0);
         let lh = self.line_h() * s;
         let char_w = self.char_w();
@@ -405,7 +412,7 @@ impl App {
         geom.new_here_rect = Some(new_rect);
         y += row_h + 3.0 * s;
 
-        // 2. Past-session search/filter box
+        // 2. Chats search/filter box
         let f_rect = [4.0 * s, y, x_right - 4.0 * s, y + row_h];
         controls::fill(buf, width, height, f_rect, if filter_focused { 0xFF1E_2D42 } else { 0xFF16_1E29 });
         if filter_focused {
@@ -414,7 +421,7 @@ impl App {
         let has_clear = filter_focused || !filter.is_empty();
         let clr_w = if has_clear { controls.width(fs, "\u{00d7}") + 10.0 * s } else { 0.0 };
         let f_text = if filter.is_empty() && !filter_focused {
-            "Filter past sessions...".to_string()
+            "Filter chats...".to_string()
         } else if filter_focused {
             format!("Filter: {filter}|")
         } else {
@@ -498,27 +505,27 @@ impl App {
         }
         y += lh + 6.0 * s;
 
-        // 5. Past session list cards
+        // 5. Chats list cards
         let nav_y = mem_y - lh - 4.0 * s;
         let card_h = 2.0 * lh + 4.0 * s;
-        let past_loading = self.ui.sidebar.past.loading;
-        let past_err = self.ui.sidebar.past.error.clone();
-        let items = self.ui.sidebar.past.items.clone();
-        let total = self.ui.sidebar.past.total;
-        let page_idx = self.ui.sidebar.past.page;
-        let total_pages = self.ui.sidebar.past.total_pages();
+        let chats_loading = self.ui.sidebar.chats.loading;
+        let chats_err = self.ui.sidebar.chats.error.clone();
+        let items = self.ui.sidebar.chats.items.clone();
+        let total = self.ui.sidebar.chats.total;
+        let page_idx = self.ui.sidebar.chats.page;
+        let total_pages = self.ui.sidebar.chats.total_pages();
 
         if unreachable {
             controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, &clip_cols("SSH host unreachable.", max_cols), Color::rgb(0xF0, 0x76, 0x76));
-        } else if past_loading && items.is_empty() {
-            controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, "Loading past sessions...", muted);
-        } else if let Some(ref err) = past_err.filter(|_| items.is_empty()) {
+        } else if chats_loading && items.is_empty() {
+            controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, "Loading chats...", muted);
+        } else if let Some(ref err) = chats_err.filter(|_| items.is_empty()) {
             controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, &clip_cols(&format!("Cannot read ({err})"), max_cols), Color::rgb(0xF0, 0x76, 0x76));
         } else if items.is_empty() {
             let msg = if filter.trim().is_empty() {
-                "(no past sessions in this scope)"
+                "(no chats in this scope)"
             } else {
-                "(no matching past sessions)"
+                "(no matching chats)"
             };
             controls.text(fs, swash, buf, width, height, 6.0 * s, y, x_right as i32, msg, dim);
         } else {
@@ -571,8 +578,8 @@ impl App {
                 let sub = format!("{} \u{00b7} {} \u{00b7} #{short_id} \u{00b7} {}", it.provider, who, rel_age(now, it.updated_at));
                 controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, (r[2] - 4.0 * s) as i32, &clip_cols(&sub, max_cols.saturating_sub(2)), muted);
 
-                controls.target(r, Action::SidebarPastEntry(idx));
-                out_geom.push(PastEntryGeom {
+                controls.target(r, Action::SidebarChatEntry(idx));
+                out_geom.push(ChatEntryGeom {
                     index: idx,
                     provider: it.provider.clone(),
                     provider_session: it.provider_session.clone(),
@@ -583,7 +590,7 @@ impl App {
                 });
                 y += card_h;
             }
-            self.ui.sidebar.past.entries_geom = out_geom;
+            self.ui.sidebar.chats.entries_geom = out_geom;
         }
 
         // 6. Full Pagination Footer (`<  Page X/Y (Total)  >`) + Memory Total Line
@@ -628,5 +635,17 @@ impl App {
 
         memrow::draw_total(controls, fs, swash, buf, width, height, [4.0 * s, mem_y, x_right - 2.0, nav_y], total_mem, muted);
         self.ui.sidebar.geom = geom;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chats_error_text;
+
+    #[test]
+    fn a_host_that_does_not_know_the_operation_is_explained_and_other_codes_pass_through() {
+        let text = chats_error_text("unknown_op");
+        assert!(text.contains("another build") && text.contains("lico host stop"), "{text}");
+        assert_eq!(chats_error_text("folder_missing"), "folder_missing");
     }
 }

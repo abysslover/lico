@@ -7,8 +7,13 @@ use super::controls::{self, Action};
 use super::editor;
 use super::panel::files_ui::HOST_POPUP_MAX_VIS;
 use super::sidebar::{SidebarEntryGeom, SidebarGeom};
+use super::sidebar_tabs::{palette, TAB_LABELS};
 use super::ui::memrow;
 use super::{App, BACKGROUND};
+
+fn ink_color(argb: u32) -> Color {
+    Color::rgb((argb >> 16) as u8, (argb >> 8) as u8, argb as u8)
+}
 
 pub(super) fn clip_cols(text: &str, max_cols: usize) -> String {
     let width = |c: char| if editor::wide(c) { 2 } else { 1 };
@@ -100,7 +105,7 @@ impl App {
         let mut out = json!({
             "shown": self.sidebar_shown(),
             "collapsed": sb.collapsed,
-            "tab": match sb.tab { 0 => "directories", 1 => "past", _ => "calls" },
+            "tab": match sb.tab { 0 => "directories", 1 => "chats", _ => "calls" },
             "tab_index": sb.tab,
             "global_scope": sb.global_scope,
             "active_cwd_highlighted": self.sidebar_is_active_cwd(),
@@ -124,7 +129,7 @@ impl App {
             "last_opened": sb.last_opened,
             "host_popup_open": sb.host_popup_open,
             "dir_tab_rect": sb.geom.dir_tab_rect,
-            "past_tab_rect": sb.geom.past_tab_rect,
+            "chats_tab_rect": sb.geom.chats_tab_rect,
             "host_rect": sb.geom.host_rect,
             "dotfiles_rect": sb.geom.dotfiles_rect,
             "refresh_rect": sb.geom.refresh_rect,
@@ -140,7 +145,8 @@ impl App {
             "entries": entries,
             "host_items": host_items,
         });
-        self.insert_past_json(&mut out);
+        out["tab_labels"] = json!(TAB_LABELS);
+        self.insert_chats_json(&mut out);
         self.insert_nav_json(&mut out);
         self.insert_calls_json(&mut out);
         out
@@ -208,7 +214,7 @@ impl App {
         let gold_ink = Color::rgb(0xFA, 0xD2, 0x6E);
         let teal_ink = Color::rgb(0x64, 0xE2, 0xCB);
 
-        // 1. Top 3-Tab Header (`[ Directories ]` | `[ Past ]` | `[ Calls ]`) aligned with chat tab bar (`top..chat_top`).
+        // 1. Top 3-Tab Header (`[ Directories ]` | `[ Chats ]` | `[ Calls ]`) aligned with chat tab bar (`top..chat_top`).
         let tab_y1 = if chat_top > top + 8.0 * s { chat_top } else { top + lh + 6.0 * s };
         controls::fill(buf, width, height, [0.0, top, x_right, tab_y1], 0xFF13_1A23);
         controls::fill(buf, width, height, [0.0, tab_y1 - 1.0, x_right, tab_y1], 0xFF2B_3646);
@@ -217,46 +223,41 @@ impl App {
         let d_rect = [2.0 * s, top + 2.0 * s, split1 - 1.0 * s, tab_y1 - 1.0];
         let p_rect = [split1 + 1.0 * s, top + 2.0 * s, split2 - 1.0 * s, tab_y1 - 1.0];
         let c_rect = [split2 + 1.0 * s, top + 2.0 * s, x_right - 2.0 * s, tab_y1 - 1.0];
-        let (d_fill, d_col) = if tab_idx == 0 { (0xFF21_3147, ink) } else { (0xFF17_202B, muted) };
-        let (p_fill, p_col) = if tab_idx == 1 { (0xFF21_3147, ink) } else { (0xFF17_202B, muted) };
-        let (c_fill, c_col) = if tab_idx == 2 {
-            (0xFF19_3338, ink)
-        } else if calls_active > 0 {
-            (0xFF16_282C, teal_ink)
-        } else {
-            (0xFF17_202B, muted)
+        let tint = |tab: usize| {
+            let p = palette(tab, usize::from(tab_idx) == tab);
+            (p.fill, ink_color(p.ink))
         };
+        let (d_fill, d_col) = tint(0);
+        let (p_fill, p_col) = tint(1);
+        let (c_fill, c_col) = if tab_idx != 2 && calls_active > 0 { (tint(2).0, teal_ink) } else { tint(2) };
         controls::fill(buf, width, height, d_rect, d_fill);
         controls::fill(buf, width, height, p_rect, p_fill);
         controls::fill(buf, width, height, c_rect, c_fill);
-        let (active_bar, bar_col) = match tab_idx {
-            0 => (d_rect, 0xFF56_B4FF),
-            1 => (p_rect, 0xFF56_B4FF),
-            _ => (c_rect, 0xFF38_B2AC),
-        };
+        let active_bar = [d_rect, p_rect, c_rect][usize::from(tab_idx).min(2)];
+        let bar_col = palette(usize::from(tab_idx).min(2), true).bar;
         controls::fill(buf, width, height, [active_bar[0], active_bar[1], active_bar[2], active_bar[1] + 2.0 * s], bar_col);
-        let d_lbl = if controls.width(fs, "Directories") + 10.0 * s <= d_rect[2] - d_rect[0] { "Directories" } else { "Dir" };
-        let c_lbl = if calls_total > 0 { format!("Calls ({calls_total})") } else { "Calls".to_string() };
+        let d_lbl = if controls.width(fs, TAB_LABELS[0]) + 10.0 * s <= d_rect[2] - d_rect[0] { TAB_LABELS[0] } else { "Dir" };
+        let c_lbl = if calls_total > 0 { format!("{} ({calls_total})", TAB_LABELS[2]) } else { TAB_LABELS[2].to_string() };
         controls.text(fs, swash, buf, width, height, d_rect[0] + 6.0 * s, d_rect[1] + s, d_rect[2] as i32, d_lbl, d_col);
         controls.target(d_rect, Action::SidebarTab(0));
-        controls.text(fs, swash, buf, width, height, p_rect[0] + 6.0 * s, p_rect[1] + s, p_rect[2] as i32, "Past", p_col);
+        controls.text(fs, swash, buf, width, height, p_rect[0] + 6.0 * s, p_rect[1] + s, p_rect[2] as i32, TAB_LABELS[1], p_col);
         controls.target(p_rect, Action::SidebarTab(1));
         controls.text(fs, swash, buf, width, height, c_rect[0] + 6.0 * s, c_rect[1] + s, c_rect[2] as i32, &c_lbl, c_col);
         controls.target(c_rect, Action::SidebarTab(2));
 
         let mut geom = SidebarGeom {
             dir_tab_rect: Some(d_rect),
-            past_tab_rect: Some(p_rect),
+            chats_tab_rect: Some(p_rect),
             calls_tab_rect: Some(c_rect),
             ..Default::default()
         };
 
         let mem_y = hint_y - lh;
         let mut y = tab_y1 + 4.0 * s;
-        self.ui.sidebar.past.page_size = super::sidebar_past::calc_past_ps(tab_y1, hint_y, lh, s);
+        self.ui.sidebar.chats.page_size = super::sidebar_chats::calc_chats_ps(tab_y1, hint_y, lh, s);
 
         if tab_idx == 1 {
-            self.draw_past_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
+            self.draw_chats_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
             return;
         }
         if tab_idx == 2 {

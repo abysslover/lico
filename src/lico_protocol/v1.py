@@ -70,7 +70,7 @@ INVENTORY = {
     "ssh.hosts": {"state": "host", "mutates": False},
     "ssh.check": {"state": "host", "mutates": False},
     "session.search": {"state": "host", "mutates": False},
-    "session.past": {"state": "host", "mutates": False},
+    "session.chats": {"state": "host", "mutates": False},
     "display.ensure": {"state": "host", "mutates": True},
     "display.status": {"state": "host", "mutates": False},
     "display.stop": {"state": "host", "mutates": True},
@@ -356,7 +356,7 @@ REPLIES = {
                                                                         "seq": {"type": INT, "minimum": 0}, "text": {"type": STR, "max_length": 240}})},
                             "total": {"type": INT, "minimum": 0}, "truncated": {"type": BOOL}},
                            COMMON_REPLY_OPTIONAL),
-    "session.past": _obj({
+    "session.chats": _obj({
         "v": _V,
         "ok": _OK,
         "scope": {"type": STR, "enum": ["folder", "global"]},
@@ -496,7 +496,7 @@ REQUESTS = {
     "ssh.check": _obj({"host": {"type": STR, "min_length": 1, "max_length": 128, "charset": "model"}}, _COMMON_REQ),
     "session.search": _obj({"query": {"type": STR, "min_length": 1, "max_length": 256, "no_control": True, "no_hidden": True}},
                            {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}, "limit": {"type": INT, "minimum": 1, "maximum": 500}}),
-    "session.past": _obj({}, {
+    "session.chats": _obj({}, {
         **_COMMON_REQ,
         "cwd": {"type": STR, "min_length": 1, "max_length": MAX_PATH, "no_control": True, "no_hidden": True},
         "global": {"type": BOOL},
@@ -634,8 +634,8 @@ def validate_request(op: str, message: dict) -> list[str]:
         )
     ):
         errors.append("$.settings.set: at least one setting field required")
-    if op == "session.past" and "cwd" in body and body.get("global") is True:
-        errors.append("$.session.past: cwd and global=true are mutually exclusive")
+    if op == "session.chats" and "cwd" in body and body.get("global") is True:
+        errors.append("$.session.chats: cwd and global=true are mutually exclusive")
     return errors
 
 

@@ -41,7 +41,7 @@ pub enum Action {
     SidebarJumpActive,
     SidebarParent,
     SidebarEntry(usize),
-    SidebarPastEntry(usize),
+    SidebarChatEntry(usize),
     SidebarCallEntry(usize),
     SidebarCallClose(usize),
     SidebarCallStartPeer(String),

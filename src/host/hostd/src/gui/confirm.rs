@@ -97,7 +97,7 @@ impl App {
     }
 
     /// Close button (`×`) on a session tab, or `/exit` (`/quit`): dismisses the tab cleanly (stopping any idle process and keeping
-    /// resumable conversations in `Past`, or purging a blank 0-turn tab).
+    /// resumable conversations in `Chats`, or purging a blank 0-turn tab).
     pub(crate) fn close_tab_by_id(&mut self, id: String) {
         if self.ui.panel.is_some() {
             self.panel_close();
@@ -194,9 +194,9 @@ impl App {
             (Act::Close, Some("keep")) => "Session closed (worktree kept). Ctrl+R brings it back.".into(),
             (Act::Close, _) => "Session closed. Ctrl+R brings it back.".into(),
             (Act::CloseTab, _) if purged_empty => "Tab closed.".into(),
-            (Act::CloseTab, Some("remove")) => "Tab closed and worktree removed (branch kept). Conversation stays in Past.".into(),
-            (Act::CloseTab, Some("keep")) => "Tab closed (worktree kept). Conversation stays in Past.".into(),
-            (Act::CloseTab, _) => "Tab closed. Conversation stays in Past.".into(),
+            (Act::CloseTab, Some("remove")) => "Tab closed and worktree removed (branch kept). Conversation stays in Chats.".into(),
+            (Act::CloseTab, Some("keep")) => "Tab closed (worktree kept). Conversation stays in Chats.".into(),
+            (Act::CloseTab, _) => "Tab closed. Conversation stays in Chats.".into(),
             (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
             (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
             (Act::Delete, _) => "Session deleted.".into(),
@@ -371,7 +371,7 @@ impl App {
             let heading = if matches!(ask.act, Act::Close | Act::CloseTab) { "Close worktree session" } else { "Delete worktree session" };
             let first = match (ask.act, ask.working) {
                 (Act::Close | Act::CloseTab, true) => format!("Stop the work of {named} and close it?"),
-                (Act::Close | Act::CloseTab, false) => format!("Close {named}? Its conversation stays; Past / Ctrl+R brings it back."),
+                (Act::Close | Act::CloseTab, false) => format!("Close {named}? Its conversation stays; Chats / Ctrl+R brings it back."),
                 _ => format!("Delete {named}? This cannot be undone."),
             };
             return (
@@ -390,7 +390,7 @@ impl App {
         let folder = if ask.cwd.is_empty() { "Its scratch workspace is removed with it.".to_string() } else { format!("The folder {} is not touched.", ask.cwd) };
         match ask.act {
             Act::Rename => ("Rename session".into(), vec![format!("Type the new name of {named} and press Enter."), "An empty name takes the name away. At most 60 characters.".into(), "The host keeps the name: other windows and the command line show it too.".into()]),
-            Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Past / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
+            Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Chats / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
             Act::Delete => {
                 let running = if ask.working { "A turn is running: it is stopped first." } else { "Its process, if any, is stopped first." };
                 ("Delete session".into(), vec![format!("Delete {named}? This cannot be undone."), format!("{running} Its record is removed for good."), folder, String::new(), "Y  delete it".into(), "N  keep it".into()])

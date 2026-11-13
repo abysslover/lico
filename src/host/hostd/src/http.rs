@@ -319,7 +319,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             }
             _ => return Err((405, "bad_request")),
         },
-        ["v1", "sessions", "past"] => {
+        ["v1", "sessions", "chats"] => {
             allowed(method == "GET")?;
             let qmap = query_map(&request.query).map_err(bad)?;
             if qmap
@@ -329,7 +329,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 return Err(bad("bad_request"));
             }
             let mut req = Map::new();
-            req.insert("op".into(), json!("session.past"));
+            req.insert("op".into(), json!("session.chats"));
             if let Some(c) = qmap.get("cwd").and_then(Value::as_str) {
                 req.insert("cwd".into(), json!(c));
             }
@@ -358,10 +358,10 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                 let parsed = l.parse::<i64>().map_err(|_| bad("bad_request"))?;
                 req.insert("limit".into(), json!(parsed));
             }
-            if !valid_request("session.past", &req) {
+            if !valid_request("session.chats", &req) {
                 return Err(bad("bad_request"));
             }
-            crate::past::session_past(shared, &req)
+            crate::chats::session_chats(shared, &req)
         }
         ["v1", "sessions", id] if id_ok(id) => {
             allowed(method == "GET")?;

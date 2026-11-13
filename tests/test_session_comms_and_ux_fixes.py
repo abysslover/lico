@@ -118,7 +118,7 @@ def test_bidirectional_claude_and_codex_mcp_session_comms_and_mcp_tool_records()
             host.stop()
 
 
-def test_local_exit_and_quit_dismiss_tabs_preserve_past_purge_blank_tabs_and_recover_slash_titles():
+def test_local_exit_and_quit_dismiss_tabs_preserve_chats_purge_blank_tabs_and_recover_slash_titles():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         state_dir = root / "state"
@@ -177,15 +177,15 @@ def test_local_exit_and_quit_dismiss_tabs_preserve_past_purge_blank_tabs_and_rec
             ui_after = wait_for(lambda: u if (u := w.ui()) and u["selected"] == s1 and all(t["session"] != s2 for t in u["tabs"]["items"]) else None)
             assert [t["session"] for t in ui_after["tabs"]["items"]] == [s1]
 
-            # Switch left sidebar to `[ Past ]`: s2 is preserved there, and clicking it reopens its tab!
-            past_tab_rect = ui_after["sidebar"]["past_tab_rect"]
-            w.click(*_centre(past_tab_rect))
-            ui_past = wait_for(
+            # Switch left sidebar to `[ Chats ]`: s2 is preserved there, and clicking it reopens its tab!
+            chats_tab_rect = ui_after["sidebar"]["chats_tab_rect"]
+            w.click(*_centre(chats_tab_rect))
+            ui_chats = wait_for(
                 lambda: u
-                if (u := w.ui()) and u["sidebar"]["tab"] == "past" and any(it.get("open_session") == s2 for it in u["sidebar"]["past_entries"])
+                if (u := w.ui()) and u["sidebar"]["tab"] == "chats" and any(it.get("open_session") == s2 for it in u["sidebar"]["chats_entries"])
                 else None
             )
-            s2_item = next(it for it in ui_past["sidebar"]["past_entries"] if it.get("open_session") == s2)
+            s2_item = next(it for it in ui_chats["sidebar"]["chats_entries"] if it.get("open_session") == s2)
             assert "지금은 다른 메신저와 대화 가능?" in s2_item["title"]
             w.click(*_centre(s2_item["rect"]))
             wait_for(lambda: u if (u := w.ui()) and u["selected"] == s2 and any(t["session"] == s2 for t in u["tabs"]["items"]) else None)

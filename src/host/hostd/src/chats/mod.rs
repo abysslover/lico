@@ -1,4 +1,4 @@
-//! Full-pagination past-session discovery (`session.past`, zero top-N truncation) and
+//! Full-pagination chat discovery (`session.chats`, zero top-N truncation) and
 //! resumed-transcript seeding (`resume_id` on `session.create`) across `claude` and `codex`
 //! for both local and `[ssh: <host>]` accounts (`M07-P03`).
 
@@ -29,7 +29,7 @@ pub(super) const MAX_SEED_TURNS: usize = 24;
 pub(super) const MAX_LINES_PER_TURN: usize = 16;
 
 #[derive(Clone, Debug)]
-pub(super) struct PastItem {
+pub(super) struct ChatItem {
     pub(super) provider: String,
     pub(super) provider_session: String,
     pub(super) account: Option<String>,
@@ -353,9 +353,9 @@ pub(super) fn unbound_codex_home() -> Option<PathBuf> {
     p.is_absolute().then_some(p)
 }
 
-/// `session.past`: enumerate all past `claude` and `codex` conversations matching `cwd` or `global`
+/// `session.chats`: enumerate all `claude` and `codex` conversations matching `cwd` or `global`
 /// across local or `[ssh: <host>]` accounts with full `offset` / `limit` / `total` pagination.
-pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
+pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
     let cwd_raw = request.get("cwd").and_then(Value::as_str).filter(|s| !s.is_empty());
     let global_flag = request.get("global").and_then(Value::as_bool).unwrap_or(false);
     if cwd_raw.is_some() && global_flag {
@@ -401,7 +401,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
 
     let mut open_by_prov: HashMap<(String, String, String), (String, &'static str, Option<String>, u64)> = HashMap::new();
     let sessions_list = shared.sessions.read().unwrap().clone();
-    let mut host_candidates: Vec<PastItem> = Vec::new();
+    let mut host_candidates: Vec<ChatItem> = Vec::new();
     for arc_s in &sessions_list {
         let s = arc_s.lock().unwrap();
         if s.purged || !matches!(s.provider, "claude" | "codex") {
@@ -432,7 +432,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
             continue;
         }
         let eff_cwd = s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone());
-        host_candidates.push(PastItem {
+        host_candidates.push(ChatItem {
             provider: s.provider.to_string(),
             provider_session: prov_sid.clone(),
             account: s.account.clone(),
@@ -447,7 +447,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
         });
     }
 
-    let mut merged: HashMap<(String, String, String), PastItem> = HashMap::new();
+    let mut merged: HashMap<(String, String, String), ChatItem> = HashMap::new();
     let canon_cwd: Option<String>;
 
     if let Some(host) = ssh_host_opt {
@@ -456,7 +456,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
             .filter(|a| a.ssh_host.as_deref() == Some(host) && account_filter.map_or(true, |af| a.id == af))
             .map(|a| (a.id.clone(), a.provider.clone(), a.label.clone()))
             .collect();
-        let (remote_canon, remote_items) = seed::scan_ssh_past(shared, host, cwd_raw, &remote_accts)?;
+        let (remote_canon, remote_items) = seed::scan_ssh_chats(shared, host, cwd_raw, &remote_accts)?;
         canon_cwd = remote_canon;
         for item in remote_items {
             let key = (item.provider.clone(), item.account.clone().unwrap_or_default(), item.provider_session.clone());
@@ -492,7 +492,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
                 let key = (acc.provider.clone(), acc.id.clone(), sid.clone());
                 merged.insert(
                     key,
-                    PastItem {
+                    ChatItem {
                         provider: acc.provider.clone(),
                         provider_session: sid,
                         account: Some(acc.id.clone()),
@@ -513,7 +513,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
             if let Some(chome) = crate::provider_record::home_of(shared, None) {
                 for (sid, rec_cwd, title, mtime) in scan_claude_home(&chome, &match_cwd) {
                     let key = ("claude".into(), String::new(), sid.clone());
-                    merged.entry(key).or_insert(PastItem {
+                    merged.entry(key).or_insert(ChatItem {
                         provider: "claude".into(),
                         provider_session: sid,
                         account: None,
@@ -533,7 +533,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
             if let Some(xhome) = unbound_codex_home() {
                 for (sid, rec_cwd, title, mtime) in scan_codex_home(&xhome, &match_cwd) {
                     let key = ("codex".into(), String::new(), sid.clone());
-                    merged.entry(key).or_insert(PastItem {
+                    merged.entry(key).or_insert(ChatItem {
                         provider: "codex".into(),
                         provider_session: sid,
                         account: None,
@@ -574,7 +574,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
                 existing.open_session = cand.open_session.clone();
                 existing.open_state = cand.open_state;
             })
-            .or_insert(PastItem {
+            .or_insert(ChatItem {
                 cwd: if is_global { None } else { canon_cwd.clone().or(cand.cwd) },
                 ..cand
             });
@@ -591,7 +591,7 @@ pub fn session_past(shared: &Shared, request: &Map<String, Value>) -> Reply {
         }
     }
 
-    let mut all_items: Vec<PastItem> = merged
+    let mut all_items: Vec<ChatItem> = merged
         .into_values()
         .filter(|it| {
             query_norm.is_empty()

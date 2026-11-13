@@ -1,4 +1,4 @@
-"""M07-P02: two-tab left workspace sidebar (`[ Directories ]` | `[ Past ]`),
+"""M07-P02: two-tab left workspace sidebar (`[ Directories ]` | `[ Chats ]`),
 active working-directory & Global highlighting, async session-switch sync,
 `-> active` jump-back, in-memory filename filter, `.dot` toggle, pagination,
 inline UTF-8 preview (`Esc` straight back to chat), external opener, and `Ctrl+B` collapse."""
@@ -82,7 +82,7 @@ def test_left_two_tab_directory_sidebar_highlight_filter_preview_and_collapse():
             w.proc.stdin.write("load\n")
             w.proc.stdin.flush()
 
-            # 1. Default 2-tab Left Sidebar (`[ Directories ]` | `[ Past ]`) is visible & open
+            # 1. Default 2-tab Left Sidebar (`[ Directories ]` | `[ Chats ]`) is visible & open
             u0 = wait_for(
                 lambda: (u := w.ui())
                 and u["sidebar"]["shown"] is True
@@ -92,7 +92,7 @@ def test_left_two_tab_directory_sidebar_highlight_filter_preview_and_collapse():
             assert u0["sidebar"]["collapsed"] is False
             assert u0["sidebar"]["tab"] == "directories"
             assert u0["sidebar"]["dir_tab_rect"] is not None
-            assert u0["sidebar"]["past_tab_rect"] is not None
+            assert u0["sidebar"]["chats_tab_rect"] is not None
             assert u0["layout"]["list_w"] >= 330
 
             # 2. Selecting AlphaChat highlights proj_a; switching to BetaChat auto-syncs & highlights proj_b
@@ -209,10 +209,10 @@ def test_left_two_tab_directory_sidebar_highlight_filter_preview_and_collapse():
             w.click(*_centre(w.ui()["sidebar"]["filter_clear_rect"]))
             wait_for(lambda: w.ui()["sidebar"]["filter"] == "")
 
-            # 8. Switch to `[ Past ]` tab and back, then `Ctrl+B` collapse & re-expand
-            w.click(*_centre(w.ui()["sidebar"]["past_tab_rect"]))
-            u_past = wait_for(lambda: (u := w.ui()) and u["sidebar"]["tab"] == "past" and u)
-            w.click(*_centre(u_past["sidebar"]["dir_tab_rect"]))
+            # 8. Switch to `[ Chats ]` tab and back, then `Ctrl+B` collapse & re-expand
+            w.click(*_centre(w.ui()["sidebar"]["chats_tab_rect"]))
+            u_chats = wait_for(lambda: (u := w.ui()) and u["sidebar"]["tab"] == "chats" and u)
+            w.click(*_centre(u_chats["sidebar"]["dir_tab_rect"]))
             wait_for(lambda: w.ui()["sidebar"]["tab"] == "directories")
 
             _fast_key(w, "ctrl+b")

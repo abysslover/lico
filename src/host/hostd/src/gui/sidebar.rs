@@ -1,4 +1,4 @@
-//! Two-tab left workspace sidebar (`[ Directories ]` | `[ Past ]`) for the two-pane workbench (`M07-P02`).
+//! Two-tab left workspace sidebar (`[ Directories ]` | `[ Chats ]`) for the two-pane workbench (`M07-P02`).
 //!
 //! Replaces the legacy left session list in `lico gui` (`self.ui.workbench && self.ui.menu`) since open
 //! sessions live in the top chat tab bar (`gui/tabs.rs`). Supports `Ctrl+B` collapse/expand, local and
@@ -30,7 +30,7 @@ pub struct SidebarEntryGeom {
 
 #[derive(Clone, Default)]
 pub struct SidebarGeom {
-    pub dir_tab_rect: Option<Rect>, pub past_tab_rect: Option<Rect>, pub calls_tab_rect: Option<Rect>,
+    pub dir_tab_rect: Option<Rect>, pub chats_tab_rect: Option<Rect>, pub calls_tab_rect: Option<Rect>,
     pub back_rect: Option<Rect>, pub forward_rect: Option<Rect>,
     pub bookmark_toggle_rect: Option<Rect>, pub bookmarks_btn_rect: Option<Rect>,
     pub host_rect: Option<Rect>,
@@ -53,7 +53,7 @@ pub struct SidebarGeom {
 #[derive(Default)]
 pub struct SidebarState {
     pub collapsed: bool,
-    pub tab: u8, // 0 = Directories, 1 = Past
+    pub tab: u8, // 0 = Directories, 1 = Chats
     pub initialized: bool,
     pub global_scope: bool,
     pub ssh_host: Option<String>,
@@ -77,7 +77,7 @@ pub struct SidebarState {
     pub refresh_count: u64,
     pub last_opened: Option<String>,
     pub nav: super::sidebar_nav::DirNavState,
-    pub past: super::sidebar_past::PastSidebarState,
+    pub chats: super::sidebar_chats::ChatsSidebarState,
     pub calls: super::sidebar_calls::CallsSidebarState,
     pub geom: SidebarGeom,
 }
@@ -299,7 +299,7 @@ impl App {
             } else {
                 self.sidebar_record_current_location();
             }
-            self.past_sync_if_open(false);
+            self.chats_sync_if_open(false);
             self.dirty = true;
             return;
         }
@@ -315,7 +315,7 @@ impl App {
             } else {
                 self.sidebar_record_current_location();
             }
-            self.past_sync_if_open(false);
+            self.chats_sync_if_open(false);
             self.dirty = true;
         }
     }
@@ -333,7 +333,7 @@ impl App {
         if self.ui.sidebar.tab != clamped {
             self.ui.sidebar.tab = clamped;
             if clamped == 1 {
-                self.past_sync_if_open(false);
+                self.chats_sync_if_open(false);
             }
             self.dirty = true;
         }
@@ -345,7 +345,7 @@ impl App {
         self.ui.sidebar.filter_focused = false;
         self.ui.sidebar.global_scope = true;
         self.sidebar_record_current_location();
-        self.past_sync_if_open(false);
+        self.chats_sync_if_open(false);
         self.dirty = true;
     }
 
@@ -432,8 +432,8 @@ impl App {
             self.ui.sidebar.unreachable = ssh_host.is_some() && (transport_dead || err == "folder_unreadable");
             self.ui.sidebar.error = Some(err.clone());
             if self.ui.sidebar.tab == 1 {
-                self.ui.sidebar.past.loading = false;
-                self.ui.sidebar.past.error = Some(err);
+                self.ui.sidebar.chats.loading = false;
+                self.ui.sidebar.chats.error = Some(err);
             }
             self.dirty = true;
             return;
@@ -458,14 +458,14 @@ impl App {
             }
             self.sidebar_record_current_location();
         }
-        self.past_sync_if_open(false);
+        self.chats_sync_if_open(false);
         self.dirty = true;
     }
 
     pub(crate) fn sidebar_refresh(&mut self) {
         self.ui.sidebar.host_popup_open = false;
         if self.ui.sidebar.tab != 0 {
-            self.past_start_fetch(self.ui.sidebar.past.page, true);
+            self.chats_start_fetch(self.ui.sidebar.chats.page, true);
             return;
         }
         let host = self.ui.sidebar.ssh_host.clone();
@@ -647,7 +647,7 @@ impl App {
         }
         match self.ui.sidebar.tab {
             0 => self.sidebar_step_page(if step > 0 { 1 } else { -1 }),
-            1 => self.past_step_page(if step > 0 { 1 } else { -1 }),
+            1 => self.chats_step_page(if step > 0 { 1 } else { -1 }),
             _ => self.calls_step_page(if step > 0 { 1 } else { -1 }),
         }
         true
@@ -689,7 +689,7 @@ impl App {
                 if !self.ui.sidebar.filter.is_empty() {
                     self.ui.sidebar.filter.clear();
                     self.ui.sidebar.page = 0;
-                    self.past_sync_if_open(false);
+                    self.chats_sync_if_open(false);
                 } else {
                     self.ui.sidebar.filter_focused = false;
                 }
@@ -702,7 +702,7 @@ impl App {
             Key::Named(NamedKey::Backspace) => {
                 self.ui.sidebar.filter.pop();
                 self.ui.sidebar.page = 0;
-                self.past_sync_if_open(false);
+                self.chats_sync_if_open(false);
                 self.dirty = true;
             }
             Key::Character(s) if !self.ui.mods.control_key() && !self.ui.mods.alt_key() => {
@@ -710,7 +710,7 @@ impl App {
                     if self.ui.sidebar.filter.chars().count() < 64 { self.ui.sidebar.filter.push(ch); }
                 }
                 self.ui.sidebar.page = 0;
-                self.past_sync_if_open(false);
+                self.chats_sync_if_open(false);
                 self.dirty = true;
             }
             _ => if self.ui.mods.control_key() || self.ui.mods.alt_key() { return false; },
@@ -747,7 +747,7 @@ impl App {
                 self.ui.sidebar.filter.clear();
                 self.ui.sidebar.filter_focused = false;
                 self.ui.sidebar.page = 0;
-                self.past_sync_if_open(false);
+                self.chats_sync_if_open(false);
                 self.dirty = true;
             }
             Action::SidebarGlobal => self.sidebar_select_global(),
@@ -755,15 +755,15 @@ impl App {
                 self.ui.sidebar.global_scope = false;
                 self.ui.sidebar.filter_focused = false;
                 self.sidebar_record_current_location();
-                self.past_sync_if_open(false);
+                self.chats_sync_if_open(false);
                 self.dirty = true;
             }
             Action::SidebarJumpActive => self.sidebar_jump_to_active(),
             Action::SidebarParent => self.sidebar_go_parent(),
             Action::SidebarEntry(idx) => self.sidebar_activate_entry(idx),
-            Action::SidebarPastEntry(idx) => self.past_activate_entry(idx),
+            Action::SidebarChatEntry(idx) => self.chats_activate_entry(idx),
             Action::SidebarPage(d) => match self.ui.sidebar.tab {
-                1 => self.past_step_page(d),
+                1 => self.chats_step_page(d),
                 2 => self.calls_step_page(d),
                 _ => self.sidebar_step_page(d),
             },

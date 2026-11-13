@@ -1,4 +1,4 @@
-//! SSH past-session scanning and `.jsonl` transcript seeding for resumed `claude` and `codex`
+//! SSH chat scanning and `.jsonl` transcript seeding for resumed `claude` and `codex`
 //! sessions (`M07-P03`).
 
 use std::io::{BufRead, BufReader, Read};
@@ -16,16 +16,16 @@ use crate::ssh_remote::{map_remote_err_pub, run_ssh_bounded, shell_quote, REMOTE
 
 use super::{
     claude_msg_text, clean_title, codex_msg_text, is_codex_system_text, norm_path,
-    open_regular_nofollow, real_dir, unbound_codex_home, PastItem, MAX_LINES_PER_TURN,
+    open_regular_nofollow, real_dir, unbound_codex_home, ChatItem, MAX_LINES_PER_TURN,
     MAX_SCAN_FILES, MAX_SEED_BYTES, MAX_SEED_TURNS,
 };
 
-pub(super) fn scan_ssh_past(
+pub(super) fn scan_ssh_chats(
     shared: &Shared,
     host: &str,
     raw_cwd: Option<&str>,
     remote_accounts: &[(String, String, String)],
-) -> Result<(Option<String>, Vec<PastItem>), &'static str> {
+) -> Result<(Option<String>, Vec<ChatItem>), &'static str> {
     if !valid_ssh_host(host) {
         return Err("bad_request");
     }
@@ -172,7 +172,7 @@ pub(super) fn scan_ssh_past(
                 let c = entry["c"].as_str().filter(|s| valid_path_shape(s)).map(|s| norm_path(s).to_string());
                 let raw_t = entry["t"].as_str().unwrap_or("");
                 let u = entry["u"].as_u64().unwrap_or(0);
-                out.push(PastItem {
+                out.push(ChatItem {
                     provider: prov.to_string(),
                     provider_session: sid.to_string(),
                     account: aid,
@@ -332,7 +332,7 @@ fn read_ssh_turns(shared: &Shared, host: &str, account_id: &str, provider: &str,
 }
 
 /// Pre-seeds recent sanitized user and assistant lines from `resume_id`'s `.jsonl` transcript into `s`
-/// so a session resumed from `[ Past ]` immediately displays its prior conversation context and title.
+/// so a session resumed from `[ Chats ]` immediately displays its prior conversation context and title.
 pub fn seed_resumed_transcript(shared: &Shared, s: &mut Session, resume_id: &str) {
     if !valid_provider_session(resume_id) {
         return;

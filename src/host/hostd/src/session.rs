@@ -449,7 +449,7 @@ pub struct Session {
     pub pending: crate::pending::Pending, // what this session's agent asked for that waits for the person (S04)
     pub made_by: Option<String>, // the session whose agent asked for this one with `create` (S04c); in memory only, a restart of the host forgets it
     pub finished_seq: i64, // last sequence number at which a provider turn finished (`-1` until a turn finishes; `>> ` echo never updates it)
-    pub tab_closed: bool, // dismissed from the workbench tab bar (`×`, `/exit`, `/quit`); conversation stays resumable in `Past`
+    pub tab_closed: bool, // dismissed from the workbench tab bar (`×`, `/exit`, `/quit`); conversation stays resumable in `Chats`
     pub peer_turn: crate::calls::PeerTurn, // approved agent-to-agent (`mcp__lico__send`) reply routing state
 }
 

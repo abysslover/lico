@@ -17,8 +17,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
                  [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID]\n\
                  (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
-  session past [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--offset N] [--limit N]\n\
-                 list past Claude and Codex conversations with full offset/limit pagination\n\
+  chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--offset N] [--limit N]\n\
+                 list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -96,8 +96,22 @@ fn read_line(conn: &mut Conn) -> Option<Value> {
     }
 }
 
-/// Send one request and return its reply, skipping events that arrive first.
+/// Send one request and return its reply. A host that does not know the operation is another build than this command: say so in one
+/// sentence (the host's reply stays on standard output) and end with code 2.
 fn call(conn: &mut Conn, request: Value) -> Value {
+    let op = request["op"].as_str().unwrap_or("").to_string();
+    let reply = exchange(conn, request);
+    if reply["error"] == json!("unknown_op") && op != "status" {
+        println!("{reply}");
+        let status = exchange(conn, json!({"op": "status"}));
+        let host = status["build"].as_str().unwrap_or("older than build ids");
+        die(2, &format!("this host (build {host}) does not know `{op}`; this lico is build {}; run `lico host stop` and retry", crate::core::build_id()));
+    }
+    reply
+}
+
+/// Send one request and return its reply, skipping events that arrive first.
+fn exchange(conn: &mut Conn, request: Value) -> Value {
     let mut text = request.to_string();
     text.push('\n');
     conn.writer.write_all(text.as_bytes()).unwrap_or_else(|e| die(3, &format!("write failed: {e}")));
@@ -248,8 +262,9 @@ pub fn run(args: Vec<String>) {
             }
             expect_ok(call(&mut connect(&socket), request));
         }
-        ["session", "past", rest @ ..] => {
-            let mut request = json!({"op": "session.past"});
+        ["chat", rest @ ..] => {
+            let rest = rest.strip_prefix(&["list"][..]).unwrap_or(rest);
+            let mut request = json!({"op": "session.chats"});
             let mut is_global = false;
             let mut cwd_opt: Option<String> = None;
             let mut ssh_host: Option<String> = None;

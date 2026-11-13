@@ -37,7 +37,7 @@ pub const HTTP_ROUTES: &[&str] = &[
     "POST /v1/accounts/<id>/rename",
     "GET /v1/sessions",
     "POST /v1/sessions",
-    "GET /v1/sessions/past",
+    "GET /v1/sessions/chats",
     "GET /v1/sessions/<id>",
     "GET /v1/sessions/<id>/snapshot",
     "GET /v1/sessions/<id>/events",

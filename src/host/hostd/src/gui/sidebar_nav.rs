@@ -363,7 +363,7 @@ impl App {
             self.ui.sidebar.nav.target_page = None;
             self.ui.sidebar.global_scope = target.global;
             self.ui.sidebar.page = target.page;
-            self.past_sync_if_open(false);
+            self.chats_sync_if_open(false);
             self.save_sidebar_nav_async(false, true, false);
             self.dirty = true;
             return;
@@ -474,7 +474,7 @@ impl App {
             self.ui.sidebar.nav.target_page = None;
             self.ui.sidebar.global_scope = bm.global;
             self.ui.sidebar.page = bm.page;
-            self.past_sync_if_open(false);
+            self.chats_sync_if_open(false);
             self.sidebar_record_current_location();
             self.dirty = true;
             return;

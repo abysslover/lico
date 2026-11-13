@@ -42,7 +42,7 @@ mod mcp;
 mod memory;
 mod mention;
 mod notify;
-mod past;
+mod chats;
 mod pasted;
 mod payload;
 mod pending;
