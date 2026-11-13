@@ -146,6 +146,10 @@ impl App {
             "host_items": host_items,
         });
         out["tab_labels"] = json!(TAB_LABELS);
+        out["new_chat_rect"] = json!(sb.geom.new_chat_rect);
+        out["new_chat_enabled"] = json!(self.newchat_gate().is_ok());
+        out["new_chat_reason"] = json!(self.newchat_gate().err());
+        out["new_chat"] = self.newchat_json();
         self.insert_chats_json(&mut out);
         self.insert_nav_json(&mut out);
         self.insert_calls_json(&mut out);
@@ -192,6 +196,7 @@ impl App {
         let ssh_host = self.ui.sidebar.ssh_host.clone();
         let cwd = self.ui.sidebar.cwd.clone();
         let parent = self.ui.sidebar.parent.clone();
+        let new_chat_ok = self.newchat_gate().is_ok();
         let filter = self.ui.sidebar.filter.clone();
         let filter_focused = self.ui.sidebar.filter_focused;
         let loading = self.ui.sidebar.loading.clone();
@@ -455,6 +460,15 @@ impl App {
             geom.jump_active_rect = Some(j_rect);
         }
         y += lh + 6.0 * s;
+
+        // 5b. "+ New chat" on its own row above the parent row (also when there is no parent), for the viewed directory
+        {
+            let r = [4.0 * s, y, x_right - 4.0 * s, y + lh + 2.0 * s];
+            let (fill, col) = if new_chat_ok { (0xFF1B_2D45, dir_ink) } else { (0xFF17_1F2B, dim) };
+            controls.button(fs, swash, buf, width, height, r, "+ New chat", fill, col, Action::SidebarNewChat);
+            geom.new_chat_rect = Some(r);
+            y += lh + 6.0 * s;
+        }
 
         // 6. Optional `[..] (parent)` row when not filtering
         if parent.is_some() && filter.trim().is_empty() && !unreachable {

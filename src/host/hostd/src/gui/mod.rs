@@ -18,6 +18,8 @@ mod scroll_oracle;
 mod sidebar;
 mod sidebar_calls;
 mod sidebar_nav;
+mod newchat;
+mod newchat_draw;
 mod sidebar_chats;
 mod sidebar_tabs;
 mod sidebar_render;

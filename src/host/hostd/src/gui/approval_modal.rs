@@ -11,20 +11,20 @@ use super::controls::{self, Action, Controls, Rect};
 use super::ui::rect;
 use super::{clean, App};
 
-const SHADOW_BG: u32 = 0xFF05_070B;
-const MODAL_BG: u32 = 0xFF16_1C26;
+pub(super) const SHADOW_BG: u32 = 0xFF05_070B;
+pub(super) const MODAL_BG: u32 = 0xFF16_1C26;
 const HEADER_BG: u32 = 0xFF23_1E16;
 const BORDER_AMBER: u32 = 0xFFE5_A93C;
-const DIVIDER: u32 = 0xFF2C_3748;
+pub(super) const DIVIDER: u32 = 0xFF2C_3748;
 
-const ALLOW_LIVE: u32 = 0xFF2E_8548;
+pub(super) const ALLOW_LIVE: u32 = 0xFF2E_8548;
 const ALLOW_DIM: u32 = 0xFF24_3629;
 const DENY_LIVE: u32 = 0xFF9E_3636;
 const DENY_DIM: u32 = 0xFF38_2424;
-const READ_LIVE: u32 = 0xFF24_3042;
-const READ_DIM: u32 = 0xFF1B_2230;
+pub(super) const READ_LIVE: u32 = 0xFF24_3042;
+pub(super) const READ_DIM: u32 = 0xFF1B_2230;
 
-fn darken_region(buf: &mut [u32], width: usize, height: usize, x0: usize, y0: usize, x1: usize, y1: usize, numer: u32) {
+pub(super) fn darken_region(buf: &mut [u32], width: usize, height: usize, x0: usize, y0: usize, x1: usize, y1: usize, numer: u32) {
     let x1 = x1.min(width);
     let y1 = y1.min(height);
     if x0 >= x1 || y0 >= y1 {
@@ -42,7 +42,7 @@ fn darken_region(buf: &mut [u32], width: usize, height: usize, x0: usize, y0: us
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_centered_btn(
+pub(super) fn draw_centered_btn(
     controls: &mut Controls,
     fs: &mut FontSystem,
     swash: &mut SwashCache,

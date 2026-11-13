@@ -78,7 +78,7 @@ fn rel_age(now: u64, updated_at: u64) -> String {
 }
 
 /// What the sidebar says for a refused request: a host of another build does not know the operation, which is not a fault of the folder.
-fn chats_error_text(code: &str) -> String {
+pub(super) fn chats_error_text(code: &str) -> String {
     match code {
         "unknown_op" => "This host is another build than this window and does not know chats; run `lico host stop`, then reopen the window.".into(),
         other => other.to_string(),

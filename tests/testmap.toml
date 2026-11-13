@@ -109,6 +109,7 @@
 "tests/test_chats_pagination_and_resume.py" = ["cli", "gui", "host"]
 "tests/test_chats_rename.py" = ["cli", "host"]
 "tests/test_chats_resume_latest.py" = ["cli", "host"]
+"tests/test_new_chat_modal.py" = ["gui", "host"]
 "tests/test_session_comms_and_ux_fixes.py" = ["cli", "gui", "host"]
 "tests/test_peer_reply_copy_and_dir_nav.py" = ["cli", "gui", "host"]
 "tests/test_call_rooms_and_mentions.py" = ["cli", "gui", "host"]

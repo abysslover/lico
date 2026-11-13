@@ -38,7 +38,7 @@ pub(crate) enum AsyncJob {
     SidebarDir { req_id: u64, ssh_host: Option<String>, dir: String, keep_page: bool, fallback_root: bool },
     SidebarNavSave,
     SidebarChats { req_id: u64, scope_key: String, page: usize },
-    ChatResume { req_id: u64, created_cwd: Option<String> },
+    ChatResume { req_id: u64, created_cwd: Option<String> }, NewChatLast { req_id: u64, account: String }, NewChatStart { req_id: u64, created_cwd: Option<String>, resume: bool },
     CallGet { call_id: String }, CallSay { call_id: String, text: String },
     CallStart, CallAction,
 }
@@ -151,6 +151,7 @@ impl App {
             AsyncJob::SidebarDir { .. } => self.on_sidebar_async(done.job, done.reply),
             AsyncJob::SidebarNavSave => self.on_sidebar_nav_saved(done.reply),
             AsyncJob::SidebarChats { .. } | AsyncJob::ChatResume { .. } => self.on_chats_async(done.job, done.reply),
+            AsyncJob::NewChatLast { .. } | AsyncJob::NewChatStart { .. } => self.on_newchat_async(done.job, done.reply),
             AsyncJob::CallGet { .. } | AsyncJob::CallSay { .. } | AsyncJob::CallStart | AsyncJob::CallAction => self.on_call_async(done.job, done.reply),
         }
     }

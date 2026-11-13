@@ -53,7 +53,7 @@ extern "C" {
 }
 
 /// Seconds east of UTC that the local time has at that moment (0 when the system cannot say).
-fn utc_offset(secs: i64) -> i64 {
+pub(crate) fn utc_offset(secs: i64) -> i64 {
     let mut tm = Tm { sec: 0, min: 0, hour: 0, mday: 0, mon: 0, year: 0, wday: 0, yday: 0, isdst: 0, gmtoff: 0, zone: std::ptr::null() };
     if unsafe { localtime_r(&secs, &mut tm) }.is_null() {
         0

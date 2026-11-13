@@ -37,6 +37,7 @@ pub struct SidebarGeom {
     pub dotfiles_rect: Option<Rect>,
     pub refresh_rect: Option<Rect>,
     pub new_here_rect: Option<Rect>,
+    pub new_chat_rect: Option<Rect>,
     pub filter_rect: Option<Rect>,
     pub filter_clear_rect: Option<Rect>,
     pub global_rect: Option<Rect>,
@@ -78,6 +79,7 @@ pub struct SidebarState {
     pub last_opened: Option<String>,
     pub nav: super::sidebar_nav::DirNavState,
     pub chats: super::sidebar_chats::ChatsSidebarState,
+    pub newchat: Option<super::newchat::NewChat>, // the "+ New chat" modal while it is open (`M10-P03`)
     pub calls: super::sidebar_calls::CallsSidebarState,
     pub geom: SidebarGeom,
 }
