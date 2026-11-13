@@ -1,9 +1,9 @@
 //! The tool `create` (`S04c`, extended in `M09-P02`): an agent asks to open a new `Claude` or `Codex` session tab, optionally with an initial prompt and optionally in
 //! `"global"` scope. Like `send`, it does nothing at the call: the call leaves an approval card on the caller's row (`pending`), and the session is made once for each
-//! human `allow`. Arbitrary `cwd`, `mode`, `account`, `model`, `effort`, and `from` arguments from the agent are ignored (`mode` is always `"default"`). Same-provider
-//! creation inherits the caller's account, model, and effort; cross-provider creation (`Claude` -> `Codex` or `Codex` -> `Claude`) resolves the target provider's
-//! matching default account and uses that provider's default model/effort. Every running agent-created session counts against `PER_CALLER` (4) and `IN_ALL` (8), and
-//! advances chain depth (`MAX_HOPS` = 4) whether or not an initial prompt is sent.
+//! human `allow`. Arbitrary `cwd`, `mode`, `account`, `model`, `effort`, and `from` arguments from the agent are ignored (`mode` is always `"auto"`, matching Lico's
+//! standard bypass + in-window prompt-tool session mode). Same-provider creation inherits the caller's account, model, and effort; cross-provider creation (`Claude` -> `Codex`
+//! or `Codex` -> `Claude`) resolves the target provider's matching default account and uses that provider's default model/effort. Every running agent-created session counts
+//! against `PER_CALLER` (4) and `IN_ALL` (8), and advances chain depth (`MAX_HOPS` = 4) whether or not an initial prompt is sent.
 
 use serde_json::{json, Map, Value};
 use std::sync::atomic::AtomicUsize;
@@ -222,7 +222,7 @@ fn card_of(name: &str, cwd: Option<&str>, chosen: &str, prompt: &str, removed: u
 fn card_of_spec(kword: &str, scope: &str, name: &str, cwd: Option<&str>, chosen: &str, prompt: &str, removed: usize) -> String {
     let length = |text: &str| text.chars().count();
     let action = if prompt.is_empty() { OPENS_READY } else { STARTS };
-    let words = format!(" | mode: asks for approval | {chosen} | {action}");
+    let words = format!(" | mode: auto (bypass) | {chosen} | {action}");
     let head = |name: &str, folder: usize| {
         let named = if name.is_empty() { String::new() } else { format!(" '{name}'") };
         let shown = shown_place(scope, cwd, folder);
@@ -336,7 +336,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
         kind: target_kind,
         settings: Settings { cwd: cwd.clone(), name: Some(composed.clone()), model, effort, ..Settings::default() },
         account,
-        mode: "default",
+        mode: "auto",
     };
     let id = start(&spec).map_err(start_words)?;
     let Some(new) = core::find(shared, &id) else { return Err(calls::refusal(shared, caller, "unknown_session")) };
@@ -353,7 +353,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
             s.hops_set_at = crate::session::now_secs();
         }
         return Ok(format!(
-            "created {target_kind} session {id} '{composed}' {place}, mode: asks for approval; the new tab is open and ready (no initial prompt sent). Send to it with its id to talk to it."
+            "created {target_kind} session {id} '{composed}' {place}, mode: auto (bypass); the new tab is open and ready (no initial prompt sent). Send to it with its id to talk to it."
         ));
     }
     let generation = {
@@ -365,7 +365,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
         Ok(done) => {
             let kword = kind_word(caller_provider, target_kind);
             Ok(format!(
-                "created {kword} {id} '{composed}' {place}, mode: asks for approval; the first prompt ({}) was delivered ({}). It is working on it; send to it with its id to talk to it.",
+                "created {kword} {id} '{composed}' {place}, mode: auto (bypass); the first prompt ({}) was delivered ({}). It is working on it; send to it with its id to talk to it.",
                 transfer::size_text(prompt.len()),
                 done["delivery"].as_str().unwrap_or("inline")
             ))

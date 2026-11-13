@@ -741,8 +741,7 @@ pub fn snapshot(shared: &Shared, session: &str, generation: Option<i64>) -> Repl
     Ok(s.snapshot())
 }
 
-/// An input is dispatched at most once per request id: a repeat returns its state. No generation: the target is whatever execution runs now (a transfer).
-/// `attachment`: the name of a pasted picture (a Claude session only; judged after the states, before the file; the caller removes the file, see `pasted::with_cleanup`).
+/// Dispatch an input at most once per `request_id`; `attachment` names a pasted PNG for Claude (`pasted::with_cleanup` removes the file).
 pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id: &str, text: &str, origin: Origin, attachment: Option<&str>) -> Reply {
     let llm_buf = match (origin == Origin::Person && attachment.is_none()).then(|| crate::mention::route_person_input(shared, session, generation, request_id, text)) {
         Some(crate::mention::PersonRoute::Handled(reply)) => return reply,
@@ -759,13 +758,18 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
     if s.state == State::Disconnected { return Err("session_disconnected"); }
     if s.state == State::Exited { return Err("session_exited"); }
     let picture = crate::pasted::take(shared, attachment, s.claude.is_some())?;
+    let shown_buf = s.claude.is_some().then(|| crate::pasted::echo(text, picture.as_ref()));
+    let shown = shown_buf.as_deref().unwrap_or(text);
+    if picture.is_none() && crate::calls::try_defer_peer_reply(&mut s, request_id, send_text, shown, origin) {
+        let state = s.input_state(request_id).unwrap_or(InputState::Accepted);
+        return Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": false})));
+    }
     if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, send_text)?;
         s.record_input(request_id, text, origin, crate::session::now_secs());
     } else if s.claude.is_some() {
-        let shown = crate::pasted::echo(text, picture.as_ref());
         crate::claude::send_input(&mut s, request_id, send_text, picture)?;
-        s.record_input(request_id, &shown, origin, crate::session::now_secs());
+        s.record_input(request_id, shown, origin, crate::session::now_secs());
     } else {
         if s.input_tx.is_none() { return Err("session_exited"); }
         let line = format!("I {request_id} {}", payload::hex(text.as_bytes()));
@@ -808,9 +812,7 @@ pub fn approval_answer(shared: &Arc<Shared>, session: &str, generation: i64, app
     Ok(obj(json!({"session": s.id, "approval_id": approval_id, "state": "answered"})))
 }
 
-/// Attach a view: the latest screen now and, for a connected view, live records after it.
-/// For a connected view the reply is queued under the session lock, before the view can
-/// receive a record, so a record never overtakes its own attach reply.
+/// Attach a view (under session lock for connected views so live records never overtake the attach reply).
 pub fn view_attach(shared: &Shared, conn: Option<(&Arc<Sub>, &Option<Value>)>, session: &str, generation: Option<i64>, after: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
     if let Some((sub, _)) = conn {

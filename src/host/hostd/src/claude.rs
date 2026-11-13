@@ -541,6 +541,7 @@ fn handle(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, message: &Va
             if let Some(link) = s.claude.as_mut() {
                 request_usage(link);
             }
+            crate::calls::flush_deferred(&mut s);
             notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
         }
         Some("control_request") => {

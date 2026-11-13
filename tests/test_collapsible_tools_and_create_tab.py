@@ -234,6 +234,7 @@ def test_clean_call_done_collapsible_indigo_tool_cards_and_cross_provider_create
                 w.proc.stdin.write("clock advance 900\n")
                 w.proc.stdin.flush()
                 u_modal_c2x = wait_for(lambda: (u := w.ui()) and u["card_ready"] is True and u)
+                assert "mode: auto (bypass)" in (u_modal_c2x.get("approval_bar") or "")
                 if cap_dir is not None:
                     w.png(cap_dir / "03_cross_provider_create_approval_modal.png")
                 w.click(*_centre(u_modal_c2x["layout"]["allow"]))
@@ -247,6 +248,7 @@ def test_clean_call_done_collapsible_indigo_tool_cards_and_cross_provider_create
                 )
                 codex_new_row = next(r for r in conn.call(op="status")["sessions"] if "Codex-New" in r.get("name", ""))
                 assert codex_new_row["provider"] == "codex" and codex_new_row["account"] == acc_codex
+                assert codex_new_row["mode"] == "auto"
                 assert "finished_seq" not in codex_new_row, "empty created tab has no completed turn yet"
 
                 #    (a2) Sending a greeting to the empty newly-created tab (`Codex-New`, `finished_seq < 0`)
@@ -322,6 +324,9 @@ def test_clean_call_done_collapsible_indigo_tool_cards_and_cross_provider_create
                     and any("새 Claude 글로벌 대화창 시작" in ln for ln in u["shown_lines"])
                     and u
                 )
+                claude_new_row = next(r for r in conn.call(op="status")["sessions"] if "Claude-New" in r.get("name", ""))
+                assert claude_new_row["mode"] == "auto"
+                assert "mode: auto (permissions skipped)" in u_claude_new["header"]
                 assert len(u_claude_new["tabs"]["items"]) == 4
 
                 if cap_dir is not None:

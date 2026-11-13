@@ -491,6 +491,7 @@ fn handle_message(shared: &Shared, session: &Arc<Mutex<Session>>, pid: u32, mess
                 } else {
                     s.peer_turn.drop_active();
                 }
+                crate::calls::flush_deferred(&mut s);
                 notify_event = Some((false, s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
             }
         }
@@ -560,7 +561,12 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
                 if let Some((turn, link)) = message.pointer("/result/turn/id").and_then(Value::as_str).zip(s.codex.as_mut()) { link.active_turn = Some(turn.to_string()); }
                 s.advance_input(&rid, InputState::Observed);
             }
-            Some(reason) => { s.advance_input(&rid, InputState::Failed); record(s, &format!("[input refused] {reason}")); }
+            Some(reason) => {
+                s.set_busy(false);
+                s.advance_input(&rid, InputState::Failed);
+                record(s, &format!("[input refused] {reason}"));
+                crate::calls::flush_deferred(s);
+            }
         },
         Pending::Steer(rid, _) => match failed {
             None => {

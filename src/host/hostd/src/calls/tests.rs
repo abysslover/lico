@@ -368,3 +368,68 @@ fn empty_created_session_arms_peer_turn_and_relays_reply_back_to_caller_while_cr
     assert_eq!(detail["call"]["entries"].as_array().unwrap().len(), 2);
     assert_eq!(detail["call"]["entries"][1]["text"], "받았음");
 }
+
+#[test]
+fn explicit_peer_send_while_caller_is_busy_defers_transcript_card_below_active_turn_and_uses_peer_reply_header() {
+    let w = pair();
+    w.with(ONE, |s| {
+        s.text_mode = true;
+        s.settings.name = Some("Claude-Left".into());
+    });
+    w.with(TWO, |s| {
+        s.text_mode = true;
+        s.made_by = Some(ONE.to_string());
+        s.finished_seq = -1;
+        s.settings.name = Some("Claude-Right - made by Claude-Left".into());
+    });
+
+    // `Claude-Left` sends `hi` to `Claude-Right`; owner approves (`approval 1`), starting Turn L1 on `Claude-Left`.
+    let got: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, "hi"), &Arc::default()).unwrap()).unwrap();
+    let generation = w.with(ONE, |s| s.generation as i64);
+    core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "allow", true).unwrap();
+    let notice = w.delivered(ONE).unwrap();
+    assert!(notice.contains("its `[peer reply from ...]` will arrive in a separate turn once it finishes"), "{notice}");
+    assert!(w.delivered(TWO).is_some());
+
+    // Simulate `Claude-Left` still thinking in Turn L1 (`s.busy = true`, `s.peer_turn.active = true` on `TWO`).
+    w.with(ONE, |s| s.set_busy(true));
+    w.with(TWO, |s| s.set_busy(true));
+
+    // `Claude-Right` answers via explicit `mcp__lico__send` ("받았음 [call done]") while `Claude-Left` is busy!
+    let reply_call = call_counted(&w, TWO, &ask(ONE, "받았음 [call done]"), &Arc::default()).unwrap();
+    let reply_json: Value = serde_json::from_str(&reply_call).unwrap();
+    assert_eq!(reply_json["sent"], json!(true), "{reply_json}");
+
+    // Nothing delivered or echoed into `Claude-Left`'s transcript yet while Turn L1 is busy!
+    assert!(w.delivered(ONE).is_none(), "peer reply must wait for Turn L1 to finish");
+    let before_finish_lines = w.with(ONE, |s| s.snapshot()["lines"].as_array().unwrap().clone());
+    assert!(
+        !before_finish_lines.iter().any(|r| r[1].as_str().unwrap_or("").contains("받았음")),
+        "peer reply must not record above Turn L1's output: {before_finish_lines:?}"
+    );
+
+    // Turn L1 emits its output and finishes (`set_busy(false)` + `flush_deferred`).
+    w.with(ONE, |s| {
+        s.append("Claude-Right에 인사가 전달되었습니다.".as_bytes().to_vec());
+        s.append(b"[turn completed]".to_vec());
+        s.set_busy(false);
+        flush_deferred(s);
+    });
+
+    // Now the deferred `[peer reply from ...]` arrives cleanly BELOW Turn L1's output!
+    let flushed = w.delivered(ONE).expect("deferred peer reply flushed after Turn L1");
+    assert!(flushed.starts_with("[peer reply from 'Claude-Right - made by Claude-Left' ("), "{flushed}");
+    assert!(flushed.contains(" | call c") && flushed.ends_with("]\n받았음"), "{flushed}");
+
+    let after_lines: Vec<String> = w.with(ONE, |s| {
+        s.snapshot()["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r[1].as_str().unwrap().to_string())
+            .collect()
+    });
+    let turn1_pos = after_lines.iter().position(|l| l == "Claude-Right에 인사가 전달되었습니다.").unwrap();
+    let reply_pos = after_lines.iter().position(|l| l == ">> 받았음").unwrap();
+    assert!(turn1_pos < reply_pos, "Turn L1 must appear ABOVE `>> 받았음`: {after_lines:?}");
+}

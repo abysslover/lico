@@ -19,9 +19,9 @@ const _: () = assert!(MAX_TEXT == 64 * 1024, "the words below say 64 KiB");
 /// How long the window waits for the host to read a program's record and hand it over (a record of up to 1 GiB; the window stands still meanwhile).
 const RECORD_WAIT: u64 = 30;
 
-/// The colours of the header of another session's text in the history: the record dimmed, the sender's name lit.
+/// The colours of the header of another session's text in the history: the record dimmed, the sender's name lit in mint-teal.
 pub const DIM: Color = Color::rgb(0x6A, 0x72, 0x7E);
-pub const NAME: Color = Color::rgb(0x8C, 0xC8, 0xFF);
+pub const NAME: Color = Color::rgb(0x5E, 0xEA, 0xD4);
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Source {

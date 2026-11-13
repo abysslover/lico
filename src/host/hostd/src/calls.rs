@@ -102,9 +102,11 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     let burst_step = crate::call_room::check_or_advance_burst(shared, caller, to)?;
     let burst_allowed = burst_step.as_ref().is_some_and(|(cid, _)| crate::call_room::is_owner_authorized(shared, cid));
     if pending::kept(shared, caller, "send", to) || peer_reply_authorized(shared, caller, to) || burst_allowed {
+        AUTHORIZED_SEND.with(|c| c.set(true));
         BURST_ROUND.with(|c| c.set(burst_step.as_ref().map_or(0, |(_, r)| *r)));
         CALL_DONE_FLAG.with(|c| c.set(marked_done));
         let sent_res = transfer::send(shared, Some(caller), to, "text", text, By::Session);
+        AUTHORIZED_SEND.with(|c| c.set(false));
         BURST_ROUND.with(|c| c.set(0));
         CALL_DONE_FLAG.with(|c| c.set(false));
         return match sent_res {
@@ -150,6 +152,7 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
 }
 
 thread_local! {
+    static AUTHORIZED_SEND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BURST_ROUND: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static CALL_DONE_FLAG: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static CREATE_PROMPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -172,7 +175,15 @@ pub(crate) fn with_create_prompt<R>(f: impl FnOnce() -> R) -> R {
 }
 
 const MAX_PEER_QUEUE: usize = 8;
+const MAX_DEFERRED_REPLIES: usize = 16;
 const MAX_PEER_REPLY: usize = 32 * 1024;
+
+pub struct DeferredReply {
+    pub request_id: String,
+    pub send_text: String,
+    pub shown_text: String,
+    pub reply_slot: Option<(String, String, u32)>,
+}
 
 pub enum PeerDone {
     Reply {
@@ -202,6 +213,7 @@ pub struct PeerTurn {
     pub sent_in_turn: bool,
     pub turn_fifo: VecDeque<Option<(String, String, u32, bool)>>,
     pub next_reply_slot: Option<(String, String, u32)>,
+    pub deferred_replies: VecDeque<DeferredReply>,
 }
 
 impl PeerTurn {
@@ -215,7 +227,11 @@ impl PeerTurn {
         for slot in &mut self.turn_fifo { *slot = None; }
     }
 
-    pub fn reset_process(&mut self) { self.clear(); self.turn_fifo.clear(); }
+    pub fn reset_process(&mut self) {
+        self.clear();
+        self.turn_fifo.clear();
+        self.deferred_replies.clear();
+    }
 
     pub fn on_record_input(&mut self, is_person: bool) {
         let slot = self.next_reply_slot.take().map(|(p, c, r)| (p, c, r, false));
@@ -274,6 +290,9 @@ impl PeerTurn {
     pub fn cancel_call(&mut self, call_id: &str) {
         self.queue.retain(|(_, cid, _)| cid.as_deref() != Some(call_id));
         if self.next_reply_slot.as_ref().is_some_and(|(_, cid, _)| cid == call_id) { self.next_reply_slot = None; }
+        for item in &mut self.deferred_replies {
+            if item.reply_slot.as_ref().is_some_and(|(_, cid, _)| cid == call_id) { item.reply_slot = None; }
+        }
         for slot in &mut self.turn_fifo {
             if slot.as_ref().is_some_and(|(_, cid, _, _)| cid == call_id) { *slot = None; }
         }
@@ -294,11 +313,14 @@ impl PeerTurn {
     pub fn is_answering(&self, target_id: &str) -> bool { self.active.as_ref().is_some_and(|(c, _, _, _)| c == target_id) }
     pub fn active_call_id(&self) -> Option<String> { self.active.as_ref().and_then(|(_, cid, _, _)| cid.clone()) }
 
-    pub fn note_outbound_to(&mut self, target_id: &str) -> bool {
-        if let Some((caller, _, _, sent)) = self.active.as_mut() {
-            if caller == target_id { *sent = true; return true; }
+    pub fn note_outbound_to(&mut self, target_id: &str) -> Option<(Option<String>, u32)> {
+        if let Some((caller, cid, r, sent)) = self.active.as_mut() {
+            if caller == target_id {
+                *sent = true;
+                return Some((cid.clone(), *r));
+            }
         }
-        false
+        None
     }
 
     pub fn push_line(&mut self, raw_line: &str) {
@@ -347,11 +369,69 @@ fn peer_reply_authorized(shared: &Shared, caller: &str, to: &str) -> bool {
     answering && (call_ok || pending::kept(shared, to, "send", caller))
 }
 
-pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) -> bool {
-    if by != By::Session { return false; }
-    let Some(caller_id) = from else { return false };
-    let is_reply = core::find(shared, caller_id).is_some_and(|found| found.lock().unwrap().peer_turn.note_outbound_to(to));
-    if !is_reply && !is_create_prompt() {
+pub(crate) fn try_defer_peer_reply(
+    s: &mut crate::session::Session,
+    request_id: &str,
+    send_text: &str,
+    shown_text: &str,
+    origin: crate::session::Origin,
+) -> bool {
+    let has_sink = s.claude.is_some() || s.codex.is_some() || s.input_tx.is_some();
+    if !s.busy
+        || !has_sink
+        || !matches!(origin, crate::session::Origin::PeerReply | crate::session::Origin::PeerReplySession(_))
+        || s.peer_turn.deferred_replies.len() >= MAX_DEFERRED_REPLIES
+    {
+        return false;
+    }
+    s.accept_deferred_peer(request_id, origin, crate::session::now_secs());
+    let reply_slot = s.peer_turn.next_reply_slot.take();
+    s.peer_turn.deferred_replies.push_back(DeferredReply {
+        request_id: request_id.to_string(),
+        send_text: send_text.to_string(),
+        shown_text: shown_text.to_string(),
+        reply_slot,
+    });
+    true
+}
+
+pub(crate) fn flush_deferred(s: &mut crate::session::Session) {
+    while !s.busy {
+        let Some(item) = s.peer_turn.deferred_replies.pop_front() else { break };
+        s.peer_turn.next_reply_slot = item.reply_slot;
+        let sent = if s.codex.is_some() {
+            crate::codex::send_input(s, &item.request_id, &item.send_text).map(|()| s.set_busy(true))
+        } else if s.claude.is_some() {
+            crate::claude::send_input(s, &item.request_id, &item.send_text, None)
+        } else if let Some(tx) = s.input_tx.as_ref() {
+            let line = format!("I {} {}", item.request_id, crate::payload::hex(item.send_text.as_bytes()));
+            match tx.try_send(line) {
+                Ok(()) => {
+                    s.set_busy(true);
+                    Ok(())
+                }
+                Err(std::sync::mpsc::TrySendError::Full(_)) => Err("busy"),
+                Err(_) => Err("session_exited"),
+            }
+        } else {
+            Err("session_exited")
+        };
+        match sent {
+            Ok(()) => s.record_flushed_peer(&item.shown_text, crate::session::now_secs()),
+            Err(_) => {
+                s.peer_turn.next_reply_slot = None;
+                s.advance_input(&item.request_id, crate::session::InputState::Failed);
+            }
+        }
+    }
+}
+
+pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) -> Option<(Option<String>, u32)> {
+    if by != By::Session { return None; }
+    let caller_id = from?;
+    let authorized = AUTHORIZED_SEND.with(|c| c.get());
+    let reply_meta = core::find(shared, caller_id).and_then(|found| found.lock().unwrap().peer_turn.note_outbound_to(to));
+    if reply_meta.is_none() && !is_create_prompt() {
         let round = BURST_ROUND.with(|c| c.get());
         let cid_opt = crate::call_room::peek_pair_call_id(shared, caller_id, to);
         if let Some(found) = core::find(shared, to) {
@@ -361,10 +441,64 @@ pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str,
             }
         }
     }
-    is_reply
+    authorized.then_some(reply_meta).flatten()
 }
 
-pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, text: &str, by: By, ok: bool) {
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn format_explicit_peer_reply(
+    shared: &Shared,
+    sender_id: &str,
+    sender_label: &str,
+    to: &str,
+    call_id_opt: Option<&str>,
+    call_round: u32,
+    hhmm: &str,
+    text: &str,
+) -> String {
+    let (_, flag_done) = (BURST_ROUND.with(|c| c.replace(0)), CALL_DONE_FLAG.with(|c| c.replace(false)));
+    let (stripped, extra_done) = crate::call_room::strip_call_done(text);
+    let marked_done = flag_done || extra_done;
+    let trimmed = stripped.trim();
+    let clean_text = if trimmed.is_empty() || crate::folders::shows_nothing(trimmed) { text } else { trimmed };
+    let both_providers = [sender_id, to]
+        .into_iter()
+        .all(|id| core::find(shared, id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex")));
+    let call_meta = both_providers.then(|| {
+        crate::call_room::record_peer_reply(shared, call_id_opt, to, sender_id, sender_label, call_round.max(1), clean_text, marked_done)
+    }).flatten();
+    if let Some((_, ref cid, r, _)) = call_meta {
+        if let Some(found_to) = core::find(shared, to) {
+            let eff_r = if marked_done { crate::call_room::MAX_CALL_ROUNDS } else { r };
+            found_to.lock().unwrap().peer_turn.next_reply_slot = Some((sender_id.to_string(), cid.clone(), eff_r));
+        }
+    }
+    let call_suffix = match &call_meta {
+        Some((_, cid, r, _)) => format!(" | call {} round {r}/{}", crate::call_room::call_id7(cid), crate::call_room::MAX_CALL_ROUNDS),
+        None => String::new(),
+    };
+    let head = format!("[peer reply from '{}' ({}) | {} | {}{}]", sender_label, transfer::id7(sender_id), hhmm, transfer::size_text(clean_text.len()), call_suffix);
+    format!("{head}\n{}", transfer::defused(clean_text))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn after_peer_deliver(
+    shared: &Shared,
+    from: Option<&str>,
+    to: &str,
+    text: &str,
+    by: By,
+    ok: bool,
+    explicit_recorded: bool,
+    input_ok: bool,
+) {
+    if explicit_recorded {
+        if !input_ok {
+            if let Some(found_to) = core::find(shared, to) {
+                found_to.lock().unwrap().peer_turn.next_reply_slot = None;
+            }
+        }
+        return;
+    }
     let (round, marked_done) = (BURST_ROUND.with(|c| c.replace(0)), CALL_DONE_FLAG.with(|c| c.replace(false)));
     if is_create_prompt() {
         return;
@@ -469,7 +603,12 @@ pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, id: i64, tool: &str, t
         "capture" | "clipboard_read" | "clipboard_write" => crate::screentools::perform(shared, caller, id, tool, target, who, text),
         "computer" => crate::computer::perform(shared, caller),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
-            Ok(done) => Ok(format!("{} delivered to {who} ({}); the receiver was {}", transfer::size_text(text.len()), done["delivery"].as_str().unwrap_or("inline"), done["receiver"].as_str().unwrap_or("idle"))),
+            Ok(done) => Ok(format!(
+                "{} delivered to {who} ({}); the receiver was {} (its `[peer reply from ...]` will arrive in a separate turn once it finishes; acknowledge delivery briefly without assuming the reply was missed)",
+                transfer::size_text(text.len()),
+                done["delivery"].as_str().unwrap_or("inline"),
+                done["receiver"].as_str().unwrap_or("idle")
+            )),
             Err(code) => Err(refusal(shared, caller, code)),
         },
         _ => Err(refusal(shared, caller, "refused")),

@@ -13,8 +13,10 @@ use super::App;
 
 pub const USER_INK: Color = Color::rgb(0x82, 0xCA, 0xFF);
 pub const USER_BG: u32 = 0xFF15_2232;
-pub const PEER_BG: u32 = 0xFF12_2729;
-pub const PEER_BORDER: u32 = 0xFF23_4B4E;
+pub const PEER_INK: Color = Color::rgb(0xA7, 0xF3, 0xD0);
+pub const PEER_LEAD_INK: Color = Color::rgb(0x38, 0xB2, 0xAC);
+pub const PEER_BG: u32 = 0xFF11_292B;
+pub const PEER_BORDER: u32 = 0xFF24_5256;
 pub const PEER_RAIL: u32 = 0xFF38_B2AC;
 pub const AGENT_INK: Color = Color::rgb(0xEA, 0xEE, 0xF5);
 pub const TOOL_INK: Color = Color::rgb(0xA5, 0xAE, 0xD4);
@@ -366,7 +368,9 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
         return list; // transfer headers keep their dimmed + lit-sender look from `sendto::tint`
     }
     let style = role & STYLE_MASK;
+    let is_peer = role & ROLE_PEER_BG != 0;
     let col = match style {
+        STYLE_USER if is_peer => PEER_INK,
         STYLE_USER => USER_INK,
         STYLE_CMD => CMD_TEXT_INK,
         STYLE_TOOL => TOOL_INK,
@@ -378,6 +382,7 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
         _ => AGENT_INK,
     };
     let badge = match style {
+        STYLE_USER if is_peer && (text.starts_with(">> ") || text == ">>") => Some((2, PEER_LEAD_INK)),
         STYLE_CMD if text.starts_with("$ ") || text == "$" => Some((1, CMD_BADGE_INK)),
         STYLE_TOOL if text.starts_with("[tool]") => Some((6, TOOL_BADGE_INK)),
         STYLE_TOOL if text.starts_with("[patch]") => Some((7, TOOL_BADGE_INK)),
@@ -635,6 +640,9 @@ mod tests {
 
         let base = AttrsList::new(&cosmic_text::Attrs::new());
         assert_eq!(tint(base.clone(), "$ echo hi").defaults().color_opt, Some(CMD_TEXT_INK));
+        assert_eq!(tint(base.clone(), ">> user prompt").defaults().color_opt, Some(USER_INK));
+        assert_eq!(tint_role(base.clone(), ">> 안녕 Claude! 잘 들리니?", by_text(">> 안녕 Claude! 잘 들리니?")).defaults().color_opt, Some(PEER_INK));
+        assert_ne!(PEER_INK, USER_INK, "incoming peer card text must not share human blue ink");
         assert_eq!(tint_role(base, "skill header line 1", by_text("skill header line 1")).defaults().color_opt, Some(CMD_OUT_INK));
     }
 

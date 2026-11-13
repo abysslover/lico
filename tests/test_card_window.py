@@ -130,7 +130,7 @@ def test_the_text_behind_a_card_is_read_page_by_page_in_the_window_and_y_s_and_n
 
             number = ask_create(w.directory, writer, "write the notes down", "scribe")["approval_id"]                  # a create: the same keys but S, and a yes makes one session
             state = wait_for(lambda: w.ui()["approval_bar"] and w.ui())
-            assert state["approval_bar"].startswith(f"approval {number}: create session 'scribe' ") and "mode: asks for approval" in state["approval_bar"], state["approval_bar"]
+            assert state["approval_bar"].startswith(f"approval {number}: create session 'scribe' ") and "mode: auto (bypass)" in state["approval_bar"], state["approval_bar"]
             state = wait_for(lambda: w.ui() if w.ui()["hint"].startswith("Y allow") else None)
             assert state["hint"].startswith("Y allow  N deny  V read it all") and "S allow" not in state["hint"], state["hint"]
             assert len(w.ui()["rows"]) == 4, "nothing is made until the answer"

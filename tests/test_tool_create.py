@@ -110,7 +110,7 @@ def test_the_list_names_create_with_optional_kind_prompt_name_and_scope(world):
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
 
 
-def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_folder_of_the_caller_in_the_mode_that_asks_and_tells_the_caller(world):
+def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_folder_of_the_caller_in_auto_bypass_mode_and_tells_the_caller(world):
     project = Path(world.directory) / "project"
     project.mkdir()
     caller, generation = world.session(name="writer", cwd=str(project))
@@ -118,24 +118,24 @@ def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_fold
     folder = status_of(world.conn, caller)["cwd"]
     before = {r["session"] for r in rows(world)}
     prompt = "fix the tests"      # the card has 200 characters; what the head leaves is the start of the prompt (the whole of it is a keypress away in the window)
-    number = wants(world, caller, prompt=prompt, name="reviewer", cwd="/etc", mode="auto", account="other", model="m", effort="high", **{"from": bystander})
+    number = wants(world, caller, prompt=prompt, name="reviewer", cwd="/etc", mode="default", account="other", model="m", effort="high", **{"from": bystander})
     card = status_of(world.conn, caller)["approvals"]
-    assert card == [{"approval_id": number, "tool": "create", "prompt": f"create session 'reviewer' in '{shown(folder)}' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | {len(prompt)} B | \"{prompt}\""}], card
+    assert card == [{"approval_id": number, "tool": "create", "prompt": f"create session 'reviewer' in '{shown(folder)}' | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | {len(prompt)} B | \"{prompt}\""}], card
     assert {r["session"] for r in rows(world)} == before, "nothing is made until the card is answered"
     assert status_of(world.conn, bystander).get("approvals") is None, "what the caller said about itself was not heard"
     assert v1.validate_response("status", world.conn.call(op="status")) == []
     done = decide(world, caller, generation, number, "allow")
     assert done["ok"] == 1 and (done["state"], done["outcome"]) == ("answered", "done") and "reason" not in done, done
     [new] = [r for r in rows(world) if r["session"] not in before]
-    assert new["name"] == "reviewer - made by writer" and (new["provider"], new["mode"], new["cwd"], new["state"]) == ("claude", "default", folder, "running"), new
+    assert new["name"] == "reviewer - made by writer" and (new["provider"], new["mode"], new["cwd"], new["state"]) == ("claude", "auto", folder, "running"), new
     argv, started_in = wait_for(lambda: program_of(world, new["session"]))
-    assert argv[argv.index("--permission-mode") + 1] == "default" and started_in == folder, (argv, started_in)      # the caller runs in `auto`; its mode is not handed on
+    assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions" and started_in == folder, (argv, started_in)      # agent's `mode="default"` argument is ignored; new tabs run in Lico's standard auto bypass mode
     assert "codex" not in " ".join(argv) and "other" not in argv and "--model" not in argv, argv
     head = re.compile(HEADER.format(name="writer", id7=caller[:7], size=f"{len(prompt)} B"))
     wait_for(lambda: [r for r in records(world.log, new["session"]) if head.fullmatch(r)])
     assert f">> {prompt}" in records(world.log, new["session"]), "the first prompt came the way a send comes"
     told = wait_for(lambda: [r for r in records(world.log, caller) if r.startswith(">> approved and done: created session ")])
-    match = re.fullmatch(rf">> approved and done: created session ({new['session']}) 'reviewer - made by writer' in '{re.escape(folder)}', mode: asks for approval; "
+    match = re.fullmatch(rf">> approved and done: created session ({new['session']}) 'reviewer - made by writer' in '{re.escape(folder)}', mode: auto \(bypass\); "
                          rf"the first prompt \({len(prompt)} B\) was delivered \(inline\)\. .*", told[0])
     assert match, told
     assert re.fullmatch(NOTICE.format(number=number), notices(world.log, caller)[0])
@@ -151,7 +151,7 @@ def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_fold
 def test_a_session_without_a_folder_makes_a_session_without_one_and_the_name_may_be_left_out(world):
     caller, generation = world.session(name="scratchy")
     number = wants(world, caller, prompt="hello")
-    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""
+    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
     [new] = running_made(world)
     assert new["name"] == "made by scratchy" and new.get("scratch") is True and "cwd" not in new, new
@@ -160,7 +160,7 @@ def test_a_session_without_a_folder_makes_a_session_without_one_and_the_name_may
 def test_the_card_says_the_model_and_the_effort_of_the_caller_and_the_program_of_the_new_session_is_started_with_them(world):
     caller, generation = world.session(name="chooser", model="opus", effort="high")
     number = wants(world, caller, prompt="hello")
-    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: asks for approval | model: opus, effort: high | {STARTS} | 5 B | \"hello\""
+    assert status_of(world.conn, caller)["approvals"][0]["prompt"] == f"create session in a scratch folder | mode: auto (bypass) | model: opus, effort: high | {STARTS} | 5 B | \"hello\""
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
     [new] = running_made(world, by="chooser")
     argv, _ = wait_for(lambda: program_of(world, new["session"]))
@@ -203,7 +203,7 @@ def test_the_characters_of_a_name_that_would_end_the_quote_of_the_card_become_un
     caller, generation = world.session(name="writer")
     number = wants(world, caller, prompt="p", name="x' in '/etc | mode: auto | [(a)]")
     card = status_of(world.conn, caller)["approvals"][0]["prompt"]
-    assert card.startswith("create session 'x_ in _/etc _ mode: auto _ __a__' in a scratch folder | mode: asks for approval | "), card
+    assert card.startswith("create session 'x_ in _/etc _ mode: auto _ __a__' in a scratch folder | mode: auto (bypass) | "), card
     assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
     assert running_made(world)[0]["name"] == "x_ in _/etc _ mode: auto _ __a__ - made by writer"
 
@@ -410,7 +410,7 @@ def test_claude_and_codex_sessions_can_create_each_other_with_or_without_a_promp
             assert decide(w, s_claude, g_claude, card_c2x["approval_id"], "allow")["outcome"] == "done"
             [new_codex] = [r for r in rows(w) if r["session"] not in before]
             assert (new_codex["provider"], new_codex["account"], new_codex["mode"], new_codex["cwd"], new_codex["state"]) == (
-                "codex", acc_codex, "default", folder, "running"
+                "codex", acc_codex, "auto", folder, "running"
             ), new_codex
             assert new_codex["name"] == "Codex-New - made by Claude-L"
             wait_for(lambda: any("created codex session" in r and "no initial prompt sent" in r for r in records(w.log, s_claude)))
@@ -428,7 +428,7 @@ def test_claude_and_codex_sessions_can_create_each_other_with_or_without_a_promp
             assert decide(w, s_codex, g_codex, card_x2c["approval_id"], "allow")["outcome"] == "done"
             [new_claude] = [r for r in rows(w) if r["session"] not in before2]
             assert (new_claude["provider"], new_claude["account"], new_claude["mode"], new_claude["state"]) == (
-                "claude", acc_claude, "default", "running"
+                "claude", acc_claude, "auto", "running"
             ), new_claude
             assert new_claude["name"] == "Claude-New - made by Codex-L" and new_claude.get("scratch") is True and "cwd" not in new_claude, new_claude
             wait_for(lambda: ">> 새 Claude 대화창 첫 작업" in records(w.log, new_claude["session"]))

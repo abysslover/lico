@@ -75,13 +75,13 @@ fn a_create_waits_for_the_person_and_makes_nothing_and_its_card_says_the_folder_
     assert_eq!(got["approval_id"], 1);
     assert!(got["message"].as_str().unwrap().starts_with("Nothing was made yet. The person has been asked to approve the creation of a new session 'reviewer' in '/work/api'."), "{got}");
     assert!(got.get("already_pending").is_none() && got.get("session").is_none());
-    let card = format!("create session 'reviewer' in '/work/api' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | {} B, 2 lines | \"review the login tests\"", prompt.len());
+    let card = format!("create session 'reviewer' in '/work/api' | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | {} B, 2 lines | \"review the login tests\"", prompt.len());
     assert_eq!(cards(&w, ONE), json!([{"approval_id": 1, "prompt": card, "tool": "create"}]));
     assert_eq!(count(&w), before, "no session was made");
     let again = waits(&w, ONE, json!({"prompt": prompt, "name": "reviewer"}));
     assert_eq!((again["approval_id"].clone(), again["already_pending"].clone()), (json!(1), json!(true)), "the same request is the same card");
     waits(&w, TWO, json!({"prompt": "hello"}));
-    assert_eq!(cards(&w, TWO), json!([{"approval_id": 1, "prompt": format!("create session in a scratch folder | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""), "tool": "create"}]));
+    assert_eq!(cards(&w, TWO), json!([{"approval_id": 1, "prompt": format!("create session in a scratch folder | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | 5 B | \"hello\""), "tool": "create"}]));
     waits(&w, THREE, json!({"prompt": "hello", "name": ""}));
     assert_eq!(cards(&w, THREE)[0]["prompt"], cards(&w, TWO)[0]["prompt"], "an empty name is none");
     waits(&w, EXTRA[0], json!({"prompt": "hello", "name": null}));
@@ -91,8 +91,8 @@ fn a_create_waits_for_the_person_and_makes_nothing_and_its_card_says_the_folder_
 #[test]
 fn a_folder_a_mode_an_account_a_model_or_a_from_in_the_arguments_is_not_heard() {
     let w = room();
-    waits(&w, ONE, json!({"prompt": "p", "cwd": "/etc", "mode": "auto", "account": "other", "model": "m", "effort": "high", "from": TWO}));
-    assert_eq!(cards(&w, ONE)[0]["prompt"], format!("create session in '/work/api' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 1 B | \"p\""));
+    waits(&w, ONE, json!({"prompt": "p", "cwd": "/etc", "mode": "default", "account": "other", "model": "m", "effort": "high", "from": TWO}));
+    assert_eq!(cards(&w, ONE)[0]["prompt"], format!("create session in '/work/api' | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | 1 B | \"p\""));
     assert_eq!(cards(&w, TWO), Value::Null, "what the caller said about itself was not heard");
 }
 
@@ -104,7 +104,7 @@ fn a_long_folder_is_cut_from_its_start_so_that_the_end_shows_and_the_card_fits()
     waits(&w, ONE, json!({"prompt": "x".repeat(500), "name": "n".repeat(NAME_CHARS)}));
     let card = cards(&w, ONE)[0]["prompt"].as_str().unwrap().to_string();
     assert!(card.chars().count() <= calls::CARD_CHARS, "{}", card.chars().count());
-    assert!(card.contains(&format!("'{}' in '\u{2026}ddd", "n".repeat(NAME_CHARS))) && card.ends_with(&format!("/project' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS}")), "the size and the prompt gave way, the host's words did not: {card}");
+    assert!(card.contains(&format!("'{}' in '\u{2026}ddd", "n".repeat(NAME_CHARS))) && card.ends_with(&format!("/project' | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS}")), "the size and the prompt gave way, the host's words did not: {card}");
 }
 
 /// The caller's choices and the agent's name and prompt, as a `create` card is made of them.
@@ -124,7 +124,7 @@ fn the_host_words_of_the_card_stay_whole_and_in_order_whatever_the_agent_names_t
                 for effort in [None, Some("high"), Some("medium"), Some("xhigh"), Some("12345678")] {
                     for prompt in ["p".to_string(), "x".repeat(500)] {
                         let settings = Settings { cwd: None, name: None, model: model.map(String::from), effort: effort.map(String::from), ..Settings::default() };
-                        let words = format!("mode: asks for approval | {} | {STARTS}", chosen_words(&settings));
+                        let words = format!("mode: auto (bypass) | {} | {STARTS}", chosen_words(&settings));
                         let card = card_for(&name, folder, model, effort, &prompt, 0);
                         assert!(card.chars().count() <= calls::CARD_CHARS && card.starts_with("create session") && card.contains(&words), "{name:?} {folder:?} {model:?} {effort:?}: {card}");
                         cards += 1;
@@ -151,7 +151,7 @@ fn what_gives_way_on_a_card_that_is_too_long_is_the_start_of_the_prompt_then_the
     let long_folder = format!("/{}/project", "d".repeat(100));
     let (id26, id40, name) = ("claude-sonnet-4-5-20250929", "m".repeat(40), "n".repeat(NAME_CHARS));
     let fits = card_for("writer", Some("/w/api"), Some("opus"), Some("high"), "fix the tests", 0);
-    assert_eq!(fits, format!("create session 'writer' in '/w/api' | mode: asks for approval | model: opus, effort: high | {STARTS} | 13 B | \"fix the tests\""));
+    assert_eq!(fits, format!("create session 'writer' in '/w/api' | mode: auto (bypass) | model: opus, effort: high | {STARTS} | 13 B | \"fix the tests\""));
     let cut = card_for(&"n".repeat(12), Some("/w/api"), Some(id26), Some("high"), &"x".repeat(500), 0);
     assert!(cut.contains(" | 500 B | \"x") && cut.ends_with("\u{2026}\"") && cut.chars().count() <= calls::CARD_CHARS, "{cut}");
     let hidden = card_for(&"n".repeat(12), Some("/w/api"), Some(id26), Some("high"), &"x".repeat(500), 100);
@@ -162,16 +162,16 @@ fn what_gives_way_on_a_card_that_is_too_long_is_the_start_of_the_prompt_then_the
     let (named, rest) = cut_name.split_once("' in '").unwrap();
     assert!(named.starts_with("create session 'nnnn") && named.ends_with('\u{2026}') && named.matches('n').count() < NAME_CHARS && rest.starts_with('\u{2026}') && cut_name.ends_with(STARTS), "{cut_name}");
     assert_eq!(cut_name.chars().count(), calls::CARD_CHARS, "the name takes what is left");
-    let gone = card_for(&name, Some(long_folder.as_str()), Some(id40.as_str()), Some("12345678"), "p", 0);
+    let gone = card_for(&name, Some(long_folder.as_str()), Some(id40.as_str()), Some("123456789012"), "p", 0);
     assert!(gone.starts_with("create session in '\u{2026}") && gone.ends_with(STARTS) && !gone.contains("nnn"), "{gone}");
-    let bare_len = |m: usize| format!("create session in a scratch folder | mode: asks for approval | model: {}, effort: high | {STARTS}", "m".repeat(m)).chars().count();
+    let bare_len = |m: usize| format!("create session in a scratch folder | mode: auto (bypass) | model: {}, effort: high | {STARTS}", "m".repeat(m)).chars().count();
     let m = 1 + 196 - bare_len(1);
     let one_left = card_for(&name, None, Some(&"m".repeat(m - 1)), Some("high"), "p", 0);
     assert!(one_left.starts_with("create session 'n\u{2026}' in a scratch folder | ") && one_left.chars().count() == calls::CARD_CHARS && one_left.ends_with(STARTS), "{one_left}");
     let none_left = card_for(&name, None, Some(&"m".repeat(m)), Some("high"), "p", 0);
     assert!(none_left.starts_with("create session in a scratch folder | ") && none_left.chars().count() == 196 && none_left.ends_with(STARTS), "{none_left}");
-    let beyond = card_for(&name, Some(long_folder.as_str()), Some(&"m".repeat(60)), Some(&"e".repeat(16)), "p", 0);
-    assert!(beyond.starts_with("create session in '\u{2026}") && !beyond.contains("nnn") && beyond.contains("project' | mode: asks for approval | model: "), "{beyond}");
+    let beyond = card_for(&name, Some(long_folder.as_str()), Some(&"m".repeat(64)), Some(&"e".repeat(16)), "p", 0);
+    assert!(beyond.starts_with("create session in '\u{2026}") && !beyond.contains("nnn") && beyond.contains("project' | mode: auto (bypass) | model: "), "{beyond}");
     assert_eq!(beyond.split('\'').nth(1).unwrap().chars().count(), 16, "{beyond}");
 }
 
@@ -214,7 +214,7 @@ fn a_name_cannot_end_its_quote_on_the_card_or_fake_a_field_of_it_and_the_session
     let w = room();
     waits(&w, ONE, json!({"prompt": "p", "name": "x' in '/etc | mode: auto | [(a)]"}));
     let card = cards(&w, ONE)[0]["prompt"].as_str().unwrap().to_string();
-    assert!(card.starts_with("create session 'x_ in _/etc _ mode: auto _ __a__' in '/work/api' | mode: asks for approval | "), "{card}");
+    assert!(card.starts_with("create session 'x_ in _/etc _ mode: auto _ __a__' in '/work/api' | mode: auto (bypass) | "), "{card}");
     let (seen, inbox) = (Mutex::default(), Mutex::default());
     perform_with(&w.shared, ONE, &plain("x' in '/etc | mode: auto | [(a)]"), "p", &starter(&w, NEW, &seen, &inbox)).unwrap();
     assert_eq!(seen.lock().unwrap()[0].settings.name.as_deref(), Some("x_ in _/etc _ mode: auto _ __a__ - made by writer"));
@@ -328,10 +328,10 @@ fn the_card_says_the_model_and_the_effort_the_new_session_gets_which_are_the_cal
     let card = |from: &str| cards(&w, from)[0]["prompt"].as_str().unwrap().to_string();
     w.with(ONE, |s| (s.settings.model, s.settings.effort) = (Some("haiku".into()), Some("low".into())));
     waits(&w, ONE, json!({"prompt": "p"}));
-    assert_eq!(card(ONE), format!("create session in '/work/api' | mode: asks for approval | model: haiku, effort: low | {STARTS} | 1 B | \"p\""));
+    assert_eq!(card(ONE), format!("create session in '/work/api' | mode: auto (bypass) | model: haiku, effort: low | {STARTS} | 1 B | \"p\""));
     w.with(TWO, |s| s.settings.model = Some("claude-sonnet-4-5".into()));
     waits(&w, TWO, json!({"prompt": "p"}));
-    assert!(card(TWO).starts_with("create session in a scratch folder | mode: asks for approval | model: claude-sonnet-4-5, effort: the program's default | "), "{}", card(TWO));
+    assert!(card(TWO).starts_with("create session in a scratch folder | mode: auto (bypass) | model: claude-sonnet-4-5, effort: the program's default | "), "{}", card(TWO));
     w.with(THREE, |s| s.settings.effort = Some("high".into()));
     waits(&w, THREE, json!({"prompt": "p"}));
     assert!(card(THREE).contains(" | model: the program's default, effort: high | "), "{}", card(THREE));
@@ -373,7 +373,7 @@ fn first_input(inbox: &Mutex<Option<Receiver<String>>>) -> String {
 }
 
 #[test]
-fn a_yes_makes_a_session_in_the_folder_of_the_caller_in_default_mode_and_delivers_the_prompt_as_a_step_on_the_chain() {
+fn a_yes_makes_a_session_in_the_folder_of_the_caller_in_auto_mode_and_delivers_the_prompt_as_a_step_on_the_chain() {
     let w = room();
     w.with(ONE, |s| (s.incoming_hops, s.account) = (2, Some("main".into())));
     let (seen, inbox) = (Mutex::default(), Mutex::default());
@@ -382,10 +382,10 @@ fn a_yes_makes_a_session_in_the_folder_of_the_caller_in_default_mode_and_deliver
         kind: "claude",
         settings: Settings { cwd: Some(FOLDER.into()), name: Some("reviewer - made by writer".into()), model: None, effort: None, ..Settings::default() },
         account: Some("main".into()),
-        mode: "default",
+        mode: "auto",
     };
     assert_eq!(*seen.lock().unwrap(), [spec], "the folder, the account and the mode are the caller's and the host's, the name is the agent's with who made it");
-    assert!(got.starts_with(&format!("created session {NEW} 'reviewer - made by writer' in '{FOLDER}', mode: asks for approval; the first prompt (9 B) was delivered (inline)")), "{got}");
+    assert!(got.starts_with(&format!("created session {NEW} 'reviewer - made by writer' in '{FOLDER}', mode: auto (bypass); the first prompt (9 B) was delivered (inline)")), "{got}");
     assert_eq!(w.with(NEW, |s| (s.made_by.clone(), s.incoming_hops)), (Some(ONE.to_string()), 3), "it is marked, and the prompt is a step on the chain");
     let text = first_input(&inbox);
     let (head, body) = text.split_once('\n').unwrap();
@@ -422,17 +422,17 @@ fn claude_can_ask_for_codex_and_codex_can_ask_for_claude_resolving_the_target_pr
     let got_c2x = waits(&w, ONE, json!({"kind": "codex", "name": "Codex-Tab"}));
     assert!(got_c2x["message"].as_str().unwrap().contains("creation of a new codex session 'Codex-Tab' in '/work/api'"), "{got_c2x}");
     let card_c2x = cards(&w, ONE)[0]["prompt"].as_str().unwrap().to_string();
-    assert_eq!(card_c2x, format!("create codex session 'Codex-Tab' in '/work/api' | mode: asks for approval | {DEFAULT_MODEL} | {OPENS_READY}"));
+    assert_eq!(card_c2x, format!("create codex session 'Codex-Tab' in '/work/api' | mode: auto (bypass) | {DEFAULT_MODEL} | {OPENS_READY}"));
     let (seen, inbox) = (Mutex::default(), Mutex::default());
     let done_c2x = perform_with(&w.shared, ONE, &encode_target("codex", "folder", "Codex-Tab"), "", &starter(&w, NEW, &seen, &inbox)).unwrap();
-    assert!(done_c2x.contains(&format!("created codex session {NEW} 'Codex-Tab - made by writer' in '{FOLDER}', mode: asks for approval; the new tab is open and ready (no initial prompt sent)")), "{done_c2x}");
+    assert!(done_c2x.contains(&format!("created codex session {NEW} 'Codex-Tab - made by writer' in '{FOLDER}', mode: auto (bypass); the new tab is open and ready (no initial prompt sent)")), "{done_c2x}");
     assert_eq!(
         seen.lock().unwrap()[0],
         Spec {
             kind: "codex",
             settings: Settings { cwd: Some(FOLDER.into()), name: Some("Codex-Tab - made by writer".into()), model: None, effort: None, ..Settings::default() },
             account: Some(acc_codex.clone()),
-            mode: "default",
+            mode: "auto",
         }
     );
     assert!(inbox.lock().unwrap().as_ref().unwrap().try_recv().is_err(), "empty-prompt tab gets no initial message");
@@ -442,16 +442,16 @@ fn claude_can_ask_for_codex_and_codex_can_ask_for_claude_resolving_the_target_pr
     let got_x2c = waits(&w, TWO, json!({"kind": "claude", "scope": "global", "name": "Claude-Global", "prompt": "check logs"}));
     assert!(got_x2c["message"].as_str().unwrap().contains("creation of a new claude session 'Claude-Global' in global scope"), "{got_x2c}");
     let card_x2c = cards(&w, TWO)[0]["prompt"].as_str().unwrap().to_string();
-    assert_eq!(card_x2c, format!("create claude session 'Claude-Global' in global scope | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | 10 B | \"check logs\""));
+    assert_eq!(card_x2c, format!("create claude session 'Claude-Global' in global scope | mode: auto (bypass) | {DEFAULT_MODEL} | {STARTS} | 10 B | \"check logs\""));
     let done_x2c = perform_with(&w.shared, TWO, &encode_target("claude", "global", "Claude-Global"), "check logs", &starter(&w, OTHER_NEW, &seen, &inbox)).unwrap();
-    assert!(done_x2c.contains(&format!("created claude session {OTHER_NEW} 'Claude-Global - made by Codex-L' in global scope, mode: asks for approval; the first prompt (10 B) was delivered")), "{done_x2c}");
+    assert!(done_x2c.contains(&format!("created claude session {OTHER_NEW} 'Claude-Global - made by Codex-L' in global scope, mode: auto (bypass); the first prompt (10 B) was delivered")), "{done_x2c}");
     assert_eq!(
         seen.lock().unwrap()[1],
         Spec {
             kind: "claude",
             settings: Settings { cwd: None, name: Some("Claude-Global - made by Codex-L".into()), model: None, effort: None, ..Settings::default() },
             account: Some(acc_claude),
-            mode: "default",
+            mode: "auto",
         }
     );
     assert_eq!(first_input(&inbox).split_once('\n').unwrap().1, "check logs");
@@ -468,7 +468,7 @@ fn omitting_kind_on_a_codex_caller_defaults_to_codex_with_the_callers_account_an
     });
     waits(&w, TWO, json!({"name": "Same-Kind"}));
     let card = cards(&w, TWO)[0]["prompt"].as_str().unwrap().to_string();
-    assert_eq!(card, format!("create codex session 'Same-Kind' in a scratch folder | mode: asks for approval | model: gpt-5, effort: high | {OPENS_READY}"));
+    assert_eq!(card, format!("create codex session 'Same-Kind' in a scratch folder | mode: auto (bypass) | model: gpt-5, effort: high | {OPENS_READY}"));
     let (seen, inbox) = (Mutex::default(), Mutex::default());
     perform_with(&w.shared, TWO, &encode_target("codex", "folder", "Same-Kind"), "", &starter(&w, NEW, &seen, &inbox)).unwrap();
     assert_eq!(seen.lock().unwrap()[0].kind, "codex");
@@ -499,7 +499,7 @@ fn a_caller_in_a_scratch_folder_makes_a_session_in_a_scratch_folder_too() {
     let (seen, inbox) = (Mutex::default(), Mutex::default());
     let got = perform_with(&w.shared, TWO, "", "hello", &starter(&w, NEW, &seen, &inbox)).unwrap();
     assert_eq!(seen.lock().unwrap()[0].settings.cwd, None);
-    assert!(got.starts_with(&format!("created session {NEW} 'made by reader' in a scratch folder, mode: asks for approval;")), "{got}");
+    assert!(got.starts_with(&format!("created session {NEW} 'made by reader' in a scratch folder, mode: auto (bypass);")), "{got}");
 }
 
 #[test]

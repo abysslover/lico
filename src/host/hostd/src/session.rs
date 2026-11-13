@@ -1,8 +1,5 @@
-//! Sessions, the durable sequenced log and subscriber queues.
-//!
-//! A session keeps a small bounded window of recent records in memory and writes
-//! every record to an owner-only segment file before it can leave the window.
-//! Older replay is read from the segments, so memory does not grow with history.
+//! Sessions, durable sequenced logs, and subscriber queues.
+//! Each session keeps a bounded window in memory and writes records to owner-only `.seg` files.
 
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -21,8 +18,6 @@ use crate::payload::hex;
 
 pub const SNAPSHOT_LINES: usize = 40;
 const HEADER: usize = 12; // u32 length + u64 sequence
-/// Request ids remembered per session (as 64-bit hashes): a repeat inside this window is never
-/// dispatched twice; older ids are forgotten, which the protocol note states.
 pub const MAX_TRACKED_INPUTS: usize = 65536;
 pub const MAX_APPROVALS: usize = 64;
 
@@ -177,10 +172,7 @@ impl Log {
         }
     }
 
-    /// Open the segments a session left on disk. Every frame is checked (its sequence must follow the one before);
-    /// at the first frame that is cut short or out of order the rest of that segment, and every later segment, is
-    /// set aside in `.damaged` files (owner-only, never read again) and the segment is cut at the last good frame.
-    /// Returns the log, the next sequence number and what was found.
+    /// Open segments on disk; any cut or out-of-order tail is moved aside to owner-only `.damaged` files.
     pub fn recover(dir: &Path, id: &str, retain: usize) -> (Log, i64, Recovery) {
         let mut log = Log::new(dir, id, retain);
         let mut report = Recovery::default();
@@ -695,6 +687,30 @@ impl Session {
         self.inputs.get(&self.key(request_id)).copied()
     }
 
+    fn track_input(&mut self, request_id: &str) {
+        let key = self.key(request_id);
+        self.inputs.insert(key, InputState::Accepted);
+        self.input_order.push_back(key);
+        while self.input_order.len() > MAX_TRACKED_INPUTS {
+            if let Some(old) = self.input_order.pop_front() {
+                self.inputs.remove(&old);
+            }
+        }
+    }
+
+    pub(crate) fn accept_deferred_peer(&mut self, request_id: &str, origin: Origin, now: u64) {
+        self.count_hops(origin, now);
+        self.last_active_at = now.max(self.last_active_at);
+        self.track_input(request_id);
+    }
+
+    pub(crate) fn record_flushed_peer(&mut self, text: &str, now: u64) {
+        self.last_active_at = now.max(self.last_active_at);
+        self.peer_turn.on_record_input(false);
+        self.append(b"[peer reply]".to_vec());
+        crate::echo::append(self, text, true);
+    }
+
     pub fn record_input(&mut self, request_id: &str, text: &str, origin: Origin, now: u64) {
         self.count_hops(origin, now);
         self.last_active_at = now.max(self.last_active_at);
@@ -714,21 +730,10 @@ impl Session {
             self.append(b"[host notice]".to_vec());
         }
         crate::echo::append(self, text, origin != Origin::Person);
-        let key = self.key(request_id);
-        self.inputs.insert(key, InputState::Accepted);
-        self.input_order.push_back(key);
-        while self.input_order.len() > MAX_TRACKED_INPUTS {
-            if let Some(old) = self.input_order.pop_front() {
-                self.inputs.remove(&old);
-            }
-        }
+        self.track_input(request_id);
     }
 
-    /// The count of steps in a row (`incoming_hops`) after an input. A person's text starts it again, and so does a person's send that names a sending session
-    /// (the window's "Send to session", `--from`, a conversation handed over): it reaches here as `Session(0)`. A text from a session raises it when it is deeper, and
-    /// replaces it when it is older than `HOPS_MEMORY` (counted from when it was set or raised), so a third session that sends a short text cannot lower a
-    /// chain that is still going, and a text that changes nothing does not renew the age. The host's own word changes nothing. Nothing decays when the count
-    /// is read: a chain whose turn takes a quarter of an hour is still as deep.
+    /// Update `incoming_hops`: person inputs (`Person` / `Session(0)`) reset to 0; deeper or expired (`> HOPS_MEMORY`) session inputs replace it; host/implicit-reply inputs leave it unchanged.
     fn count_hops(&mut self, origin: Origin, now: u64) {
         let (hops, taken) = match origin {
             Origin::Person | Origin::Session(0) | Origin::PeerReplySession(0) => (0, true), // zero is made only by a person's act that names a session; a session's own text carries 1 or more
