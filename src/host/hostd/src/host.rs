@@ -55,6 +55,9 @@ pub fn run(args: Vec<String>) {
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
     // every directory of the host defaults to a place under --state-dir, or else beside the socket
     let state_dir = arg("--state-dir", "");
+    if args.iter().any(|a| a == "--llm-proc-root") {
+        crate::llm::set_proc_root(PathBuf::from(arg("--llm-proc-root", ""))); // a test gives the host a process table of its own
+    }
     let base = if state_dir.is_empty() { socket_dir.clone() } else { PathBuf::from(&state_dir) };
     let log_dir = PathBuf::from(arg("--log-dir", base.join("lico-log").to_str().unwrap_or("lico-log")));
     let agent_default = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-synth-agent"))).unwrap_or_default();

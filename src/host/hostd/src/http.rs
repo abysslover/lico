@@ -507,6 +507,15 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             }
             crate::call_room::dispatch_op(shared, op, &map)
         }
+        ["v1", "llm", "discover"] => {
+            allowed(method == "POST")?;
+            let mut map = body_map(request).map_err(bad)?;
+            map.insert("op".into(), json!("llm.discover"));
+            if !valid_request("llm.discover", &map) {
+                return Err(bad("bad_request"));
+            }
+            crate::llm::discover(shared, &map)
+        }
         ["v1", "ssh", "check"] => {
             allowed(method == "POST")?;
             let mut map = body_map(request).map_err(bad)?;

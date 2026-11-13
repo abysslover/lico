@@ -151,6 +151,7 @@ impl App {
         out["new_chat_reason"] = json!(self.newchat_gate().err());
         out["new_chat"] = self.newchat_json();
         out["native_prompt"] = self.native_prompt_json();
+        out["llm_find"] = self.llm_json();
         out["native"] = json!(sb.native_entries.iter().map(|e| json!({"account": e.id, "provider": e.provider, "label": e.label, "state": e.state, "chosen": e.chosen, "chats": e.chats})).collect::<Vec<_>>());
         self.insert_chats_json(&mut out);
         self.insert_nav_json(&mut out);

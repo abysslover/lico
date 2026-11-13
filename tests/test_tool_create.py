@@ -104,7 +104,7 @@ def test_the_list_names_create_with_optional_kind_prompt_name_scope_and_resume(w
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "llm_endpoints"]
     schema = tools["create"]["inputSchema"]
     assert "required" not in schema and sorted(schema["properties"]) == ["account", "kind", "name", "prompt", "resume", "scope"], schema      # no raw cwd, mode, account, model, effort or `from`
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120

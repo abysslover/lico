@@ -14,6 +14,7 @@ pub(crate) enum AsyncJob {
     ChatResume { req_id: u64, created_cwd: Option<String> }, NewChatLast { req_id: u64, account: String }, NewChatStart { req_id: u64, created_cwd: Option<String>, resume: bool },
     CallGet { call_id: String }, CallSay { call_id: String, text: String },
     CallStart, CallAction,
+    LlmFind { req_id: u64 },
 }
 
 pub(crate) struct AsyncDone {

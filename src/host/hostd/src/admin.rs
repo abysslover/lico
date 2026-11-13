@@ -50,6 +50,7 @@ pub const HTTP_ROUTES: &[&str] = &[
     "GET /v1/files/read",
     "GET /v1/ssh/hosts",
     "POST /v1/ssh/check",
+    "POST /v1/llm/discover",
     "POST /v1/approvals/<id>/response",
     "GET /v1/calls",
     "POST /v1/calls",

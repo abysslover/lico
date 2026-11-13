@@ -602,6 +602,7 @@ pub(crate) fn perform(shared: &Arc<Shared>, caller: &str, id: i64, tool: &str, t
         "history" => crate::history::perform(shared, caller, target, text),
         "capture" | "clipboard_read" | "clipboard_write" => crate::screentools::perform(shared, caller, id, tool, target, who, text),
         "computer" => crate::computer::perform(shared, caller),
+        "llm_endpoints" => crate::llm::tool::perform(shared, caller, target, text),
         "send" => match transfer::send(shared, Some(caller), target, "text", text, By::Session) {
             Ok(done) => Ok(format!(
                 "{} delivered to {who} ({}); the receiver was {} (its `[peer reply from ...]` will arrive in a separate turn once it finishes; acknowledge delivery briefly without assuming the reply was missed)",

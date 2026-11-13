@@ -93,7 +93,7 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "session.chats" | "call.list" => &[],
+        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "llm.discover" | "session.chats" | "call.list" => &[],
         "call.get" | "call.hangup" | "call.close" => &["call"],
         "call.start" => &["from", "to"],
         "call.say" => &["call", "text"],
@@ -203,6 +203,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("folder.git" | "folder.list" | "folder.read", "ssh_host") => {
                 matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s))
             }
+            ("llm.discover", "ssh_host") => matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
+            ("llm.discover", "all_users") => value.is_boolean(),
             ("ssh.check", "host") => matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
@@ -342,6 +344,7 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         },
         "ssh.hosts" => crate::ssh::ssh_hosts(shared),
         "ssh.check" => crate::ssh::ssh_check(shared, text(request, "host")),
+        "llm.discover" => crate::llm::discover(shared, request),
         "session.search" => crate::search::search_op(shared, text(request, "query"), request.get("session").and_then(Value::as_str), int(request, "limit").unwrap_or(crate::search::DEFAULT_LIMIT as i64) as usize),
         "session.chats" => crate::chats::session_chats(shared, request),
         "display.ensure" => crate::vdisplay::ensure(shared, session),

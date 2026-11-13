@@ -80,6 +80,7 @@ pub struct SidebarState {
     pub nav: super::sidebar_nav::DirNavState,
     pub chats: super::sidebar_chats::ChatsSidebarState,
     pub native_entries: Vec<super::native_prompt::NativeEntry>, pub native_prompt: Option<super::native_prompt::Prompt>, pub native_asked: bool, // the provider's own default home (`Native`) and its first-run question (`M11-P01`)
+    pub llm: Option<super::llm_find::LlmFind>, // "Find Local LLM servers..." while it is open (`M12`)
     pub newchat: Option<super::newchat::NewChat>, // the "+ New chat" modal while it is open (`M10-P03`)
     pub calls: super::sidebar_calls::CallsSidebarState,
     pub geom: SidebarGeom,

@@ -55,6 +55,7 @@ pub enum Cmd {
     FontReset,
     ToggleClipWrite,
     ToggleNotifications,
+    FindLlm,
     ToggleNativeClaude,
     ToggleNativeCodex,
     ToggleVirtualDisplay,
@@ -121,6 +122,7 @@ impl App {
                 v.push(Self::entry("Delete session", "Ctrl+Delete", Cmd::Delete, panel_reason.or(self.ask_reason(Act::Delete))));
                 v.push(Self::entry("Send to session...", "Ctrl+Shift+S", Cmd::SendTo, panel_reason.or(self.send_reason())));
                 v.push(Self::entry("Hand over conversation...", "", Cmd::HandOver, panel_reason.or(self.hand_reason())));
+                v.push(Self::entry("Find Local LLM servers...", "", Cmd::FindLlm, panel_reason));
                 v.push(Self::entry("Allow approval", "Y", Cmd::Allow, pending));
                 v.push(Self::entry("Deny approval", "N", Cmd::Deny, pending));
                 let copy_label = if self.ui.sel.is_none() && self.ui.panel.is_none() && self.ed.has_selection() { "Copy selected text" } else { "Copy selected lines" };
@@ -309,6 +311,7 @@ impl App {
             Cmd::FontReset => self.step_font_px(0),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
             Cmd::ToggleNotifications => self.toggle_notifications(),
+            Cmd::FindLlm => self.llm_find_open(),
             Cmd::ToggleNativeClaude => self.toggle_native("claude"),
             Cmd::ToggleNativeCodex => self.toggle_native("codex"),
             Cmd::ToggleVirtualDisplay => self.toggle_virtual_display(),

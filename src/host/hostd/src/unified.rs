@@ -34,6 +34,7 @@ mod inbox_read;
 mod ipc;
 mod keyring;
 mod leads;
+mod llm;
 mod lifecycle;
 mod lines;
 mod login;

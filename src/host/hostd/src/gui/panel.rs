@@ -136,6 +136,7 @@ impl App {
             AsyncJob::SidebarNavSave => self.on_sidebar_nav_saved(done.reply),
             AsyncJob::SidebarChats { .. } | AsyncJob::ChatResume { .. } => self.on_chats_async(done.job, done.reply),
             AsyncJob::NewChatLast { .. } | AsyncJob::NewChatStart { .. } => self.on_newchat_async(done.job, done.reply),
+            AsyncJob::LlmFind { .. } => self.on_llm_async(done.job, done.reply),
             AsyncJob::CallGet { .. } | AsyncJob::CallSay { .. } | AsyncJob::CallStart | AsyncJob::CallAction => self.on_call_async(done.job, done.reply),
         }
     }

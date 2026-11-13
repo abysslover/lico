@@ -347,6 +347,7 @@ fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, V
         "clipboard_read" => crate::screentools::clipboard_read(shared, caller, arguments),
         "clipboard_write" => crate::screentools::clipboard_write(shared, caller, arguments),
         "computer" => crate::computer::computer(shared, caller, arguments),
+        "llm_endpoints" => crate::llm::tool::llm_endpoints(shared, caller, arguments).map(Answer::Text),
         _ => Err("unknown tool".into()),
     }
 }

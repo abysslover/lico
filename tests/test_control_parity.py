@@ -89,6 +89,7 @@ def test_capabilities_matches_across_socket_cli_and_http():
                 "clipboard_read",
                 "clipboard_write",
                 "computer",
+                "llm_endpoints",
             }
             for route in (
                 "POST /v1",

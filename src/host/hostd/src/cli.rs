@@ -21,6 +21,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   chat latest [--cwd DIR] [--ssh-host HOST] [--account ID]   the latest chat of a folder and account that has a saved transcript (the first item of `chat list --recorded`)\n\
   chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--recorded] [--others] [--offset N] [--limit N]\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
+  llm discover [--ssh-host HOST] [--all-users]\n\
+                 find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -652,6 +654,22 @@ pub fn run(args: Vec<String>) {
             let approval: i64 = number.parse().unwrap_or_else(|_| die(1, USAGE));
             let offset: i64 = rest.first().map_or(0, |at| at.parse().unwrap_or_else(|_| die(1, USAGE)));
             expect_ok(call(&mut conn, json!({"op": "approval.text", "session": session, "generation": generation, "approval_id": approval, "offset": offset})));
+        }
+        ["llm", "discover", rest @ ..] => {
+            let mut request = json!({"op": "llm.discover"});
+            let mut idx = 0;
+            while idx < rest.len() {
+                match rest[idx] {
+                    "--all-users" => request["all_users"] = json!(true),
+                    "--ssh-host" => {
+                        idx += 1;
+                        request["ssh_host"] = json!(*rest.get(idx).unwrap_or_else(|| die(1, USAGE)));
+                    }
+                    _ => die(1, USAGE),
+                }
+                idx += 1;
+            }
+            expect_ok(call(&mut connect(&socket), request));
         }
         ["call", "list", rest @ ..] => {
             if !matches!(rest, [] | ["--all"]) {
