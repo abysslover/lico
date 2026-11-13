@@ -41,6 +41,7 @@ mod marks;
 mod mcp;
 mod memory;
 mod mention;
+mod native;
 mod new_session;
 mod notify;
 mod chats;

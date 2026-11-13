@@ -28,7 +28,9 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     let mut resumed: Option<Value> = None;
     let mut note: Option<&str> = None;
     if asked_latest {
-        let account_id = bound.as_ref().map(|(id, _)| id.as_str());
+        // a session without an account runs in the provider's own default home: its chats are those of the Native entry
+        let chat_account = bound.as_ref().map(|(id, _)| id.clone()).or_else(|| crate::native::id_of(kind).map(str::to_string));
+        let account_id = chat_account.as_deref();
         let ssh_host = account_id.and_then(|id| shared.accounts.lock().unwrap().ssh_host(id));
         let folder = chosen.cwd.clone().unwrap_or_default();
         match crate::chats::latest_chat(shared, kind, account_id, &folder, ssh_host.as_deref())? {
@@ -102,6 +104,17 @@ fn with_resumed(mut reply: serde_json::Map<String, Value>, chat: Option<&Value>,
 /// The account a new session is bound to: the one asked for, else the provider's default, else none
 /// (a session without an account runs with the host's own provider home, as before accounts existed).
 fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Result<Option<(String, u64)>, &'static str> {
+    // the provider's own default home (`Native`) is asked for by its reserved id, and only of its own provider and only once it is open
+    if let Some(id) = requested.filter(|id| crate::native::provider_of(id).is_some()) {
+        return if crate::native::provider_of(id) != Some(kind) {
+            Err("bad_request")
+        } else if crate::native::enabled(shared, kind) {
+            Ok(None)
+        } else {
+            Err("native_off")
+        };
+    }
+    let native_off = matches!(kind, "claude" | "codex") && crate::native::state(shared, kind) == crate::native::State::Off;
     let accounts = shared.accounts.lock().unwrap();
     match (kind, requested) {
         ("codex" | "claude", Some(id)) => match accounts.get(id) {
@@ -112,6 +125,7 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
             Some(a) => Ok(Some((a.id.clone(), a.credential_generation))),
             // accounts exist but none is the default: never fall back to an unbound session (the host's own provider home)
             None if accounts.any_for(kind) => Err("unknown_account"),
+            None if native_off => Err("native_off"), // the person turned the default home off and there is no other account
             None => Ok(None),
         },
         (_, Some(_)) => Err("bad_request"),

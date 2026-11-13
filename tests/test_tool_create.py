@@ -106,7 +106,7 @@ def test_the_list_names_create_with_optional_kind_prompt_name_scope_and_resume(w
     tools = {t["name"]: t for t in body["result"]["tools"]}
     assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer"]
     schema = tools["create"]["inputSchema"]
-    assert "required" not in schema and sorted(schema["properties"]) == ["kind", "name", "prompt", "resume", "scope"], schema      # no raw cwd, mode, account, model, effort or `from`
+    assert "required" not in schema and sorted(schema["properties"]) == ["account", "kind", "name", "prompt", "resume", "scope"], schema      # no raw cwd, mode, account, model, effort or `from`
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
 
 

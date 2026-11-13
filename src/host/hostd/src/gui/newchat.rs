@@ -160,6 +160,15 @@ pub(super) fn accounts_for(list: &Value, host: Option<&str>) -> Vec<Acct> {
             label: a["label"].as_str().unwrap_or("").to_string(),
             default: a["default"] == json!(true),
         })
+        .chain(
+            // the provider's own default home, once the person turned it on (a remote host has its own, which this window does not know)
+            list["native"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|n| host.is_none() && n["state"] == json!("on"))
+                .map(|n| Acct { id: n["account"].as_str().unwrap_or("").to_string(), provider: n["provider"].as_str().unwrap_or("").to_string(), label: super::clean(n["label"].as_str().unwrap_or("")), default: false }),
+        )
         .collect()
 }
 

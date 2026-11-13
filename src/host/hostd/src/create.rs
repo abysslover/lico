@@ -93,25 +93,38 @@ fn parse_optional_flag(value: Option<&Value>) -> Result<bool, String> {
     }
 }
 
+/// `account`: only `native` is a choice an agent may make (the provider's own default home); any other value is ignored, as every argument the tool does not know is: the host
+/// chooses the account, never an agent.
+fn parse_optional_native(value: Option<&Value>) -> Result<bool, String> {
+    match value {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::String(s)) if s.trim().is_empty() => Ok(false),
+        Some(Value::String(s)) if s.trim().eq_ignore_ascii_case("native") => Ok(true),
+        Some(_) => Ok(false),
+    }
+}
+
 fn encode_target(kind: &str, scope: &str, name: &str) -> String {
-    encode_target_with(kind, scope, false, name)
+    encode_target_with(kind, scope, false, false, name)
 }
 
 /// The target the approval carries: the resume request rides in the scope field, so what a yes allows is exactly what the card showed.
-fn encode_target_with(kind: &str, scope: &str, resume: bool, name: &str) -> String {
-    format!("{kind}\t{scope}{}\t{name}", if resume { "+resume" } else { "" })
+fn encode_target_with(kind: &str, scope: &str, resume: bool, native: bool, name: &str) -> String {
+    format!("{kind}\t{scope}{}{}\t{name}", if resume { "+resume" } else { "" }, if native { "+native" } else { "" })
 }
 
-fn decode_target(target: &str) -> (Option<&'static str>, &'static str, bool, &str) {
+/// (kind, scope, resume, native, name): the flags ride in the scope field, as the card showed them.
+fn decode_target(target: &str) -> (Option<&'static str>, &'static str, bool, bool, &str) {
     let mut parts = target.splitn(3, '\t');
     match (parts.next(), parts.next(), parts.next()) {
         (Some(k), Some(sc), Some(name)) => {
             let kind = if k == "codex" { "codex" } else { "claude" };
-            let (sc, resume) = sc.strip_suffix("+resume").map_or((sc, false), |bare| (bare, true));
-            let scope = if sc == "global" { "global" } else { "folder" };
-            (Some(kind), scope, resume, name)
+            let mut flags = sc.split('+');
+            let scope = if flags.next() == Some("global") { "global" } else { "folder" };
+            let flags: Vec<&str> = flags.collect();
+            (Some(kind), scope, flags.contains(&"resume"), flags.contains(&"native"), name)
         }
-        _ => (None, "folder", false, target),
+        _ => (None, "folder", false, false, target),
     }
 }
 
@@ -139,8 +152,10 @@ fn resolve_target_choices(
     target_kind: &'static str,
 ) -> (Option<String>, Option<String>, Option<String>) {
     if target_kind == caller_provider {
+        // a session without an account runs in the provider's own default home: its new session of the same kind stays there (never moved to a managed account)
+        let own = caller_account.map(str::to_string).or_else(|| crate::native::id_of(target_kind).filter(|_| shared.accounts.lock().unwrap().any_for(target_kind)).map(str::to_string));
         return (
-            caller_account.map(str::to_string),
+            own,
             caller_settings.model.clone(),
             caller_settings.effort.clone(),
         );
@@ -163,6 +178,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     let requested_kind = parse_optional_kind(arguments.get("kind"))?;
     let scope = parse_optional_scope(arguments.get("scope"))?;
     let resume = parse_optional_flag(arguments.get("resume"))?;
+    let native = parse_optional_native(arguments.get("account"))?;
     let (cleaned_prompt, removed) = match arguments.get("prompt") {
         None | Some(Value::Null) => (String::new(), 0),
         Some(Value::String(raw)) if raw.is_empty() => (String::new(), 0),
@@ -207,6 +223,12 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     }
     let (_, model, effort) = resolve_target_choices(shared, caller_provider, caller_account.as_deref(), &caller_settings, target_kind);
     let mut chosen = chosen_words_for(model.as_deref(), effort.as_deref());
+    if native {
+        if !crate::native::enabled(shared, target_kind) {
+            return Err(format!("native_off: the person has not turned on {} for {target_kind}", crate::native::label(shared, target_kind)));
+        }
+        chosen.push_str(&format!(" | account: {}", crate::native::label(shared, target_kind)));
+    }
     if resume {
         chosen.push_str(" | continues the latest chat here if one exists");
     }
@@ -216,7 +238,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
     let who = format!("creation of a new {kword}{named} {shown}");
     let prompt = cleaned_prompt.as_str();
     let card = card_of_spec(kword, scope, &name, cwd.as_deref(), &chosen, prompt, removed);
-    let encoded_target = encode_target_with(target_kind, scope, resume, &name);
+    let encoded_target = encode_target_with(target_kind, scope, resume, native, &name);
     let (id, again) = match pending::ask(shared, caller, &Request { tool: "create", target: &encoded_target, who: &who, card: &card, text: prompt }, pending::now(), held)? {
         Asked::New(id) => (id, false),
         Asked::Again(id) => (id, true),
@@ -335,7 +357,7 @@ fn perform_with(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, 
 }
 
 fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &dyn Fn(&Spec) -> Result<String, &'static str>) -> Result<String, String> {
-    let (requested_kind, scope, resume, name) = decode_target(target);
+    let (requested_kind, scope, resume, native, name) = decode_target(target);
     let found = core::find(shared, caller).filter(|found| {
         let s = found.lock().unwrap();
         !s.purged && s.state == State::Running
@@ -360,7 +382,10 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
     within_caps(shared, caller)?;
     let target_kind = requested_kind.unwrap_or(caller_provider);
     let cwd = if scope == "global" { None } else { parent_cwd };
-    let (account, model, effort) = resolve_target_choices(shared, caller_provider, caller_account.as_deref(), &caller_settings, target_kind);
+    let (mut account, model, effort) = resolve_target_choices(shared, caller_provider, caller_account.as_deref(), &caller_settings, target_kind);
+    if native {
+        account = crate::native::id_of(target_kind).map(str::to_string);
+    }
     let made_by = label.chars().take(MADE_BY_CHARS).collect::<String>().trim_end().to_string();
     let composed = if name.is_empty() { format!("made by {made_by}") } else { format!("{name} - made by {made_by}") };
     let spec = Spec {

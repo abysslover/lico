@@ -41,7 +41,7 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   call list [--all] | call show ID | call start --from S1 --to S2 [TEXT|-]\n\
   call say ID TEXT|- [--to SESSION] | call hangup ID | call close ID\n\
                                  manage persistent inter-session Call Rooms (`⇄ A · B`)\n\
-  settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
+  settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20] [--native-claude on|off|ask] [--native-codex on|off|ask]\n\
            [--show-hidden on|off] [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
                                  show or update host and window settings\n\
   session show ID                one session
@@ -534,6 +534,15 @@ pub fn run(args: Vec<String>) {
                 if let Some(v) = flag(&args, "--last-session") {
                     request["last_session"] = json!(v);
                     any = true;
+                }
+                for (name, key) in [("--native-claude", "native_claude"), ("--native-codex", "native_codex")] {
+                    if let Some(v) = flag(&args, name) {
+                        if !matches!(v.as_str(), "on" | "off" | "ask") {
+                            die(1, USAGE);
+                        }
+                        request[key] = json!(v);
+                        any = true;
+                    }
                 }
                 if let Some(v) = flag(&args, "--show-hidden") {
                     request["show_hidden"] = json!(parse_on_off(v));

@@ -194,7 +194,7 @@ impl App {
                     "session": r.session,
                     "provider": r.provider,
                     "account": r.account,
-                    "label": self.label_of(&r.account),
+                    "label": self.row_label(r),
                     "model": r.model,
                     "chosen_model": if r.chosen_model.is_empty() { Value::Null } else { json!(r.chosen_model) },
                     "effort": if r.effort.is_empty() { Value::Null } else { json!(r.effort) },

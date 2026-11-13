@@ -53,6 +53,7 @@ pub const TOOLS: [Tool; 10] = [
             ("name", "short name <=36 chars"),
             ("scope", "folder (default) or global"),
             ("resume", "true: continue this folder's latest chat if one exists (default false)"),
+            ("account", "native: run in the provider's own default home, if the person turned it on (default: as now)"),
         ],
     },
     Tool {
@@ -373,7 +374,7 @@ mod tests {
         let create = find("create");
         assert_eq!((create["type"].clone(), create.get("required")), (json!("object"), None), "every argument of create is optional so an empty tab may be opened");
         let properties = create["properties"].as_object().unwrap();
-        assert_eq!(properties.keys().collect::<Vec<_>>(), ["kind", "name", "prompt", "resume", "scope"], "no raw cwd, mode, account, model, effort or from");
+        assert_eq!(properties.keys().collect::<Vec<_>>(), ["account", "kind", "name", "prompt", "resume", "scope"], "no raw cwd, mode, account, model, effort or from");
         assert!(properties.iter().all(|(k, p)| p["type"] == if k == "resume" { "boolean" } else { "string" } && !p["description"].as_str().unwrap().is_empty()));
     }
 

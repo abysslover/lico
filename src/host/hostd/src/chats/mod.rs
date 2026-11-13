@@ -395,10 +395,15 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
         .unwrap_or(DEFAULT_LIMIT as i64)
         .clamp(1, MAX_LIMIT as i64) as usize;
 
-    let (all_accounts, claude_managed, codex_managed, homes_map) = {
+    // the provider's own default home (`Native`) is one more account of the same rule: named by its reserved id, or listed with the others once it is open
+    let native_filter = account_filter.and_then(crate::native::provider_of);
+    if native_filter.is_some_and(|provider| !crate::native::enabled(shared, provider)) {
+        return Err("native_off");
+    }
+    let (all_accounts, homes_map) = {
         let accounts = shared.accounts.lock().unwrap();
         if let Some(aid) = account_filter {
-            if accounts.get(aid).is_none() {
+            if native_filter.is_none() && accounts.get(aid).is_none() {
                 return Err("unknown_account");
             }
         }
@@ -411,7 +416,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                 }
             }
         }
-        (snap, accounts.any_for("claude"), accounts.any_for("codex"), hmap)
+        (snap, hmap)
     };
     let acc_lookup: HashMap<String, (String, String, Option<String>)> = all_accounts
         .iter()
@@ -427,7 +432,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             continue;
         }
         let st = state_word(s.state);
-        let acc_key = s.account.clone().unwrap_or_default();
+        let acc_key = s.account.clone().or_else(|| crate::native::id_of(s.provider).map(str::to_string)).unwrap_or_default();
         let prov_sid = s
             .codex_thread
             .clone()
@@ -435,7 +440,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             .unwrap_or_else(|| s.id.clone());
         let explicit_or_auto = s.settings.name.clone().or_else(|| s.auto_title.clone());
         let updated = s.last_active_at.max(s.state_at);
-        let map_key = (s.provider.to_string(), acc_key, prov_sid.clone());
+        let map_key = (s.provider.to_string(), acc_key.clone(), prov_sid.clone());
         let replace = match open_by_prov.get(&map_key) {
             None => true,
             Some((_, prev_st, _, prev_u)) => (state_rank(st), updated) > (state_rank(prev_st), *prev_u),
@@ -445,16 +450,16 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
         }
         let (acc_label, acc_ssh) = match s.account.as_deref().and_then(|id| acc_lookup.get(id)) {
             Some((_, lbl, sh)) => (Some(lbl.clone()), sh.clone()),
-            None => (None, None),
+            None => (Some(crate::native::label(shared, s.provider)), None), // no account: it runs in the provider's own default home
         };
-        if account_filter.is_some_and(|af| s.account.as_deref() != Some(af)) || acc_ssh.as_deref() != ssh_host_opt {
+        if account_filter.is_some_and(|af| acc_key != af) || acc_ssh.as_deref() != ssh_host_opt {
             continue;
         }
         let eff_cwd = s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone());
         host_candidates.push(ChatItem {
             provider: s.provider.to_string(),
             provider_session: prov_sid.clone(),
-            account: s.account.clone(),
+            account: Some(acc_key.clone()),
             account_label: acc_label,
             ssh_host: acc_ssh,
             cwd: eff_cwd,
@@ -534,50 +539,31 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             }
         }
 
-        if account_filter.is_none() && !claude_managed {
-            if let Some(chome) = crate::provider_record::home_of(shared, None) {
-                for (sid, rec_cwd, title, mtime, file) in scan_claude_home(&chome, &match_cwd) {
-                    let key = ("claude".into(), String::new(), sid.clone());
-                    merged.entry(key).or_insert(ChatItem {
-                        provider: "claude".into(),
-                        provider_session: sid,
-                        account: None,
-                        account_label: None,
-                        ssh_host: None,
-                        cwd: if is_global { None } else { Some(rec_cwd) },
-                        global: is_global,
-                        title,
-                        updated_at: mtime,
-                        open_session: None,
-                        open_state: None,
-                        file: Some(file),
-                        turns: None,
-                        recorded: true,
-                    });
-                }
+        for provider in ["claude", "codex"] {
+            if !(native_filter == Some(provider) || (account_filter.is_none() && crate::native::enabled(shared, provider))) {
+                continue;
             }
-        }
-        if account_filter.is_none() && !codex_managed {
-            if let Some(xhome) = unbound_codex_home() {
-                for (sid, rec_cwd, title, mtime, file) in scan_codex_home(&xhome, &match_cwd) {
-                    let key = ("codex".into(), String::new(), sid.clone());
-                    merged.entry(key).or_insert(ChatItem {
-                        provider: "codex".into(),
-                        provider_session: sid,
-                        account: None,
-                        account_label: None,
-                        ssh_host: None,
-                        cwd: if is_global { None } else { Some(rec_cwd) },
-                        global: is_global,
-                        title,
-                        updated_at: mtime,
-                        open_session: None,
-                        open_state: None,
-                        file: Some(file),
-                        turns: None,
-                        recorded: true,
-                    });
-                }
+            let (Some(nhome), Some(nid)) = (crate::native::home(shared, provider), crate::native::id_of(provider)) else { continue };
+            let nlabel = crate::native::label(shared, provider);
+            let found = if provider == "claude" { scan_claude_home(&nhome, &match_cwd) } else { scan_codex_home(&nhome, &match_cwd) };
+            for (sid, rec_cwd, title, mtime, file) in found {
+                let key = (provider.to_string(), nid.to_string(), sid.clone());
+                merged.entry(key).or_insert(ChatItem {
+                    provider: provider.into(),
+                    provider_session: sid,
+                    account: Some(nid.to_string()),
+                    account_label: Some(nlabel.clone()),
+                    ssh_host: None,
+                    cwd: if is_global { None } else { Some(rec_cwd) },
+                    global: is_global,
+                    title,
+                    updated_at: mtime,
+                    open_session: None,
+                    open_state: None,
+                    file: Some(file),
+                    turns: None,
+                    recorded: true,
+                });
             }
         }
     }

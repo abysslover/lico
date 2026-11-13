@@ -188,6 +188,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
             ("settings.set", "clipboard_write" | "notifications" | "show_hidden") => value.is_boolean(),
+            ("settings.set", "native_claude" | "native_codex") => matches!(value.as_str(), Some("on" | "off" | "ask")),
             ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
             ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
             ("settings.set", "last_cwd") => matches!(value, Value::String(s) if s.is_empty() || crate::folders::valid_path_shape(s)),
@@ -239,6 +240,8 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
                 "dir_history",
                 "dir_history_idx",
                 "dir_bookmarks",
+                "native_claude",
+                "native_codex",
             ]
             .iter()
             .any(|k| request.contains_key(*k)))

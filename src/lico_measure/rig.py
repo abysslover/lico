@@ -150,6 +150,11 @@ class Host:
         self.socket = os.path.join(directory, "host.sock")
         self.directory = directory
         env = dict(os.environ, PYTHONPATH=str(REPO / "src"), PYTHONDONTWRITEBYTECODE="1", LICO_NOTIFY_BIN="")
+        # a test host never sees the real default homes of the provider programs (`~/.claude`, `~/.codex`): its own HOME is a private folder, and a test that wants
+        # other homes says so in `env_overrides`
+        env["HOME"] = str(Path(directory) / "home")
+        for variable in ("CLAUDE_CONFIG_DIR", "CODEX_HOME"):
+            env.pop(variable, None)
         extra_args = list(extra_args or [])
         if TEXT_WORKLOAD:
             extra_args += [TEXT_WORKLOAD.get("flag", "--text"), "--payload", str(TEXT_WORKLOAD["payload"])]

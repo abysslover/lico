@@ -12,6 +12,7 @@ pub struct Row {
     pub session: String,
     pub provider: String,
     pub account: String,
+    pub native: String, // the visible name of the provider's own default home when the session runs there (no account): `Native (~/.claude)`
     pub ssh_host: String,
     pub model: String,
     pub chosen_model: String,
@@ -144,7 +145,7 @@ impl Row {
             .as_object()
             .and_then(|t| Some((t.get("input")?.as_u64()?, t.get("output")?.as_u64()?)));
         Some(Row {
-            session: text("session"), provider: text("provider"), account: text("account"), ssh_host: clean(&text("ssh_host")),
+            session: text("session"), provider: text("provider"), account: text("account"), native: clean(&text("native")), ssh_host: clean(&text("ssh_host")),
             model: clean(&text("model")), chosen_model: clean(&text("chosen_model")), effort: clean(&text("chosen_effort")), tokens,
             state: text("state"), state_at,
             activity: text("activity"), generation: entry["generation"].as_i64().unwrap_or(1),

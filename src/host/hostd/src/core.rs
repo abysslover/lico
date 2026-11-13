@@ -316,7 +316,7 @@ fn status_entry(shared: &Shared, s: &Session) -> Value {
             entry["tab_closed"] = json!(true);
         }
         crate::folders::annotate(&mut entry, s);
-        crate::worktree::annotate(shared, &mut entry, s);
+        crate::worktree::annotate(shared, &mut entry, s); crate::native::annotate(shared, &mut entry, s);
     }
     if let Some(model) = &s.model {
         entry["model"] = json!(model);
@@ -466,7 +466,7 @@ pub fn account_list(shared: &Shared) -> Reply {
         }
         entry["usage"] = crate::quota::usage_json(&id); // null until provider rate-limit telemetry is observed
     }
-    Ok(obj(json!({"accounts": entries})))
+    crate::native::account_list_reply(shared, entries)
 }
 
 fn sessions_of(shared: &Shared, account: &str) -> Vec<Arc<Mutex<Session>>> {

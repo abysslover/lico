@@ -48,6 +48,7 @@ fn workspace_heading(root: &str, all_roots: &[String]) -> String {
 
 impl App {
     pub(crate) fn sync_accounts_value(&mut self, value: &Value) {
+        self.native_seen(value);
         let arr = value["accounts"].as_array().into_iter().flatten();
         let mut labels = std::collections::HashMap::new();
         let mut ssh_hosts = std::collections::HashMap::new();
@@ -379,7 +380,8 @@ impl App {
             });
             for (provider, account) in &groups {
                 let qtag = self.ui.quotas.get(account).map(|&(w, s)| super::row::format_quota_list_tag(w, s)).unwrap_or_default();
-                items.push(ListItem::Heading(format!("{provider} / {}{qtag}", self.label_of(account))));
+                let named = self.ui.rows.iter().find(|r| &r.provider == provider && &r.account == account).map_or_else(|| self.label_of(account), |r| self.row_label(r));
+                items.push(ListItem::Heading(format!("{provider} / {named}{qtag}")));
                 let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {

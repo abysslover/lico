@@ -255,7 +255,7 @@ impl App {
             return ch;
         }
         match self.selected_row() {
-            Some(r) => r.header_line(&self.label_of(&r.account), self.clock_now(), self.ui.menu, self.ui.quotas.get(&r.account).copied()),
+            Some(r) => r.header_line(&self.row_label(r), self.clock_now(), self.ui.menu, self.ui.quotas.get(&r.account).copied()),
             None if self.session.is_empty() => "select a session".into(),
             None => format!("{} | not listed", self.session),
         }
@@ -376,7 +376,7 @@ impl App {
                     } else {
                         if !matches!(&hit, Some(Action::SidebarFilter)) { self.ui.sidebar.filter_focused = false; }
                         match hit {
-                            Some(ref a) if self.newchat_click(a) || self.sidebar_click(a) => {}
+                            Some(ref a) if self.native_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
@@ -393,7 +393,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::ReadCard) => self.card_open(),
-                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions) => {}
+                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::NativeYes | Action::NativeNo | Action::NativeLater) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarCallEntry(..) | Action::SidebarCallClose(..) | Action::SidebarCallStartPeer(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -418,7 +418,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 (self.ui.flash, self.ui.clicked) = (None, None);
-                if self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.native_key(event) || self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
@@ -944,6 +944,7 @@ impl App {
         self.draw_sidebar_bookmarks_popup(&mut buf, width, height);
         self.draw_approval_modal(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_new_chat(&mut buf, width, height, list_w, top, chat_top, hint_y);
+        self.draw_native_prompt(&mut buf, width, height, top, chat_top, hint_y);
         self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);

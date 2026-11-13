@@ -55,6 +55,8 @@ pub enum Cmd {
     FontReset,
     ToggleClipWrite,
     ToggleNotifications,
+    ToggleNativeClaude,
+    ToggleNativeCodex,
     ToggleVirtualDisplay,
     StopRealScreen,
     Keys,
@@ -103,7 +105,7 @@ impl App {
                 for (i, id) in self.ui.numbered.iter().enumerate().take(9) {
                     let row = self.ui.rows.iter().find(|r| &r.session == id);
                     let title = row.map_or_else(|| id.chars().take(7).collect(), Row::name);
-                    let what = row.map_or(String::new(), |r| format!("{} / {}", r.provider, self.label_of(&r.account)));
+                    let what = row.map_or(String::new(), |r| format!("{} / {}", r.provider, self.row_label(r)));
                     v.push(Entry { label: format!("Session {}  {title}  {what}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: None });
                 }
                 let pending = if self.approval_row_any_panel().is_some() { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
@@ -211,6 +213,8 @@ impl App {
                         cmd: Cmd::ToggleNotifications,
                         reason: panel_reason,
                     },
+                    Entry { label: self.native_menu_label("claude"), key: "", cmd: Cmd::ToggleNativeClaude, reason: panel_reason },
+                    Entry { label: self.native_menu_label("codex"), key: "", cmd: Cmd::ToggleNativeCodex, reason: panel_reason },
                 ]);
                 v
             }
@@ -305,6 +309,8 @@ impl App {
             Cmd::FontReset => self.step_font_px(0),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
             Cmd::ToggleNotifications => self.toggle_notifications(),
+            Cmd::ToggleNativeClaude => self.toggle_native("claude"),
+            Cmd::ToggleNativeCodex => self.toggle_native("codex"),
             Cmd::ToggleVirtualDisplay => self.toggle_virtual_display(),
             Cmd::StopRealScreen => self.stop_real_screen(),
             Cmd::Keys => self.panel_open(Step::Keys),

@@ -19,6 +19,7 @@ mod sidebar;
 mod sidebar_calls;
 mod sidebar_nav;
 mod newchat;
+mod native_prompt;
 mod newchat_draw;
 mod sidebar_chats;
 mod sidebar_tabs;

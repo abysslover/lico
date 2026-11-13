@@ -41,6 +41,8 @@ pub struct Patch<'a> {
     pub dir_history: Option<&'a Vec<Value>>,
     pub dir_history_idx: Option<i64>,
     pub dir_bookmarks: Option<&'a Vec<Value>>,
+    pub native_claude: Option<&'a str>, // `on`, `off`, or `ask` (take the choice back)
+    pub native_codex: Option<&'a str>,
 }
 
 impl<'a> Patch<'a> {
@@ -57,6 +59,8 @@ impl<'a> Patch<'a> {
             dir_history: map.get("dir_history").and_then(Value::as_array),
             dir_history_idx: map.get("dir_history_idx").and_then(Value::as_i64),
             dir_bookmarks: map.get("dir_bookmarks").and_then(Value::as_array),
+            native_claude: map.get("native_claude").and_then(Value::as_str),
+            native_codex: map.get("native_codex").and_then(Value::as_str),
         }
     }
 }
@@ -182,6 +186,16 @@ pub fn group_by_value(path: &Path) -> &'static str {
     }
 }
 
+/// The person's choice about the provider's own default home (`Native`, M11): `on` or `off`, none while it is not answered.
+pub fn native_value(handoff_dir: &Path, provider: &str) -> Option<&'static str> {
+    let key = if provider == "codex" { "native_codex" } else { "native_claude" };
+    match read_object(&settings_path(handoff_dir)).and_then(|map| map.get(key).and_then(Value::as_str).map(str::to_string)).as_deref() {
+        Some("on") => Some("on"),
+        Some("off") => Some("off"),
+        _ => None,
+    }
+}
+
 /// Logical text size in `lico gui` (`12..=20`, default `14`).
 pub fn font_px_value(path: &Path) -> i64 {
     read_object(path)
@@ -249,6 +263,11 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     if show_hidden_enabled(&path) {
         out["show_hidden"] = Value::Bool(true);
     }
+    for (key, provider) in [("native_claude", "claude"), ("native_codex", "codex")] {
+        if let Some(word) = native_value(handoff_dir, provider) {
+            out[key] = Value::String(word.into());
+        }
+    }
     let view = last_view_value(&path);
     if view != "start" {
         out["last_view"] = Value::String(view.into());
@@ -306,7 +325,12 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
         && patch.dir_history.is_none()
         && patch.dir_history_idx.is_none()
         && patch.dir_bookmarks.is_none()
+        && patch.native_claude.is_none()
+        && patch.native_codex.is_none()
     {
+        return Err("bad_request");
+    }
+    if [patch.native_claude, patch.native_codex].into_iter().flatten().any(|word| !matches!(word, "on" | "off" | "ask")) {
         return Err("bad_request");
     }
     if let Some(group) = patch.group_by {
@@ -363,6 +387,17 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
     }
     if let Some(enabled) = patch.notifications {
         map.insert("notifications".into(), Value::Bool(enabled));
+    }
+    for (key, word) in [("native_claude", patch.native_claude), ("native_codex", patch.native_codex)] {
+        match word {
+            Some("ask") => {
+                map.remove(key);
+            }
+            Some(word) => {
+                map.insert(key.into(), Value::String(word.into()));
+            }
+            None => {}
+        }
     }
     if let Some(group) = patch.group_by {
         map.insert("group_by".into(), Value::String(group.into()));
