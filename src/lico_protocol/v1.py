@@ -24,7 +24,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed",
           "xvfb_unavailable", "no_display",
           "worktree_needs_folder", "not_git_repo", "invalid_branch", "branch_exists", "worktree_failed", "worktree_dirty",
-          "file_missing", "file_not_regular", "file_unreadable", "ssh_unreachable", "unknown_call")
+          "file_missing", "file_not_regular", "file_unreadable", "ssh_unreachable", "remote_python_missing", "remote_timeout", "remote_output_too_large", "remote_failed", "unknown_call")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"

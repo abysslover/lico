@@ -107,9 +107,9 @@ pub const TOOLS: [Tool; 11] = [
     },
     Tool {
         name: "llm_endpoints",
-        description: "Ask to look for Local LLM servers (OpenAI-compatible or Ollama) on this machine's listening ports; read-only. The result comes later as a message here.",
+        description: "Ask to find Local LLM servers (OpenAI or Ollama style); read-only.",
         args: &[],
-        optional: &[],
+        optional: &[("host", "ssh host; default: this machine")],
     },
     Tool {
         name: WRITE_TOOL,

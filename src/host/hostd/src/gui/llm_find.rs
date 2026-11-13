@@ -34,6 +34,8 @@ pub(crate) struct Geom {
 }
 
 pub(crate) struct LlmFind {
+    pub hosts: Vec<Option<String>>, // this machine first, then the ssh hosts of the person's configuration
+    pub host_idx: usize,
     pub all_users: bool,
     pub scan: Scan,
     pub scroll: usize,
@@ -45,6 +47,8 @@ pub(crate) struct LlmFind {
 pub(super) enum Press {
     Scan,
     AllUsers,
+    Prev,
+    Next,
     Up,
     Down,
     Close,
@@ -86,11 +90,26 @@ pub(super) fn summary(reply: &Value) -> String {
     )
 }
 
+fn press_is_prev(key: Press) -> bool {
+    key == Press::Prev
+}
+
 impl LlmFind {
+    fn host(&self) -> Option<&str> {
+        self.hosts.get(self.host_idx).and_then(|h| h.as_deref())
+    }
+
     pub(super) fn press(&mut self, key: Press, rows: usize) -> bool {
         match key {
             Press::AllUsers => {
                 self.all_users = !self.all_users;
+                false
+            }
+            Press::Prev | Press::Next => {
+                let n = self.hosts.len().max(1);
+                self.host_idx = if press_is_prev(key) { (self.host_idx + n - 1) % n } else { (self.host_idx + 1) % n };
+                self.scan = Scan::Idle; // the answer was about another machine
+                self.scroll = 0;
                 false
             }
             Press::Up => {
@@ -108,7 +127,10 @@ impl LlmFind {
 
 impl App {
     pub(crate) fn llm_find_open(&mut self) {
-        self.ui.sidebar.llm = Some(LlmFind { all_users: false, scan: Scan::Idle, scroll: 0, req: 0, geom: Geom::default() });
+        let listed = self.host_call_within(json!({"op": "ssh.hosts"}), 3);
+        let mut hosts: Vec<Option<String>> = vec![None];
+        hosts.extend(listed["hosts"].as_array().into_iter().flatten().filter_map(|h| h["host"].as_str()).map(|h| Some(super::clean(h))));
+        self.ui.sidebar.llm = Some(LlmFind { hosts, host_idx: 0, all_users: false, scan: Scan::Idle, scroll: 0, req: 0, geom: Geom::default() });
         self.dirty = true;
     }
 
@@ -125,10 +147,16 @@ impl App {
         if f.scan == Scan::Running {
             return;
         }
-        let request = json!({"op": "llm.discover", "all_users": f.all_users});
+        let mut request = json!({"op": "llm.discover", "all_users": f.all_users});
+        let seconds = if let Some(host) = f.host() {
+            request["ssh_host"] = json!(host);
+            30 // the host's own budget for an ssh host is 20 seconds
+        } else {
+            14
+        };
         f.scan = Scan::Running;
         f.scroll = 0;
-        let req_id = self.spawn_host_call(request, 14, |req_id| AsyncJob::LlmFind { req_id });
+        let req_id = self.spawn_host_call(request, seconds, |req_id| AsyncJob::LlmFind { req_id });
         if let Some(f) = self.ui.sidebar.llm.as_mut() {
             f.req = req_id;
         }
@@ -147,6 +175,11 @@ impl App {
         } else {
             Scan::Failed(match reply["error"].as_str().unwrap_or("unknown") {
                 "option_unavailable" => "That is not available for this machine.".to_string(),
+                "ssh_unreachable" => "That host could not be reached over ssh without a question (is it in the ssh configuration, and does key login work?).".to_string(),
+                "remote_python_missing" => "That host has no python3, which the look needs.".to_string(),
+                "remote_timeout" => "That host did not answer in time.".to_string(),
+                "remote_output_too_large" => "That host sent more text than the host reads; nothing was read.".to_string(),
+                "remote_failed" => "That host's answer could not be used.".to_string(),
                 other => chats_error_text(other),
             })
         };
@@ -169,6 +202,8 @@ impl App {
             Key::Named(NamedKey::Escape) => Some(Press::Close),
             Key::Named(NamedKey::ArrowUp) => Some(Press::Up),
             Key::Named(NamedKey::ArrowDown) => Some(Press::Down),
+            Key::Named(NamedKey::ArrowLeft) => Some(Press::Prev),
+            Key::Named(NamedKey::ArrowRight) => Some(Press::Next),
             Key::Character(c) if c.as_str().eq_ignore_ascii_case("s") => Some(Press::Scan),
             Key::Character(c) if c.as_str().eq_ignore_ascii_case("a") => Some(Press::AllUsers),
             _ => None,
@@ -213,7 +248,7 @@ impl App {
             Scan::Done(reply) => reply["endpoints"].clone(),
             _ => json!([]),
         };
-        json!({"open": true, "all_users": f.all_users, "state": state, "message": message, "rows": rows, "endpoints": endpoints,
+        json!({"open": true, "host": f.host(), "hosts": f.hosts, "all_users": f.all_users, "state": state, "message": message, "rows": rows, "endpoints": endpoints,
                "rects": {"scan": r(&f.geom.scan), "close": r(&f.geom.close), "all_users": r(&f.geom.all_users)}})
     }
 
@@ -221,9 +256,11 @@ impl App {
     pub(crate) fn draw_llm_find(&mut self, buf: &mut [u32], width: usize, height: usize, top: f32, chat_top: f32, hint_y: f32) {
         let Some(f) = self.ui.sidebar.llm.as_ref() else { return };
         let (all_users, scroll) = (f.all_users, f.scroll);
+        let place = f.host().map_or("this machine".to_string(), |h| format!("ssh host {h}"));
+        let waits = if f.host().is_some() { "up to 20 seconds" } else { "up to 8 seconds" };
         let (status, rows): (String, Vec<String>) = match &f.scan {
-            Scan::Idle => ("Press Enter to look for Local LLM servers on the listening ports of this machine. Read-only; nothing is stored.".into(), Vec::new()),
-            Scan::Running => ("Looking... (up to 8 seconds)".into(), Vec::new()),
+            Scan::Idle => (format!("Press Enter to look for Local LLM servers on the listening ports of {place}. Read-only; nothing is stored."), Vec::new()),
+            Scan::Running => (format!("Looking... ({waits})"), Vec::new()),
             Scan::Done(reply) => (summary(reply), server_rows(reply)),
             Scan::Failed(why) => (why.clone(), Vec::new()),
         };
@@ -260,7 +297,7 @@ impl App {
         controls.target([x0, y0, x1, y1], Action::ModalBackdrop);
         let (ink, muted, accent) = (Color::rgb(0xEE, 0xF2, 0xF8), Color::rgb(0x98, 0xAC, 0xC2), Color::rgb(0x6E, 0xE8, 0xC0));
         let clip = (x1 - pad) as i32;
-        let title = format!("Local LLM servers  \u{00b7}  this machine  \u{00b7}  {}", if all_users { "all users' ports" } else { "your own processes' ports" });
+        let title = format!("Local LLM servers  \u{00b7}  {place}  \u{00b7}  {}", if all_users { "all users' ports" } else { "your own processes' ports" });
         controls.text(fs, swash, buf, width, height, x0 + pad, (y0 + ((header_h - lh) * 0.5).floor()).max(y0), clip, &title, accent);
         let mut y = (y0 + header_h + gap).floor();
         for line in &status_lines {
@@ -277,7 +314,7 @@ impl App {
             y += lh;
         }
         y += gap;
-        controls.text(fs, swash, buf, width, height, x0 + pad, y, clip, "Enter scan   A all users' ports   Up/Down scroll   Esc close", muted);
+        controls.text(fs, swash, buf, width, height, x0 + pad, y, clip, "Enter scan   Left/Right host   A all users' ports   Up/Down scroll   Esc close", muted);
         let by = (y1 - (16.0 * s).floor() - btn_h).floor();
         rect(buf, width, height, (x0 + pad) as i32, (by - (7.0 * s).floor()) as i32, (modal_w - 2.0 * pad) as i32, 1, DIVIDER);
         let (bwd, g) = ((120.0 * s).floor(), (12.0 * s).floor());
@@ -320,7 +357,7 @@ mod tests {
 
     #[test]
     fn the_keys_scroll_toggle_and_end_or_start_the_look() {
-        let mut f = LlmFind { all_users: false, scan: Scan::Idle, scroll: 0, req: 0, geom: Geom::default() };
+        let mut f = LlmFind { hosts: vec![None, Some("gpu-box".into()), Some("b".into())], host_idx: 0, all_users: false, scan: Scan::Idle, scroll: 0, req: 0, geom: Geom::default() };
         assert!(!f.press(Press::AllUsers, 0) && f.all_users);
         assert!(!f.press(Press::Down, 15) && f.scroll == 1);
         for _ in 0..20 {
@@ -329,5 +366,12 @@ mod tests {
         assert_eq!(f.scroll, 5, "no further than the last row shows");
         assert!(!f.press(Press::Up, 15) && f.scroll == 4);
         assert!(f.press(Press::Scan, 0) && f.press(Press::Close, 0));
+        f.scan = Scan::Failed("x".into());
+        assert!(!f.press(Press::Next, 0) && f.host() == Some("gpu-box") && f.scan == Scan::Idle, "another host: the old answer is gone");
+        f.press(Press::Next, 0);
+        f.press(Press::Next, 0);
+        assert_eq!(f.host(), None, "the list wraps to this machine");
+        f.press(Press::Prev, 0);
+        assert_eq!(f.host(), Some("b"));
     }
 }

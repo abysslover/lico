@@ -110,6 +110,7 @@
 "tests/test_chats_rename.py" = ["cli", "host"]
 "tests/test_chats_end_to_end.py" = ["cli", "gui", "host"]
 "tests/test_llm_discover.py" = ["cli", "host"]
+"tests/test_llm_discover_ssh.py" = ["cli", "host"]
 "tests/test_llm_tool.py" = ["host"]
 "tests/test_llm_window.py" = ["gui", "host"]
 "tests/test_native_account.py" = ["cli", "host"]

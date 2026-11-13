@@ -9,6 +9,8 @@
 mod classify;
 mod http;
 mod net;
+mod remote;
+mod remote_script;
 pub mod tool;
 
 use std::path::{Path, PathBuf};
@@ -34,16 +36,21 @@ pub fn set_proc_root(root: PathBuf) {
     let _ = PROC_ROOT.set(root);
 }
 
+/// The folder a test gave the host as its process table, if it did (a real run reads `/proc`).
+pub(crate) fn set_root() -> Option<PathBuf> {
+    PROC_ROOT.get().cloned()
+}
+
 pub(crate) fn proc_root() -> PathBuf {
     PROC_ROOT.get().cloned().unwrap_or_else(|| PathBuf::from("/proc"))
 }
 
 /// `llm.discover`: the endpoints of this machine.
-pub fn discover(_shared: &Shared, request: &Map<String, Value>) -> Reply {
-    if request.get("ssh_host").and_then(Value::as_str).is_some() {
-        return Err("option_unavailable"); // an ssh host: the next phase
-    }
+pub fn discover(shared: &Shared, request: &Map<String, Value>) -> Reply {
     let all_users = request.get("all_users").and_then(Value::as_bool).unwrap_or(false);
+    if let Some(host) = request.get("ssh_host").and_then(Value::as_str) {
+        return remote::discover(shared, host, all_users);
+    }
     Ok(crate::session::obj(run(&proc_root(), all_users, BUDGET)))
 }
 

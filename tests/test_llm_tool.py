@@ -34,7 +34,7 @@ def test_the_tool_asks_first_probes_only_after_a_yes_and_tells_the_agent_in_safe
         try:
             caller, generation = w.session(name="agent")
             failed, text = call(w.config(caller), "llm_endpoints", unexpected="x")
-            assert failed and "bad_request" in text, "the tool takes no argument"
+            assert failed and "bad_request" in text, "the tool takes only `host`"
             failed, text = call(w.config(caller), "llm_endpoints")
             reply = json.loads(text)
             assert not failed and reply["status"] == "pending" and sorted(reply) == ["approval_id", "message", "status"], text
@@ -68,4 +68,39 @@ def test_a_no_probes_nothing_and_a_second_call_while_one_waits_is_the_same_card(
             assert server.connections == 0, "a no looks at nothing"
         finally:
             host.stop()
+            server.close()
+
+
+def test_the_tool_can_name_an_ssh_host_and_the_card_and_the_message_say_so():
+    from tests.test_llm_discover_ssh import _rig, _tables
+
+    with private_dir() as directory:
+        root = Path(directory)
+        server = FakeServer(openai_models(("remote-llama",)))
+        try:
+            cfg, mock = _rig(root)
+            _tables(root, "gpu-box", [server])
+            host, log, received = host_of(directory, "--llm-proc-root", str(root / "fake_proc"), "--ssh", str(mock), "--ssh-config", str(cfg))
+            w = World(directory, host, log, received)
+            try:
+                caller, generation = w.session(name="agent")
+                failed, text = call(w.config(caller), "llm_endpoints", host="bad host!")
+                assert failed and "bad_request" in text, text
+                reply = json.loads(call(w.config(caller), "llm_endpoints", host="gpu-box")[1])
+                card = status_of(w.conn, caller)["approvals"][0]
+                assert "ssh host 'gpu-box'" in card["prompt"] and "nothing stored" in card["prompt"], card
+                assert (root / "ssh_calls.log").exists() is False, "no ssh call before the yes"
+                assert decide(w, caller, generation, reply["approval_id"], "allow")["outcome"] == "done"
+                told = wait_for(lambda: received_with(w, "Found by the host, read-only"))
+                assert "on ssh host 'gpu-box'" in told[0] and "remote-llama" in told[0] and "a later use would need a tunnel" in told[0], told
+                assert (root / "ssh_calls.log").read_text().split() == ["gpu-box"]
+
+                reply = json.loads(call(w.config(caller), "llm_endpoints", host="offline-box")[1])
+                decided = decide(w, caller, generation, reply["approval_id"], "allow")
+                assert decided["outcome"] == "not_done" and decided.get("reason") == "ssh_unreachable", decided
+                said = wait_for(lambda: received_with(w, "could not be made"))
+                assert "ssh_unreachable" in said[0] and "'offline-box'" in said[0], said
+            finally:
+                host.stop()
+        finally:
             server.close()
