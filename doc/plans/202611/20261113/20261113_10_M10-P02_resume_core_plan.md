@@ -1,6 +1,6 @@
 # M10-P02 Plan — Resume Core: `turns`, One `latest_chat` Rule, `--resume-latest`, MCP `resume`
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-13 (G2 approved by the owner on 2026-11-13)
 - Branch: `phase/M10-P02-resume-core`
@@ -15,10 +15,10 @@
 
 ## Steps
 
-- [ ] S01: Red tests: `turns` (counts, null cases, bound, cache), latest rule, three provider resume paths for Claude and Codex, ssh fixtures, refusals.
-- [ ] S02: `turns` and the cache; latency measurement.
-- [ ] S03: `latest_chat`, `resume_latest` creation, CLI and MCP parity (`capabilities`, protocol schema, docs).
-- [ ] S04: Report with the measured latency.
+- [x] S01: Red tests: `turns` (counts, null cases, bound, cache), latest rule, three provider resume paths for Claude and Codex, ssh fixtures, refusals.
+- [x] S02: `turns` and the cache; latency measurement.
+- [x] S03: `latest_chat`, `resume_latest` creation, CLI and MCP parity (`capabilities`, protocol schema, docs).
+- [x] S04: Report with the measured latency.
 
 ## Acceptance Criteria
 
