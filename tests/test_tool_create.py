@@ -5,6 +5,7 @@ answered with the owner operation the window uses (`approval.answer`). The tests
 logged, from the durable log, the file the simulator writes and the host's own log."""
 import json
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -13,8 +14,9 @@ from lico_measure.p02 import ProtoConn
 from lico_measure.rig import private_dir
 from lico_protocol import v1
 
+from tests.account_helpers import account
 from tests.test_claude_adapter import lines_of, records, status_of
-from tests.test_codex_adapter import wait_for
+from tests.test_codex_adapter import FIXTURE as CODEX_FIXTURE, SIM as CODEX_SIM, wait_for
 from tests.test_tool_connection import World, rpc
 from tests.test_transfer import check_lookalikes, lookalike_text
 from tests.test_tool_send import CLEAN, DIRTY, HEADER, NOTICE, PLAIN_HEADER, decide, host_of, notices, received_with
@@ -83,7 +85,9 @@ def program_of(world, sid):
     lines = lines_of(world.received)
     for k, line in enumerate(lines):
         if line.startswith("ARGV ") and path in json.loads(line[5:]):
-            return json.loads(line[5:]), (lines[k + 2][4:] if k + 2 < len(lines) and lines[k + 2].startswith("CWD ") else None)
+            if k + 2 >= len(lines) or not lines[k + 2].startswith("CWD "):
+                return None
+            return json.loads(line[5:]), lines[k + 2][4:]
     return None
 
 
@@ -96,13 +100,13 @@ def err(world):
     return (Path(world.directory) / "host.err").read_text().splitlines()
 
 
-def test_the_list_names_create_with_a_prompt_and_a_name_and_no_other_argument(world):
+def test_the_list_names_create_with_optional_kind_prompt_name_and_scope(world):
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
     assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer"]
     schema = tools["create"]["inputSchema"]
-    assert schema["required"] == ["prompt"] and sorted(schema["properties"]) == ["name", "prompt"], schema      # no folder, mode, kind, account or `from`
+    assert "required" not in schema and sorted(schema["properties"]) == ["kind", "name", "prompt", "scope"], schema      # no raw cwd, mode, account, model, effort or `from`
     assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
 
 
@@ -114,7 +118,7 @@ def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_fold
     folder = status_of(world.conn, caller)["cwd"]
     before = {r["session"] for r in rows(world)}
     prompt = "fix the tests"      # the card has 200 characters; what the head leaves is the start of the prompt (the whole of it is a keypress away in the window)
-    number = wants(world, caller, prompt=prompt, name="reviewer", cwd="/etc", mode="auto", kind="codex", account="other", model="m", effort="high", **{"from": bystander})
+    number = wants(world, caller, prompt=prompt, name="reviewer", cwd="/etc", mode="auto", account="other", model="m", effort="high", **{"from": bystander})
     card = status_of(world.conn, caller)["approvals"]
     assert card == [{"approval_id": number, "tool": "create", "prompt": f"create session 'reviewer' in '{shown(folder)}' | mode: asks for approval | {DEFAULT_MODEL} | {STARTS} | {len(prompt)} B | \"{prompt}\""}], card
     assert {r["session"] for r in rows(world)} == before, "nothing is made until the card is answered"
@@ -186,12 +190,12 @@ def test_a_no_makes_nothing_and_a_yes_for_the_session_cannot_be_given_to_a_creat
     assert again != number, "so it asks again"
 
 
-def test_a_create_without_a_prompt_or_with_a_name_that_is_not_plain_is_refused_and_leaves_no_card(world):
+def test_invalid_kind_scope_prompt_or_name_is_refused_and_leaves_no_card(world):
     caller, _ = world.session(name="writer")
-    for arguments in ({}, {"prompt": ""}, {"prompt": 5}, {"prompt": "p", "name": 5}, {"prompt": "p", "name": "a\nb"}, {"prompt": "p", "name": "x" * 37},
+    for arguments in ({"kind": "bash"}, {"kind": 5}, {"scope": "/etc"}, {"scope": 5}, {"prompt": 5}, {"prompt": "p", "name": 5}, {"prompt": "p", "name": "a\nb"}, {"prompt": "p", "name": "x" * 37},
                       {"prompt": "p", "name": "rev\u202eiewer"}, {"prompt": "p", "name": "rev\u00adiewer"}, {"prompt": "p", "name": "rev\u3164iewer"}, {"prompt": "p", "name": "rev\u001b[31miewer"}, {"prompt": "\u200b"}, {"prompt": "\u001b[0m\U000e0041"}):
         failed, answer = call(world.config(caller), "create", **arguments)
-        assert failed and answer.startswith("bad_request: create needs `prompt`"), (arguments, answer)
+        assert failed and answer.startswith("bad_request: create "), (arguments, answer)
     assert status_of(world.conn, caller).get("approvals") is None and not running_made(world)
 
 
@@ -359,5 +363,75 @@ def test_the_flag_that_once_let_a_test_send_without_the_question_does_not_let_a_
             number = wants(world, caller, prompt="hello")
             assert {r["session"] for r in rows(world)} == before, "an unknown argument changes nothing: the question is asked"
             assert decide(world, caller, generation, number, "allow")["outcome"] == "done"
+        finally:
+            host.stop()
+
+
+def test_claude_and_codex_sessions_can_create_each_other_with_or_without_a_prompt_and_in_global_scope():
+    with private_dir() as directory:
+        codex_rec = Path(directory) / "codex_received.jsonl"
+        host, log, received = host_of(
+            directory,
+            "--codex", sys.executable,
+            "--codex-arg", "-I",
+            "--codex-arg", str(CODEX_SIM),
+            "--codex-arg", "--received",
+            "--codex-arg", str(codex_rec),
+            "--codex-arg", "--fixture",
+            "--codex-arg", str(CODEX_FIXTURE),
+            "--codex-arg", "--lico-mcp",
+        )
+        try:
+            w = World(directory, host, log, received)
+            acc_claude = account(w.conn, "Claude-Main", provider="claude")
+            acc_codex = account(w.conn, "Codex-Main", provider="codex")
+            project = Path(directory) / "work"
+            project.mkdir()
+
+            c_made = w.conn.call(op="session.create", kind="claude", account=acc_claude, name="Claude-L", cwd=str(project))
+            assert c_made["ok"] == 1, c_made
+            s_claude, g_claude = c_made["session"], c_made["generation"]
+
+            x_made = w.conn.call(op="session.create", kind="codex", account=acc_codex, name="Codex-L", cwd=str(project))
+            assert x_made["ok"] == 1, x_made
+            s_codex, g_codex = x_made["session"], x_made["generation"]
+
+            folder = status_of(w.conn, s_claude)["cwd"]
+
+            # 1. Claude-L opens a new empty Codex tab in the same folder (`kind="codex"`, no `prompt`)
+            assert w.conn.call(
+                op="input", session=s_claude, generation=g_claude, request_id="c2x-1",
+                text='tool:create {"kind": "codex", "name": "Codex-New"}',
+            )["ok"] == 1
+            wait_for(lambda: status_of(w.conn, s_claude).get("approvals"))
+            card_c2x = status_of(w.conn, s_claude)["approvals"][0]
+            assert card_c2x["tool"] == "create" and "create codex session 'Codex-New'" in card_c2x["prompt"] and "opens an empty ready tab" in card_c2x["prompt"], card_c2x
+            before = {r["session"] for r in rows(w)}
+            assert decide(w, s_claude, g_claude, card_c2x["approval_id"], "allow")["outcome"] == "done"
+            [new_codex] = [r for r in rows(w) if r["session"] not in before]
+            assert (new_codex["provider"], new_codex["account"], new_codex["mode"], new_codex["cwd"], new_codex["state"]) == (
+                "codex", acc_codex, "default", folder, "running"
+            ), new_codex
+            assert new_codex["name"] == "Codex-New - made by Claude-L"
+            wait_for(lambda: any("created codex session" in r and "no initial prompt sent" in r for r in records(w.log, s_claude)))
+            assert not [r for r in records(w.log, new_codex["session"]) if r.startswith(">> ")], "empty-prompt tab received no prompt"
+
+            # 2. Codex-L opens a new Global Claude tab WITH an initial prompt (`kind="claude"`, `scope="global"`)
+            assert w.conn.call(
+                op="input", session=s_codex, generation=g_codex, request_id="x2c-1",
+                text='tool:create {"kind": "claude", "scope": "global", "name": "Claude-New", "prompt": "새 Claude 대화창 첫 작업"}',
+            )["ok"] == 1
+            wait_for(lambda: status_of(w.conn, s_codex).get("approvals"))
+            card_x2c = status_of(w.conn, s_codex)["approvals"][0]
+            assert card_x2c["tool"] == "create" and "create claude session 'Claude-New' in global scope" in card_x2c["prompt"], card_x2c
+            before2 = {r["session"] for r in rows(w)}
+            assert decide(w, s_codex, g_codex, card_x2c["approval_id"], "allow")["outcome"] == "done"
+            [new_claude] = [r for r in rows(w) if r["session"] not in before2]
+            assert (new_claude["provider"], new_claude["account"], new_claude["mode"], new_claude["state"]) == (
+                "claude", acc_claude, "default", "running"
+            ), new_claude
+            assert new_claude["name"] == "Claude-New - made by Codex-L" and new_claude.get("scratch") is True and "cwd" not in new_claude, new_claude
+            wait_for(lambda: ">> 새 Claude 대화창 첫 작업" in records(w.log, new_claude["session"]))
+            wait_for(lambda: any("created claude session" in r for r in records(w.log, s_codex)))
         finally:
             host.stop()

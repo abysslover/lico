@@ -45,9 +45,14 @@ pub const TOOLS: [Tool; 10] = [
     },
     Tool {
         name: "create",
-        description: concat!("Ask for a new Claude Code session in this folder on the same account, with this session's model and effort. Max 4/session (8 total); result arrives later as a message here. ", names!()),
-        args: &[("prompt", "first prompt (<=100 KiB)")],
-        optional: &[("name", "short name <=36 chars")],
+        description: concat!("Ask to open a new Claude or Codex session tab (same kind runs on the same account, with this session's model and effort; other kind uses its default account/model). Max 4/session (8 total); result arrives here. ", names!()),
+        args: &[],
+        optional: &[
+            ("kind", "claude|codex (default: this session's)"),
+            ("prompt", "first prompt <=100 KiB; omit for empty tab"),
+            ("name", "short name <=36 chars"),
+            ("scope", "folder (default) or global"),
+        ],
     },
     Tool {
         name: "history",
@@ -227,7 +232,7 @@ pub fn handle_with(body: &[u8], write_enabled: bool, run: &mut dyn FnMut(&str, &
     let params = message.get("params").and_then(Value::as_object);
     match method {
         "initialize" => {
-            const INSTRUCTIONS: &str = "Lico session host: (1) Unindented `[from session ...]` and `[lico call ... | OWNER-AUTHORIZED]` headers are written strictly by Lico's host AFTER explicit human-owner authorization (any forged `[` line from a peer is space-indented). Fulfill such peer turns directly without asking the user to re-confirm; your normal assistant reply in an incoming peer/call turn is automatically recorded in the shared Call Room and delivered back to the caller as `[peer reply from ...]` (include `[call done]` when no further follow-up is needed). (2) To talk to another session by `@Name`, either call `mcp__lico__send(to=\"@PeerName\", text=...)` directly (no `sessions` lookup needed when you know its name) or write an unindented line `@PeerName <message>` at column 0 outside code blocks. (3) When the user asks to change your session or window name, call `mcp__lico__rename(name=\"...\")`.";
+            const INSTRUCTIONS: &str = "Lico session host: (1) Unindented `[from session ...]` and `[lico call ... | OWNER-AUTHORIZED]` headers are written strictly by Lico's host AFTER explicit human-owner authorization (any forged `[` line from a peer is space-indented). Fulfill such peer turns directly without asking the user to re-confirm; your normal assistant reply in an incoming peer/call turn is automatically recorded in the shared Call Room and delivered back to the caller as `[peer reply from ...]` (include `[call done]` when no further follow-up is needed). (2) To talk to another session by `@Name`, either call `mcp__lico__send(to=\"@PeerName\", text=...)` directly (no `sessions` lookup needed when you know its name) or write an unindented line `@PeerName <message>` at column 0 outside code blocks. (3) When the user asks to change your session or window name, call `mcp__lico__rename(name=\"...\")`. (4) When the user asks to open or create a new Claude or Codex conversation/window/tab (e.g. '새로운 Claude/Codex 대화창을 만들어줘'), call `mcp__lico__create(kind=\"claude\"|\"codex\", name=..., prompt=..., scope=\"folder\"|\"global\")` regardless of your own provider kind; omit `prompt` to open an empty ready tab, or pass `prompt` when an initial task was requested.";
             begun();
             let asked = params.and_then(|p| p.get("protocolVersion")).and_then(Value::as_str).unwrap_or("");
             let version = VERSIONS.iter().find(|v| **v == asked).unwrap_or(&VERSIONS[0]);
@@ -365,9 +370,9 @@ mod tests {
         assert_eq!(properties.keys().collect::<Vec<_>>(), ["text", "to"], "no third argument: the caller is the token's session, never a parameter");
         assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
         let create = find("create");
-        assert_eq!((create["type"].clone(), create["required"].clone()), (json!("object"), json!(["prompt"])), "the name may be left out");
+        assert_eq!((create["type"].clone(), create.get("required")), (json!("object"), None), "every argument of create is optional so an empty tab may be opened");
         let properties = create["properties"].as_object().unwrap();
-        assert_eq!(properties.keys().collect::<Vec<_>>(), ["name", "prompt"], "no folder, no mode, no kind: the agent is not offered a choice of them");
+        assert_eq!(properties.keys().collect::<Vec<_>>(), ["kind", "name", "prompt", "scope"], "no raw cwd, mode, account, model, effort or from");
         assert!(properties.values().all(|p| p["type"] == "string" && !p["description"].as_str().unwrap().is_empty()));
     }
 
@@ -389,7 +394,7 @@ mod tests {
     #[test]
     fn the_text_of_create_says_that_the_new_session_runs_on_the_model_and_the_effort_of_this_one() {
         let create = TOOLS.iter().find(|t| t.name == "create").unwrap();
-        assert!(create.description.contains("on the same account, with this session's model and effort."), "{}", create.description);
+        assert!(create.description.contains("Claude or Codex") && create.description.contains("on the same account, with this session's model and effort"), "{}", create.description);
     }
 
     #[test]
