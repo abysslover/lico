@@ -27,7 +27,7 @@ impl App {
         let line = |text: String| Prompt { rows: vec![text], note: None, caret: None };
         if self.code_entry() {
             line(format!("> {}", self.shown_input()))
-        } else if self.ui.panel.is_some() || self.session.is_empty() {
+        } else if self.ui.panel.is_some() || !self.has_prompt_target() {
             line(format!("> {}[{}]", self.ed.text(), self.preedit))
         } else {
             self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
@@ -40,7 +40,7 @@ impl App {
     }
 
     pub(crate) fn can_cut(&self) -> bool {
-        self.ui.panel.is_none() && !self.session.is_empty() && self.preedit.is_empty() && self.ed.has_selection()
+        self.ui.panel.is_none() && self.has_prompt_target() && self.preedit.is_empty() && self.ed.has_selection()
     }
 
     /// Copies conversation lines when selected; otherwise copies an active prompt editor selection.
@@ -92,7 +92,7 @@ impl App {
     }
 
     pub(crate) fn ed_mouse_press(&mut self, x: f32, y: f32) -> bool {
-        if self.ui.panel.is_some() || self.session.is_empty() || !self.preedit.is_empty() || !self.ed.contains(x, y) {
+        if self.ui.panel.is_some() || !self.has_prompt_target() || !self.preedit.is_empty() || !self.ed.contains(x, y) {
             return false;
         }
         self.ui.sel = None;
@@ -128,7 +128,7 @@ impl App {
 
     /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
     pub(crate) fn paste_allowed(&self) -> bool {
-        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { !self.session.is_empty() }
+        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { self.has_prompt_target() }
     }
 
     /// Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection; only on the person's own key.
@@ -186,7 +186,7 @@ impl App {
     /// The keys of the input box, for a session that is open and no composition in progress (the input method owns the keys then).
     /// Note: `Ctrl+A` is intentionally never bound here — `panel_key` owns `Ctrl+A` for `Accounts`.
     pub(crate) fn edit_key(&mut self, event: &KeyEvent) -> bool {
-        if self.ui.panel.is_some() || self.session.is_empty() || !self.preedit.is_empty() || self.ui.mods.alt_key() {
+        if self.ui.panel.is_some() || !self.has_prompt_target() || !self.preedit.is_empty() || self.ui.mods.alt_key() {
             return false;
         }
         let (ctrl, shift) = (self.ui.mods.control_key(), self.ui.mods.shift_key());
@@ -197,7 +197,7 @@ impl App {
             }
             return true;
         }
-        let session = self.session.clone();
+        let session = self.prompt_target_id();
         let ed = &mut self.ed;
         let (stamp, empty, note) = (ed.stamp, ed.is_empty(), ed.note.take());
         let handled = match &event.logical_key {
@@ -312,6 +312,23 @@ impl App {
 
     /// Send the draft of the visible session as one input with its own request id; `/exit` and `/quit` dismiss the tab locally instead of sending to the agent.
     pub(crate) fn send_draft(&mut self) {
+        if let Some(cid) = self.ui.calls.active_call.clone() {
+            if matches!(self.ed.text().trim(), "/exit" | "/quit") {
+                self.ed.clear();
+                emit_ime("text", "");
+                self.close_call_tab(&cid);
+                self.dirty = true;
+                return;
+            }
+            let Some(text) = self.ed.prepare_send(&cid) else {
+                self.dirty = true;
+                return;
+            };
+            self.send_call_say(&cid, text);
+            emit_ime("text", self.ed.text());
+            self.dirty = true;
+            return;
+        }
         if self.session.is_empty() || self.picture_send() {
             return;
         }

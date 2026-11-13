@@ -72,7 +72,7 @@ or hang up the call directly.
 | ID | Phase | Plan | Report | Inspection | PR | Status |
 |---|---|---|---|---|---|---|
 | M08-P01 | Persistent Call Rooms, `@AgentName` shared-context protocol, host-verified `OWNER-AUTHORIZED` envelope, bounded 4-round-trip engine, and CLI/IPC/HTTP parity | [Plan](../../../plans/202611/20261113/20261113_02_M08-P01_call_rooms_and_mention_protocol_plan.md) | [Report](../../../reports/202611/20261113/20261113_02_M08-P01_call_rooms_and_mention_protocol_report.md) | — | — | done |
-| M08-P02 | Left sidebar `[ Calls ]` tab, top-bar `⇄ A·B` Call Room tabs with live human intervention & `Hang up`, `@mention` autocomplete popup, and clickable jump cards | — | — | — | — | planned |
+| M08-P02 | Left sidebar `[ Calls ]` tab, top-bar `⇄ A·B` Call Room tabs with live human intervention & `Hang up`, `@mention` autocomplete popup, and clickable jump cards | [Plan](../../../plans/202611/20261113/20261113_03_M08-P02_call_room_tabs_and_mention_ui_plan.md) | [Report](../../../reports/202611/20261113/20261113_03_M08-P02_call_room_tabs_and_mention_ui_report.md) | — | — | done |
 | M08-P03 | End-to-end Call Room & `@mention` verification, resource budgets, Xvfb inspection bundle, and `lico 0.2.4` release | — | — | — | — | planned |
 
 ## Gates

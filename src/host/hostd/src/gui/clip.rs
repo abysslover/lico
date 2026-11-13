@@ -522,6 +522,10 @@ impl super::super::App {
                 self.dirty = true;
                 return;
             }
+        } else if let Some((_, _, Some(idx), false)) = origin {
+            if !moved && !self.ui.mods.shift_key() && self.try_jump_call_from_line(idx) {
+                return;
+            }
         }
         let multi_line = self.ui.sel.is_some_and(|(a, b)| a != b);
         if was_line_drag && (moved || multi_line) && self.selection_text().is_some() {

@@ -229,6 +229,24 @@ impl Editor {
         &self.text
     }
 
+    pub(crate) fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub(crate) fn replace_span(&mut self, from: usize, to: usize, s: &str) -> bool {
+        if from > to || to > self.text.len() || !self.text.is_char_boundary(from) || !self.text.is_char_boundary(to) {
+            return false;
+        }
+        if self.text.len() - (to - from) + s.len() > MAX_TEXT {
+            return false;
+        }
+        self.push_undo();
+        self.text.replace_range(from..to, s);
+        self.cursor = from + s.len();
+        self.edited();
+        true
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.text.is_empty()
     }

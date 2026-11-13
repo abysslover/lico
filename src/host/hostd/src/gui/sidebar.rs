@@ -30,8 +30,7 @@ pub struct SidebarEntryGeom {
 
 #[derive(Clone, Default)]
 pub struct SidebarGeom {
-    pub dir_tab_rect: Option<Rect>,
-    pub past_tab_rect: Option<Rect>,
+    pub dir_tab_rect: Option<Rect>, pub past_tab_rect: Option<Rect>, pub calls_tab_rect: Option<Rect>,
     pub back_rect: Option<Rect>, pub forward_rect: Option<Rect>,
     pub bookmark_toggle_rect: Option<Rect>, pub bookmarks_btn_rect: Option<Rect>,
     pub host_rect: Option<Rect>,
@@ -79,6 +78,7 @@ pub struct SidebarState {
     pub last_opened: Option<String>,
     pub nav: super::sidebar_nav::DirNavState,
     pub past: super::sidebar_past::PastSidebarState,
+    pub calls: super::sidebar_calls::CallsSidebarState,
     pub geom: SidebarGeom,
 }
 
@@ -326,7 +326,7 @@ impl App {
     }
 
     pub(crate) fn sidebar_select_tab(&mut self, tab: u8) {
-        let clamped = tab.min(1);
+        let clamped = tab.min(2);
         self.ui.sidebar.host_popup_open = false;
         self.ui.sidebar.nav.popup_open = false;
         self.ui.sidebar.filter_focused = false;
@@ -645,10 +645,10 @@ impl App {
             self.dirty = true;
             return true;
         }
-        if self.ui.sidebar.tab == 0 {
-            self.sidebar_step_page(if step > 0 { 1 } else { -1 });
-        } else {
-            self.past_step_page(if step > 0 { 1 } else { -1 });
+        match self.ui.sidebar.tab {
+            0 => self.sidebar_step_page(if step > 0 { 1 } else { -1 }),
+            1 => self.past_step_page(if step > 0 { 1 } else { -1 }),
+            _ => self.calls_step_page(if step > 0 { 1 } else { -1 }),
         }
         true
     }
@@ -762,10 +762,12 @@ impl App {
             Action::SidebarParent => self.sidebar_go_parent(),
             Action::SidebarEntry(idx) => self.sidebar_activate_entry(idx),
             Action::SidebarPastEntry(idx) => self.past_activate_entry(idx),
-            Action::SidebarPage(d) => {
-                if self.ui.sidebar.tab == 1 { self.past_step_page(d); } else { self.sidebar_step_page(d); }
-            }
-            _ => return false,
+            Action::SidebarPage(d) => match self.ui.sidebar.tab {
+                1 => self.past_step_page(d),
+                2 => self.calls_step_page(d),
+                _ => self.sidebar_step_page(d),
+            },
+            _ => return self.sidebar_calls_click(action),
         }
         true
     }

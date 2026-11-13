@@ -128,11 +128,30 @@ impl App {
                 })
             })
             .collect();
+        let call_items: Vec<Value> = self
+            .ui
+            .calls
+            .tab_items_geom
+            .iter()
+            .map(|c| {
+                json!({
+                    "call_id": c.call_id,
+                    "label": c.label,
+                    "active": c.active,
+                    "selected": c.selected,
+                    "status": c.status,
+                    "round": c.round,
+                    "rect": c.rect,
+                    "close_rect": c.close_rect,
+                })
+            })
+            .collect();
         json!({
             "shown": self.tabs_shown(),
             "scroll": self.ui.tab_scroll,
             "total": self.ui.numbered.len(),
             "items": items,
+            "call_items": call_items,
             "prev_rect": self.ui.tabs_geom.prev_rect,
             "next_rect": self.ui.tabs_geom.next_rect,
             "new_rect": self.ui.tabs_geom.new_rect,
@@ -151,10 +170,13 @@ impl App {
         y1: f32,
     ) {
         self.ui.tabs_geom = TabsGeom::default();
+        self.ui.calls.tab_items_geom.clear();
         if !self.tabs_shown() || list_w >= width || y1 <= y0 {
             return;
         }
         let s = self.ui.scale.max(1.0);
+        let call_open = self.active_call_open();
+        let active_call_id = self.ui.calls.active_call.clone();
         let total = self.ui.numbered.len();
         if total == 0 {
             self.ui.tab_scroll = 0;
@@ -171,11 +193,44 @@ impl App {
                     r.session.clone(),
                     self.tab_caption(r),
                     r.is_global(),
-                    r.session == self.session,
+                    !call_open && r.session == self.session,
                     r.state.clone(),
                     self.row_unread(r),
                     !r.approvals.is_empty(),
                 ))
+            })
+            .collect();
+        let call_entries: Vec<(String, String, bool, bool, String, u32)> = self
+            .ui
+            .calls
+            .open_tabs
+            .iter()
+            .map(|cid| {
+                let (raw_title, active, paused, status, round) = self
+                    .ui
+                    .sidebar
+                    .calls
+                    .summaries
+                    .iter()
+                    .find(|c| &c.call_id == cid)
+                    .map(|c| (c.title.clone(), c.active, c.paused, c.status.clone(), c.round))
+                    .or_else(|| {
+                        self.ui.calls.details.get(cid).map(|d| {
+                            (d.title.clone(), d.active, d.paused, d.status.clone(), d.round)
+                        })
+                    })
+                    .unwrap_or_else(|| (cid.clone(), false, false, "idle".into(), 0));
+                let compact = raw_title.replace(" \u{00b7} ", "\u{00b7}");
+                let badge = if paused {
+                    " [paused]"
+                } else if active {
+                    " \u{25cf}"
+                } else {
+                    ""
+                };
+                let cap = format!("\u{21c4} {}{badge}", truncate_cols(&compact, 20));
+                let sel = self.ui.panel.is_none() && active_call_id.as_deref() == Some(cid.as_str());
+                (cid.clone(), cap, active, sel, status, round)
             })
             .collect();
         let ensure = std::mem::take(&mut self.ui.tab_ensure_visible);
@@ -208,9 +263,13 @@ impl App {
             .iter()
             .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
             .collect();
-        let all_fit = self.ui.tab_scroll == 0
-            && widths.iter().map(|w| *w + 3.0 * s).sum::<f32>() <= (tabs_limit_x - (x_left + 6.0 * s)).max(0.0);
-        let show_nav = !entries.is_empty() && !all_fit;
+        let call_widths: Vec<f32> = call_entries
+            .iter()
+            .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
+            .collect();
+        let total_w: f32 = widths.iter().chain(&call_widths).map(|w| *w + 3.0 * s).sum();
+        let all_fit = self.ui.tab_scroll == 0 && total_w <= (tabs_limit_x - (x_left + 6.0 * s)).max(0.0);
+        let show_nav = (!entries.is_empty() || !call_entries.is_empty()) && !all_fit;
         let (mut prev_rect, mut next_rect) = (None, None);
         if show_nav {
             let nx_rect = [tabs_limit_x - nav_w, by0, tabs_limit_x, by1];
@@ -232,7 +291,7 @@ impl App {
             }
         }
 
-        if entries.is_empty() {
+        if entries.is_empty() && call_entries.is_empty() {
             controls.text(
                 fs,
                 swash,
@@ -247,13 +306,19 @@ impl App {
             );
         } else {
             let mut tx = x_left + 6.0 * s;
+            let call_reserve: f32 = if call_entries.iter().any(|c| c.3) {
+                call_widths.iter().map(|w| *w + 3.0 * s).sum::<f32>().min((tabs_limit_x - tx) * 0.48)
+            } else {
+                0.0
+            };
+            let sess_limit_x = (tabs_limit_x - call_reserve).max(tx);
             for idx in self.ui.tab_scroll..entries.len() {
                 let (ref sid, ref cap, is_global, selected, ref state, unread, has_app) = entries[idx];
                 let tw = widths[idx];
-                if tx + tw > tabs_limit_x && idx > self.ui.tab_scroll {
+                if tx + tw > sess_limit_x && (idx > self.ui.tab_scroll || call_reserve > 0.0) {
                     break;
                 }
-                let rx1 = (tx + tw).min(tabs_limit_x);
+                let rx1 = (tx + tw).min(sess_limit_x);
                 if rx1 <= tx + close_w + 8.0 * s {
                     break;
                 }
@@ -284,6 +349,42 @@ impl App {
                     selected,
                     state: state.clone(),
                     unread,
+                    rect: trect,
+                    close_rect: crect,
+                });
+                tx = rx1 + 3.0 * s;
+            }
+            for (cidx, (cid, cap, active, selected, status, round)) in call_entries.iter().enumerate() {
+                let cw = call_widths[cidx];
+                if tx + close_w + 16.0 * s > tabs_limit_x {
+                    break;
+                }
+                let rx1 = (tx + cw).min(tabs_limit_x);
+                let trect = [tx, by0, rx1, y1 - 1.0];
+                let teal_col = Color::rgb(0x64, 0xE2, 0xCB);
+                let (fill, text_col) = if *selected {
+                    (0xFF19_3338, ink)
+                } else if *active {
+                    (0xFF16_292E, teal_col)
+                } else {
+                    (0xFF16_232A, teal_col)
+                };
+                controls::fill(buf, width, height, trect, fill);
+                if *selected {
+                    controls::fill(buf, width, height, [trect[0], trect[1], trect[2], trect[1] + 2.0 * s], 0xFF38_B2AC);
+                }
+                let crect = [rx1 - close_w - 2.0 * s, by0 + 2.0 * s, rx1 - 2.0 * s, by1];
+                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, cap, text_col);
+                controls.target(trect, Action::CallTab(cid.clone()));
+                controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
+                controls.target(crect, Action::CloseCallTab(cid.clone()));
+                self.ui.calls.tab_items_geom.push(super::super::call_view::CallTabGeom {
+                    call_id: cid.clone(),
+                    label: cap.clone(),
+                    active: *active,
+                    selected: *selected,
+                    status: status.clone(),
+                    round: *round,
                     rect: trect,
                     close_rect: crect,
                 });

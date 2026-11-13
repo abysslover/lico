@@ -2,10 +2,12 @@
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
 mod approval_modal;
+mod call_view;
 mod controls;
 mod editor;
 mod events;
 mod fonts;
+mod mention_popup;
 mod menu;
 mod panel;
 mod picture;
@@ -14,6 +16,7 @@ mod scroll;
 #[cfg(test)]
 mod scroll_oracle;
 mod sidebar;
+mod sidebar_calls;
 mod sidebar_nav;
 mod sidebar_past;
 mod sidebar_render;

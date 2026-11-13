@@ -100,7 +100,7 @@ impl App {
         let mut out = json!({
             "shown": self.sidebar_shown(),
             "collapsed": sb.collapsed,
-            "tab": if sb.tab == 0 { "directories" } else { "past" },
+            "tab": match sb.tab { 0 => "directories", 1 => "past", _ => "calls" },
             "tab_index": sb.tab,
             "global_scope": sb.global_scope,
             "active_cwd_highlighted": self.sidebar_is_active_cwd(),
@@ -142,6 +142,7 @@ impl App {
         });
         self.insert_past_json(&mut out);
         self.insert_nav_json(&mut out);
+        self.insert_calls_json(&mut out);
         out
     }
 
@@ -193,6 +194,9 @@ impl App {
         let filtered = self.ui.sidebar.filtered_indices();
         let char_w = self.char_w();
 
+        let calls_total = self.ui.sidebar.calls.summaries.len();
+        let calls_active = self.ui.sidebar.calls.active_count();
+
         let Some(fs) = self.font_system.as_mut() else { return };
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
@@ -204,27 +208,46 @@ impl App {
         let gold_ink = Color::rgb(0xFA, 0xD2, 0x6E);
         let teal_ink = Color::rgb(0x64, 0xE2, 0xCB);
 
-        // 1. Top 2-Tab Header (`[ Directories ]` | `[ Past ]`) aligned with chat tab bar (`top..chat_top`).
+        // 1. Top 3-Tab Header (`[ Directories ]` | `[ Past ]` | `[ Calls ]`) aligned with chat tab bar (`top..chat_top`).
         let tab_y1 = if chat_top > top + 8.0 * s { chat_top } else { top + lh + 6.0 * s };
         controls::fill(buf, width, height, [0.0, top, x_right, tab_y1], 0xFF13_1A23);
         controls::fill(buf, width, height, [0.0, tab_y1 - 1.0, x_right, tab_y1], 0xFF2B_3646);
-        let mid_x = (x_right * 0.54).floor();
-        let d_rect = [2.0 * s, top + 2.0 * s, mid_x - 1.0 * s, tab_y1 - 1.0];
-        let p_rect = [mid_x + 1.0 * s, top + 2.0 * s, x_right - 2.0 * s, tab_y1 - 1.0];
+        let split1 = (x_right * 0.43).floor();
+        let split2 = (x_right * 0.68).floor();
+        let d_rect = [2.0 * s, top + 2.0 * s, split1 - 1.0 * s, tab_y1 - 1.0];
+        let p_rect = [split1 + 1.0 * s, top + 2.0 * s, split2 - 1.0 * s, tab_y1 - 1.0];
+        let c_rect = [split2 + 1.0 * s, top + 2.0 * s, x_right - 2.0 * s, tab_y1 - 1.0];
         let (d_fill, d_col) = if tab_idx == 0 { (0xFF21_3147, ink) } else { (0xFF17_202B, muted) };
         let (p_fill, p_col) = if tab_idx == 1 { (0xFF21_3147, ink) } else { (0xFF17_202B, muted) };
+        let (c_fill, c_col) = if tab_idx == 2 {
+            (0xFF19_3338, ink)
+        } else if calls_active > 0 {
+            (0xFF16_282C, teal_ink)
+        } else {
+            (0xFF17_202B, muted)
+        };
         controls::fill(buf, width, height, d_rect, d_fill);
         controls::fill(buf, width, height, p_rect, p_fill);
-        let active_bar = if tab_idx == 0 { d_rect } else { p_rect };
-        controls::fill(buf, width, height, [active_bar[0], active_bar[1], active_bar[2], active_bar[1] + 2.0 * s], 0xFF56_B4FF);
-        controls.text(fs, swash, buf, width, height, d_rect[0] + 8.0 * s, d_rect[1] + s, d_rect[2] as i32, "Directories", d_col);
+        controls::fill(buf, width, height, c_rect, c_fill);
+        let (active_bar, bar_col) = match tab_idx {
+            0 => (d_rect, 0xFF56_B4FF),
+            1 => (p_rect, 0xFF56_B4FF),
+            _ => (c_rect, 0xFF38_B2AC),
+        };
+        controls::fill(buf, width, height, [active_bar[0], active_bar[1], active_bar[2], active_bar[1] + 2.0 * s], bar_col);
+        let d_lbl = if controls.width(fs, "Directories") + 10.0 * s <= d_rect[2] - d_rect[0] { "Directories" } else { "Dir" };
+        let c_lbl = if calls_total > 0 { format!("Calls ({calls_total})") } else { "Calls".to_string() };
+        controls.text(fs, swash, buf, width, height, d_rect[0] + 6.0 * s, d_rect[1] + s, d_rect[2] as i32, d_lbl, d_col);
         controls.target(d_rect, Action::SidebarTab(0));
-        controls.text(fs, swash, buf, width, height, p_rect[0] + 8.0 * s, p_rect[1] + s, p_rect[2] as i32, "Past", p_col);
+        controls.text(fs, swash, buf, width, height, p_rect[0] + 6.0 * s, p_rect[1] + s, p_rect[2] as i32, "Past", p_col);
         controls.target(p_rect, Action::SidebarTab(1));
+        controls.text(fs, swash, buf, width, height, c_rect[0] + 6.0 * s, c_rect[1] + s, c_rect[2] as i32, &c_lbl, c_col);
+        controls.target(c_rect, Action::SidebarTab(2));
 
         let mut geom = SidebarGeom {
             dir_tab_rect: Some(d_rect),
             past_tab_rect: Some(p_rect),
+            calls_tab_rect: Some(c_rect),
             ..Default::default()
         };
 
@@ -234,6 +257,10 @@ impl App {
 
         if tab_idx == 1 {
             self.draw_past_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
+            return;
+        }
+        if tab_idx == 2 {
+            self.draw_calls_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
             return;
         }
 

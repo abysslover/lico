@@ -98,7 +98,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
-    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -162,6 +162,7 @@ impl App {
         self.ui.rows = rows;
         self.ui.mem.read(&value);
         self.sync_settings(&value["settings"]);
+        self.sync_calls_from_status(&value);
         let real_next: Vec<super::realbar::RealEntry> = value["real_screen"].as_array().into_iter().flatten().filter_map(super::realbar::RealEntry::of_json).collect();
         if real_next != self.ui.real_screen {
             self.ui.real_screen = real_next;
@@ -218,6 +219,9 @@ impl App {
     /// The last line of the transcript while the selected session works: "… working (37 s)", or how long it has said nothing.
     /// Not part of the transcript (nothing is stored or copied); shown only at the live end and not behind a panel.
     pub(crate) fn status_line(&self, panel_shown: bool) -> Option<String> {
+        if let Some(cs) = self.active_call_status_line(panel_shown) {
+            return Some(cs);
+        }
         if panel_shown || self.ui.scroll != 0 || self.ui.behind {
             return None;
         }
@@ -247,6 +251,9 @@ impl App {
     }
 
     fn header_base(&self) -> String {
+        if let Some(ch) = self.active_call_header() {
+            return ch;
+        }
         match self.selected_row() {
             Some(r) => r.header_line(&self.label_of(&r.account), self.clock_now(), self.ui.menu, self.ui.quotas.get(&r.account).copied()),
             None if self.session.is_empty() => "select a session".into(),
@@ -374,6 +381,11 @@ impl App {
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
                             Some(Action::CloseTab(id)) => self.close_tab_by_id(id),
+                            Some(Action::CallTab(cid)) => self.open_call_tab(&cid),
+                            Some(Action::CloseCallTab(cid)) => self.close_call_tab(&cid),
+                            Some(Action::CallHangup) => self.hangup_active_call(),
+                            Some(Action::CallJumpSession(sid)) => self.switch_to(&sid),
+                            Some(Action::MentionItem(i)) => { let _ = self.complete_mention_index(i); }
                             Some(Action::TabScroll(d)) => self.step_tab_scroll(d),
                             Some(Action::NewTab) => self.form_open(),
                             Some(Action::NewGlobal) => self.form_open_global(),
@@ -383,7 +395,7 @@ impl App {
                             Some(Action::ReadCard) => self.card_open(),
                             Some(Action::ModalBackdrop) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
-                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPastEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
+                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarPastEntry(..) | Action::SidebarCallEntry(..) | Action::SidebarCallClose(..) | Action::SidebarCallStartPeer(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
                             None if self.ed_mouse_press(x, y) => {}
                             None => self.main_mouse_press(x, y),
@@ -406,7 +418,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 (self.ui.flash, self.ui.clicked) = (None, None);
-                if self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
@@ -429,7 +441,7 @@ impl App {
                         if self.ui.sel.is_some() {
                             self.ui.sel = None; // Esc with a selection only drops the selection
                         } else if self.ed.clear_selection() {
-                        } else if !self.drop_chip() && self.ed.is_empty() && self.preedit.is_empty() && !self.session.is_empty() { // a picture waiting in the box goes first
+                        } else if !self.drop_chip() && self.ed.is_empty() && self.preedit.is_empty() && (self.active_call_open() || !self.session.is_empty()) { // a picture waiting in the box goes first
                             self.go_start(); // an empty input line: back to the start screen (the session keeps running)
                         }
                         self.dirty = true;
@@ -447,6 +459,7 @@ impl App {
 
     /// Go to a session: its view is attached, the one before is detached (its draft stays with it).
     pub(crate) fn switch_to(&mut self, id: &str) {
+        self.park_active_call_draft();
         if let Some(r) = self.ui.rows.iter_mut().find(|r| r.session == id) {
             r.tab_closed = false;
         }
@@ -466,6 +479,7 @@ impl App {
 
     /// Back to the start screen: no session is shown, nothing is ended.
     pub(crate) fn go_start(&mut self) {
+        self.park_active_call_draft();
         self.ui.scroll = 0;
         self.ui.sel = None;
         self.ui.behind = false;
@@ -559,11 +573,11 @@ impl App {
             "scroll": self.ui.scroll, "behind": self.ui.behind, "lines_buffered": view.map_or(0, |v| v.lines.len()), "shown_lines": shown_lines,
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
-            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "frame": frame,
+            "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "calls": self.calls_json(), "mention_popup": self.mention_popup_json(), "frame": frame,
             "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
             "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
-            "start_screen": if self.ui.panel.is_none() && self.session.is_empty() { self.start_lines().join("\n") } else { String::new() },
+            "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
         println!("{dump}");
@@ -642,7 +656,7 @@ impl App {
         }
         let menu_open = self.ui.menu_open;
         let sb_mode = self.sidebar_shown();
-        let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open() || self.sidebar_bookmarks_popup_open();
+        let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open() || self.sidebar_bookmarks_popup_open() || self.active_call_open() || self.mention_popup_shown();
         let menu_sel = self.ui.menu_sel;
         let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
         let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
@@ -924,6 +938,8 @@ impl App {
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
+        self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);
+        self.draw_mention_popup(&mut buf, width, height, list_w);
         self.draw_sidebar_host_popup(&mut buf, width, height);
         self.draw_sidebar_bookmarks_popup(&mut buf, width, height);
         self.draw_approval_modal(&mut buf, width, height, list_w, top, chat_top, hint_y);
