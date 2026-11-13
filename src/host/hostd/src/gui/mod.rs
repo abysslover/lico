@@ -20,6 +20,7 @@ mod sidebar_calls;
 mod sidebar_nav;
 mod sidebar_past;
 mod sidebar_render;
+mod tool_fold;
 mod transcript;
 mod ui;
 mod update;

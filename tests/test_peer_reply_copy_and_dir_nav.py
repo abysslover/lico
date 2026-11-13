@@ -124,18 +124,33 @@ def test_approved_peer_send_hides_unsolicited_turn_in_receiver_and_auto_routes_r
             assert status_of(conn, s_claude).get("approvals") is None
 
             # Verify ClaudeMain's chat window visibly shows:
-            # (a) outgoing `[to <id7>] <greeting>` line inside `[tool] mcp__lico__send` card,
+            # (a) default-collapsed `▸ [tool] mcp__lico__send` pill (which expands on click to show `> [to <id7>] <greeting>`),
             # (b) incoming `>> [peer reply from 'CodexWorker' ...]` + `>> echo: ...` peer reply lines,
             # (c) Claude's 1 event-driven response turn, while hiding internal `>> [from lico | ...]` host notices!
             u_claude_after = wait_for(
                 lambda: (u := w.ui())
+                and any(ln.startswith("\u25b8 [tool] mcp__lico__send") for ln in u["shown_lines"])
                 and any(ln.startswith(">> [peer reply from 'CodexWorker'") for ln in u["shown_lines"])
                 and any(ln.startswith(">> echo: [from session 'ClaudeMain'") for ln in u["shown_lines"])
                 and any("echo: [peer reply from 'CodexWorker'" in ln for ln in u["shown_lines"])
                 and u
             )
-            assert any(f"> [to {s_codex[:7]}] {greeting}" in ln for ln in u_claude_after["shown_lines"]), u_claude_after["shown_lines"]
+            assert not any(f"> [to {s_codex[:7]}] {greeting}" in ln for ln in u_claude_after["shown_lines"]), u_claude_after["shown_lines"]
             assert not any(ln.startswith(">> [from lico |") for ln in u_claude_after["shown_lines"])
+            # Click the collapsed `▸ [tool] mcp__lico__send` pill to expand and reveal outgoing payload, then collapse again!
+            pill_idx = next(i for i, ln in enumerate(u_claude_after["shown_lines"]) if ln.startswith("\u25b8 [tool] mcp__lico__send"))
+            pill_box = u_claude_after["layout"]["lines"][pill_idx]
+            w.click(440, (pill_box[0] + pill_box[1]) / 2.0)
+            u_claude_exp = wait_for(
+                lambda: (u := w.ui())
+                and any(f"> [to {s_codex[:7]}] {greeting}" in ln for ln in u["shown_lines"])
+                and u
+            )
+            assert any(ln.startswith("\u25be [tool] mcp__lico__send") for ln in u_claude_exp["shown_lines"])
+            head_idx = next(i for i, ln in enumerate(u_claude_exp["shown_lines"]) if ln.startswith("\u25be [tool] mcp__lico__send"))
+            head_box = u_claude_exp["layout"]["lines"][head_idx]
+            w.click(440, (head_box[0] + head_box[1]) / 2.0)
+            wait_for(lambda: any(ln.startswith("\u25b8 [tool] mcp__lico__send") for ln in w.ui()["shown_lines"]))
             # Strictly 1 round-trip turn on CodexWorker (human-1 + 1 peer turn = 2 completed turns, never an infinite loop)
             assert records(log_dir, s_codex).count("[turn completed]") == 2
 

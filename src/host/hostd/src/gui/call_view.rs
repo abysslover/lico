@@ -157,8 +157,9 @@ fn format_call_lines(detail: &CallDetail) -> VecDeque<(i64, String)> {
                 push(format!("[tool] [Lico | {hhmm}] {}", entry.text));
             }
             prov => {
+                let (clean_body, _) = crate::call_room::strip_call_done(&entry.text);
                 let sid7 = transfer::id7(&entry.sender_id);
-                let sz = transfer::size_text(entry.text.len());
+                let sz = transfer::size_text(clean_body.len());
                 let speaker = format!("{} \u{00b7} {prov}", entry.sender_label.replace('\'', ""));
                 if entry.kind == "peer_reply" {
                     let r_sfx = if entry.round > 0 {
@@ -170,7 +171,7 @@ fn format_call_lines(detail: &CallDetail) -> VecDeque<(i64, String)> {
                 } else {
                     push(format!(">> [from session '{speaker}' ({sid7}) | {hhmm} | message | {sz}]"));
                 }
-                for raw in entry.text.lines() {
+                for raw in clean_body.lines() {
                     push(if raw.is_empty() { ">>".into() } else { format!(">> {raw}") });
                 }
             }

@@ -434,11 +434,19 @@ impl super::super::App {
             return if lines.is_empty() { None } else { Some(lines.join("\n")) };
         }
         let view = self.view.as_ref()?;
-        let vis = crate::gui::transcript::compute_visible_transcript(&view.lines, view.lines.len(), self.ui.show_events);
-        let lines: Vec<&str> = vis
-            .iter()
-            .filter(|(raw_idx, _, _, _)| *raw_idx >= lo && *raw_idx <= hi)
-            .map(|(_, _, text, _)| text.as_str())
+        let vis = self.visible_transcript_lines(view.lines.len());
+        let picked: Vec<&(usize, i64, String, u16)> = vis.iter().filter(|(raw_idx, _, _, _)| *raw_idx >= lo && *raw_idx <= hi).collect();
+        let has_unfolded = picked.iter().any(|(_, _, _, r)| r & crate::gui::transcript::ROLE_TOOL_FOLDED == 0);
+        let lines: Vec<&str> = picked
+            .into_iter()
+            .filter(|(_, _, _, r)| !has_unfolded || (r & crate::gui::transcript::ROLE_TOOL_FOLDED == 0))
+            .map(|(_, _, text, r)| {
+                if r & crate::gui::transcript::ROLE_TOOL_HEAD != 0 {
+                    text.strip_prefix("\u{25be} ").unwrap_or(text.as_str())
+                } else {
+                    text.as_str()
+                }
+            })
             .collect();
         if lines.is_empty() { None } else { Some(lines.join("\n")) }
     }
@@ -523,7 +531,7 @@ impl super::super::App {
                 return;
             }
         } else if let Some((_, _, Some(idx), false)) = origin {
-            if !moved && !self.ui.mods.shift_key() && self.try_jump_call_from_line(idx) {
+            if !moved && !self.ui.mods.shift_key() && (self.try_toggle_tool_card(idx) || self.try_jump_call_from_line(idx)) {
                 return;
             }
         }

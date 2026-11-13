@@ -490,7 +490,7 @@ pub fn peek_pair_call_id(shared: &Shared, a: &str, b: &str) -> Option<String> {
 
 /// Record a direct `transfer::send` (`mcp__lico__send` or `Send to session`) into the pair's Call Room
 /// and return `(call_id, round)` so `PeerTurn` links the reply to the same Call Room.
-pub fn record_session_transfer(shared: &Shared, from: &str, to: &str, text: &str, round: u32) -> Option<(String, u32)> {
+pub fn record_session_transfer(shared: &Shared, from: &str, to: &str, text: &str, round: u32, marked_done: bool) -> Option<(String, u32)> {
     let kept = crate::pending::kept(shared, from, "send", to);
     let mut guard = shared.calls.inner.lock().unwrap();
     let idx = ensure_pair_room(shared, &mut guard, from, to, kept).ok()?;
@@ -506,9 +506,11 @@ pub fn record_session_transfer(shared: &Shared, from: &str, to: &str, text: &str
         round.max(1)
     }
     .min(room.max_rounds);
-    room.active = !text.contains("[call done]");
+    let (clean_body, extra_done) = strip_call_done(text);
+    let entry_text = if clean_body.trim().is_empty() { text } else { clean_body.as_str() };
+    room.active = !(marked_done || extra_done);
     room.round = r;
-    room.push_entry(from, &sender_label, sender_prov, "agent_send", r, text);
+    room.push_entry(from, &sender_label, sender_prov, "agent_send", r, entry_text);
     let out = (room.call_id.clone(), r);
     let snapshot = guard.rooms.clone();
     drop(guard);

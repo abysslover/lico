@@ -75,7 +75,13 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     let (Some(raw_to), Some(text)) = (raw_to, text) else { return Err(refusal(shared, caller, "bad_request")) };
     // the text is cleaned here, once: the card, the pages of it, the window, the command, the record and the receiver all get this string
     let cleaned = leads::agent_text(text);
-    let (text, removed) = (cleaned.text.as_str(), cleaned.removed);
+    let (stripped_done, marked_done) = crate::call_room::strip_call_done(cleaned.text.as_str());
+    let text = if marked_done && !stripped_done.is_empty() && !crate::folders::shows_nothing(&stripped_done) {
+        stripped_done.as_str()
+    } else {
+        cleaned.text.as_str()
+    };
+    let removed = cleaned.removed;
     if text.is_empty() || crate::folders::shows_nothing(text) {
         return Err(refusal(shared, caller, "bad_request"));
     }
@@ -94,13 +100,13 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     // what is already known to be refused is refused now, so that the person is not asked for a send that could not happen
     let label = receiver_label(shared, caller, to).map_err(|code| refusal(shared, caller, code))?;
     let burst_step = crate::call_room::check_or_advance_burst(shared, caller, to)?;
-    let burst_allowed = burst_step
-        .as_ref()
-        .is_some_and(|(cid, _)| crate::call_room::is_owner_authorized(shared, cid));
+    let burst_allowed = burst_step.as_ref().is_some_and(|(cid, _)| crate::call_room::is_owner_authorized(shared, cid));
     if pending::kept(shared, caller, "send", to) || peer_reply_authorized(shared, caller, to) || burst_allowed {
         BURST_ROUND.with(|c| c.set(burst_step.as_ref().map_or(0, |(_, r)| *r)));
+        CALL_DONE_FLAG.with(|c| c.set(marked_done));
         let sent_res = transfer::send(shared, Some(caller), to, "text", text, By::Session);
         BURST_ROUND.with(|c| c.set(0));
+        CALL_DONE_FLAG.with(|c| c.set(false));
         return match sent_res {
             Ok(done) => Ok(json!({"sent": true, "to": to, "delivery": done["delivery"], "size": done["size"], "receiver": done["receiver"]}).to_string()),
             Err(code) => Err(refusal(shared, caller, code)),
@@ -145,6 +151,7 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
 
 thread_local! {
     static BURST_ROUND: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static CALL_DONE_FLAG: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 const MAX_PEER_QUEUE: usize = 8;
@@ -341,7 +348,7 @@ pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str,
 }
 
 pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, text: &str, by: By, ok: bool) {
-    let round = BURST_ROUND.with(|c| c.replace(0));
+    let (round, marked_done) = (BURST_ROUND.with(|c| c.replace(0)), CALL_DONE_FLAG.with(|c| c.replace(false)));
     if !ok && by == By::Session {
         if let (Some(caller_id), Some(found)) = (from, core::find(shared, to)) {
             found.lock().unwrap().peer_turn.rollback_failed_send(caller_id);
@@ -354,7 +361,7 @@ pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, 
                 core::find(shared, id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex"))
             });
             if both_providers {
-                if let Some((cid, r)) = crate::call_room::record_session_transfer(shared, sender, to, text, round) {
+                if let Some((cid, r)) = crate::call_room::record_session_transfer(shared, sender, to, text, round, marked_done) {
                     if let Some(found_to) = core::find(shared, to) {
                         found_to.lock().unwrap().peer_turn.attach_call(sender, cid, r);
                     }
@@ -383,9 +390,13 @@ pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<PeerDone>) {
     if explicit_sent || reply_text.trim().is_empty() { return; }
     let cleaned = leads::agent_text(&reply_text).text;
     if cleaned.trim().is_empty() || crate::folders::shows_nothing(&cleaned) { return; }
-    let marked_done = cleaned.contains("[call done]");
-    let stripped = cleaned.replace("[call done]", "").trim().to_string();
-    let display_clean = if stripped.is_empty() || crate::folders::shows_nothing(&stripped) { cleaned } else { stripped };
+    let (stripped, marked_done) = crate::call_room::strip_call_done(&cleaned);
+    let trimmed = stripped.trim();
+    if marked_done && (trimmed.is_empty() || crate::folders::shows_nothing(trimmed)) {
+        if let Some(cid) = call_id.as_deref() { crate::call_room::settle_call_idle(shared, cid); }
+        return;
+    }
+    let display_clean = if trimmed.is_empty() || crate::folders::shows_nothing(trimmed) { cleaned } else { trimmed.to_string() };
     let call_meta = crate::call_room::record_peer_reply(shared, call_id.as_deref(), &caller_id, &from_id, &from_label, round, &display_clean, marked_done);
     if caller_id.is_empty() || caller_id == "owner" || call_meta.as_ref().is_some_and(|m| m.3) { return; }
     if let Some((_, ref cid, r, _)) = call_meta {

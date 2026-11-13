@@ -487,6 +487,11 @@ fn command_execution_boxes_exit_errors_mcp_cards_and_peer_banners_match_full_rep
         }
         p.push(&["$ echo incremental".into(), "line inside box".into(), "[exit 1]".into(), "plain prose after box".into()]);
         p.shift("incremental shift with boxed command card and exit 1");
+        let last_cmd_raw = p.on.app.view.as_ref().unwrap().lines.len() - 4;
+        p.both(|app| { assert!(app.try_toggle_tool_card(last_cmd_raw)); });
+        p.step("expand latest command card via click toggle");
+        p.both(|app| { assert!(app.try_toggle_tool_card(last_cmd_raw)); });
+        p.step("collapse latest command card via click toggle");
         p.both(|app| app.toggle_show_events());
         p.step("events shown with exit 0 inside command cards");
         p.both(|app| app.toggle_show_events());

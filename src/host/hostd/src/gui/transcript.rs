@@ -17,20 +17,26 @@ pub const PEER_BG: u32 = 0xFF12_2729;
 pub const PEER_BORDER: u32 = 0xFF23_4B4E;
 pub const PEER_RAIL: u32 = 0xFF38_B2AC;
 pub const AGENT_INK: Color = Color::rgb(0xEA, 0xEE, 0xF5);
-pub const TOOL_INK: Color = Color::rgb(0x9C, 0xAC, 0xBE);
-pub const TOOL_BADGE_INK: Color = Color::rgb(0x64, 0xB5, 0xF6);
-pub const CMD_BADGE_INK: Color = Color::rgb(0x4F, 0xD1, 0xB5);
-pub const CMD_TEXT_INK: Color = Color::rgb(0xCE, 0xDF, 0xEE);
-pub const CMD_OUT_INK: Color = Color::rgb(0xA6, 0xBD, 0xD0);
+pub const TOOL_INK: Color = Color::rgb(0xA5, 0xAE, 0xD4);
+pub const TOOL_FOLD_INK: Color = Color::rgb(0xB6, 0xAE, 0xE8);
+pub const TOOL_HEAD_INK: Color = Color::rgb(0xDB, 0xD4, 0xFF);
+pub const TOOL_BADGE_INK: Color = Color::rgb(0xA7, 0x8B, 0xFA);
+pub const CMD_BADGE_INK: Color = Color::rgb(0x5E, 0xEA, 0xD4);
+pub const CMD_TEXT_INK: Color = Color::rgb(0xCA, 0xD4, 0xF5);
+pub const CMD_OUT_INK: Color = Color::rgb(0xB0, 0xB9, 0xDC);
 pub const EXIT_ERR_INK: Color = Color::rgb(0xFF, 0x94, 0x66);
 pub const ERROR_INK: Color = Color::rgb(0xF4, 0x8C, 0x6C);
-pub const CMD_BG: u32 = 0xFF0B_1016;
-pub const CMD_BORDER: u32 = 0xFF24_3342;
-pub const CMD_RAIL: u32 = 0xFF3D_6385;
+pub const TOOL_FOLD_BG: u32 = 0xFF16_1426;
+pub const TOOL_HEAD_BG: u32 = 0xFF1D_1934;
+pub const TOOL_HEAD_RAIL: u32 = 0xFF9B_8AFB;
+pub const CMD_BG: u32 = 0xFF12_1020;
+pub const CMD_BORDER: u32 = 0xFF2E_2852;
+pub const CMD_RAIL: u32 = 0xFF7C_6CF6;
 pub const CMD_ERR_BG: u32 = 0xFF25_1517;
+pub const CMD_ERR_BORDER: u32 = 0xFF4C_262A;
 pub const CMD_ERR_RAIL: u32 = 0xFFE5_6B55;
 
-pub const STYLE_MASK: u16 = 0x0007;
+pub const STYLE_MASK: u16 = 0x000F;
 pub const STYLE_AGENT: u16 = 0;
 pub const STYLE_USER: u16 = 1;
 pub const STYLE_CMD: u16 = 2;
@@ -38,13 +44,17 @@ pub const STYLE_TOOL: u16 = 3;
 pub const STYLE_CMD_OUT: u16 = 4;
 pub const STYLE_EXIT_ERR: u16 = 5;
 pub const STYLE_ERROR: u16 = 6;
+pub const STYLE_TOOL_FOLD: u16 = 7;
+pub const STYLE_TOOL_HEAD: u16 = 8;
 
-pub const ROLE_USER_BG: u16 = 1 << 3;
-pub const ROLE_PEER_BG: u16 = 1 << 4;
-pub const ROLE_BOX: u16 = 1 << 5;
-pub const ROLE_BOX_TOP: u16 = 1 << 6;
-pub const ROLE_BOX_BOT: u16 = 1 << 7;
-pub const ROLE_ERR_ROW: u16 = 1 << 8;
+pub const ROLE_USER_BG: u16 = 1 << 4;
+pub const ROLE_PEER_BG: u16 = 1 << 5;
+pub const ROLE_BOX: u16 = 1 << 6;
+pub const ROLE_BOX_TOP: u16 = 1 << 7;
+pub const ROLE_BOX_BOT: u16 = 1 << 8;
+pub const ROLE_ERR_ROW: u16 = 1 << 9;
+pub const ROLE_TOOL_FOLDED: u16 = 1 << 10;
+pub const ROLE_TOOL_HEAD: u16 = 1 << 11;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LineKind {
@@ -277,11 +287,22 @@ pub fn compute_visible_transcript(
         }
         if in_peer_card {
             if is_echo_line(text) && super::panel::sendto::header_look(text).is_none() {
+                let shown_text = if !show_events && kind != LineKind::Tool {
+                    let Some(cleaned) = crate::call_room::strip_call_done_display_line(text) else { continue };
+                    cleaned
+                } else {
+                    text.clone()
+                };
                 let style = if kind == LineKind::Tool { STYLE_TOOL } else { STYLE_USER };
-                out.push((i, *seq, text.clone(), style | ROLE_PEER_BG));
+                out.push((i, *seq, shown_text, style | ROLE_PEER_BG));
                 continue;
             }
             in_peer_card = false;
+        }
+        let mut display_text = text.clone();
+        if !show_events && !in_cmd && kind == LineKind::Agent && !text.starts_with(crate::leads::TAG) {
+            let Some(cleaned) = crate::call_room::strip_call_done_display_line(text) else { continue };
+            display_text = cleaned;
         }
         let role = if text == "$" || text.starts_with("$ ") {
             in_cmd = true;
@@ -300,7 +321,7 @@ pub fn compute_visible_transcript(
             in_cmd = false;
             default_role(text)
         };
-        out.push((i, *seq, text.clone(), role));
+        out.push((i, *seq, display_text, role));
     }
     for idx in 0..out.len() {
         if out[idx].3 & ROLE_BOX != 0 {
@@ -352,6 +373,8 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
         STYLE_CMD_OUT => CMD_OUT_INK,
         STYLE_EXIT_ERR => EXIT_ERR_INK,
         STYLE_ERROR => ERROR_INK,
+        STYLE_TOOL_FOLD => TOOL_FOLD_INK,
+        STYLE_TOOL_HEAD => TOOL_HEAD_INK,
         _ => AGENT_INK,
     };
     let badge = match style {
@@ -359,6 +382,26 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
         STYLE_TOOL if text.starts_with("[tool]") => Some((6, TOOL_BADGE_INK)),
         STYLE_TOOL if text.starts_with("[patch]") => Some((7, TOOL_BADGE_INK)),
         STYLE_TOOL if text.starts_with("> ") || text == ">" => Some((1, TOOL_BADGE_INK)),
+        STYLE_TOOL_FOLD | STYLE_TOOL_HEAD | STYLE_EXIT_ERR
+            if text.starts_with("\u{25b8} [tool]") || text.starts_with("\u{25be} [tool]") =>
+        {
+            Some((10, TOOL_BADGE_INK))
+        }
+        STYLE_TOOL_FOLD | STYLE_TOOL_HEAD | STYLE_EXIT_ERR
+            if text.starts_with("\u{25b8} [patch]") || text.starts_with("\u{25be} [patch]") =>
+        {
+            Some((11, TOOL_BADGE_INK))
+        }
+        STYLE_TOOL_FOLD | STYLE_TOOL_HEAD | STYLE_EXIT_ERR
+            if text.starts_with("\u{25b8} $") || text.starts_with("\u{25be} $") =>
+        {
+            Some((5, CMD_BADGE_INK))
+        }
+        STYLE_TOOL_FOLD | STYLE_TOOL_HEAD | STYLE_EXIT_ERR
+            if text.starts_with("\u{25b8} ") || text.starts_with("\u{25be} ") =>
+        {
+            Some((3, TOOL_BADGE_INK))
+        }
         _ => None,
     };
     let mut out = AttrsList::new(&list.defaults().color(col));
@@ -426,20 +469,34 @@ pub fn paint_transcript_decorations(
                 }
             } else if role & ROLE_BOX != 0 && bx0 < bx1 {
                 let err_row = role & ROLE_ERR_ROW != 0;
+                let head_row = role & ROLE_TOOL_HEAD != 0;
+                let folded_row = role & ROLE_TOOL_FOLDED != 0;
                 let top_edge = (role & ROLE_BOX_TOP != 0) && py == raw_r0;
                 let bot_edge = (role & ROLE_BOX_BOT != 0) && py == raw_r1 - 1;
+                let bdr = if err_row { CMD_ERR_BORDER } else { CMD_BORDER };
                 let fill_col = if top_edge || bot_edge {
-                    CMD_BORDER
+                    bdr
                 } else if err_row {
                     CMD_ERR_BG
+                } else if head_row {
+                    TOOL_HEAD_BG
+                } else if folded_row {
+                    TOOL_FOLD_BG
                 } else {
                     CMD_BG
                 };
                 buf[row_start + bx0..row_start + bx1].fill(fill_col);
                 let rx1 = (bx0 + rail_w).min(bx1);
-                buf[row_start + bx0..row_start + rx1].fill(if err_row { CMD_ERR_RAIL } else { CMD_RAIL });
+                let rail_col = if err_row {
+                    CMD_ERR_RAIL
+                } else if head_row {
+                    TOOL_HEAD_RAIL
+                } else {
+                    CMD_RAIL
+                };
+                buf[row_start + bx0..row_start + rx1].fill(rail_col);
                 if bx1 > bx0 + 1 {
-                    buf[row_start + bx1 - 1] = CMD_BORDER;
+                    buf[row_start + bx1 - 1] = bdr;
                 }
             }
         }
@@ -456,12 +513,17 @@ impl App {
 
     pub(crate) fn visible_transcript_lines(&self, raw_end: usize) -> Vec<(usize, i64, String, u16)> {
         let Some(view) = self.view.as_ref() else { return Vec::new() };
-        compute_visible_transcript(&view.lines, raw_end, self.ui.show_events)
+        let base = compute_visible_transcript(&view.lines, raw_end, self.ui.show_events);
+        if self.ui.show_events || self.active_call_open() {
+            base
+        } else {
+            super::tool_fold::apply(base, &self.ui.expanded_tools, &self.session)
+        }
     }
 
     pub(crate) fn shown_lines_dump(&self) -> Vec<String> {
         let Some(view) = self.view.as_ref() else { return Vec::new() };
-        compute_visible_transcript(&view.lines, view.lines.len(), self.ui.show_events)
+        self.visible_transcript_lines(view.lines.len())
             .into_iter()
             .map(|(_, _, text, _)| text)
             .collect()

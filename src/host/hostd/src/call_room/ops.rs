@@ -249,6 +249,60 @@ pub fn op_close(shared: &Shared, call_id: &str) -> Reply {
     Ok(obj(json!({"call_id": resolved_cid, "closed": true})))
 }
 
+pub fn strip_call_done(text: &str) -> (String, bool) {
+    const MARKER: &str = "[call done]";
+    let mut found = false;
+    let mut out = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if i + MARKER.len() <= bytes.len()
+            && bytes[i..i + MARKER.len()].eq_ignore_ascii_case(MARKER.as_bytes())
+        {
+            found = true;
+            i += MARKER.len();
+            continue;
+        }
+        let ch = text[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    let trimmed_end = out.trim_end_matches([' ', '\t']);
+    for plen in (6..MARKER.len()).rev() {
+        let prefix = &MARKER.as_bytes()[..plen];
+        if trimmed_end.len() >= plen
+            && trimmed_end.as_bytes()[trimmed_end.len() - plen..].eq_ignore_ascii_case(prefix)
+        {
+            found = true;
+            out.truncate(trimmed_end.len() - plen);
+            break;
+        }
+    }
+    if !found {
+        return (text.to_string(), false);
+    }
+    let mut lines: Vec<&str> = out.split('\n').map(|l| l.trim_end_matches([' ', '\t'])).collect();
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    (lines.join("\n"), true)
+}
+
+pub fn strip_call_done_display_line(line: &str) -> Option<String> {
+    if let Some(rest) = line.strip_prefix(">> ") {
+        let (cleaned, found) = strip_call_done(rest);
+        if !found {
+            return Some(line.to_string());
+        }
+        return if cleaned.trim().is_empty() { None } else { Some(format!(">> {cleaned}")) };
+    }
+    let (cleaned, found) = strip_call_done(line);
+    if !found {
+        return Some(line.to_string());
+    }
+    if cleaned.trim().is_empty() { None } else { Some(cleaned) }
+}
+
 pub fn dispatch_op(shared: &Shared, op: &str, request: &Map<String, Value>) -> Reply {
     match op {
         "call.list" => op_list(shared, request.get("include_closed").and_then(Value::as_bool).unwrap_or(false)),
@@ -317,5 +371,25 @@ mod tests {
         let reopened = op_start(&w.shared, TWO, ONE, None).unwrap();
         assert_eq!(reopened["call"]["call_id"], cid);
         assert_eq!(reopened["call"]["status"], "idle");
+    }
+
+    #[test]
+    fn strip_call_done_removes_full_and_clipped_markers_and_settles_transfer_room() {
+        let clipped_weather = ">> 오늘 서울 날씨(2026년 11월 13일, 한국시간): 조회 시점 현재 흐림, 약 12°C입니다. 오늘 낮 예보는 약 14~17°C, 밤에는 약 10~11°C이며 대체로 흐리겠습니다. 출처: 날씨 조회 도구(web weather)의 서울 실시간·시간별 예보. 조회 결과에 원문 URL이 제공되지 않아 출처 링크는 첨부할 수 없습니다. [call done";
+        assert_eq!(
+            strip_call_done_display_line(clipped_weather).as_deref(),
+            Some(">> 오늘 서울 날씨(2026년 11월 13일, 한국시간): 조회 시점 현재 흐림, 약 12°C입니다. 오늘 낮 예보는 약 14~17°C, 밤에는 약 10~11°C이며 대체로 흐리겠습니다. 출처: 날씨 조회 도구(web weather)의 서울 실시간·시간별 예보. 조회 결과에 원문 URL이 제공되지 않아 출처 링크는 첨부할 수 없습니다.")
+        );
+        assert_eq!(strip_call_done_display_line(">> [call done]"), None);
+        assert_eq!(strip_call_done("plain text without marker"), ("plain text without marker".to_string(), false));
+        assert_eq!(strip_call_done("답변 완료했습니다. [CALL DONE]\n"), ("답변 완료했습니다.".to_string(), true));
+
+        let w = world(&[ONE, TWO]);
+        w.with(ONE, |s| { s.provider = "codex"; s.settings.name = Some("Codex-L".into()); });
+        w.with(TWO, |s| { s.provider = "claude"; s.settings.name = Some("Claude-L".into()); });
+        let (cid, _) = crate::call_room::record_session_transfer(&w.shared, ONE, TWO, "서울 날씨 흐림 12도 [call done]", 1, true).unwrap();
+        let detail = op_get(&w.shared, &cid).unwrap();
+        assert_eq!(detail["call"]["active"], false);
+        assert_eq!(detail["call"]["entries"][0]["text"], "서울 날씨 흐림 12도");
     }
 }
