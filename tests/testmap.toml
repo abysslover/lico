@@ -113,6 +113,7 @@
 "tests/test_native_first_run.py" = ["gui", "host"]
 "tests/test_running_elsewhere.py" = ["host", "cli"]
 "tests/test_running_elsewhere_window.py" = ["gui", "host"]
+"tests/test_native_end_to_end.py" = ["gui", "host"]
 "tests/test_chats_resume_latest.py" = ["cli", "host"]
 "tests/test_new_chat_modal.py" = ["gui", "host"]
 "tests/test_session_comms_and_ux_fixes.py" = ["cli", "gui", "host"]
