@@ -1,14 +1,14 @@
 # M11 — The Provider's Own Default Home as a Visible "Native" Choice, Running-Elsewhere Safety, and the Empty-Resume Hint (`lico 0.2.7`)
 
-- Status: implemented (all three phases), awaiting owner G3 and G4
-- Version: 1.0.0
-- Approved: 2026-11-13 (G1 for M11 and G2 for M11-P01 to M11-P03 approved by the owner on 2026-11-13)
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-14)
+- Version: 1.0.1
+- Approved: 2026-11-13 (G1 for M11 and G2 for M11-P01 to M11-P03 approved by the owner on 2026-11-13; G3 and G4, with publication, approved on 2026-11-14)
 - Project: Lico
-- Updated: 2026-11-13
-- Base: the tip of `phase/M10-P04-verification-and-0-2-6` (M10 is not accepted or merged); later phases are stacked on the previous phase tip
-- Milestone branch: `milestone/M11-native-provider-home-chats` (created at the closing commit after acceptance)
+- Updated: 2026-11-14
+- Base: the tip of `phase/M10-P04-verification-and-0-2-6` (M10 was accepted and merged together with M11 on 2026-11-14); later phases are stacked on the previous phase tip
+- Milestone branch: `milestone/M11-native-provider-home-chats` (created at the closing commit, which is also the closing commit of M10)
 - Implementation: `phase/M11-P01-native-account` .. `phase/M11-P03-verification-and-0-2-7` (`lico 0.2.7`)
-- Next gate: G3 and G4 stay with the owner
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-14)
 
 ## Goal
 
@@ -38,6 +38,12 @@ AUTH-08 (no migration, copy, symlink or decryption of another application's cred
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M11-P01 | The Native account: virtual entry, one listing rule, settings, label, dialog and first-run prompt | [Plan](../../plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md) | [Report](../../reports/202611/20261113/20261113_13_M11-P01_native_account_report.md) | implemented |
-| M11-P02 | Running-elsewhere detection and refusal, the empty-Resume hint | [Plan](../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md) | [Report](../../reports/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_report.md) | implemented |
-| M11-P03 | End-to-end verification, measurements, and `lico 0.2.7` | [Plan](../../plans/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_plan.md) | [Report](../../reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md) | implemented |
+| M11-P01 | The Native account: virtual entry, one listing rule, settings, label, dialog and first-run prompt | [Plan](../../plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md) | [Report](../../reports/202611/20261113/20261113_13_M11-P01_native_account_report.md) | accepted & merged |
+| M11-P02 | Running-elsewhere detection and refusal, the empty-Resume hint | [Plan](../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md) | [Report](../../reports/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_report.md) | accepted & merged |
+| M11-P03 | End-to-end verification, measurements, and `lico 0.2.7` | [Plan](../../plans/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_plan.md) | [Report](../../reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md) | accepted & merged |
+
+## Gate record
+
+- G3 and G4 (with publication) for this milestone were given by the owner in the chat on 2026-11-14, in one instruction that covered M10 and M11 together, because M11 is stacked on M10: the chain moved to `main` by fast-forward to the M11-P03 tip `38a9974`, and this closing commit then recorded the acceptance. The owner named no individual tips; the chain tips are `b943496` (M10-P04) and `38a9974` (M11-P03).
+- What the owner had observed before giving it: `+ New chat` used on a real project folder (this is how the M11 finding came about: chats written before Lico was installed were not listed under the managed accounts), and, on a real open terminal, a project folder's open Claude Code session listed as running elsewhere (M11). Nothing beyond that was recorded as observed; the measurements in the phase reports were not independently reproduced at the gate.
+- Follow-up asked by the owner, not blocking this gate: the running-elsewhere row should show the chat's title and how long ago it was written, and the repeated `Native` text should be reduced; an ssh host's own default home as `Native` is a possible extension. Both are for a later minor release.
