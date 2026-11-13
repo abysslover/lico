@@ -706,7 +706,7 @@ impl Session {
         }
         let is_person = matches!(origin, Origin::Person | Origin::Session(0));
         self.peer_turn.on_record_input(is_person);
-        if matches!(origin, Origin::Session(hops) if hops >= 1) && !(self.made_by.is_some() && self.finished_seq < 0) {
+        if matches!(origin, Origin::Session(hops) if hops >= 1) && !crate::calls::is_create_prompt() {
             self.append(b"[peer turn started]".to_vec());
         } else if matches!(origin, Origin::PeerReply | Origin::PeerReplySession(_)) {
             self.append(b"[peer reply]".to_vec());

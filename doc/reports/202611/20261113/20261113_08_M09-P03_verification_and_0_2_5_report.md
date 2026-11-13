@@ -1,7 +1,7 @@
 # M09-P03 Report — End-to-End GUI & MCP Verification, Xvfb Inspection Bundle, Memory Budgets, and `lico 0.2.5` Release
 
 - Status: done (awaiting G3 inspection and G4 merge)
-- Version: 1.0.0
+- Version: 1.1.0
 - Date: 2026-11-13
 - Milestone: [M09 — Clean Call Control Markers, Collapsible Tool Cards, and Cross-Provider Session Creation (`lico 0.2.5`)](../../../milestones/202611/20261113/20261113_02_M09_collapsible_tools_and_cross_provider_create_milestone.md)
 - Plan: [M09-P03 plan](../../../plans/202611/20261113/20261113_08_M09-P03_verification_and_0_2_5_plan.md) (G1 and G2 approved by the owner on 2026-11-13)
@@ -20,11 +20,18 @@ installing the standalone `0.2.5` executable:
    - Updated `src/host/hostd/Cargo.toml` (`version = "0.2.5"`) and
      `src/host/hostd/Cargo.lock`, along with version assertions in
      `tests/test_control_parity.py` and `tests/test_single_executable.py`.
-2. **Active session tab re-focus from Call Room / detached views (`src/host/hostd/src/gui/confirm.rs`)**:
+2. **Active session tab re-focus & empty-tab peer-reply routing (`src/host/hostd/src/gui/confirm.rs`, `src/host/hostd/src/calls.rs`, `src/host/hostd/src/calls/tests.rs`, `src/host/hostd/src/session.rs`, `src/host/hostd/src/create.rs`, `src/host/hostd/src/mention.rs`)**:
    - Updated `row_click` and `close_tab_by_id` to invoke `switch_to(&id)` when
      `self.active_call_open()` or `self.view.is_none()` even when `id == self.session`,
      so clicking the active session's own top tab from an open `⇄` Call Room tab
      returns immediately to that session's chat view.
+   - Replaced the legacy `made_by.is_some() && finished_seq < 0` check with an
+     explicit RAII `calls::with_create_prompt` scope around `create`'s founding
+     prompt delivery so empty tabs opened via `mcp__lico__create` (`finished_seq < 0`)
+     immediately arm `PeerTurn` on incoming `mcp__lico__send` messages and relay
+     the peer's reply visibly back to the caller's open window (`[peer reply from ...]`)
+     and into the shared Call Room, while resolving `<Name> - made by <Creator>`
+     sessions by their base `<Name>` across `@Name` and `to="<Name>"` calls.
 3. **End-to-end GUI & MCP integration test (`tests/test_collapsible_tools_and_create_tab.py`, `tests/testmap.toml`)**:
    - Verified in a live Xvfb `ProductWindow` (`3.45 s` runtime, `< 15.0 s` budget):
      - `[call done]` and 201-character `LINE_CHARS`-clipped `[call done` tails
@@ -53,13 +60,13 @@ installing the standalone `0.2.5` executable:
 
 | Check | Measured result | Budget / Gate | Status |
 |---|---|---|---|
-| Rust unit tests (`umask 022` and `umask 077`) | `608 passed; 0 failed` (`1` ignored, both umasks; + `2 passed` in `synth_agent`) | `0` failures | Met |
+| Rust unit tests (`umask 022` and `umask 077`) | `610 passed; 0 failed` (`1` ignored, both umasks; + `2 passed` in `synth_agent`) | `0` failures | Met |
 | Full cold suite (`suite run --cold`) | `492` tests in `96` files, `0` failed, **`108.4 s`**, 4-worker harness tree peak **`1,788.1 MiB`** | `<= 180.0 s`, `<= 2,048.0 MiB` | Met |
 | Idle GUI memory, scale 1 (`idle_memory`, 10 accounts, 10k realistic lines, menu on) | `max = 25.25 MiB` (`24.86..25.25 MiB`), median PSS `16.64 MiB`, anon `3.94 MiB`, host `7.64 MiB` | `<= 50.0 MiB` (`PERF-01`) | Met |
 | Idle GUI memory, scale 2 (`idle_memory`, 2x HiDPI) | `max = 36.32 MiB` (`35.88..36.32 MiB`), median PSS `22.19 MiB`, anon `4.13 MiB`, host `7.64 MiB` | `<= 50.0 MiB` (`PERF-01`) | Met |
 | Hidden background session growth (`hidden_growth`, 10 vs 100 sessions) | `max = +0.38 MiB` (`25.09 MiB` -> `25.32 MiB`; host `8.88` -> `20.69 MiB`) | `<= +10.0 MiB` (`PERF-02`) | Met |
 | Clean two-clone reproducible build (`suite acceptance`) | Verified on clean committed `HEAD` (`lico 0.2.5` identical across two clean clones) | Byte-for-byte match | Met |
-| Module size ratchets (`ui.rs` / `core.rs` / `session.rs` / `transfer.rs` / `calls.rs` / `mod.rs` / `codex.rs` / `call_room.rs` / `call_view.rs` / `transcript.rs` / `create/tests.rs` / `mcp.rs` / `create.rs` / `confirm.rs` / `call_room/ops.rs` / `tool_fold.rs`) | `1,087` / `985` / `795` / `795` / `795` / `780` / `752` / `723` / `703` / `687` / `625` / `429` / `404` / `404` / `395` / `209` lines | `<= 1,120` / `<= 988` / `<= 800` | Met |
+| Module size ratchets (`ui.rs` / `core.rs` / `mention.rs` / `session.rs` / `transfer.rs` / `mod.rs` / `codex.rs` / `call_room.rs` / `call_view.rs` / `transcript.rs` / `create/tests.rs` / `calls.rs` / `mcp.rs` / `create.rs` / `confirm.rs` / `call_room/ops.rs` / `calls/tests.rs` / `tool_fold.rs`) | `1,087` / `985` / `796` / `795` / `795` / `780` / `752` / `723` / `703` / `687` / `625` / `499` / `429` / `404` / `404` / `395` / `370` / `209` lines | `<= 1,120` / `<= 988` / `<= 800` | Met |
 
 ## Gate status
 

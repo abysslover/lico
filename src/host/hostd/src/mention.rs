@@ -47,6 +47,12 @@ fn collect_candidates(shared: &Shared, exclude_id: Option<&str>) -> Vec<Candidat
     out
 }
 
+fn created_base_matches(name: &str, lower_target: &str) -> bool {
+    name.to_lowercase()
+        .split_once(" - made by ")
+        .is_some_and(|(base, _)| base.trim() == lower_target)
+}
+
 pub fn resolve_session_token(shared: &Shared, exclude_id: Option<&str>, raw_token: &str) -> Option<String> {
     let token = raw_token.trim();
     if token.is_empty() {
@@ -61,6 +67,14 @@ pub fn resolve_session_token(shared: &Shared, exclude_id: Option<&str>, raw_toke
             || c.label.to_lowercase() == lower
     }) {
         return Some(c.id.clone());
+    }
+    // 1b. Unambiguous match on `<Name> - made by <Creator>` base name.
+    let base_hits: Vec<&Candidate> = cands
+        .iter()
+        .filter(|c| c.name.as_deref().is_some_and(|n| created_base_matches(n, &lower)))
+        .collect();
+    if base_hits.len() == 1 {
+        return Some(base_hits[0].id.clone());
     }
     // 2. Exact match or >= 5-char prefix on session id (`s...`).
     if token.starts_with('s') && token.len() >= 5 && token.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
@@ -415,6 +429,8 @@ pub fn resolve_agent_target(shared: &Shared, caller: &str, raw_to: &str) -> Resu
     let list = shared.sessions.read().unwrap().clone();
     let mut running_hits = Vec::new();
     let mut all_hits = Vec::new();
+    let mut base_running_hits = Vec::new();
+    let mut base_all_hits = Vec::new();
     for arc in list {
         let s = arc.lock().unwrap();
         if s.purged {
@@ -425,6 +441,11 @@ pub fn resolve_agent_target(shared: &Shared, caller: &str, raw_to: &str) -> Resu
                 running_hits.push(s.id.clone());
             }
             all_hits.push(s.id.clone());
+        } else if s.settings.name.as_deref().is_some_and(|n| created_base_matches(n, &low)) {
+            if s.state == State::Running && s.id != caller {
+                base_running_hits.push(s.id.clone());
+            }
+            base_all_hits.push(s.id.clone());
         }
     }
     if running_hits.len() == 1 {
@@ -432,6 +453,12 @@ pub fn resolve_agent_target(shared: &Shared, caller: &str, raw_to: &str) -> Resu
     }
     if all_hits.len() == 1 {
         return Ok(all_hits.remove(0));
+    }
+    if base_running_hits.len() == 1 {
+        return Ok(base_running_hits.remove(0));
+    }
+    if base_all_hits.len() == 1 {
+        return Ok(base_all_hits.remove(0));
     }
     Err("unknown_session")
 }
@@ -458,7 +485,20 @@ fn resolve_explicit_named_peer(shared: &Shared, caller: &str, raw_tok: &str) -> 
             .filter(|(_, n)| n.to_lowercase() == low)
             .cloned()
             .collect();
-        (hits.len() == 1).then(|| hits.remove(0))
+        if hits.len() == 1 {
+            return Some(hits.remove(0));
+        }
+        if hits.is_empty() {
+            let mut base_hits: Vec<(String, String)> = candidates
+                .iter()
+                .filter(|(_, n)| created_base_matches(n, &low))
+                .cloned()
+                .collect();
+            if base_hits.len() == 1 {
+                return Some(base_hits.remove(0));
+            }
+        }
+        None
     };
     if let Some(hit) = check(raw_tok) {
         return Some(hit);
@@ -733,5 +773,24 @@ mod tests {
         let ctx = build_recent_context(&w.shared, ONE, 8, 16 * 1024);
         assert!(ctx.contains("User: ") && ctx.contains("Assistant: BCN:1"), "{ctx}");
         assert!(!ctx.contains("git status") && !ctx.contains("secret hidden peer turn"), "{ctx}");
+    }
+
+    #[test]
+    fn resolves_created_session_base_name_without_made_by_suffix() {
+        let w = world(&[ONE, TWO]);
+        w.with(ONE, |s| {
+            s.provider = "claude";
+            s.text_mode = true;
+            s.settings.name = Some("Claude-Left".into());
+        });
+        w.with(TWO, |s| {
+            s.provider = "claude";
+            s.text_mode = true;
+            s.settings.name = Some("Claude-Right - made by Claude-Left".into());
+        });
+        assert_eq!(resolve_session_token(&w.shared, Some(ONE), "Claude-Right").as_deref(), Some(TWO));
+        assert_eq!(resolve_agent_target(&w.shared, ONE, "@Claude-Right").as_deref(), Ok(TWO));
+        assert_eq!(resolve_agent_target(&w.shared, ONE, "Claude-Right").as_deref(), Ok(TWO));
+        assert_eq!(resolve_explicit_named_peer(&w.shared, ONE, "Claude-Right").map(|(id, _)| id).as_deref(), Some(TWO));
     }
 }

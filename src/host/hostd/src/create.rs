@@ -361,7 +361,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
         s.made_by = Some(caller.to_string());
         s.generation as i64
     };
-    match transfer::send(shared, Some(caller), &id, "text", prompt, By::Session) {
+    match calls::with_create_prompt(|| transfer::send(shared, Some(caller), &id, "text", prompt, By::Session)) {
         Ok(done) => {
             let kword = kind_word(caller_provider, target_kind);
             Ok(format!(

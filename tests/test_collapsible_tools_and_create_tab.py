@@ -247,6 +247,44 @@ def test_clean_call_done_collapsible_indigo_tool_cards_and_cross_provider_create
                 )
                 codex_new_row = next(r for r in conn.call(op="status")["sessions"] if "Codex-New" in r.get("name", ""))
                 assert codex_new_row["provider"] == "codex" and codex_new_row["account"] == acc_codex
+                assert "finished_seq" not in codex_new_row, "empty created tab has no completed turn yet"
+
+                #    (a2) Sending a greeting to the empty newly-created tab (`Codex-New`, `finished_seq < 0`)
+                #         relays `Codex-New`'s plain assistant reply visibly back into `Claude-L`'s open window!
+                w.proc.stdin.write("clock freeze\n")
+                w.proc.stdin.flush()
+                assert conn.call(
+                    op="input",
+                    session=s_claude,
+                    generation=g_claude,
+                    request_id="c-ping-codex-new",
+                    text='tool:send {"to": "Codex-New", "text": "수신 확인용 인사입니다. 받았음 답장 부탁합니다."}',
+                )["ok"] == 1
+                wait_for(
+                    lambda: (u := w.ui())
+                    and "send to 'Codex-New - made by Claude-L'" in (u.get("approval_bar") or "")
+                    and u["card_seen"] is True
+                    and u
+                )
+                w.proc.stdin.write("clock advance 900\n")
+                w.proc.stdin.flush()
+                u_modal_ping = wait_for(lambda: (u := w.ui()) and u["card_ready"] is True and u)
+                w.click(*_centre(u_modal_ping["layout"]["allow"]))
+                w.proc.stdin.write("clock run\n")
+                w.proc.stdin.flush()
+
+                u_relayed = wait_for(
+                    lambda: (u := w.ui())
+                    and u["selected"] == s_claude
+                    and any(ln.startswith(">> [peer reply from 'Codex-New - made by Claude-L'") for ln in u["shown_lines"])
+                    and any("수신 확인용 인사입니다" in ln for ln in u["shown_lines"])
+                    and u
+                )
+                assert any(
+                    "Codex-New - made by Claude-L" in c["title"] and c["entry_count"] >= 2
+                    for c in conn.call(op="call.list")["calls"]
+                ), conn.call(op="call.list")
+                assert u_relayed["selected"] == s_claude
 
                 #    (b) `Codex-L` opens a new Global `Claude` tab WITH initial prompt (`kind="claude"`, `scope="global"`)!
                 w.proc.stdin.write("clock freeze\n")
