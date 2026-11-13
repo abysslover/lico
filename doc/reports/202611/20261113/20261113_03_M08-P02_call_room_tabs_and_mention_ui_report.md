@@ -4,7 +4,7 @@
 - Milestone: `M08`
 - Phase: `M08-P02`
 - Branch: `phase/M08-P02-call-room-tabs-and-mention-ui`
-- Status: done
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 
 ## 1. Summary of Changes
 

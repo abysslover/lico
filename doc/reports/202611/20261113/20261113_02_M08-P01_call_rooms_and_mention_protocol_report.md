@@ -4,7 +4,7 @@
 - Milestone: `M08`
 - Phase: `M08-P01`
 - Branch: `phase/M08-P01-call-rooms-and-mention-protocol`
-- Status: done
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 
 ## 1. Summary of Changes
 

@@ -1,6 +1,6 @@
 # M08-P04 Report — Unified `/rename` Command, `mcp__lico__rename` Self-Rename Tool, and Agent-to-Agent `@SessionName` Addressing
 
-- Status: done (awaiting owner G3 inspection acceptance and G4 merge approval)
+- Status: accepted at G3 and merged to `main` (2026-11-13)
 - Version: 1.0.0
 - Date: 2026-11-13
 - Milestone: [M08 — Persistent Call Rooms, `@AgentName` Shared-Context Mentions, and Bounded Multi-Turn Agent Collaboration (`lico 0.2.4`)](../../../milestones/202611/20261113/20261113_01_M08_call_rooms_and_agent_mentions_milestone.md)
@@ -65,6 +65,4 @@ by the owner on `lico 0.2.4`:
 
 ## Gate status
 
-All four phases of Milestone `M08` (`M08-P01` through `M08-P04`, `lico 0.2.4`)
-are implemented, measured, and verified on their phase branches and await the
-owner's G3 inspection acceptance and G4 merge approval before merging to `main`.
+Accepted by the owner at G3 and merged to `main` (`milestone/M08-call-rooms-and-agent-mentions`) at G4 on 2026-11-13.
