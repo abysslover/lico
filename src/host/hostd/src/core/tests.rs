@@ -94,7 +94,7 @@ fn the_stop_reply_does_not_wait_for_a_session_lock_that_is_held() {
     let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
     let shared = Arc::new(Shared {
         cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
-        accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(),
+        accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(),
     });
     let held = Arc::new(Mutex::new(Session::new("held".to_string(), false, &dir, 100, 100)));
     shared.sessions.write().unwrap().push(held.clone());

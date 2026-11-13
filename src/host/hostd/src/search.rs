@@ -131,7 +131,7 @@ mod tests {
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap();
         Shared {
             cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(),
-            pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(),
+            pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(),
         }
     }
 

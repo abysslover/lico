@@ -18,7 +18,7 @@ pub const PER_SESSION: usize = 8;
 pub const TOTAL_TEXT: usize = 1 << 20;
 /// How long a request waits (seconds). A request not answered by then is dropped, and the agent is told.
 pub const EXPIRY: u64 = 12 * 3600;
-const MAX_KEPT: usize = 8;
+pub(crate) const MAX_KEPT: usize = 8;
 
 /// The bytes of text held for decisions, over the whole host.
 pub fn held_text() -> &'static Arc<AtomicUsize> {
@@ -55,7 +55,7 @@ struct Record {
 #[derive(Default)]
 pub struct Pending {
     records: Vec<Record>,
-    keeps: Vec<(&'static str, String)>, // what the person allowed for as long as this session lives: (tool, target)
+    pub(crate) keeps: Vec<(&'static str, String)>, // what the person allowed for as long as this session lives: (tool, target)
     pub(crate) grants: crate::screentools::grants::Grants, // the single-use yes of a capture or a clipboard read, until the agent calls again (S07a)
 }
 

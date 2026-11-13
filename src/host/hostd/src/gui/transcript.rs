@@ -80,6 +80,7 @@ pub fn classify(text: &str) -> LineKind {
                     | "peer turn started"
                     | "peer reply"
                     | "host notice"
+                    | "call summary"
             ) {
                 return LineKind::ControlEvent;
             }

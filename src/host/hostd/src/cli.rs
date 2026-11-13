@@ -36,6 +36,9 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   search QUERY [--session ID] [--limit N]   search conversation text across one session or all sessions\n\
   files [DIR] [--hidden|-a] | files --read FILE   list a working directory (hidden off by default) or read up to 64 KiB of a regular file\n\
   ssh hosts | ssh check HOST     list SSH hosts from ~/.ssh/config or probe connectivity and installed claude/codex\n\
+  call list [--all] | call show ID | call start --from S1 --to S2 [TEXT|-]\n\
+  call say ID TEXT|- [--to SESSION] | call hangup ID | call close ID\n\
+                                 manage persistent inter-session Call Rooms (`⇄ A · B`)\n\
   settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20]\n\
            [--show-hidden on|off] [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
                                  show or update host and window settings\n\
@@ -613,6 +616,53 @@ pub fn run(args: Vec<String>) {
             let approval: i64 = number.parse().unwrap_or_else(|_| die(1, USAGE));
             let offset: i64 = rest.first().map_or(0, |at| at.parse().unwrap_or_else(|_| die(1, USAGE)));
             expect_ok(call(&mut conn, json!({"op": "approval.text", "session": session, "generation": generation, "approval_id": approval, "offset": offset})));
+        }
+        ["call", "list", rest @ ..] => {
+            if !matches!(rest, [] | ["--all"]) {
+                die(1, USAGE);
+            }
+            let mut req = json!({"op": "call.list"});
+            if !rest.is_empty() {
+                req["include_closed"] = json!(true);
+            }
+            expect_ok(call(&mut connect(&socket), req));
+        }
+        ["call", "show", cid] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "call.get", "call": cid})));
+        }
+        ["call", "start", ..] => {
+            let (Some(from), Some(to)) = (flag(&args, "--from"), flag(&args, "--to")) else { die(1, USAGE) };
+            let mut text_arg: Option<String> = None;
+            let mut idx = 2usize;
+            while idx < args.len() {
+                match args[idx].as_str() {
+                    "--from" | "--to" => idx += 2,
+                    other if text_arg.is_none() => {
+                        text_arg = Some(if other == "-" { text_from_stdin() } else { with_lf(other) });
+                        idx += 1;
+                    }
+                    _ => die(1, USAGE),
+                }
+            }
+            let mut req = json!({"op": "call.start", "from": from, "to": to});
+            if let Some(t) = text_arg {
+                req["text"] = json!(t);
+            }
+            expect_ok(call(&mut connect(&socket), req));
+        }
+        ["call", "say", cid, raw_text, ..] => {
+            let text_val = if *raw_text == "-" { text_from_stdin() } else { with_lf(raw_text) };
+            let mut req = json!({"op": "call.say", "call": cid, "text": text_val});
+            if let Some(to) = flag(&args, "--to") {
+                req["to"] = json!(to);
+            }
+            expect_ok(call(&mut connect(&socket), req));
+        }
+        ["call", "hangup", cid] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "call.hangup", "call": cid})));
+        }
+        ["call", "close", cid] => {
+            expect_ok(call(&mut connect(&socket), json!({"op": "call.close", "call": cid})));
         }
         ["view", "attach", session, ..] => {
             let kind = flag(&args, "--kind").unwrap_or_else(|| "cli".to_string());

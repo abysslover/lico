@@ -49,7 +49,7 @@ fn status_of(code: &str) -> u16 {
         "folder_not_absolute" | "folder_missing" | "folder_not_directory" | "folder_unreadable" | "folder_protected" => 400,
         "file_not_regular" | "file_unreadable" => 400,
         "worktree_needs_folder" | "not_git_repo" | "invalid_branch" => 400,
-        "unknown_op" | "unknown_session" | "unknown_account" | "unknown_view" | "unknown_request" | "unknown_approval" | "file_missing" => 404,
+        "unknown_op" | "unknown_session" | "unknown_account" | "unknown_view" | "unknown_request" | "unknown_approval" | "unknown_call" | "file_missing" => 404,
         "stale_generation" | "session_exited" | "branch_exists" | "worktree_dirty" => 409,
         "too_large" => 413,
         _ => 503,
@@ -453,6 +453,48 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
         ["v1", "ssh", "hosts"] => {
             allowed(method == "GET")?;
             crate::ssh::ssh_hosts(shared)
+        }
+        ["v1", "calls"] => match method {
+            "GET" => {
+                let qmap = query_map(&request.query).map_err(bad)?;
+                if qmap.keys().any(|k| k != "include_closed") {
+                    return Err(bad("bad_request"));
+                }
+                let inc = match qmap.get("include_closed").and_then(Value::as_str) {
+                    None | Some("0" | "false") => false,
+                    Some("1" | "true") => true,
+                    Some(_) => return Err(bad("bad_request")),
+                };
+                crate::call_room::op_list(shared, inc)
+            }
+            "POST" => {
+                let mut map = body_map(request).map_err(bad)?;
+                map.insert("op".into(), json!("call.start"));
+                if !valid_request("call.start", &map) {
+                    return Err(bad("bad_request"));
+                }
+                crate::call_room::dispatch_op(shared, "call.start", &map)
+            }
+            _ => return Err((405, "bad_request")),
+        },
+        ["v1", "calls", cid] if id_ok(cid) => {
+            allowed(method == "GET")?;
+            crate::call_room::op_get(shared, cid)
+        }
+        ["v1", "calls", cid, action @ ("say" | "hangup" | "close")] if id_ok(cid) => {
+            allowed(method == "POST")?;
+            let op = match *action {
+                "say" => "call.say",
+                "hangup" => "call.hangup",
+                _ => "call.close",
+            };
+            let mut map = if request.body.is_empty() { Map::new() } else { body_map(request).map_err(bad)? };
+            map.insert("op".into(), json!(op));
+            map.insert("call".into(), json!(cid));
+            if !valid_request(op, &map) {
+                return Err(bad("bad_request"));
+            }
+            crate::call_room::dispatch_op(shared, op, &map)
         }
         ["v1", "ssh", "check"] => {
             allowed(method == "POST")?;

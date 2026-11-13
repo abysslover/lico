@@ -22,7 +22,7 @@ pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
-    "folder.git", "folder.list", "folder.read", "session.search", "session.past", "account.rename", "session.mode", "capabilities", "ssh.hosts", "ssh.check",
+    "folder.git", "folder.list", "folder.read", "session.search", "session.past", "account.rename", "session.mode", "capabilities", "ssh.hosts", "ssh.check", "call.list", "call.get", "call.start", "call.say", "call.hangup", "call.close",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;
@@ -68,7 +68,7 @@ pub struct Shared {
     pub started: Instant,
     pub pending_creates: AtomicUsize,
     pub accounts: Mutex<crate::accounts::Accounts>,
-    pub logins: crate::login::Logins, pub clip: crate::clipwrite::Relay, // the second: the clipboard writes that wait for a window
+    pub logins: crate::login::Logins, pub clip: crate::clipwrite::Relay, pub calls: crate::call_room::CallStore, // the second: the clipboard writes that wait for a window
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;
@@ -348,7 +348,7 @@ pub fn status(shared: &Shared) -> Reply {
     crate::pending::sweep_all(shared); // a request that has waited too long ends here, and its asker is told
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(shared, &s.lock().unwrap())).collect();
-    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared)})))
+    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "calls": crate::call_room::status_json(shared), "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared)})))
 }
 
 /// Which executable this process runs: a hash of its own file as it was started (a replaced file on disk does not change it), so a window and a host
@@ -744,6 +744,12 @@ pub fn snapshot(shared: &Shared, session: &str, generation: Option<i64>) -> Repl
 /// An input is dispatched at most once per request id: a repeat returns its state. No generation: the target is whatever execution runs now (a transfer).
 /// `attachment`: the name of a pasted picture (a Claude session only; judged after the states, before the file; the caller removes the file, see `pasted::with_cleanup`).
 pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id: &str, text: &str, origin: Origin, attachment: Option<&str>) -> Reply {
+    let llm_buf = match (origin == Origin::Person && attachment.is_none()).then(|| crate::mention::route_person_input(shared, session, generation, request_id, text)) {
+        Some(crate::mention::PersonRoute::Handled(reply)) => return reply,
+        Some(crate::mention::PersonRoute::Augmented { llm_text }) => Some(llm_text),
+        _ => None,
+    };
+    let send_text = llm_buf.as_deref().unwrap_or(text);
     let found = find(shared, session).ok_or("unknown_session")?;
     let mut s = found.lock().unwrap();
     check_generation(&s, generation)?;
@@ -754,11 +760,11 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
     if s.state == State::Exited { return Err("session_exited"); }
     let picture = crate::pasted::take(shared, attachment, s.claude.is_some())?;
     if s.codex.is_some() {
-        crate::codex::send_input(&mut s, request_id, text)?;
+        crate::codex::send_input(&mut s, request_id, send_text)?;
         s.record_input(request_id, text, origin, crate::session::now_secs());
     } else if s.claude.is_some() {
         let shown = crate::pasted::echo(text, picture.as_ref());
-        crate::claude::send_input(&mut s, request_id, text, picture)?;
+        crate::claude::send_input(&mut s, request_id, send_text, picture)?;
         s.record_input(request_id, &shown, origin, crate::session::now_secs());
     } else {
         if s.input_tx.is_none() { return Err("session_exited"); }

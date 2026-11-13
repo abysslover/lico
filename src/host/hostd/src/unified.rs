@@ -6,6 +6,7 @@
 mod accounts;
 mod admin;
 mod broker;
+mod call_room;
 mod calls;
 mod capture;
 mod claude;
@@ -39,6 +40,7 @@ mod login;
 mod marks;
 mod mcp;
 mod memory;
+mod mention;
 mod notify;
 mod past;
 mod pasted;

@@ -26,8 +26,8 @@ _CONTROL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u061c\u200b\u200e\u2
 TAG = "[agent] "
 LEADS = (">>", "$", ">")                                     # a lead counts when a space or the end of the record follows it
 NOTES = ("session started", "session closed", "provider reconnected", "provider disconnected", "tool", "tool error", "error", "patch", "input refused",
-         "account changed", "account issue", "peer turn started", "peer reply", "host notice")
-NOTE_STEMS = ("turn ", "exit ", "log recovered:")
+         "account changed", "account issue", "peer turn started", "peer reply", "host notice", "call summary")
+NOTE_STEMS = ("turn ", "exit ", "log recovered:", "lico call ", "host verification:")
 _IGNORABLE = re.compile("[\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u2028-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0"
                         "\ufff0-\ufff8\U0001bca0-\U0001bca3\U0001d173-\U0001d17a\U000e0000-\U000e0fff"       # the default-ignorable characters
                         + "".join(f"{chr(low)}-{chr(high)}" for low, high in MARKS) + "]")                       # and the format characters, marks and U+2800 (V4)

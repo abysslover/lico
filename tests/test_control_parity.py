@@ -68,6 +68,8 @@ def test_capabilities_matches_across_socket_cli_and_http():
             assert "capabilities" in sock_cap["ops"]
             assert "account.rename" in sock_cap["ops"]
             assert "session.mode" in sock_cap["ops"]
+            for call_op in ("call.list", "call.get", "call.start", "call.say", "call.hangup", "call.close"):
+                assert call_op in sock_cap["ops"], call_op
             assert sock_cap["socket_only_ops"] == [
                 "subscribe",
                 "unsubscribe",
@@ -94,6 +96,12 @@ def test_capabilities_matches_across_socket_cli_and_http():
                 "POST /v1/accounts",
                 "GET /v1/sessions/<id>/history",
                 "GET /v1/search",
+                "GET /v1/calls",
+                "POST /v1/calls",
+                "GET /v1/calls/<id>",
+                "POST /v1/calls/<id>/say",
+                "POST /v1/calls/<id>/hangup",
+                "POST /v1/calls/<id>/close",
             ):
                 assert route in sock_cap["http_routes"], route
             assert sock_cap["limits"]["max_request"] == v1.MAX_REQUEST
@@ -247,5 +255,62 @@ def test_post_v1_rejects_socket_only_attachment_and_malformed_queries():
             ):
                 status, body = _http(port, "GET", bad_path, token)
                 assert status == 400 and body is not None and body["error"] == "bad_request", (bad_path, status, body)
+        finally:
+            host.stop()
+
+
+def test_call_room_parity_across_socket_cli_and_http():
+    with private_dir() as directory:
+        token_file = os.path.join(directory, "http.token")
+        host, _ = start(
+            directory,
+            sessions=2,
+            producing=0,
+            history=2,
+            extra=["--text", "--http-port", "auto", "--http-token-file", token_file],
+        )
+        try:
+            s1, s2 = host.sessions
+            port = host.http_port
+            token = Path(token_file).read_text().strip()
+            conn = Conn(host.socket)
+            assert conn.call(op="session.rename", session=s1, name="Pri-Lico")["ok"] == 1
+            assert conn.call(op="session.rename", session=s2, name="Pri-Avatar")["ok"] == 1
+
+            status, started = _http(port, "POST", "/v1/calls", token, {"from": s1, "to": s2, "text": "초기 호출 테스트"})
+            assert status == 200 and started is not None
+            assert v1.validate_response("call.start", started) == []
+            cid = started["call"]["call_id"]
+            assert started["call"]["title"] == "Pri-Lico · Pri-Avatar"
+
+            cli_list = cli(host, "call", "list")
+            assert cli_list.returncode == 0, cli_list.stderr
+            listed = json.loads(cli_list.stdout.strip())
+            assert v1.validate_response("call.list", listed) == []
+            assert [c["call_id"] for c in listed["calls"]] == [cid]
+
+            status, said = _http(port, "POST", f"/v1/calls/{cid}/say", token, {"text": "사람 중재 메시지"})
+            assert status == 200 and said is not None
+            assert v1.validate_response("call.say", said) == []
+
+            cli_show = cli(host, "call", "show", cid[:7])
+            assert cli_show.returncode == 0, cli_show.stderr
+            shown = json.loads(cli_show.stdout.strip())
+            assert v1.validate_response("call.get", shown) == []
+            assert len(shown["call"]["entries"]) >= 2
+
+            cli_hang = cli(host, "call", "hangup", cid)
+            assert cli_hang.returncode == 0, cli_hang.stderr
+            hung = json.loads(cli_hang.stdout.strip())
+            assert v1.validate_response("call.hangup", hung) == []
+            assert hung["call"]["status"] == "paused"
+
+            status, closed = _http(port, "POST", f"/v1/calls/{cid}/close", token)
+            assert status == 200 and closed is not None
+            assert v1.validate_response("call.close", closed) == []
+            assert closed["closed"] is True
+
+            status, missing = _http(port, "GET", "/v1/calls/c00000000", token)
+            assert status == 404 and missing is not None and missing["error"] == "unknown_call"
         finally:
             host.stop()

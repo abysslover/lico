@@ -377,6 +377,7 @@ mod tests {
             accounts: std::sync::Mutex::new(crate::accounts::Accounts::load(&accounts_dir).unwrap()),
             logins: std::sync::Mutex::new(std::collections::HashMap::new()),
             clip: Default::default(),
+            calls: Default::default(),
         })
     }
 

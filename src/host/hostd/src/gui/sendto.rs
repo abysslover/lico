@@ -384,6 +384,7 @@ pub enum Look {
 
 const SESSION: &str = ">> [from session '";
 const PEER_REPLY: &str = ">> [peer reply from '";
+const CALL_CARD: &str = ">> [\u{21c4} call '";
 const PERSON: &str = ">> [from the person | ";
 
 fn session_header(rest: &str, prefix_len: usize, has_kind: bool) -> Option<Look> {
@@ -397,14 +398,50 @@ fn session_header(rest: &str, prefix_len: usize, has_kind: bool) -> Option<Look>
     (id_ok && tail_ok).then(|| Look::Session(prefix_len..prefix_len + len))
 }
 
+fn call_header(rest: &str, prefix_len: usize) -> Option<Look> {
+    let len = rest.find('\'').filter(|&n| n > 0)?;
+    if rest[..len].contains(['[', ']', '|', '(', ')']) {
+        return None;
+    }
+    let (cid, tail) = rest[len..].strip_prefix("' (")?.split_once(") | ")?;
+    let id_ok = cid.len() == 7 && cid.starts_with('c') && cid[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+    let Some(body) = tail.strip_suffix(']') else { return None };
+    let Some((clock, note)) = body.split_once(" | ") else { return None };
+    let c = clock.as_bytes();
+    let clock_ok = c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit());
+    (id_ok && clock_ok && !note.trim().is_empty()).then(|| Look::Session(prefix_len..prefix_len + len))
+}
+
 pub fn header_look(text: &str) -> Option<Look> {
     if let Some(rest) = text.strip_prefix(SESSION) {
         session_header(rest, SESSION.len(), true)
     } else if let Some(rest) = text.strip_prefix(PEER_REPLY) {
         session_header(rest, PEER_REPLY.len(), false)
+    } else if let Some(rest) = text.strip_prefix(CALL_CARD) {
+        call_header(rest, CALL_CARD.len())
     } else {
         text.strip_prefix(PERSON).filter(|tail| fields(tail)).map(|_| Look::Person)
     }
+}
+
+/// Extract the 7-char Call Room id (`cXXXXXX`) from a `>> [⇄ call ...]` or `>> [peer reply ... | call cXXXXXX ...]` line.
+#[allow(dead_code)]
+pub fn extract_call_id7(text: &str) -> Option<&str> {
+    if let Some(rest) = text.strip_prefix(CALL_CARD) {
+        let len = rest.find('\'')?;
+        let (cid, _) = rest[len..].strip_prefix("' (")?.split_once(") | ")?;
+        if cid.len() == 7 && cid.starts_with('c') && cid[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+            return Some(cid);
+        }
+    } else if text.starts_with(PEER_REPLY) {
+        if let Some(after) = text.rsplit_once(" | call ").map(|(_, r)| r) {
+            let cid = after.split_whitespace().next()?;
+            if cid.len() == 7 && cid.starts_with('c') && cid[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                return Some(cid);
+            }
+        }
+    }
+    None
 }
 
 /// `14:02 | message | 5 B]` or `... | selection | 3.1 KiB, 24 lines]` (or `conversation`), and the line ends there.
@@ -416,12 +453,24 @@ fn fields(tail: &str) -> bool {
     c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && matches!(*kind, "message" | "selection" | "conversation") && size_shape(size)
 }
 
-/// `14:02 | 9 B]` for `[peer reply from 'NAME' (ID) | HH:MM | SIZE]`.
+/// `14:02 | 9 B]` or `14:02 | 9 B | call c012345 round 1/4]` for `[peer reply from 'NAME' (ID) | ...]`.
 fn reply_fields(tail: &str) -> bool {
     let Some(body) = tail.strip_suffix(']') else { return false };
-    let Some((clock, size)) = body.split_once(" | ") else { return false };
+    let parts: Vec<&str> = body.split(" | ").collect();
+    let (clock, size, call_seg) = match parts.as_slice() {
+        [clock, size] => (*clock, *size, None),
+        [clock, size, call_seg] => (*clock, *size, Some(*call_seg)),
+        _ => return false,
+    };
     let c = clock.as_bytes();
-    c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit()) && size_shape(size)
+    let clock_ok = c.len() == 5 && c[2] == b':' && [0, 1, 3, 4].iter().all(|&i| c[i].is_ascii_digit());
+    let call_ok = call_seg.is_none_or(|seg| {
+        let mut w = seg.split_whitespace();
+        matches!((w.next(), w.next(), w.next(), w.next()), (Some("call"), Some(cid), Some("round"), Some(rm))
+            if cid.len() == 7 && cid.starts_with('c') && cid[1..].bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+            && rm.split_once('/').is_some_and(|(r, m)| !r.is_empty() && !m.is_empty() && r.bytes().all(|b| b.is_ascii_digit()) && m.bytes().all(|b| b.is_ascii_digit())))
+    });
+    clock_ok && size_shape(size) && call_ok
 }
 
 /// What `size_text` and `lines_word` write: `27 B`, `3.1 KiB`, `1.0 MiB`, each with `, 24 lines` (or `, 1 line`) after it for a selection.

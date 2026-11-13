@@ -93,7 +93,10 @@ pub fn valid_label(value: &Value) -> bool {
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
     let required: &[&str] = match op {
-        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "session.past" => &[],
+        "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "session.past" | "call.list" => &[],
+        "call.get" | "call.hangup" | "call.close" => &["call"],
+        "call.start" => &["from", "to"],
+        "call.say" => &["call", "text"],
         "ssh.check" => &["host"],
         "session.resume" | "session.purge" | "session.close" => &["session", "generation"],
         "session.rename" => &["session", "name"],
@@ -208,6 +211,10 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.past", "query") => crate::past::valid_query(value),
             ("session.past", "offset") => in_range(value, 0, 1_000_000),
             ("session.past", "limit") => in_range(value, 1, crate::past::MAX_LIMIT as i64),
+            ("call.list", "include_closed") => value.is_boolean(),
+            ("call.get" | "call.say" | "call.hangup" | "call.close", "call") => valid_request_id(value),
+            ("call.start", "from" | "to") | ("call.say", "to") => valid_str(value, 64),
+            ("call.start" | "call.say", "text") => valid_text(value),
             _ => false,
         };
         if !ok {
@@ -336,6 +343,7 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "display.status" => crate::vdisplay::status_op(shared, session),
         "display.stop" => crate::vdisplay::stop_op(shared, session),
         "real_screen.stop" => crate::computer::real::stop_op(shared, request.get("session").and_then(Value::as_str)),
+        "call.list" | "call.get" | "call.start" | "call.say" | "call.hangup" | "call.close" => crate::call_room::dispatch_op(shared, op, request),
         "view.detach" => core::view_detach(shared, text(request, "view")),
         _ => return None,
     };

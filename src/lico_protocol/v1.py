@@ -24,7 +24,7 @@ ERRORS = ("bad_request", "unknown_op", "unknown_session", "stale_generation", "v
           "no_conversation_yet", "chain_depth", "expired", "record_not_found", "record_ambiguous", "record_format", "settings_failed",
           "xvfb_unavailable", "no_display",
           "worktree_needs_folder", "not_git_repo", "invalid_branch", "branch_exists", "worktree_failed", "worktree_dirty",
-          "file_missing", "file_not_regular", "file_unreadable", "ssh_unreachable")
+          "file_missing", "file_not_regular", "file_unreadable", "ssh_unreachable", "unknown_call")
 
 # Every operation of the protocol and where it is implemented. "oracle" operations
 # exist in the reference prototype and in every conformance candidate; "host"
@@ -75,6 +75,12 @@ INVENTORY = {
     "display.status": {"state": "host", "mutates": False},
     "display.stop": {"state": "host", "mutates": True},
     "real_screen.stop": {"state": "host", "mutates": True},
+    "call.list": {"state": "host", "mutates": False},
+    "call.get": {"state": "host", "mutates": False},
+    "call.start": {"state": "host", "mutates": True},
+    "call.say": {"state": "host", "mutates": True},
+    "call.hangup": {"state": "host", "mutates": True},
+    "call.close": {"state": "host", "mutates": True},
 }
 ORACLE_OPS = tuple(op for op, meta in INVENTORY.items() if meta["state"] == "oracle")
 
@@ -152,6 +158,41 @@ SNAPSHOT_BODY = {
     "optional": {"text": {"type": BOOL}},
 }
 
+CALL_ENTRY_BODY = _obj({
+    "seq": {"type": INT, "minimum": 1},
+    "ts": {"type": INT, "minimum": 0},
+    "hhmm": {"type": STR, "min_length": 5, "max_length": 5},
+    "speaker": {"type": STR, "min_length": 1, "max_length": 64},
+    "speaker_label": {"type": STR, "min_length": 1, "max_length": MAX_NAME},
+    "provider": {"type": STR, "enum": ["codex", "claude", "owner", "host", "synthetic"]},
+    "kind": {"type": STR, "min_length": 1, "max_length": 24},
+    "round": {"type": INT, "minimum": 0, "maximum": 16},
+    "text": {"type": STR, "max_bytes": MAX_INPUT_TEXT},
+})
+
+CALL_SUMMARY_BODY = _obj({
+    "call_id": {"type": STR, "min_length": 5, "max_length": 64, "charset": "id"},
+    "title": {"type": STR, "min_length": 1, "max_length": 140},
+    "session_a": {"type": STR, "max_length": 64},
+    "label_a": {"type": STR, "max_length": MAX_NAME},
+    "provider_a": {"type": STR, "enum": ["codex", "claude", "owner", "host", "synthetic"]},
+    "session_b": {"type": STR, "max_length": 64},
+    "label_b": {"type": STR, "max_length": MAX_NAME},
+    "provider_b": {"type": STR, "enum": ["codex", "claude", "owner", "host", "synthetic"]},
+    "status": {"type": STR, "enum": ["active", "idle", "paused", "closed"]},
+    "round": {"type": INT, "minimum": 0, "maximum": 16},
+    "max_rounds": {"type": INT, "minimum": 1, "maximum": 16},
+    "owner_authorized": {"type": BOOL},
+    "entry_count": {"type": INT, "minimum": 0},
+    "updated_at": {"type": INT, "minimum": 0},
+    "last_preview": {"type": STR, "max_length": 180},
+})
+
+CALL_DETAIL_BODY = _obj({
+    **CALL_SUMMARY_BODY["required"],
+    "entries": {"type": "array", "items": CALL_ENTRY_BODY},
+})
+
 REPLIES = {
     "hello": _obj({"v": _V, "ok": _OK, "protocol": {"type": INT, "enum": [PROTOCOL]}, "host": {"type": STR},
                    "max_request": {"type": INT}, "retain": {"type": INT, "minimum": 1},
@@ -197,6 +238,7 @@ REPLIES = {
                          "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY,
+                   "calls": {"type": "array", "items": CALL_SUMMARY_BODY},
                    "settings": SETTINGS_BODY,
                    "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
@@ -342,6 +384,12 @@ REPLIES = {
                            {**COMMON_REPLY_OPTIONAL, "geometry": {"type": STR, "max_length": 32}, "memory": MEMORY}),
     "display.stop": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "stopped": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
     "real_screen.stop": _obj({"v": _V, "ok": _OK, "stopped": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
+    "call.list": _obj({"v": _V, "ok": _OK, "calls": {"type": "array", "items": CALL_SUMMARY_BODY}}, COMMON_REPLY_OPTIONAL),
+    "call.get": _obj({"v": _V, "ok": _OK, "call": CALL_DETAIL_BODY}, COMMON_REPLY_OPTIONAL),
+    "call.start": _obj({"v": _V, "ok": _OK, "call": CALL_DETAIL_BODY}, COMMON_REPLY_OPTIONAL),
+    "call.say": _obj({"v": _V, "ok": _OK, "call": CALL_DETAIL_BODY, "dispatched": {"type": "array", "items": {"type": STR, "max_length": 64}}}, COMMON_REPLY_OPTIONAL),
+    "call.hangup": _obj({"v": _V, "ok": _OK, "call": CALL_SUMMARY_BODY}, COMMON_REPLY_OPTIONAL),
+    "call.close": _obj({"v": _V, "ok": _OK, "call_id": {"type": STR, "max_length": 64}, "closed": {"type": BOOL}}, COMMON_REPLY_OPTIONAL),
 }
 ERROR_REPLY = _obj({"v": _V, "ok": {"type": INT, "enum": [0]}, "error": {"type": STR, "enum": list(ERRORS)}},
                    COMMON_REPLY_OPTIONAL)
@@ -460,6 +508,15 @@ REQUESTS = {
     "display.status": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "display.stop": _obj({"session": {"type": STR, "max_length": 64}}, _COMMON_REQ),
     "real_screen.stop": _obj({}, {**_COMMON_REQ, "session": {"type": STR, "max_length": 64}}),
+    "call.list": _obj({}, {**_COMMON_REQ, "include_closed": {"type": BOOL}}),
+    "call.get": _obj({"call": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}}, _COMMON_REQ),
+    "call.start": _obj({"from": {"type": STR, "max_length": 64}, "to": {"type": STR, "max_length": 64}},
+                       {**_COMMON_REQ, "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}}),
+    "call.say": _obj({"call": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+                      "text": {"type": STR, "min_length": 1, "max_bytes": MAX_INPUT_TEXT, "no_control": True, "allow": "\n\t"}},
+                     {**_COMMON_REQ, "to": {"type": STR, "max_length": 64}}),
+    "call.hangup": _obj({"call": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}}, _COMMON_REQ),
+    "call.close": _obj({"call": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"}}, _COMMON_REQ),
     "capabilities": _obj({}, _COMMON_REQ),
 }
 

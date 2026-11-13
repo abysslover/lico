@@ -91,8 +91,15 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     }
     // what is already known to be refused is refused now, so that the person is not asked for a send that could not happen
     let label = receiver_label(shared, caller, to).map_err(|code| refusal(shared, caller, code))?;
-    if pending::kept(shared, caller, "send", to) || peer_reply_authorized(shared, caller, to) {
-        return match transfer::send(shared, Some(caller), to, "text", text, By::Session) {
+    let burst_step = crate::call_room::check_or_advance_burst(shared, caller, to)?;
+    let burst_allowed = burst_step
+        .as_ref()
+        .is_some_and(|(cid, _)| crate::call_room::is_owner_authorized(shared, cid));
+    if pending::kept(shared, caller, "send", to) || peer_reply_authorized(shared, caller, to) || burst_allowed {
+        BURST_ROUND.with(|c| c.set(burst_step.as_ref().map_or(0, |(_, r)| *r)));
+        let sent_res = transfer::send(shared, Some(caller), to, "text", text, By::Session);
+        BURST_ROUND.with(|c| c.set(0));
+        return match sent_res {
             Ok(done) => Ok(json!({"sent": true, "to": to, "delivery": done["delivery"], "size": done["size"], "receiver": done["receiver"]}).to_string()),
             Err(code) => Err(refusal(shared, caller, code)),
         };
@@ -134,14 +141,33 @@ fn send_card(label: &str, to: &str, text: &str, removed: usize) -> String {
     card_line(&format!("send to '{label}' ({})", transfer::id7(to)), text, removed)
 }
 
+thread_local! {
+    static BURST_ROUND: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 const MAX_PEER_QUEUE: usize = 8;
 const MAX_PEER_REPLY: usize = 32 * 1024;
 
+pub enum PeerDone {
+    Reply {
+        caller_id: String,
+        from_id: String,
+        from_label: String,
+        call_id: Option<String>,
+        round: u32,
+        reply_text: String,
+        explicit_sent: bool,
+        settled_burst_call: Option<String>,
+    },
+    SettledBurst(String),
+}
+
 #[derive(Default)]
 pub struct PeerTurn {
-    pub active: Option<(String, bool)>,
-    pub queue: VecDeque<String>,
+    pub active: Option<(String, Option<String>, u32, bool)>,
+    pub queue: VecDeque<(String, Option<String>, u32)>,
     pub reply_buf: String,
+    pub in_reply_burst: Option<(String, String, u32)>,
 }
 
 impl PeerTurn {
@@ -149,34 +175,73 @@ impl PeerTurn {
         self.active = None;
         self.queue.clear();
         self.reply_buf.clear();
+        self.in_reply_burst = None;
     }
 
     pub fn begin_or_queue(&mut self, caller_id: &str) {
-        if self.active.as_ref().is_some_and(|(c, _)| c == caller_id) {
-            return;
+        self.begin_call(caller_id, None, 1);
+    }
+
+    pub fn begin_call(&mut self, caller_id: &str, call_id: Option<String>, round: u32) {
+        if let Some((c, cid, r, _)) = self.active.as_mut() {
+            if c == caller_id {
+                if call_id.is_some() {
+                    *cid = call_id;
+                    *r = round;
+                }
+                return;
+            }
         }
         if self.active.is_none() {
-            self.active = Some((caller_id.to_string(), false));
+            self.active = Some((caller_id.to_string(), call_id, round.max(1), false));
             self.reply_buf.clear();
         } else if self.queue.len() < MAX_PEER_QUEUE {
-            self.queue.push_back(caller_id.to_string());
+            self.queue.push_back((caller_id.to_string(), call_id, round.max(1)));
+        }
+    }
+
+    pub fn attach_call(&mut self, caller_id: &str, call_id: String, round: u32) {
+        if let Some((_, cid, r)) = self.queue.iter_mut().rev().find(|item| item.0 == caller_id && item.1.is_none()) {
+            *cid = Some(call_id);
+            *r = round.max(1);
+            return;
+        }
+        if let Some((c, cid, r, _)) = self.active.as_mut() {
+            if c == caller_id {
+                *cid = Some(call_id);
+                *r = round.max(1);
+            }
+        }
+    }
+
+    pub fn cancel_call(&mut self, call_id: &str) {
+        self.queue.retain(|(_, cid, _)| cid.as_deref() != Some(call_id));
+        if self.in_reply_burst.as_ref().is_some_and(|(_, cid, _)| cid == call_id) {
+            self.in_reply_burst = None;
+        }
+        if self.active.as_ref().is_some_and(|(_, cid, _, _)| cid.as_deref() == Some(call_id)) {
+            self.drop_active();
         }
     }
 
     pub fn rollback_failed_send(&mut self, caller_id: &str) {
-        if self.queue.back().is_some_and(|c| c == caller_id) {
+        if self.queue.back().is_some_and(|(c, _, _)| c == caller_id) {
             self.queue.pop_back();
-        } else if self.active.as_ref().is_some_and(|(c, _)| c == caller_id) && self.reply_buf.is_empty() {
-            self.active = self.queue.pop_front().map(|c| (c, false));
+        } else if self.active.as_ref().is_some_and(|(c, _, _, _)| c == caller_id) && self.reply_buf.is_empty() {
+            self.active = self.queue.pop_front().map(|(c, cid, r)| (c, cid, r, false));
         }
     }
 
     pub fn is_answering(&self, target_id: &str) -> bool {
-        self.active.as_ref().is_some_and(|(c, _)| c == target_id)
+        self.active.as_ref().is_some_and(|(c, _, _, _)| c == target_id)
+    }
+
+    pub fn active_call_id(&self) -> Option<String> {
+        self.active.as_ref().and_then(|(_, cid, _, _)| cid.clone())
     }
 
     pub fn note_outbound_to(&mut self, target_id: &str) -> bool {
-        if let Some((caller, sent)) = self.active.as_mut() {
+        if let Some((caller, _, _, sent)) = self.active.as_mut() {
             if caller == target_id {
                 *sent = true;
                 return true;
@@ -197,25 +262,39 @@ impl PeerTurn {
         self.reply_buf.push_str(&crate::codex::clip(&cleaned, rem));
     }
 
-    pub fn finish(&mut self, self_id: &str, self_label: String) -> Option<(String, String, String, String, bool)> {
-        let (caller_id, explicit_sent) = self.active.take()?;
-        let reply = std::mem::take(&mut self.reply_buf);
-        self.active = self.queue.pop_front().map(|c| (c, false));
-        Some((caller_id, self_id.to_string(), self_label, reply, explicit_sent))
+    pub fn finish(&mut self, self_id: &str, self_label: String) -> Option<PeerDone> {
+        let settled_burst_call = self.in_reply_burst.take().map(|(_, cid, _)| cid);
+        if let Some((caller_id, call_id, round, explicit_sent)) = self.active.take() {
+            let reply_text = std::mem::take(&mut self.reply_buf);
+            self.active = self.queue.pop_front().map(|(c, cid, r)| (c, cid, r, false));
+            return Some(PeerDone::Reply {
+                caller_id,
+                from_id: self_id.to_string(),
+                from_label: self_label,
+                call_id,
+                round,
+                reply_text,
+                explicit_sent,
+                settled_burst_call,
+            });
+        }
+        settled_burst_call.map(PeerDone::SettledBurst)
     }
 
     pub fn drop_active(&mut self) {
-        self.active = self.queue.pop_front().map(|c| (c, false));
+        self.in_reply_burst = None;
+        self.active = self.queue.pop_front().map(|(c, cid, r)| (c, cid, r, false));
         self.reply_buf.clear();
     }
 }
 
 fn peer_reply_authorized(shared: &Shared, caller: &str, to: &str) -> bool {
-    let answering = core::find(shared, caller).is_some_and(|f| {
+    let (answering, call_id) = core::find(shared, caller).map_or((false, None), |f| {
         let s = f.lock().unwrap();
-        s.busy && s.peer_turn.is_answering(to)
+        (s.busy && s.peer_turn.is_answering(to), s.peer_turn.active_call_id())
     });
-    answering && pending::kept(shared, to, "send", caller)
+    let call_ok = call_id.as_deref().is_some_and(|cid| crate::call_room::is_owner_authorized(shared, cid));
+    answering && (call_ok || pending::kept(shared, to, "send", caller))
 }
 
 pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By) -> bool {
@@ -235,16 +314,51 @@ pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str,
     is_reply
 }
 
-pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, by: By, ok: bool) {
+pub(crate) fn after_peer_deliver(shared: &Shared, from: Option<&str>, to: &str, text: &str, by: By, ok: bool) {
+    let round = BURST_ROUND.with(|c| c.replace(0));
     if !ok && by == By::Session {
         if let (Some(caller_id), Some(found)) = (from, core::find(shared, to)) {
             found.lock().unwrap().peer_turn.rollback_failed_send(caller_id);
         }
+        return;
+    }
+    if ok && by == By::Session {
+        if let Some(sender) = from {
+            let both_providers = [sender, to].into_iter().all(|id| {
+                core::find(shared, id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex"))
+            });
+            if both_providers {
+                if let Some((cid, r)) = crate::call_room::record_session_transfer(shared, sender, to, text, round) {
+                    if let Some(found_to) = core::find(shared, to) {
+                        found_to.lock().unwrap().peer_turn.attach_call(sender, cid, r);
+                    }
+                }
+            }
+        }
     }
 }
 
-pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<(String, String, String, String, bool)>) {
-    let Some((caller_id, from_id, from_label, reply_text, explicit_sent)) = done else { return };
+pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<PeerDone>) {
+    let Some(done) = done else { return };
+    let (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call) = match done {
+        PeerDone::SettledBurst(cid) => {
+            crate::call_room::settle_call_idle(shared, &cid);
+            return;
+        }
+        PeerDone::Reply {
+            caller_id,
+            from_id,
+            from_label,
+            call_id,
+            round,
+            reply_text,
+            explicit_sent,
+            settled_burst_call,
+        } => (caller_id, from_id, from_label, call_id, round, reply_text, explicit_sent, settled_burst_call),
+    };
+    if let Some(cid) = settled_burst_call {
+        crate::call_room::settle_call_idle(shared, &cid);
+    }
     if explicit_sent || reply_text.trim().is_empty() {
         return;
     }
@@ -252,13 +366,44 @@ pub(crate) fn deliver_peer_reply(shared: &Shared, done: Option<(String, String, 
     if cleaned.trim().is_empty() || crate::folders::shows_nothing(&cleaned) {
         return;
     }
-    let body = crate::codex::clip(&transfer::defused(&cleaned), 56 * 1024);
+    let marked_done = cleaned.contains("[call done]");
+    let stripped = cleaned.replace("[call done]", "").trim().to_string();
+    let display_clean = if stripped.is_empty() || crate::folders::shows_nothing(&stripped) {
+        cleaned
+    } else {
+        stripped
+    };
+    let call_meta = crate::call_room::record_peer_reply(
+        shared,
+        call_id.as_deref(),
+        &caller_id,
+        &from_id,
+        &from_label,
+        round,
+        &display_clean,
+        marked_done,
+    );
+    if caller_id.is_empty() || caller_id == "owner" || call_meta.as_ref().is_some_and(|m| m.3) {
+        return;
+    }
+    if let Some((_, ref cid, r, _)) = call_meta {
+        if let Some(found_caller) = core::find(shared, &caller_id) {
+            let eff_r = if marked_done { crate::call_room::MAX_CALL_ROUNDS } else { r };
+            found_caller.lock().unwrap().peer_turn.in_reply_burst = Some((from_id.clone(), cid.clone(), eff_r));
+        }
+    }
+    let body = crate::codex::clip(&transfer::defused(&display_clean), 56 * 1024);
+    let call_suffix = match &call_meta {
+        Some((_, cid, r, _)) => format!(" | call {} round {r}/{}", crate::call_room::call_id7(cid), crate::call_room::MAX_CALL_ROUNDS),
+        None => String::new(),
+    };
     let head = format!(
-        "[peer reply from '{}' ({}) | {} | {}]",
+        "[peer reply from '{}' ({}) | {} | {}{}]",
         from_label,
         transfer::id7(&from_id),
         transfer::hhmm_now(),
-        transfer::size_text(cleaned.len())
+        transfer::size_text(display_clean.len()),
+        call_suffix
     );
     let payload = format!("{head}\n{body}");
     let req_id = format!("pr-{}", core::random_hex(8));

@@ -309,7 +309,7 @@ fn deliver(shared: &Shared, from: Option<&str>, to: &str, kind: &str, text: &str
     let is_reply = crate::calls::before_peer_deliver(shared, sender_id, to, by);
     let origin = if is_reply { Origin::PeerReplySession(hops) } else if sender.is_some() { Origin::Session(hops) } else { Origin::Person };
     let res = core::input(shared, to, None, &request_id, &delivered, origin, None);
-    crate::calls::after_peer_deliver(shared, sender_id, to, by, res.is_ok() || is_reply);
+    crate::calls::after_peer_deliver(shared, sender_id, to, text, by, res.is_ok() || is_reply);
     let file_path = stored.map(|(_, path)| path);
     drop(delivered);
     drop(body);
@@ -515,7 +515,7 @@ pub(crate) mod tests {
         let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
         let shared = Arc::new(Shared {
             cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
-            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(),
+            accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(),
         });
         std::fs::create_dir_all(path.join("log")).unwrap();
         let mut inputs = HashMap::new();
