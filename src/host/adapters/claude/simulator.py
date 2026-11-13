@@ -399,6 +399,12 @@ def turn(message):
             time.sleep(0.02)
         say("done thinking")
         out(result())
+    elif text.startswith("[peer reply from ") and "AUTO_CHAIN_TO:" in text and SERVER is not None:
+        target_sid = text.split("AUTO_CHAIN_TO:", 1)[1].split()[0].strip()
+        parsed_args = {"to": target_sid, "text": f"AUTO_CHAIN_TO:{target_sid}"}
+        out(assistant(tool=("mcp__lico__send", parsed_args)))
+        say("tool %s %s" % mcp(SERVER, "tools/call", {"name": "send", "arguments": parsed_args}, 4))
+        out(result())
     else:
         say("echo: " + text)
         out(result())

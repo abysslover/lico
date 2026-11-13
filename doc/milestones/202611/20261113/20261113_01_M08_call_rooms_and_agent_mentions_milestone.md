@@ -1,12 +1,12 @@
 # M08 — Persistent Call Rooms, `@AgentName` Shared-Context Mentions, and Bounded Multi-Turn Agent Collaboration (`lico 0.2.4`)
 
-- Status: in_progress
+- Status: awaiting_g3_g4
 - Approved: 2026-11-13 (G1 and G2 approved by the owner via explicit design choices A1/A2/A3/A4)
 - Project: Lico
 - Updated: 2026-11-13
-- Milestone branch: `milestone/M08-call-rooms-and-agent-mentions` (to be created at milestone close)
-- Implementation: In progress across `phase/M08-P01-call-rooms-and-mention-protocol` through `phase/M08-P03-call-verification-and-0-2-4` (`lico 0.2.4`)
-- Next gate: G3 inspection acceptance and G4 merge approval after `M08-P03`
+- Milestone branch: `milestone/M08-call-rooms-and-agent-mentions` (to be created at milestone close on G4 merge approval)
+- Implementation: Implemented across `phase/M08-P01-call-rooms-and-mention-protocol` through `phase/M08-P03-call-verification-and-0-2-4` (`lico 0.2.4`); awaiting owner G3 inspection acceptance and G4 merge approval
+- Next gate: G3 inspection acceptance and G4 merge approval
 
 ## Goal
 
@@ -73,7 +73,7 @@ or hang up the call directly.
 |---|---|---|---|---|---|---|
 | M08-P01 | Persistent Call Rooms, `@AgentName` shared-context protocol, host-verified `OWNER-AUTHORIZED` envelope, bounded 4-round-trip engine, and CLI/IPC/HTTP parity | [Plan](../../../plans/202611/20261113/20261113_02_M08-P01_call_rooms_and_mention_protocol_plan.md) | [Report](../../../reports/202611/20261113/20261113_02_M08-P01_call_rooms_and_mention_protocol_report.md) | — | — | done |
 | M08-P02 | Left sidebar `[ Calls ]` tab, top-bar `⇄ A·B` Call Room tabs with live human intervention & `Hang up`, `@mention` autocomplete popup, and clickable jump cards | [Plan](../../../plans/202611/20261113/20261113_03_M08-P02_call_room_tabs_and_mention_ui_plan.md) | [Report](../../../reports/202611/20261113/20261113_03_M08-P02_call_room_tabs_and_mention_ui_report.md) | — | — | done |
-| M08-P03 | End-to-end Call Room & `@mention` verification, resource budgets, Xvfb inspection bundle, and `lico 0.2.4` release | — | — | — | — | planned |
+| M08-P03 | End-to-end Call Room & `@mention` verification, resource budgets, Xvfb inspection bundle, and `lico 0.2.4` release | [Plan](../../../plans/202611/20261113/20261113_04_M08-P03_call_verification_and_0_2_4_plan.md) | [Report](../../../reports/202611/20261113/20261113_04_M08-P03_call_verification_and_0_2_4_report.md) | `202611/20261113/00003_M08-P03_call_rooms_and_mentions/` | — | done |
 
 ## Gates
 

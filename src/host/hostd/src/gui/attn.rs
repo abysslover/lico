@@ -212,7 +212,7 @@ impl App {
             return;
         }
         self.ui.restored_once = true;
-        if self.ui.markers || self.pending_show.is_some() || !self.session.is_empty() || self.ui.panel.is_some() {
+        if self.ui.markers || self.pending_show.is_some() || !self.session.is_empty() || self.active_call_open() || self.ui.panel.is_some() {
             return;
         }
         match self.ui.saved_view.as_str() {

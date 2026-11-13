@@ -225,7 +225,7 @@ impl App {
     /// The title and the lines of what the panel shows now, or the first screen when no session is selected.
     pub(crate) fn panel_view(&self) -> Option<(String, Vec<String>)> {
         let Some(p) = self.ui.panel.as_ref() else {
-            if self.session.is_empty() {
+            if self.session.is_empty() && !self.active_call_open() {
                 return Some(("select a session".into(), self.start_lines()));
             }
             return None;

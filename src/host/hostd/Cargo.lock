@@ -620,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "lico"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "cosmic-text",
  "serde_json",

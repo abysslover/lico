@@ -573,6 +573,9 @@ impl Session {
             self.state = state;
             self.state_at = now;
             self.last_active_at = now.max(self.last_active_at);
+            if state != State::Running {
+                self.peer_turn.reset_process();
+            }
             if state == State::Exited {
                 self.drop_requests(); // nobody is left to tell what became of them
             }
@@ -701,9 +704,9 @@ impl Session {
                 crate::registry::mark_dirty();
             }
         }
-        if matches!(origin, Origin::Person | Origin::Session(0)) {
-            self.peer_turn.clear();
-        } else if matches!(origin, Origin::Session(hops) if hops >= 1) && !(self.made_by.is_some() && self.finished_seq < 0) {
+        let is_person = matches!(origin, Origin::Person | Origin::Session(0));
+        self.peer_turn.on_record_input(is_person);
+        if matches!(origin, Origin::Session(hops) if hops >= 1) && !(self.made_by.is_some() && self.finished_seq < 0) {
             self.append(b"[peer turn started]".to_vec());
         } else if matches!(origin, Origin::PeerReply | Origin::PeerReplySession(_)) {
             self.append(b"[peer reply]".to_vec());

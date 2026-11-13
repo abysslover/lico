@@ -135,6 +135,8 @@ impl CallRoom {
             "label_b": self.label_b,
             "provider_b": self.provider_b,
             "status": self.status_str(),
+            "active": self.active,
+            "paused": self.paused,
             "round": self.round.min(self.max_rounds),
             "max_rounds": self.max_rounds,
             "owner_authorized": self.owner_authorized,
@@ -468,6 +470,12 @@ pub fn is_owner_authorized(shared: &Shared, call_id: &str) -> bool {
     guard.rooms.iter().any(|r| r.call_id == call_id && r.owner_authorized && !r.paused && !r.closed)
 }
 
+pub fn peek_pair_call_id(shared: &Shared, a: &str, b: &str) -> Option<String> {
+    let mut guard = shared.calls.inner.lock().unwrap();
+    ensure_loaded_and_sync(shared, &mut guard);
+    guard.rooms.iter().find(|r| !r.closed && r.matches_pair(a, b)).map(|r| r.call_id.clone())
+}
+
 /// Record a direct `transfer::send` (`mcp__lico__send` or `Send to session`) into the pair's Call Room
 /// and return `(call_id, round)` so `PeerTurn` links the reply to the same Call Room.
 pub fn record_session_transfer(shared: &Shared, from: &str, to: &str, text: &str, round: u32) -> Option<(String, u32)> {
@@ -548,10 +556,11 @@ pub fn settle_call_idle(shared: &Shared, call_id: &str) {
 /// Check whether an automatic multi-turn continuation from `caller` to `to` is allowed in the current burst.
 /// Returns `Ok(Some((call_id, next_round)))` inside a burst, `Ok(None)` when not in a burst, or `Err(refusal_msg)`.
 pub fn check_or_advance_burst(shared: &Shared, caller: &str, to: &str) -> Result<Option<(String, u32)>, String> {
-    let burst = core::find(shared, caller).and_then(|f| f.lock().unwrap().peer_turn.in_reply_burst.clone());
-    let Some((peer_id, call_id, completed_round)) = burst else {
-        // Still check if an existing Call Room between caller and to was explicitly hung up (`paused`)?
-        // Only block automatic sends if caller is in a peer burst; fresh human turns clear `paused`.
+    let burst = core::find(shared, caller).and_then(|f| {
+        let s = f.lock().unwrap();
+        s.peer_turn.turn_fifo.front().and_then(Clone::clone)
+    });
+    let Some((peer_id, call_id, completed_round, already_continued)) = burst else {
         return Ok(None);
     };
     if peer_id != to {
@@ -564,22 +573,26 @@ pub fn check_or_advance_burst(shared: &Shared, caller: &str, to: &str) -> Result
             room.active = false;
             return Err("call_paused: the owner hung up or paused this Call Room; stop here and wait for the owner".into());
         }
-        if completed_round >= room.max_rounds {
+        if !already_continued && completed_round >= room.max_rounds {
             room.active = false;
             room.push_entry("host", "Lico", "host", "system", room.max_rounds, "[call completed 4/4 automatic rounds]");
             let snapshot = guard.rooms.clone();
             drop(guard);
             save_inner(&shared.cfg.registry_dir, &snapshot);
+            if let Some(f) = core::find(shared, caller) {
+                f.lock().unwrap().peer_turn.mark_burst_settled();
+            }
             return Err(format!(
                 "call_round_limit: completed {0}/{0} automatic Call Room rounds in this burst; summarize the outcome for the person instead of sending again",
                 MAX_CALL_ROUNDS
             ));
         }
     }
+    let next_round = if already_continued { completed_round } else { completed_round + 1 };
     if let Some(f) = core::find(shared, caller) {
-        f.lock().unwrap().peer_turn.in_reply_burst = None;
+        f.lock().unwrap().peer_turn.mark_burst_continued(next_round);
     }
-    Ok(Some((call_id, completed_round + 1)))
+    Ok(Some((call_id, next_round)))
 }
 
 /// Pre-authorize a Call Room when the human mentions `@target` inline inside `caller`.

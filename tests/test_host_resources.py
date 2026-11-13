@@ -17,13 +17,17 @@ def test_resource_report_matches_process_scope():
             watcher.call(op="subscribe", session=host.sessions[0], after=-1, snapshot=True)
             view = conn.call(op="view.attach", session=host.sessions[1], kind="cli")
             time.sleep(1.0)
-            report = conn.call(op="resources")
-            assert v1.validate_response("resources", report) == []
-            # read the same process independently from /proc
-            scope = collect_scopes({"host": host.pid})["host"]
-            host_proc = [p for p in scope.processes if p.pid == host.pid][0]
+            for _ in range(4):
+                before = [p for p in collect_scopes({"host": host.pid})["host"].processes if p.pid == host.pid][0]
+                report = conn.call(op="resources")
+                assert v1.validate_response("resources", report) == []
+                # read the same process independently from /proc (re-sample if a parallel worker changed shared binary Pss divisor)
+                scope = collect_scopes({"host": host.pid})["host"]
+                host_proc = [p for p in scope.processes if p.pid == host.pid][0]
+                if abs(before.pss_kb - host_proc.pss_kb) <= 512:
+                    break
             assert abs(report["rss_kb"] - host_proc.rss_kb) <= 2048, (report["rss_kb"], host_proc.rss_kb)
-            assert abs(report["pss_kb"] - host_proc.pss_kb) <= 2048
+            assert abs(report["pss_kb"] - host_proc.pss_kb) <= 2048, (before.pss_kb, report["pss_kb"], host_proc.pss_kb)
             tasks = len(os.listdir(f"/proc/{host.pid}/task"))
             assert abs(report["threads"] - tasks) <= 3, (report["threads"], tasks)
             # the agents named in the report are exactly the host's running child processes

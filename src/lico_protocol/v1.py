@@ -180,6 +180,8 @@ CALL_SUMMARY_BODY = _obj({
     "label_b": {"type": STR, "max_length": MAX_NAME},
     "provider_b": {"type": STR, "enum": ["codex", "claude", "owner", "host", "synthetic"]},
     "status": {"type": STR, "enum": ["active", "idle", "paused", "closed"]},
+    "active": {"type": BOOL},
+    "paused": {"type": BOOL},
     "round": {"type": INT, "minimum": 0, "maximum": 16},
     "max_rounds": {"type": INT, "minimum": 1, "maximum": 16},
     "owner_authorized": {"type": BOOL},

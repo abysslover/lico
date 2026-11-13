@@ -17,7 +17,7 @@ use super::{clean, emit_ime, App, View};
 
 #[derive(Clone, Debug)]
 pub struct CallDetailEntry {
-    pub at: u64,
+    pub hhmm: String,
     pub sender_id: String,
     pub sender_label: String,
     pub sender_kind: String,
@@ -90,11 +90,12 @@ fn parse_call_detail(v: &Value) -> Option<CallDetail> {
         .into_iter()
         .flatten()
         .filter_map(|e| {
+            let at = e["ts"].as_u64().or_else(|| e["at"].as_u64()).unwrap_or(0);
             Some(CallDetailEntry {
-                at: e["at"].as_u64().unwrap_or(0),
-                sender_id: e["sender_id"].as_str().unwrap_or("").to_string(),
-                sender_label: e["sender_label"].as_str().unwrap_or("").to_string(),
-                sender_kind: e["sender_kind"].as_str().unwrap_or("owner").to_string(),
+                hhmm: e["hhmm"].as_str().map(str::to_string).unwrap_or_else(|| fmt_hhmm(at)),
+                sender_id: e["speaker"].as_str().or_else(|| e["sender_id"].as_str()).unwrap_or("").to_string(),
+                sender_label: e["speaker_label"].as_str().or_else(|| e["sender_label"].as_str()).unwrap_or("").to_string(),
+                sender_kind: e["provider"].as_str().or_else(|| e["sender_kind"].as_str()).unwrap_or("owner").to_string(),
                 kind: e["kind"].as_str().unwrap_or("message").to_string(),
                 round: e["round"].as_u64().unwrap_or(0) as u32,
                 text: e["text"].as_str().unwrap_or("").to_string(),
@@ -144,7 +145,7 @@ fn format_call_lines(detail: &CallDetail) -> VecDeque<(i64, String)> {
         return lines;
     }
     for entry in &detail.entries {
-        let hhmm = fmt_hhmm(entry.at);
+        let hhmm = entry.hhmm.as_str();
         match entry.sender_kind.as_str() {
             "owner" => {
                 push(format!(">> [{} | {hhmm}]", entry.sender_label));
@@ -331,7 +332,7 @@ impl App {
         let _ = self.spawn_host_call(json!({"op": "call.hangup", "call": cid}), 6, |_| {
             AsyncJob::CallAction
         });
-        self.ui.flash = Some("Hung up Call Room (automatic rounds paused; type to resume).".into());
+        self.ui.flash = Some("Paused auto rounds.".into());
         self.dirty = true;
     }
 
@@ -420,7 +421,7 @@ impl App {
         let cid = self.ui.calls.active_call.as_ref()?;
         if let Some(det) = self.ui.calls.details.get(cid) {
             let state_txt = if det.paused {
-                "paused (hung up)".to_string()
+                "paused".to_string()
             } else if det.active {
                 format!("active round {}/{}", det.round.max(1), det.max_rounds)
             } else {
@@ -595,6 +596,20 @@ impl App {
         let h_lbl = if paused { "Paused" } else { "Hang up" };
         let h_w = controls.width(fs, h_lbl) + 14.0 * s;
         let h_rect = [x_right - h_w, y0, x_right, y1];
+        let jb_lbl = format!("-> {lb}");
+        let jb_w = controls.width(fs, &jb_lbl) + 12.0 * s;
+        let jb_rect = [h_rect[0] - 4.0 * s - jb_w, y0, h_rect[0] - 4.0 * s, y1];
+        let ja_lbl = format!("-> {la}");
+        let ja_w = controls.width(fs, &ja_lbl) + 12.0 * s;
+        let ja_rect = [jb_rect[0] - 4.0 * s - ja_w, y0, jb_rect[0] - 4.0 * s, y1];
+        let strip_left = if ja_rect[0] > list_w as f32 + 220.0 * s {
+            ja_rect[0] - 6.0 * s
+        } else if jb_rect[0] > list_w as f32 + 220.0 * s {
+            jb_rect[0] - 6.0 * s
+        } else {
+            h_rect[0] - 6.0 * s
+        };
+        super::controls::fill(buf, width, height, [strip_left, chat_top, width as f32, y1 + s], 0xFF0E_1318);
         let (h_fill, h_col) = if paused {
             (0xFF28_261A, Color::rgb(0xFA, 0xD2, 0x6E))
         } else {
@@ -603,9 +618,6 @@ impl App {
         controls.button(fs, swash, buf, width, height, h_rect, h_lbl, h_fill, h_col, Action::CallHangup);
         self.ui.calls.hangup_rect = Some(h_rect);
 
-        let jb_lbl = format!("-> {lb}");
-        let jb_w = controls.width(fs, &jb_lbl) + 12.0 * s;
-        let jb_rect = [h_rect[0] - 4.0 * s - jb_w, y0, h_rect[0] - 4.0 * s, y1];
         if jb_rect[0] > list_w as f32 + 220.0 * s {
             controls.button(
                 fs,
@@ -621,9 +633,6 @@ impl App {
             );
             self.ui.calls.jump_b_rect = Some(jb_rect);
 
-            let ja_lbl = format!("-> {la}");
-            let ja_w = controls.width(fs, &ja_lbl) + 12.0 * s;
-            let ja_rect = [jb_rect[0] - 4.0 * s - ja_w, y0, jb_rect[0] - 4.0 * s, y1];
             if ja_rect[0] > list_w as f32 + 220.0 * s {
                 controls.button(
                     fs,

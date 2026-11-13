@@ -555,19 +555,20 @@ fn response(s: &mut Session, id: &Value, message: &Value, cwd: &str) {
                 }
             }
         }
-        Pending::Turn(rid) | Pending::Steer(rid, _) => match failed {
+        Pending::Turn(rid) => match failed {
             None => {
-                if let Some(turn) = message.pointer("/result/turn/id").and_then(Value::as_str) {
-                    if let Some(link) = s.codex.as_mut() {
-                        link.active_turn = Some(turn.to_string());
-                    }
-                }
+                if let Some((turn, link)) = message.pointer("/result/turn/id").and_then(Value::as_str).zip(s.codex.as_mut()) { link.active_turn = Some(turn.to_string()); }
                 s.advance_input(&rid, InputState::Observed);
             }
-            Some(reason) => {
-                s.advance_input(&rid, InputState::Failed);
-                record(s, &format!("[input refused] {reason}"));
+            Some(reason) => { s.advance_input(&rid, InputState::Failed); record(s, &format!("[input refused] {reason}")); }
+        },
+        Pending::Steer(rid, _) => match failed {
+            None => {
+                s.peer_turn.merge_steered_turn();
+                if let Some((turn, link)) = message.pointer("/result/turn/id").and_then(Value::as_str).zip(s.codex.as_mut()) { link.active_turn = Some(turn.to_string()); }
+                s.advance_input(&rid, InputState::Observed);
             }
+            Some(reason) => { s.advance_input(&rid, InputState::Failed); record(s, &format!("[input refused] {reason}")); }
         },
     }
 }

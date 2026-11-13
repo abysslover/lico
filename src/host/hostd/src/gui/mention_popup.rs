@@ -274,7 +274,13 @@ impl App {
         let x0 = (list_w as f32 + 8.0 * s).min(width as f32 - 40.0 * s);
         let pop_w = (460.0 * s).min((width as f32 - x0 - 12.0 * s).max(160.0 * s));
         let pop_h = (vis as f32 + 1.0) * lh + 8.0 * s;
-        let y0 = (ed_rect[1] - pop_h - 4.0 * s).max(40.0 * s);
+        let below_y = ed_rect[3] + 4.0 * s;
+        let max_y = (height as f32 - 2.0 * lh - 4.0 * s).max(80.0 * s);
+        let y0 = if below_y + pop_h <= max_y {
+            below_y
+        } else {
+            (ed_rect[1] - pop_h - 4.0 * s).max(76.0 * s)
+        };
         let pop_rect = [x0, y0, x0 + pop_w, y0 + pop_h];
 
         controls::fill(buf, width, height, [x0 - 1.0, y0 - 1.0, x0 + pop_w + 1.0, y0 + pop_h + 1.0], 0xFF38_B2AC);
