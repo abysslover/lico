@@ -1,6 +1,6 @@
 # M12-P01 Plan — Discovery Engine for This Machine
 
-- Status: in progress
+- Status: implemented (see report)
 - Version: 1.0.0
 - Approved: 2026-11-14 (G2 approved by the owner on 2026-11-14)
 - Branch: `phase/M12-P01-local-endpoint-discovery`
@@ -19,11 +19,11 @@ Wire op `llm.discover` (`ssh_host?`, `all_users?`; `state: host`, `mutates: Fals
 
 ## Steps
 
-- [ ] S01: Pure move of `AsyncJob` and `AsyncDone` out of `gui/panel.rs` into `gui/jobs.rs` (suite green).
-- [ ] S02: Red tests: Rust units (tables, inode map, classes, caps, scan of truncated lists), Python host tests with fake servers, CLI/HTTP/socket parity, the tool with its approval card, the window.
-- [ ] S03: `llm` module (net, http, classify, run), wire, CLI, HTTP, schemas.
-- [ ] S04: Tool `llm_endpoints`; dialog `gui/llm_find.rs`.
-- [ ] S05: Report with the red output, mailbox.
+- [x] S01: Pure move of `AsyncJob` and `AsyncDone` out of `gui/panel.rs` into `gui/jobs.rs` (suite green).
+- [x] S02: Red tests: Rust units (tables, inode map, classes, caps, scan of truncated lists), Python host tests with fake servers, CLI/HTTP/socket parity, the tool with its approval card, the window.
+- [x] S03: `llm` module (net, http, classify, run), wire, CLI, HTTP, schemas.
+- [x] S04: Tool `llm_endpoints`; dialog `gui/llm_find.rs`.
+- [x] S05: Report with the red output, mailbox.
 
 ## Acceptance Criteria
 
