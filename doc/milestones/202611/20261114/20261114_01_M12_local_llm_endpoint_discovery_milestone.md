@@ -1,6 +1,6 @@
 # M12 — Find OpenAI-Compatible Local LLM Endpoints on This Machine and on ssh Hosts (read-only, on demand) (`lico 0.3.0`)
 
-- Status: approved, in progress
+- Status: implemented (all three phases), awaiting owner G3 and G4
 - Version: 1.0.0
 - Approved: 2026-11-14 (G1 for M12 and G2 for M12-P01 to M12-P03 approved by the owner on 2026-11-14)
 - Project: Lico
@@ -37,4 +37,4 @@ GET only, short timeouts, a response read to at most 64 KiB, no request body, no
 |---|---|---|---|---|
 | M12-P01 | Discovery engine for this machine: wire op, CLI, HTTP, tool, dialog | [Plan](../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_report.md) | implemented |
 | M12-P02 | The same discovery on an ssh host through a bounded remote script | [Plan](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | [Report](../../reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | implemented |
-| M12-P03 | End-to-end verification, measurements, and `lico 0.3.0` | [Plan](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | pending | planned |
+| M12-P03 | End-to-end verification, measurements, and `lico 0.3.0` | [Plan](../../plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | [Report](../../reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md) | implemented |

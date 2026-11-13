@@ -3,7 +3,7 @@
 | Document | Current meaning |
 |---|---|
 | [M01-P05 plan](plans/202610/20261024/20261024_02_M01-P05_workflow_recovery_and_package_plan.md) | User-facing workflow, failure recovery, resource acceptance and a single self-contained executable; G2 approved |
-| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M11 stand; updated 2026-11-14, grants no approval |
+| [Roadmap](product/202610/20261025/00001_roadmap/roadmap.md) | Where M01 through M12 stand; updated 2026-11-14, grants no approval |
 | [M02 milestone](milestones/202610/20261026/20261026_01_M02_agentic_coding_basics_milestone.md) | Agentic-coding basics; G1 approved 2026-10-26 with the phase plans of G2 included; closed 2026-11-11 |
 | [M02 planning set](product/202610/20261026/00001_agentic_basics_plan/planning.md) | Scope, order and decisions; its [requirements](product/202610/20261026/00001_agentic_basics_plan/requirements.md), [screens](product/202610/20261026/00001_agentic_basics_plan/screens.md), [test plan](product/202610/20261026/00001_agentic_basics_plan/test_plan.md) and [changes](product/202610/20261026/00001_agentic_basics_plan/changes.md) sit beside it |
 | [M01-P08 plan](plans/202611/20261111/20261111_04_M01-P08_acceptance_pack_plan.md) | Clean public-clone build reproducibility, test-suite bottleneck optimization, and `0.1.0` version bump; done 2026-11-12 |
@@ -83,5 +83,12 @@
 | [M11-P02 report](reports/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_report.md) | `chats/live.rs`, `chats/others.rs`, the measured scan cost |
 | [M11-P03 plan](plans/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_plan.md) | End-to-end verification, measurements, `lico 0.2.7` |
 | [M11-P03 report](reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md) | Measured budgets, acceptance, install, the flaky-test tally |
+| [M12 milestone](milestones/202611/20261114/20261114_01_M12_local_llm_endpoint_discovery_milestone.md) | Find OpenAI-compatible Local LLM endpoints on this machine and on ssh hosts, read-only and on demand (`lico 0.3.0`) |
+| [M12-P01 plan](plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md) | The engine for this machine: wire, CLI, HTTP, tool, dialog |
+| [M12-P01 report](reports/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_report.md) | `llm/` (net, http, classify), the red run, the byte budget of the tool list |
+| [M12-P02 plan](plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md) | The same discovery on an ssh host through a bounded remote script |
+| [M12-P02 report](reports/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_report.md) | `llm/remote.rs`, the Python script, the failure words, parity with the local engine |
+| [M12-P03 plan](plans/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_plan.md) | End-to-end verification, measurements, `lico 0.3.0` |
+| [M12-P03 report](reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md) | Measured budgets, the three cold runs, install, the proposed spec requirements LLM-01 to LLM-03 |
 
 Back to the [first index page](README.md), the [second](index_2.md) or the [third](index_3.md).

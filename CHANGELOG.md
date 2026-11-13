@@ -9,6 +9,15 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.3.0 — 2026-11-14 (`M12`)
+
+- **Milestone**: [M12 Find OpenAI-compatible Local LLM endpoints on this machine and on ssh hosts](doc/milestones/202611/20261114/20261114_01_M12_local_llm_endpoint_discovery_milestone.md) (`milestone/M12-local-llm-endpoint-discovery` once accepted, [M12-P03 report](doc/reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md))
+- **Measured resources**: idle window `24.76..25.11` / `35.82..36.23 MiB`, `10 -> 100` hidden growth `+0.41 MiB`
+- **Highlights**:
+  - **Find Local LLM servers, read-only and on demand.** `Session > Find Local LLM servers...` (a dialog that scans only on Enter or a click), `lico llm discover [--ssh-host HOST] [--all-users]`, `POST /v1/llm/discover`, and the tool `llm_endpoints` (which asks the person each time). It lists the listening TCP ports of your own processes (all users' ports only when asked) that answer like an OpenAI-compatible server (`GET /v1/models`) or an Ollama server (`GET /api/tags`): kind, address and whether it listens on loopback or all addresses, whether it wants a key (reported, never tried), its model ids and the name of its process.
+  - **Careful by construction.** Only sockets that listen on the machine itself, at the machine's own address; a quiet connection first, so a server that speaks first (SSH, a database) is sent nothing; HTTP/1.0 GET with no body, credential or cookie, no redirect followed, at most 64 KiB read, at most 64 ports, 8 seconds; nothing runs in the background, nothing is stored, no other program's configuration or key file is read.
+  - **ssh hosts the same way**: a bounded Python 3 script run in batch mode (20 seconds, 128 KiB of output) with clean words for an unreachable host, a missing `python3`, a timeout, too much output, a host that is not Linux. Using a found server is a later step.
+
 ## 0.2.7 — 2026-11-13 (`M11`)
 
 - **Milestone**: [M11 The provider's own default home as a visible "Native" choice, running-elsewhere safety, and the empty-Resume hint](doc/milestones/202611/20261113/20261113_04_M11_native_provider_home_chats_milestone.md) (`milestone/M11-native-provider-home-chats` once accepted, [M11-P03 report](doc/reports/202611/20261113/20261113_15_M11-P03_verification_and_0_2_7_report.md)); stacked on the M10 branches, which are not yet accepted
