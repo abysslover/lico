@@ -211,6 +211,16 @@ fn the_acceptance_passes_for_a_build_that_is_the_same_in_two_clones_and_refuses_
 }
 
 #[test]
+fn the_acceptance_takes_a_scratch_folder_given_as_a_relative_path() {
+    let repo = repo_with_script("accept-relative", "mkdir -p \"$1\" && printf 'bytes' > \"$1/lico\"\n");
+    let relative = Path::new("acceptance-relative-scratch");
+    let _ = fs::remove_dir_all(relative);
+    let result = accept::run_acceptance(&repo, "build.sh", "lico", relative);
+    let _ = fs::remove_dir_all(relative);
+    assert_eq!(result.unwrap(), sha256::hex(b"bytes"));
+}
+
+#[test]
 fn the_command_line_refuses_a_workspace_with_a_cycle_and_accepts_a_good_one() {
     let bad = workspace("cli-bad");
     component(&bad, "a", &["b"], &["b"], "");

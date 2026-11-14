@@ -21,6 +21,9 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 /// Builds `script` (a path inside the repository, called as `sh script OUTDIR`) in two clean clones of `repo` below `scratch` and returns the digest of `artifact`.
 pub fn run_acceptance(repo: &Path, script: &str, artifact: &str, scratch: &Path) -> Result<String, String> {
     let repo = repo.canonicalize().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(scratch).map_err(|e| e.to_string())?;
+    let scratch = scratch.canonicalize().map_err(|e| e.to_string())?; // the build runs inside the clone: a relative path would be taken from there
+    let scratch = scratch.as_path();
     let mut digests = Vec::new();
     for number in 1..=2 {
         let clone: PathBuf = scratch.join(format!("clone-{number}-in-a-differently-named-place"));
