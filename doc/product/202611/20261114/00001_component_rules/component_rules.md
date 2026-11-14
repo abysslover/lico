@@ -1,7 +1,7 @@
 # Lico component rules: versioned components, explicit contracts, tests that stay inside their component
 
-- Status: approved by the owner on 2026-11-14 (in force for the work named in section 6; merged to `main` only on the owner's G4)
-- Version: 1.0.0
+- Status: approved by the owner on 2026-11-14 and merged to `main` on the owner's G4 of the same day (in force for the work named in section 6)
+- Version: 1.0.1
 - Project: Lico
 - Written: 2026-11-14
 - Origin: the owner's instruction of 2026-11-14: stop re-running every test for every change; manage the code as components with versions, explicit dependencies, a contract and a spec each; do not re-run a module's own tests when the module has not changed; keep the number of tests and the memory of a run under control; write this down before the dependencies grow further. The method is the one the owner already uses for the personal backend (`refactor`, decision D35): divide and conquer, interface specification first, release and pin.
