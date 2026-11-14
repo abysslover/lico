@@ -1,7 +1,7 @@
 # M14-P01 Plan — Bottom Status Bar with the Full Path
 
-- Status: planned
-- Version: 1.0.0
+- Status: implemented (see report)
+- Version: 1.1.0
 - Approved: 2026-11-14 (G2 approved by the owner on 2026-11-14)
 - Branch: `phase/M14-P01-path-status-bar` (from `main` at `8857a4c`)
 - Milestone: [M14](../../../milestones/202611/20261114/20261114_03_M14_path_status_bar_and_maximized_start_milestone.md)
@@ -12,10 +12,10 @@ One row at the very bottom of the window, at its full width, below the hint line
 
 ## Steps
 
-- [ ] S01: Documentation only first commit (milestone note and three plan notes); the exact list of path shorteners with file and line, and the existing clipboard path found.
-- [ ] S02: Red-first window tests (`tests/test_path_status_bar.py`) run against the unchanged code; the "before" screenshots.
-- [ ] S03: `gui/pathbar.rs` (pure functions, state, drawing, click), the one-row layout change, the page-size re-checks; existing bottom-edge tests changed deliberately and named.
-- [ ] S04: Green, the "after" screenshots (default and narrow width), a cold run, report `110`.
+- [x] S01: Documentation only first commit (milestone note and three plan notes); the exact list of path shorteners with file and line, and the existing clipboard path found.
+- [x] S02: Red-first window tests (`tests/test_path_status_bar.py`) run against the unchanged code; the "before" screenshots.
+- [x] S03: `gui/pathbar.rs` (pure functions, state, drawing, click), the one-row layout change, the page-size re-checks; existing bottom-edge tests changed deliberately and named.
+- [x] S04: Green, the "after" screenshots (default and narrow width), a cold run, report `110`.
 
 ## Acceptance Criteria
 

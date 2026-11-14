@@ -101,6 +101,7 @@
 | [M13-P04 report](reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md) | Measured budgets, three cold runs, acceptance, `lico 0.3.1`, install |
 | [M14 milestone](milestones/202611/20261114/20261114_03_M14_path_status_bar_and_maximized_start_milestone.md) | Full path in a bottom status bar, and a maximized first start (`lico 0.3.2`) |
 | [M14-P01 plan](plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | The bottom bar with the full path |
+| [M14-P01 report](reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | The bottom bar, the path shorteners listed, the bottom-edge tests changed |
 | [M14-P02 plan](plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | Reproduce and fix the unmaximized first start |
 | [M14-P03 plan](plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | End-to-end verification, measurements, `lico 0.3.2` |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
