@@ -1,7 +1,7 @@
 # M15-P03 Plan — The First Component, `png`
 
-- Status: approved by the owner on 2026-11-14 (the interface specification below, shown on the screen, is G2 of this phase); steps in progress
-- Version: 1.1.0
+- Status: implemented; report [M15-P03](../../../reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md); the interface specification below was approved by the owner on 2026-11-14 (G2 of this phase)
+- Version: 1.2.0
 - Branch: `phase/M15-P03-first-component-png` (stacked on the P02 tip `5a49682`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
 
@@ -43,13 +43,13 @@ The first component is `png` (`dbus` is the second component, after M15). The in
 ## Steps (small green commits; a move and a behaviour change never share a commit)
 
 - [x] 1. Branch from the P02 tip; this note completed (documentation only).
-- [ ] 2. Characterization tests I7, the header bytes, the public names: green on the unchanged code, shown to fail under mutations before they count.
-- [ ] 3. Cut the edge: `Scratch` local to `png`.
-- [ ] 4. The move to `components/png/` (a move only; the same tests pass in the new place); `lico` depends on `lico-png`; `Crc32`/`Adler32` private.
-- [ ] 5. Manifest, `SPEC.md`, `cargo xtask check`, `cargo xtask test png --record`, `RECEIPT.json`.
-- [ ] 6. Test selection by component: a change under `components/<name>/` selects `cargo xtask test <name>` (skipped when its receipt is valid) and the consumers' tests; a change in a consumer selects the consumer's tests only.
-- [ ] 7. Mutation check of the Python tests that exercise `png`; retire only what a Rust contract test replaces, say why for the rest.
-- [ ] 8. Measure and report: the component's own test cost; a typical `capture` change before and after.
+- [x] 2. Characterization tests I7, the header bytes, the public names: green on the unchanged code, shown to fail under mutations before they count.
+- [x] 3. Cut the edge: `Scratch` local to `png`.
+- [x] 4. The move to `components/png/` (a move only; the same tests pass in the new place); `lico` depends on `lico-png`; `Crc32`/`Adler32` private.
+- [x] 5. Manifest, `SPEC.md`, `cargo xtask check`, `cargo xtask test png --record`, `RECEIPT.json`.
+- [x] 6. Test selection by component: a change under `components/<name>/` selects `cargo xtask test <name>` (skipped when its receipt is valid) and the consumers' tests; a change in a consumer selects the consumer's tests only.
+- [x] 7. Mutation check of the Python tests that exercise `png`; retire only what a Rust contract test replaces, say why for the rest.
+- [x] 8. Measure and report: the component's own test cost; a typical `capture` change before and after.
 
 ## Acceptance Criteria
 

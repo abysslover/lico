@@ -3,7 +3,7 @@
 - Status: implemented; one item (the retired prototypes) waits for the owner's answer to mail 114
 - Version: 1.0.0
 - Branch: `phase/M15-P02-workspace-and-rust-tools` (stacked on `phase/M15-P01-phase0-component-analysis` at `5f9a991`; commits `fdf5314`, `e401ac3`, `5b69ea2`, `00fcf69`, `0fa34ae`)
-- Plan: [M15-P02](../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md)
+- Plan: [M15-P02](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md)
 
 ## 1. What was deleted, and the proof (condition 2 of mail 135)
 
