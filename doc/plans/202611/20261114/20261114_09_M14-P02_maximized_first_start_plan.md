@@ -16,7 +16,7 @@ Scope changes after the owner's answers (lead mail 134): the launcher flag and W
 
 - [x] S01: The outcome test (real `lico gui` child, private host socket, private Xvfb, the window manager(s)), run red on the unchanged code; output kept. If nothing reproduces, stop and ask with three options.
 - [x] S02: The cause, from the evidence (client message before the window is managed, missing initial `_NET_WM_STATE` property, the fixed `with_inner_size`, a launcher flag, Wayland chosen over X11).
-- [x] S03: The fix of the cause (leading candidate: create invisible, set the `_NET_WM_STATE` property on the X id, then show; ask once more on the first `Resized` if still not maximized; no timer).
+- [x] S03: The fix of the cause (leading candidate: create invisible, set the `_NET_WM_STATE` property on the X id, then show; the second request on the first `Resized` was left out: the models did not need it; no timer).
 - [x] S04: Green; the existing `maximized_requested` test kept; report `111` with the owner's check list.
 
 ## Acceptance Criteria

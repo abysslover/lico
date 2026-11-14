@@ -124,6 +124,7 @@
 "tests/test_chat_list_polish.py" = ["gui", "host"]
 "tests/test_path_status_bar.py" = ["gui", "host"]
 "tests/test_maximized_start.py" = ["gui"]
+"tests/test_m14_end_to_end.py" = ["gui", "host"]
 "tests/test_native_end_to_end.py" = ["gui", "host"]
 "tests/test_chats_resume_latest.py" = ["cli", "host"]
 "tests/test_new_chat_modal.py" = ["gui", "host"]
