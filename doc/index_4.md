@@ -110,6 +110,7 @@
 | [M15-P01 report](reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | Phase 0: the import graph (one cycle of 48 modules), test costs, Python groups, candidates (recommendation `png`), the build order, the machinery |
 | [M15-P01 appendix](reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_appendix.md) | The long tables: 170 modules, Rust tests by module, 117 Python test files, `lico_measure` by file |
 | [M15-P02 plan](plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | The workspace and the Rust tools (sketch) |
+| [M15-P02 report](reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | exp/ deleted, the workspace, `lico-xtask` (graph, check, receipts, isolated runner, acceptance) |
 | [M15-P03 plan](plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | The first component (sketch) |
 | [M15-P04 plan](plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | Verification and release (sketch) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |

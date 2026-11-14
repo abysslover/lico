@@ -1,19 +1,33 @@
-# M15-P02 Plan — The Workspace and the Rust Tools (Sketch)
+# M15-P02 Plan — The Workspace and the Rust Tools (No Code Moves)
 
-- Status: sketch (completed at its own G2, after the P01 report and the lead's next pointer)
-- Version: 1.0.0
-- Approved: not yet (G2 for this phase is asked when the plan is completed)
-- Branch: `phase/M15-P02-*` (stacked on the P01 tip)
+- Status: implemented (see report); one item waits for the owner (the retired prototypes, mail 114)
+- Version: 1.1.0
+- Approved: 2026-11-14 (the owner approved the M15 plan; the lead's mail 135 settles the decisions after Phase 0)
+- Branch: `phase/M15-P02-workspace-and-rust-tools` (stacked on the P01 tip `5f9a991`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
 
-## Objective (sketch)
+## Objective
 
-One Cargo workspace with the existing crate as a member and a tools crate (the rules name it `lico-xtask`) holding the manifest check, the graph check (no cycle, only downward edges, only listed dependencies), the hash and receipt tool, the per-component test runner with time and peak memory against the budget (`256 MiB` and `30 s` unless the manifest says otherwise), and the release acceptance (the two-clone byte-for-byte build ported from `suite acceptance`; if the port is too big, the Python one stays until P04 with a dated reason). No code moves; the binary keeps its behaviour. Red first for the tools themselves (a graph with a cycle is refused, a changed file invalidates a receipt, an over-budget run is reported). The change in release binary size and build time is stated; `Cargo.lock` stays committed.
+1. First commit(s): delete `exp/` except the record-layout evidence (condition: nothing built, tested or released reads it; the citing documents corrected; a link scan with no dead link). The prototypes (`src/candidates`, `src/host/rust`, `src/host/c`) and their harness are read by tests behind the `legacy_candidates` marker: that item stops and goes to the owner with three alternatives (mail 114).
+2. A Cargo workspace at the repository root: the `lico` crate as a member, a tools crate `lico-xtask` (`tools/xtask`), the lock file and the profiles at the root, `.cargo/config.toml` with the `xtask` alias. No code moves; the binary keeps its behaviour; the size and the build time are stated.
+3. The tools in Rust, std and `serde_json` only: the module graph (it must reproduce the Phase 0 numbers), the component check (manifest fields, no cycle, only listed dependencies), receipts (a SHA-256 over the inputs, naming what changed), the isolated test run with tree RSS from `/proc` against the budget, and the two-clone acceptance. Red first for the tools themselves.
+4. The tools' own tests run in the suite as a job of their own; the test selection knows `tools/xtask/**`.
 
 ## Steps
 
-- [ ] S01 to S0n: to be written from the P01 report.
+- [x] S01: Repair the 65 dead relative links (the condition says no dead link in the tracked tree); delete `exp/` (72 files) and correct the citing notes; the link scan clean.
+- [x] S02: The workspace and a stub tools crate; the release binary compared with the one built before.
+- [x] S03: The tools' tests first (11 red against stubs), then the tools; the graph tool compared with the Phase 0 numbers edge by edge.
+- [x] S04: The runner job and the selection (red first: `test_selection`), the acceptance run for real (one bug found, test first).
+- [x] S05: Documentation, report `115`.
+- [ ] S06 (waits for the owner): the retired prototypes, alternative A or B of mail 114.
 
 ## Acceptance Criteria
 
-To be written with the plan; the sketch's red-first cases above are the minimum.
+| # | Criterion | Checked by |
+|---|---|---|
+| 1 | No dead relative link in the tracked tree after the deletion | link scan before and after |
+| 2 | The graph tool reproduces nodes, edges (with their counts), the cycle of 48 and the layers of Phase 0 | comparison of its JSON with the scratch analysis |
+| 3 | A cycle is refused, a changed file invalidates a receipt, an over-budget run is reported, a differing build is refused | `cargo test -p lico-xtask` (12 tests) |
+| 4 | Two clean clones build the same bytes with the Rust acceptance | `cargo xtask accept` |
+| 5 | The whole suite passes | cold run |

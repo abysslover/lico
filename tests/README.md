@@ -21,6 +21,10 @@ The suite needs Python 3.11 or newer: `requires-python = ">=3.11"` in `pyproject
 | `… select --changed [BASE]` | print what a change needs, run nothing |
 | `… acceptance` | the clean-clone build; due when a trigger of `testmap.toml` changes, and before a merge or a release |
 | `… legacy` | the retired prototypes (candidate clients a, b, c, c2, d; host prototypes rust_std, rust_serde, c), marker `legacy_candidates`; on demand, with binaries built by hand; never in `run` |
+| `cargo xtask graph [--cut] [--json OUT]` | (M15) the module graph of the crate read from its source: edges, test-only uses, the cycles, the layers; run it from the repository root |
+| `cargo xtask check` / `verify` / `test NAME [--record]` / `hash NAME` | (M15) the components under `components/`: the manifests and the dependency graph, the receipts against the inputs as they are, the isolated run of one component against its budget (it writes `RECEIPT.json` with `--record`) |
+| `cargo xtask accept` | (M15) two clean clones build the same executable (the Rust form of `suite acceptance`; both exist until M15-P04) |
+| `cargo test -p lico-xtask` | the tools' own tests; the runner runs them as a job of its own (`suite run`), and `suite select` names them when `tools/xtask/**` or the workspace manifest changes |
 | `pytest -p lico_measure.ledger --ledger FILE tests` | the ledger: per test wall time and peak memory of the whole process tree |
 
 `budget.toml`: 15 s per test unless an entry gives more with a written reason; the cold run fails over 180 s and the memory over 2 GiB

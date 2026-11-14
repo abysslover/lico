@@ -41,6 +41,6 @@ A move and a behaviour change never share a commit; every test that exists today
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
 | M15-P01 | Phase 0: measure and decide (read-only) | [Plan](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md) | [Report](../../../reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | implemented, waiting for the owner's pick |
-| M15-P02 | The workspace and the Rust tools | [Plan](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | pending | sketch |
+| M15-P02 | The workspace and the Rust tools | [Plan](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | [Report](../../reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | implemented (the prototypes wait for the owner) |
 | M15-P03 | The first component | [Plan](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | pending | sketch |
 | M15-P04 | Verification and release | [Plan](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | pending | sketch |

@@ -8,7 +8,7 @@
 
 ## Objective (sketch)
 
-Release acceptance once and whole: three cold runs of everything (the margin to `2,048 MiB` and `180 s` stated), all receipts matching their hashes, idle RSS and hidden growth, the two-clone `suite acceptance`; version `0.3.3` (proposed); CHANGELOG, PLAN, roadmap, README, manual; install to `~/bin/lico` keeping the `0.3.2` binary at `private/release_0_3_2_backup/lico`; the tool-list byte budget stated; the text of any spec requirement this milestone needs in the report (the spec is not edited). Numbers only as measured.
+Release acceptance once and whole: three cold runs of everything (the margin to `2,048 MiB` and `180 s` stated), all receipts matching their hashes, idle RSS and hidden growth, the two-clone `suite acceptance`; version `0.3.3` (proposed; the lead confirms; a small patch for the maximized first start follows after the Local LLM session, not in this milestone); CHANGELOG, PLAN, roadmap, README, manual; install to `~/bin/lico` keeping the `0.3.2` binary at `private/release_0_3_2_backup/lico`; the tool-list byte budget stated; the text of any spec requirement this milestone needs in the report (the spec is not edited). Numbers only as measured.
 
 ## Steps
 
