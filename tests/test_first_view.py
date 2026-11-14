@@ -35,8 +35,9 @@ def xdo(display, *args):
     subprocess.run(["xdotool", *args], env=dict(os.environ, DISPLAY=display), check=True)
 
 
-def click(display, x, y, button=1):
-    xdo(display, "mousemove", "--window", window_id(display), str(int(x)), str(int(y)), "click", str(button))
+def click(display, x, y, button=1, repeat=1):
+    """One xdotool call whatever the count: a process per notch made the wheel tests grow with the load of the machine (170 spawns for 85 notches)."""
+    xdo(display, "mousemove", "--window", window_id(display), str(int(x)), str(int(y)), "click", *(["--repeat", str(repeat), "--delay", "30"] if repeat > 1 else []), str(button))
 
 
 def responses(received):
@@ -118,11 +119,9 @@ def test_older_history_is_read_on_demand_without_replaying_the_transcript():
             client.expect("state", "subscribed")
             state = ui(client, lambda u: u["lines_buffered"] > 0)
             assert state["history_requests"] == 0 and state["lines_buffered"] <= 100        # a screen, not the transcript
-            for _ in range(25):                                                              # the wheel, 3 lines a notch
-                click(xvfb.display, 600, 300, 4)
+            click(xvfb.display, 600, 300, 4, repeat=25)                                      # the wheel, 3 lines a notch
             state = ui(client, lambda u: u["history_requests"] >= 1 and u["history_lines"] >= 100 and u["scroll"] > 0)
-            for _ in range(60):
-                click(xvfb.display, 600, 300, 4)
+            click(xvfb.display, 600, 300, 4, repeat=60)
             state = ui(client, lambda u: u["history_requests"] >= 3)
             assert state["history_lines"] <= 700 and state["lines_buffered"] < 800          # what was scrolled to, never all 3000 records
             client.send("lines")

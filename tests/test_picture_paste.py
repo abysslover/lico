@@ -293,20 +293,36 @@ def test_a_slot_the_host_refuses_and_an_input_it_refuses_give_the_text_and_the_c
             first = status_of(conn, sid)["generation"]
             assert conn.call(op="input", session=sid, generation=first, request_id="first", text="first")["ok"] == 1
             wait_for(lambda: "[turn completed]" in records(log, sid) or None)                # a session with a conversation can be resumed
-            window_pid = w.proc.pid
-            os.kill(window_pid, signal.SIGSTOP)
-            try:
-                gen = status_of(conn, sid)["generation"]
-                closed = conn.call(op="session.close", session=sid, generation=gen)
-                assert closed["ok"] == 1, closed
-                wait_for(lambda: status_of(conn, sid)["state"] == "disconnected" or None)
-                again = conn.call(op="session.resume", session=sid, generation=gen)
-                assert again["ok"] == 1, again
-                wait_for(lambda: status_of(conn, sid)["state"] == "running" or None)
-                subprocess.run(["xdotool", "key", "Return"], env=w.env, check=True)
-            finally:
-                os.kill(window_pid, signal.SIGCONT)
-            state = wait_for(lambda: (e := editor(w)) and e["note"] and "Not sent" in e["note"] and e)
+            # the window learns a new generation from the host once a second; when the machine is slow it can learn it before it has read the key, and then the
+            # input is right and goes (measured: 3 of 200 runs under load, the window's row at generation 2, the picture sent): that attempt proves nothing,
+            # so it is told apart by what happened to the picture and made again
+            for attempt in range(6):
+                sent_before = len(picture_sent(received))
+                window_pid = w.proc.pid
+                os.kill(window_pid, signal.SIGSTOP)
+                try:
+                    gen = status_of(conn, sid)["generation"]
+                    closed = conn.call(op="session.close", session=sid, generation=gen)
+                    assert closed["ok"] == 1, closed
+                    wait_for(lambda: status_of(conn, sid)["state"] == "disconnected" or None)
+                    again = conn.call(op="session.resume", session=sid, generation=gen)
+                    assert again["ok"] == 1, again
+                    wait_for(lambda: status_of(conn, sid)["state"] == "running" or None)
+                    subprocess.run(["xdotool", "key", "Return"], env=w.env, check=True)
+                finally:
+                    os.kill(window_pid, signal.SIGCONT)
+                try:
+                    state = wait_for(lambda: (e := editor(w)) and e["note"] and "Not sent" in e["note"] and e, timeout=5)
+                    break
+                except AssertionError:
+                    assert len(picture_sent(received)) == sent_before + 1 and editor(w)["picture"] is None, "neither refused nor sent"
+                    wait_for(lambda: os.listdir(pasted_dir(w)) == [] or None)
+                    owners.png(png)
+                    fast_type(w, "kept text")
+                    press_paste(w)
+                    wait_for(lambda: editor(w)["picture"] or None)
+            else:
+                raise AssertionError("six attempts and the window knew the new generation before the key every time")
             assert state["note"] == "Not sent: the session changed meanwhile; look at it and send again. The text is back in the box.", state["note"]
             assert state["text"] == "kept text" and state["picture"] is not None, state
-            assert len(picture_sent(received)) == 0 and os.listdir(pasted_dir(w)) == []
+            assert len(picture_sent(received)) == sent_before and os.listdir(pasted_dir(w)) == []
