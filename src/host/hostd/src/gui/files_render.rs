@@ -170,7 +170,7 @@ impl Explorer {
         clip_cols(&raw, max_cols)
     }
 
-    pub(super) fn selected_entry(&self) -> Option<&FileItem> {
+    pub(crate) fn selected_entry(&self) -> Option<&FileItem> {
         let base = 1 + usize::from(self.parent.is_some());
         self.cursor.checked_sub(base).and_then(|i| self.entries.get(i))
     }

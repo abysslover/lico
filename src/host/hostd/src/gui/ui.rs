@@ -71,6 +71,7 @@ pub struct UiState {
     pub markers: bool,
     pub workbench: bool,
     pub maximized_requested: bool,
+    pub path_bar: super::pathbar::PathBar, // the status bar of the full path on the last row (`M14`)
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>,
     pub quotas: HashMap<String, (Option<u8>, Option<u8>)>,
@@ -351,7 +352,7 @@ impl App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
-                self.dirty |= self.hover_moved();
+                self.dirty |= self.hover_moved() | self.path_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
                 }
@@ -376,7 +377,7 @@ impl App {
                     } else {
                         if !matches!(&hit, Some(Action::SidebarFilter)) { self.ui.sidebar.filter_focused = false; }
                         match hit {
-                            Some(ref a) if self.llm_click(a) || self.native_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
+                            Some(ref a) if self.llm_click(a) || self.path_click(a) || self.native_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
@@ -393,7 +394,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::ReadCard) => self.card_open(),
-                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::NativeYes | Action::NativeNo | Action::NativeLater | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_)) => {}
+                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::NativeYes | Action::NativeNo | Action::NativeLater | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::PathCopy) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarCallEntry(..) | Action::SidebarCallClose(..) | Action::SidebarCallStartPeer(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -574,7 +575,7 @@ impl App {
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "calls": self.calls_json(), "mention_popup": self.mention_popup_json(), "frame": frame,
-            "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
+            "path_bar": self.path_bar_json(), "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
             "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
@@ -642,7 +643,7 @@ impl App {
         let area_rows = ((height as f32 - chat_top) / lh) as usize;
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
-        if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(3 + n_prompt), cols); }
+        if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(4 + n_prompt), cols); }
         let panel_view = self.panel_view();
         let show_telem = self.show_telemetry_bar();
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
@@ -668,7 +669,7 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1);
+        let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
         let is_tx = panel_view.is_none();
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
@@ -809,7 +810,8 @@ impl App {
                 _ => line_extent(&mut view.buffer, fs, &mut view.swash, 0, ox, oy),
             };
         }
-        let hint_y_f = height as f32 - lh;
+        let bar_y_f = height as f32 - lh; // the path bar is the last row, the hint line the one above it
+        let hint_y_f = bar_y_f - lh;
         let telem_y_f = hint_y_f - lh;
         let hint_row = (if show_telem { telem_y_f } else { hint_y_f }) as i32;
         let mut frame = Composed {
@@ -936,6 +938,7 @@ impl App {
             self.draw_sidebar(&mut buf, width, height, list_w, top, chat_top, hint_y, &total);
         }
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
+        self.draw_path_bar(&mut buf, width, height, bar_y_f, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);

@@ -126,8 +126,8 @@ def test_lines_in_several_scripts_look_the_same_with_and_without_the_font_shortc
             xvfb.stop()
 
 
-def without_total_line(shot, width=1200 * 3, list_w=TEXT_X - 4, lines=2, line_height=18):
-    """The picture with the corner under the session list blanked: the last two lines there are the window's memory total and the hint. The total
+def without_total_line(shot, width=1200 * 3, list_w=TEXT_X - 4, lines=3, line_height=18):
+    """The picture with the corner under the session list blanked: the last three lines there are the window's memory total, the hint and (M14) the path bar. The total
     carries the window's own memory in whole MiB, which two windows (or one window a few seconds later) can show a MiB apart: not a drawing difference."""
     pic = bytearray(shot)
     rows = len(pic) // width
@@ -147,11 +147,11 @@ def test_the_picture_comparison_leaves_out_the_corner_with_the_memory_total_and_
     in_corner = bytearray(plain)
     in_corner[(rows - 12) * width + (TEXT_X - 5) * 3] = 7           # the total line, under the list, in the last column of it
     above = bytearray(plain)
-    above[(rows - 37) * width + 100 * 3] = 7                        # one row above the two lines
+    above[(rows - 55) * width + 100 * 3] = 7                        # one row above the three lines
     beside = bytearray(plain)
     beside[(rows - 12) * width + (TEXT_X - 4) * 3] = 7              # the same rows, the first column right of the list: the transcript's side
     assert differing_rows(plain, bytes(in_corner)) == []
-    assert differing_rows(plain, bytes(above)) == [rows - 37]
+    assert differing_rows(plain, bytes(above)) == [rows - 55]
     assert differing_rows(plain, bytes(beside)) == [rows - 12]
 
 

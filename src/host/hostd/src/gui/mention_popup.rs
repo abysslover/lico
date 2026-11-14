@@ -275,7 +275,7 @@ impl App {
         let pop_w = (460.0 * s).min((width as f32 - x0 - 12.0 * s).max(160.0 * s));
         let pop_h = (vis as f32 + 1.0) * lh + 8.0 * s;
         let below_y = ed_rect[3] + 4.0 * s;
-        let max_y = (height as f32 - 2.0 * lh - 4.0 * s).max(80.0 * s);
+        let max_y = (height as f32 - 3.0 * lh - 4.0 * s).max(80.0 * s);
         let y0 = if below_y + pop_h <= max_y {
             below_y
         } else {

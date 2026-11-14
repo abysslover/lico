@@ -11,9 +11,9 @@ from tests.test_first_view import start_client, ui, window_id, xdo
 
 
 def bottom_ink(display, rows=22):
-    """Light pixels in the last `rows` pixel rows of the window: the permanent hint line lives there."""
+    """Light pixels in the `rows` pixel rows above the last line of the window: the permanent hint line lives there (the last line is the path bar, M14)."""
     data = subprocess.run(["import", "-window", "root", "-depth", "8", "gray:-"], env={"DISPLAY": display, "PATH": "/usr/bin:/bin"}, capture_output=True, check=True).stdout
-    return sum(1 for y in range(800 - rows, 800) for x in range(1200) if data[y * 1200 + x] > 140)
+    return sum(1 for y in range(800 - 18 - rows, 800 - 18) for x in range(1200) if data[y * 1200 + x] > 140)
 
 
 def three_sessions(directory):

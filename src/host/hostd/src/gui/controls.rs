@@ -47,6 +47,7 @@ pub enum Action {
     LlmClose,
     LlmAllUsers,
     LlmMore,
+    PathCopy,
     LlmPick(usize),
     SidebarFilter,
     SidebarFilterClear,

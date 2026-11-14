@@ -162,9 +162,9 @@ class ProductWindow:
         return sum(1 for y in range(height) for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD)
 
     def prompt_ink(self) -> int:
-        """Lit pixels of the last line of text in the main area (the input line), above the hint bar at the bottom of the window."""
+        """Lit pixels of the last line of text in the main area (the input line), above the hint line and the path bar (M14) at the bottom of the window."""
         data, width, height = self.gray()
-        lit = [sum(1 for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD) for y in range(22, height - 24)]
+        lit = [sum(1 for x in range(TEXT_X, width) if data[y * width + x] > GRAY_THRESHOLD) for y in range(22, height - 24 - 18)]
         end = max((i for i, n in enumerate(lit) if n), default=-1)
         start = end
         while start > 0 and lit[start - 1]:
