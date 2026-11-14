@@ -4,7 +4,7 @@
 //! the size, `convert FILE rgb:-` for the pixels). A missing outside program fails the test, it never skips.
 
 use super::*;
-use crate::handoff::Scratch;
+use std::path::PathBuf;
 use std::process::Command;
 
 // ---- reader 1: the test's own decoder --------------------------------------------------------------------------------------
@@ -298,6 +298,25 @@ if len(raw) != h * (1 + 3 * w):
     fail("size of the image data")
 print("ok")
 "#;
+
+/// A folder under the temporary directory that goes with one test and is removed when it is dropped (the component's own, so that the
+/// proofs need nothing outside this module).
+pub(crate) struct Scratch(pub PathBuf);
+
+impl Scratch {
+    pub(crate) fn new(tag: &str) -> Scratch {
+        static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let path = std::env::temp_dir().join(format!("lico-png-{tag}-{}-{}", std::process::id(), COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        std::fs::create_dir_all(&path).unwrap();
+        Scratch(path)
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
 
 pub(crate) fn run(cmd: &mut Command, what: &str) -> std::process::Output {
     cmd.output().unwrap_or_else(|e| panic!("{what} must be installed for these tests (they never skip): {e}"))

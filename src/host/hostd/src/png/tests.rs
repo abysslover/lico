@@ -2,7 +2,6 @@
 //! (`readers.rs`), the size against ImageMagick, wrong use, memory, and the readers shown able to fail.
 
 use super::*;
-use crate::handoff::Scratch;
 use std::cell::Cell;
 use std::process::Command;
 use std::rc::Rc;
