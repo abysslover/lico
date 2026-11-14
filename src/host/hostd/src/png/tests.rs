@@ -457,6 +457,43 @@ fn two_encoders_side_by_side_do_not_touch_each_other() {
     both_readers(&pb, 50, 400, &b, "second");
 }
 
+/// I7 of the specification: within one version the same width, height and rows give the same bytes (any run, any sink).
+#[test]
+fn the_same_input_gives_the_same_bytes() {
+    for (w, h, pix) in [(1usize, 1usize, noise(1, 1, 3)), (37, 29, noise(37, 29, 5)), (200, 90, text_like(200, 90)), (64, 64, gradient(64, 64))] {
+        let first = encode(&pix, w as u32, h as u32);
+        for _ in 0..3 {
+            assert!(encode(&pix, w as u32, h as u32) == first, "{w}x{h}: the bytes differ between two runs");
+        }
+        let mut file = std::io::Cursor::new(Vec::new());
+        let mut e = PngEncoder::new(&mut file, w as u32, h as u32).unwrap();
+        for row in pix.chunks(w * 3) {
+            e.push_row(row).unwrap();
+        }
+        e.finish().unwrap();
+        assert!(file.into_inner() == first, "{w}x{h}: another kind of sink gives other bytes");
+    }
+}
+
+/// I1 of the specification, byte for byte: the signature and the header of a one-pixel file, and the end chunk.
+#[test]
+fn the_header_of_a_one_pixel_file_is_exactly_the_bytes_of_the_specification() {
+    let file = encode(&[10, 20, 30], 1, 1);
+    let head: [u8; 33] = [
+        0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, // the signature
+        0, 0, 0, 13, b'I', b'H', b'D', b'R', // the length and the type of the header chunk
+        0, 0, 0, 1, 0, 0, 0, 1, // width 1, height 1
+        8, 2, 0, 0, 0, // 8 bits, RGB, deflate, filter method 0, no interlace
+        0x90, 0x77, 0x53, 0xDE, // its check sum
+    ];
+    assert_eq!(&file[..33], &head[..]);
+    let end: [u8; 12] = [0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82];
+    assert_eq!(&file[file.len() - 12..], &end[..]);
+    // a wider header carries the sizes big-endian
+    let wide = encode(&noise(258, 1, 9), 258, 1);
+    assert_eq!(&wide[16..24], &[0, 0, 1, 2, 0, 0, 0, 1]);
+}
+
 // ---- the readers can fail --------------------------------------------------------------------------------------------------
 
 #[test]
