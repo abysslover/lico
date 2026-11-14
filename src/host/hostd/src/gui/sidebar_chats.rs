@@ -39,6 +39,10 @@ pub struct ChatEntryGeom {
     pub open_session: Option<String>,
     pub open_state: Option<String>,
     pub running_elsewhere: bool,
+    pub pill: Option<&'static str>, // `[open]`, `[closed]`, `[ended]`, `[elsewhere]`
+    pub pill_line: u8,              // the line of the card it is drawn on: 1, or 2 for `[elsewhere]` so that the title keeps the first line whole
+    pub sub: String,                // the second line, whole
+    pub title_shown: String,        // the title as drawn (cut to the room it has)
     pub rect: Rect,
 }
 
@@ -79,6 +83,45 @@ fn rel_age(now: u64, updated_at: u64) -> String {
     } else {
         format!("{}d", d / 86_400)
     }
+}
+
+/// How long ago, in the words of the list: `10m ago`, `3h ago`, `just now`.
+fn ago(now: u64, updated_at: u64) -> String {
+    match rel_age(now, updated_at).as_str() {
+        "now" => "just now".to_string(),
+        short => format!("{short} ago"),
+    }
+}
+
+/// Who a row belongs to, when that is worth a word: another account of the provider, or an ssh host. The provider's own default home (`Native (~/.claude)`) is the common
+/// case and says nothing, so the word is not repeated on every row; the badge already says which provider.
+fn who_of(it: &ChatEntry) -> Option<&str> {
+    it.account_label.as_deref().or(it.ssh_host.as_deref()).filter(|l| !l.starts_with("Native ("))
+}
+
+/// The mark of a card and the line it is drawn on: `[elsewhere]` goes to the second line (with when the chat was written) so that the title has the first line whole.
+fn pill_of(it: &ChatEntry) -> Option<(&'static str, u8)> {
+    match it.open_state.as_deref() {
+        Some("running") => Some(("[open]", 1)),
+        Some("disconnected") => Some(("[closed]", 1)),
+        Some("exited") => Some(("[ended]", 1)),
+        _ if it.running_elsewhere => Some(("[elsewhere]", 2)),
+        _ => None,
+    }
+}
+
+/// The second line of a card: when the chat was last written first (it was the part that the old line cut off), then who, then the short id; a chat that another program writes
+/// says `[elsewhere] written 4m ago`.
+fn sub_line(it: &ChatEntry, now: u64) -> String {
+    let short_id = &it.provider_session[..it.provider_session.len().min(8)];
+    let who = who_of(it);
+    if let Some(("[elsewhere]", _)) = pill_of(it) {
+        return format!("[elsewhere] written {}{}", ago(now, it.updated_at), who.map_or(String::new(), |w| format!(" \u{00b7} {w}")));
+    }
+    let mut parts = vec![ago(now, it.updated_at)];
+    parts.extend(who.map(str::to_string));
+    parts.push(format!("#{short_id}"));
+    parts.join(" \u{00b7} ")
 }
 
 /// What the sidebar says for a refused request: a host of another build does not know the operation, which is not a fault of the folder.
@@ -347,6 +390,10 @@ impl App {
                     "open_session": e.open_session,
                     "open_state": e.open_state,
                     "running_elsewhere": e.running_elsewhere,
+                    "pill": e.pill,
+                    "pill_line": e.pill_line,
+                    "sub": e.sub,
+                    "title_shown": e.title_shown,
                     "rect": e.rect,
                 })
             })
@@ -567,31 +614,37 @@ impl App {
                 } else {
                     ("X\u{00b7}", codex_ink)
                 };
-                let (pill_txt, pill_col) = match it.open_state.as_deref() {
-                    Some("running") => (Some("[open]"), Color::rgb(0x68, 0xE0, 0xA8)),
-                    Some("disconnected") => (Some("[closed]"), gold_ink),
-                    Some("exited") => (Some("[ended]"), muted),
-                    _ if it.running_elsewhere => (Some("[elsewhere]"), Color::rgb(0xF2, 0xB1, 0x3C)), // another program is writing it: it cannot be resumed from here
-                    _ => (None, dim),
+                let pill = pill_of(it);
+                let pill_col = match pill {
+                    Some(("[open]", _)) => Color::rgb(0x68, 0xE0, 0xA8),
+                    Some(("[closed]", _)) => gold_ink,
+                    Some(("[ended]", _)) => muted,
+                    Some(_) => Color::rgb(0xF2, 0xB1, 0x3C), // another program is writing it: it cannot be resumed from here
+                    None => dim,
                 };
-                let pill_w = pill_txt.map_or(0.0, |p| controls.width(fs, p) + 8.0 * s);
+                let pill_w = pill.filter(|(_, line)| *line == 1).map_or(0.0, |(p, _)| controls.width(fs, p) + 8.0 * s);
                 let b_w = controls.text(fs, swash, buf, width, height, r[0] + 6.0 * s, y + s, r[2] as i32, badge, b_col);
                 let title_x = r[0] + 6.0 * s + b_w + 4.0 * s;
                 let title_clip = (r[2] - pill_w - 4.0 * s) as i32;
                 let title_cols = (((title_clip as f32 - title_x).max(24.0)) / (char_w * s)) as usize;
-                controls.text(fs, swash, buf, width, height, title_x, y + s, title_clip, &clip_cols(&it.title, title_cols), ink);
-                if let Some(pt) = pill_txt {
+                let title_shown = clip_cols(&it.title, title_cols);
+                controls.text(fs, swash, buf, width, height, title_x, y + s, title_clip, &title_shown, ink);
+                if let Some((pt, 1)) = pill {
                     controls.text(fs, swash, buf, width, height, r[2] - pill_w + 2.0 * s, y + s, r[2] as i32, pt, pill_col);
                 }
 
-                let who = it
-                    .account_label
-                    .as_deref()
-                    .or(it.ssh_host.as_deref())
-                    .unwrap_or("local");
-                let short_id = &it.provider_session[..it.provider_session.len().min(8)];
-                let sub = format!("{} \u{00b7} {} \u{00b7} #{short_id} \u{00b7} {}", it.provider, who, rel_age(now, it.updated_at));
-                controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, (r[2] - 4.0 * s) as i32, &clip_cols(&sub, max_cols.saturating_sub(2)), muted);
+                let sub = sub_line(it, now);
+                let clip_to = (r[2] - 4.0 * s) as i32;
+                match pill {
+                    Some((pt, 2)) => {
+                        let w = controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, clip_to, pt, pill_col);
+                        let rest = sub.strip_prefix(pt).unwrap_or(&sub).trim_start();
+                        controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s + w + char_w * s, y + lh + s, clip_to, &clip_cols(rest, max_cols.saturating_sub(2 + pt.len() + 1)), muted);
+                    }
+                    _ => {
+                        controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, clip_to, &clip_cols(&sub, max_cols.saturating_sub(2)), muted);
+                    }
+                }
 
                 controls.target(r, Action::SidebarChatEntry(idx));
                 out_geom.push(ChatEntryGeom {
@@ -604,6 +657,10 @@ impl App {
                     open_session: it.open_session.clone(),
                     open_state: it.open_state.clone(),
                     running_elsewhere: it.running_elsewhere,
+                    pill: pill.map(|(p, _)| p),
+                    pill_line: pill.map_or(0, |(_, line)| line),
+                    sub,
+                    title_shown,
                     rect: r,
                 });
                 y += card_h;
@@ -658,7 +715,48 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::chats_error_text;
+    use super::*;
+
+    fn chat(session: &str, label: Option<&str>, ssh: Option<&str>, updated_at: u64) -> ChatEntry {
+        ChatEntry {
+            provider: "claude".into(), provider_session: session.into(), account: None, account_label: label.map(str::to_string), ssh_host: ssh.map(str::to_string), cwd: None, global: false,
+            title: "t".into(), updated_at, open_session: None, open_state: None, running_elsewhere: false,
+        }
+    }
+
+    #[test]
+    fn a_card_says_when_the_chat_was_written_first_and_names_an_account_only_when_it_is_not_the_default_home() {
+        let now = 1_000_000;
+        let native = chat("cl-native-long-id", Some("Native (~/.claude)"), None, now - 600);
+        assert_eq!(sub_line(&native, now), "10m ago \u{00b7} #cl-nativ", "no account word for the default home, and the age is the first thing");
+        assert_eq!(sub_line(&chat("cl-1", Some("ClaudeWork"), None, now - 7200), now), "2h ago \u{00b7} ClaudeWork \u{00b7} #cl-1");
+        assert_eq!(sub_line(&chat("cl-2", None, Some("gpu-box"), now - 5), now), "5s ago \u{00b7} gpu-box \u{00b7} #cl-2");
+        assert_eq!(sub_line(&chat("cl-3", None, None, now), now), "just now \u{00b7} #cl-3");
+        assert_eq!(sub_line(&chat("cl-4", Some("Native (~/.codex)"), None, now - 3 * 86_400), now), "3d ago \u{00b7} #cl-4");
+    }
+
+    #[test]
+    fn a_chat_another_program_writes_keeps_its_first_line_for_the_title_and_says_how_long_ago_it_was_written() {
+        let now = 1_000_000;
+        let mut live = chat("cl-live", Some("ClaudeWork"), None, now - 240);
+        live.running_elsewhere = true;
+        assert_eq!(pill_of(&live), Some(("[elsewhere]", 2)));
+        assert_eq!(sub_line(&live, now), "[elsewhere] written 4m ago \u{00b7} ClaudeWork");
+        live.updated_at = now;
+        assert_eq!(sub_line(&live, now), "[elsewhere] written just now \u{00b7} ClaudeWork");
+        live.open_state = Some("running".into());
+        assert_eq!(pill_of(&live), Some(("[open]", 1)), "a chat that is open in a tab of ours is ours: the old order of the marks holds");
+        for (state, mark) in [("disconnected", "[closed]"), ("exited", "[ended]")] {
+            live.open_state = Some(state.into());
+            assert_eq!(pill_of(&live), Some((mark, 1)));
+        }
+        assert_eq!(pill_of(&chat("cl-x", None, None, 1)), None);
+    }
+
+    #[test]
+    fn the_short_words_of_the_age_stay_the_ones_of_the_list() {
+        assert_eq!([rel_age(100, 100), rel_age(100, 55), rel_age(1000, 400), rel_age(20_000, 10_000), rel_age(500_000, 100_000)], ["now", "45s", "10m", "2h", "4d"]);
+    }
 
     #[test]
     fn a_host_that_does_not_know_the_operation_is_explained_and_other_codes_pass_through() {
