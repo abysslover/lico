@@ -1,7 +1,7 @@
 # M14 — Full Path in a Bottom Status Bar, and a Maximized First Start (`lico 0.3.2`)
 
-- Status: planned (G1 and G2 approved by the owner on 2026-11-14)
-- Version: 1.0.0
+- Status: implemented, waiting for the owner's G3 (G1 and G2 approved on 2026-11-14)
+- Version: 1.1.0
 - Approved: 2026-11-14 (G1 and G2 for M14-P01 to M14-P03: the owner's plan approval in the chat on 2026-11-14)
 - Project: Lico
 - Updated: 2026-11-14
@@ -39,4 +39,4 @@ The component rules of 2026-11-14 bind this new code: no new upward edge into a 
 |---|---|---|---|---|
 | M14-P01 | Bottom status bar with the full path | [Plan](../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | [Report](../../reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | implemented |
 | M14-P02 | Maximized first start | [Plan](../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | [Report](../../reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | implemented |
-| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | pending | planned |
+| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | [Report](../../reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | implemented |
