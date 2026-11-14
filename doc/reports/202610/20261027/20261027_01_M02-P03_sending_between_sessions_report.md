@@ -289,3 +289,7 @@ The host and command-line parts were run on private sockets many times in the te
 From the gate verifier (see "The gate verifier"): the tool listener has no guard against slow connections (F8: 32 of them give every session a 503), the rate bucket is one for all sessions (F9), and the 256 MiB of the handoff folders is one budget for all inboxes (F10: a flood into one inbox can send away older files of the others). A limit for each connection or each session, and a budget for each inbox, are design questions of P06. Two more from the second fix round: a host that accepts connections and never answers is neither replaced nor named, and the new-session screen waits 13 s for it (F13: a header line and a shorter wait, and the pid of the peer of the socket if the window is to replace such a host), and nine limits are pinned by no test (F19: the 33rd connection, a burst of 51 requests on a fake clock, a third whole-conversation read at once, among others).
 
 The activity indicator and the attention mark must ignore the echo records (`>> `): a sent, received or notice message is not new output. The host counts the non-echo output records at the one place that appends them and carries the counter in the session status; the window does not re-parse prefixes (agent text is recorded raw, so the prefix is cosmetic).
+
+---
+
+Note (M15-P02, 2026-11-14): the experiment paths cited above under `exp/` were removed from the tree (only `exp/202610/20261027/00003_record_layout_2_1_311/` remains); they are in git history at `fdf5314` and before.

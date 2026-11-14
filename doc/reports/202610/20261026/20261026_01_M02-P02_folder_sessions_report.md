@@ -320,3 +320,7 @@ Clean up: `lico --socket "$T/host.sock" host stop --force`, then remove `$T`. Th
 1. **Tab completion of folders (R6).** Today the folder field takes a typed or pasted path and the ten recent folders. A new path must be typed whole. I would add completion in P06 (a bounded listing of subfolders from the host, completion in the field), small, but the case for it is a feel the first try will show; I did not add it on a guess.
 2. **Lane for the window tests.** The tally of this phase: 11 of the 30 runs followed host-only changes (113 to 128 s each, 1,276 s together) and ran all 19 window files; with the host files only (about 14 s of tests plus the build, per the cost note) they would have taken a few minutes in all. One of the 10 failing runs was a window file failing on a host change (`test_first_view` after the echo); it would have shown at the commit's full run instead of in the edit loop. Recommendation: yes for the edit loop, keep the commit's selected run as it is.
 3. **MI-07.** Measured: close and delete leave a detached program running. Recommendation: a scope or control group per session, as its own step after P03, falling back to today's behaviour where `systemd --user` is missing; the memory figure could then also use the group's `memory.stat`.
+
+---
+
+Note (M15-P02, 2026-11-14): the experiment paths cited above under `exp/` were removed from the tree (only `exp/202610/20261027/00003_record_layout_2_1_311/` remains); they are in git history at `fdf5314` and before.

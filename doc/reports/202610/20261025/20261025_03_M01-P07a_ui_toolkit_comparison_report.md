@@ -167,3 +167,7 @@ Recommendation: **option 3, starting from option 1.** On this evidence the toolk
 scales than the reference, and every one misses a budget row, carries a licence condition, or lacks keyboard menu use. What they do show for free (editing keys,
 clipboard, mouse menus, Korean in an entry line and a menu) is a concrete checklist for the hand-drawn client. This is a recommendation from measured resources,
 licences and observed behaviour only; it is not a decision, and the missed budgets in section 4 and the Slint licence in section 6 remain the owner's.
+
+---
+
+Note (M15-P02, 2026-11-14): the experiment paths cited above under `exp/` were removed from the tree (only `exp/202610/20261027/00003_record_layout_2_1_311/` remains); they are in git history at `fdf5314` and before.

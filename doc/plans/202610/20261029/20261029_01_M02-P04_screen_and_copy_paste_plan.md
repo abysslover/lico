@@ -125,3 +125,7 @@ Wayland; capture of a covered window (Composite); several screens as separate im
 - 1.0.2: S02 is split by the lead (mail 118) into S02a (the PNG encoder `png`, row by row to any writer, with the four safeguards of D2; no X11) and S02b (the screen read in bands, the shrink, the size guard and `lico capture`); two slips of 1.0.1 are fixed (the header line said 1.0.0 while the body said 1.0.1, and D6(e) counted 14 tests in `lines.rs` where it holds 13).
 - 1.0.1: the answers to mail 116 are written into the Deviations (D1 as built with its conditions, the record file reader, D2 with the four safeguards, D3 to D5 accepted with the three small asks) and S01 "Change" says what was built; written in the commit of S01; D6 (what S01 changes in S02 to S08) is new and the P03 conversation test that encoded the old rule is changed (D1).
 - 1.0.0: first version, written as the phase's first step from the requirements, the code read on 2026-10-29 and the shape of the real program's record file.
+
+---
+
+Note (M15-P02, 2026-11-14): the experiment paths cited above under `exp/` were removed from the tree (only `exp/202610/20261027/00003_record_layout_2_1_311/` remains); they are in git history at `fdf5314` and before.

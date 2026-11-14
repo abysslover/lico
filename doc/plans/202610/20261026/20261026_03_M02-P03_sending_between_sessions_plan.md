@@ -474,3 +474,7 @@ The owner tried the window on 2026-10-27 and reported what they found. **The fin
   - **G3, `1f767da`, `b251dfa`.** One Rust unit test each in `creds.rs`, `accounts.rs` and `registry.rs` for the modes of five sites that no test saw; the mutants of the verifier are red; the follow-up keeps `creds.rs` free of `handoff.rs`, so a change of `core.rs` does not select the credential tests. Rust: 370 tests under umask 022 and 077.
   - **Left, by decision.** The two call sites of N2 (Codex and Claude, `core::input`) stay pinned by no test; the lead plans a test for each, or one instant shared by the three, as a small first step of the next phase. Making the capability record again for codex 0.165.0, installed on the test machine on 2026-10-28, is not part of P03.
   - **Measured at `b251dfa`:** `suite run --cold`, 331 tests in 65 files, all passed, RUN 158.4 s, BUILD skipped in the run (14.7 s when seen), peak 1,270.7 MiB; a first run at `1f767da` failed `tests/test_selection.py` (the follow-up). Counts: 325 Python test functions, 370 Rust unit tests, 65 test files.
+
+---
+
+Note (M15-P02, 2026-11-14): the experiment paths cited above under `exp/` were removed from the tree (only `exp/202610/20261027/00003_record_layout_2_1_311/` remains); they are in git history at `fdf5314` and before.

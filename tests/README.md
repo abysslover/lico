@@ -42,7 +42,7 @@ Rust module runs; a changed file nobody declared selects everything. `size_allow
    `ime.CompositionRig`) instead of one per test, without making a test depend on the one before it. Wait for a condition
    (the frame counter, a line in the log, a state in the status), never for a fixed sleep.
 5. **Is it a main-path test or an exhaustive check?** The suite holds what a change must keep true on the main path. An exhaustive
-   differential (millions of lines, every codepoint) stays outside the suite, in `exp/` or a measurement script, and the suite
+   differential (millions of lines, every codepoint) stays outside the suite, in a measurement script (the `exp/` experiments were removed in M15-P02), and the suite
    keeps a sample of it.
 
 Each test has its own socket, run directory and display (`rig.private_dir()`, `Xvfb` on `-displayfd`); the parallel runner gives each
