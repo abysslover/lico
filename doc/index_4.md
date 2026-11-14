@@ -113,7 +113,8 @@
 | [M15-P02 report](reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | exp/ deleted, the workspace, `lico-xtask` (graph, check, receipts, isolated runner, acceptance) |
 | [M15-P03 plan](plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | The first component, `png`: the approved interface specification and the steps |
 | [M15-P03 report](reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md) | `lico-png` detached with SPEC.md, contract tests and a receipt; the mutation check; the measured cost of a change before and after |
-| [M15-P04 plan](plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | Verification and release (sketch) |
+| [M15-P04 plan](plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | Verification and release (`lico 0.3.3`) |
+| [M15-P04 report](reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md) | Measured acceptance of `lico 0.3.3`: three cold runs, idle, hidden growth, two acceptances, tool list, the binary free of test support |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
 | [M14-P03 report](reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | Measured budgets, three cold runs, acceptance, `lico 0.3.2`, install |
 

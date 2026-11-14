@@ -1,6 +1,6 @@
 # M15 — The Component Foundation: Phase 0 Analysis, Workspace and Rust Tools, the First Component, Release (`lico 0.3.3`)
 
-- Status: P01 done and stopped at its report; waiting for the owner's choice of the first component (G1 approved on 2026-11-14)
+- Status: P01 to P04 implemented (`lico 0.3.3`); waits for the owner's acceptance (G3); the retired prototypes wait for the owner's answer (G1 approved on 2026-11-14)
 - Version: 1.1.0
 - Approved: 2026-11-14 (the owner's plan approval in the chat on 2026-11-14 for the milestone and for M15-P01; P02 to P04 are sketches whose plans are shown at their own G2)
 - Project: Lico
@@ -40,7 +40,7 @@ A move and a behaviour change never share a commit; every test that exists today
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M15-P01 | Phase 0: measure and decide (read-only) | [Plan](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md) | [Report](../../../reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | implemented, waiting for the owner's pick |
+| M15-P01 | Phase 0: measure and decide (read-only) | [Plan](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md) | [Report](../../../reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | implemented; the owner picked `png` |
 | M15-P02 | The workspace and the Rust tools | [Plan](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | [Report](../../../reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | implemented (the prototypes wait for the owner) |
-| M15-P03 | The first component | [Plan](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | pending | sketch |
-| M15-P04 | Verification and release | [Plan](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | pending | sketch |
+| M15-P03 | The first component | [Plan](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | [Report](../../../reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md) | implemented |
+| M15-P04 | Verification and release | [Plan](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | [Report](../../../reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md) | implemented |

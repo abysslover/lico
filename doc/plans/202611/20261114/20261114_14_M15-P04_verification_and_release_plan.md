@@ -11,12 +11,12 @@ Release acceptance once and whole, with numbers only as measured: the version `0
 
 ## Steps
 
-- [ ] 1. The version: the two tests that name `0.3.2` change to `0.3.3` first (red), then `Cargo.toml` and `Cargo.lock`.
-- [ ] 2. On the clean committed tree, one after the other, each waiting for the load average to fall under 12: Rust units under `umask 022` and `umask 077`; `cargo xtask check` and `verify`; the tool-list bytes; the binary free of the test support.
-- [ ] 3. Three cold full runs (`suite run --cold`): tests, seconds, peak, margins; a failure in a load-sensitive test on a loaded host is not counted and is said.
-- [ ] 4. Idle window RSS at scale 1 and 2 (3 launches each) and hidden growth (3 repetitions), with `lico_measure run --candidates a2 --ui --menu --accounts 10 --realistic-text`.
-- [ ] 5. `suite acceptance` (Python) and `cargo xtask accept` (Rust) on the final commit. Decision on retiring the Python one: only if the Rust one is shown to catch what it catches; otherwise both stay and the report says why.
-- [ ] 6. Documents: CHANGELOG `0.3.3`, PLAN, roadmap, README, manual, index, milestone and plan statuses.
+- [x] 1. The version: the two tests that name `0.3.2` change to `0.3.3` first (red), then `Cargo.toml` and `Cargo.lock`.
+- [x] 2. On the clean committed tree, one after the other, each waiting for the load average to fall under 12: Rust units under `umask 022` and `umask 077`; `cargo xtask check` and `verify`; the tool-list bytes; the binary free of the test support.
+- [x] 3. Three cold full runs (`suite run --cold`): tests, seconds, peak, margins; a failure in a load-sensitive test on a loaded host is not counted and is said.
+- [x] 4. Idle window RSS at scale 1 and 2 (3 launches each) and hidden growth (3 repetitions), with `lico_measure run --candidates a2 --ui --menu --accounts 10 --realistic-text`.
+- [x] 5. `suite acceptance` (Python) and `cargo xtask accept` (Rust) on the final commit. Decision on retiring the Python one: only if the Rust one is shown to catch what it catches; otherwise both stay and the report says why.
+- [x] 6. Documents: CHANGELOG `0.3.3`, PLAN, roadmap, README, manual, index, milestone and plan statuses.
 - [ ] 7. Build with `build-release.sh` from the clean commit, hash, keep the `0.3.2` binary at `private/release_0_3_2_backup/lico`, install to `~/bin/lico`, run `lico --version`.
 - [ ] 8. Report and mail.
 

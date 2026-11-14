@@ -9,6 +9,16 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.3.3 — 2026-11-14 (`M15`)
+
+- **Milestone**: [M15 The component foundation](doc/milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md) ([M15-P04 report](doc/reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md)); no behaviour a person can see changes
+- **Measured resources**: idle window `25.33..25.65` / `36.58..36.62 MiB`, `10 -> 100` hidden growth `+0.40 MiB`, cold 557-test suite `130.9..131.9 s`, tree peak `1,586.5..1,633.2 MiB`, tool list `5,103` of `5,120` bytes
+- **Highlights**:
+  - **A Cargo workspace and Rust tools.** `cargo xtask` checks the components and their dependencies, hashes them into receipts, runs one component's tests alone against its budget, reads the module graph of the program from its source and checks that two clean clones build the same executable.
+  - **The first component, `lico-png`** (`components/png`, version `1.0.0`): the PNG writer with its specification, 12 contract tests, 13 white-box tests and a receipt; the program depends on it by name.
+  - **Test selection by component**: a change inside a component runs its own tests and the tests of the modules that name it, not the whole binary's.
+  - **`exp/` removed** (its measurements stay in git history); the retired prototypes stay until the owner decides.
+
 ## 0.3.2 — 2026-11-14 (`M14`)
 
 - **Milestone**: [M14 Full path in a bottom status bar, and a maximized first start](doc/milestones/202611/20261114/20261114_03_M14_path_status_bar_and_maximized_start_milestone.md) (`milestone/M14-path-status-bar-and-maximized-start`, [M14-P03 report](doc/reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md))
