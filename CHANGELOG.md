@@ -11,11 +11,11 @@ binaries (`python3 -m lico_measure.suite acceptance`).
 
 ## 0.3.2 — 2026-11-14 (`M14`)
 
-- **Milestone**: [M14 Full path in a bottom status bar, and a maximized first start](doc/milestones/202611/20261114/20261114_03_M14_path_status_bar_and_maximized_start_milestone.md) (`milestone/M14-*` is created by the lead at the closing commit, [M14-P03 report](doc/reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md))
+- **Milestone**: [M14 Full path in a bottom status bar, and a maximized first start](doc/milestones/202611/20261114/20261114_03_M14_path_status_bar_and_maximized_start_milestone.md) (`milestone/M14-path-status-bar-and-maximized-start`, [M14-P03 report](doc/reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md))
 - **Measured resources**: idle window `25.13..25.48` / `36.21..36.29 MiB`, `10 -> 100` hidden growth `+0.50 MiB`, cold 550-test suite `123.5..125.1 s`, tree peak `1,455.4..1,472.2 MiB`
 - **Highlights**:
   - **A path bar on the last row.** It shows the full path of what the pointer is on (a row of the directory list, a chat card's folder), else of the Files panel's row or the directory the sidebar shows, else the active session's working directory; `host:path` on an ssh host; a path too long keeps its end behind `…` and a click copies the whole path. It is drawn again only when its text changes.
-  - **The maximized start states its request where a window manager reads it.** The window is created hidden, `_NET_WM_STATE` is set, then the window is shown: the message that winit sends after the map can be lost (reproduced on a model of a window manager that needs time and on one that drops the message). Not verified on the owner's own window manager; see the report.
+  - **The maximized start states its request where a window manager reads it.** The window is created hidden, `_NET_WM_STATE` is set, then the window is shown: the message that winit sends after the map can be lost (reproduced on a model of a window manager that needs time and on one that drops the message). Not verified on the owner's own window manager; see the report. On the day of acceptance the owner reported that `lico gui` 0.3.2 still did not open maximized on their desktop (GNOME Shell on X11), so the cause there is open.
   - **An icon at the right end of the menu row** switches the window between maximized and windowed mode, in both directions; `--windowed` starts windowed and the icon offers to maximize.
 
 ## 0.3.1 — 2026-11-14 (`M13`)

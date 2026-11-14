@@ -1,14 +1,14 @@
 # M14 — Full Path in a Bottom Status Bar, and a Maximized First Start (`lico 0.3.2`)
 
-- Status: implemented, waiting for the owner's G3 (G1 and G2 approved on 2026-11-14)
-- Version: 1.1.0
-- Approved: 2026-11-14 (G1 and G2 for M14-P01 to M14-P03: the owner's plan approval in the chat on 2026-11-14)
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-14; one open issue, see the gate record)
+- Version: 1.1.1
+- Approved: 2026-11-14 (G1 and G2 for M14-P01 to M14-P03: the owner's plan approval in the chat on 2026-11-14; G3 and G4, with publication, on 2026-11-14)
 - Project: Lico
 - Updated: 2026-11-14
 - Base: `main` at `8857a4c` (M13 accepted, merged and pushed; the component rules are on `main`); later phases are stacked on the previous phase tip
-- Milestone branch: `milestone/M14-*` is created by the lead at the closing commit, not by the implementing session
+- Milestone branch: `milestone/M14-path-status-bar-and-maximized-start` (created at the closing commit)
 - Implementation: `phase/M14-P01-path-status-bar` .. `phase/M14-P03-verification-and-0-3-2` (`lico 0.3.2`)
-- Next gate: G3 after P03 (owner)
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-14)
 
 ## Goal
 
@@ -37,6 +37,14 @@ The component rules of 2026-11-14 bind this new code: no new upward edge into a 
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M14-P01 | Bottom status bar with the full path | [Plan](../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | [Report](../../reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | implemented |
-| M14-P02 | Maximized first start | [Plan](../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | [Report](../../reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | implemented |
-| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | [Report](../../reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | implemented |
+| M14-P01 | Bottom status bar with the full path | [Plan](../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | [Report](../../reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | accepted & merged |
+| M14-P02 | Maximized first start | [Plan](../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | [Report](../../reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | accepted & merged (maximized start not confirmed on the owner's desktop) |
+| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | [Report](../../reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | accepted & merged |
+
+## Gate record
+
+- G3, G4 and the push for this milestone were given by the owner in the chat on 2026-11-14, in one message, after the owner had run `lico gui` (0.3.2, installed) on their desktop and reported that the window still did not start maximized. The owner asked that the work so far be committed, merged and pushed, and that the work asked for earlier go on from a clean state. The chain moved to `main` by fast-forward to the M14-P03 tip `bc218ea`, and this closing commit then recorded the acceptance. The owner named no individual tip.
+- What the owner had observed before giving it: the window did not start maximized. The only datum from the owner's desktop is the output of `xprop _NET_WM_STATE` on a window the owner clicked, an empty value (`_NET_WM_STATE(ATOM) =`); which window that was, and whether the maximize icon works, were not reported. The path bar, the icon and the measurements were not reported by the owner as inspected, and the measurements in the phase reports were not independently reproduced at the gate.
+- Open issue: the P02 fix (the maximize request stated on the hidden window before it is shown) is shown only on a model of a window manager; on the owner's GNOME Shell (mutter) the window still does not start maximized. The cause there is not known. A follow-up is open and not yet scheduled; it starts from the real window of `lico gui` (its `_NET_WM_STATE` right after the start, whether the icon maximizes it, whether a late request is accepted).
+- Reported at the gate: the Files panel has no mouse row targets, so the bar follows its cursor; the sidebar's folder is a fallback before the session folder; openbox was not downloaded (the owner declined); four existing bottom-edge tests were changed on purpose and are named in the reports.
+- The owner's later requests are not part of this milestone: the component foundation (milestone M15), a found Local LLM server as a session, a lico host on an ssh host, computer use on Linux, the Python to Rust migration, Windows and macOS.

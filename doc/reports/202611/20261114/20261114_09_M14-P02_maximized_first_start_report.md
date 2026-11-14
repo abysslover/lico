@@ -1,7 +1,7 @@
 # M14-P02 Report — Maximized First Start, and the Maximize/Restore Icon
 
-- Status: implemented, waiting for the owner's G3 and for the owner's check on the real desktop (see the last section)
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14); the owner's check on the real desktop found that the window still does not start maximized (see the gate record of the milestone)
+- Version: 1.0.1
 - Branch: `phase/M14-P02-maximized-first-start` (stacked on `phase/M14-P01-path-status-bar` at `2e99f78`; code commit `3ee4071`)
 - Plan: [M14-P02](../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md)
 

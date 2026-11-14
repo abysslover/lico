@@ -1,7 +1,7 @@
 # M14-P01 Report — Bottom Status Bar with the Full Path
 
-- Status: implemented, waiting for the owner's G3
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M14-P01-path-status-bar` (from `main` at `8857a4c`; documentation commit `bdbfb8e`, code commit `d2a60b6`)
 - Plan: [M14-P01](../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md)
 
