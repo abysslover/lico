@@ -39,7 +39,7 @@ Discovery stays read-only, bounded and on demand, never in the background: GET o
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M13-P01 | Split the big GUI tests; reproduce the flaky ones | [Plan](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | pending | planned |
+| M13-P01 | Split the big GUI tests; reproduce the flaky ones | [Plan](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | [Report](../../reports/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_report.md) | implemented |
 | M13-P02 | Discovery dialog follow-up: cache, speed, fold, readable rows | [Plan](../../plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | pending | planned |
 | M13-P03 | Chat list polish | [Plan](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | pending | planned |
 | M13-P04 | Verification and `lico 0.3.1` | [Plan](../../plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | pending | planned |
