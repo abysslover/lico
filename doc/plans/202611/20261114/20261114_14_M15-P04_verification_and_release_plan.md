@@ -1,6 +1,6 @@
 # M15-P04 Plan — Verification and Release (`lico 0.3.3`)
 
-- Status: in progress (the lead's instruction of 2026-11-14 said to continue to P04 after the P03 specification was approved; AGENTS.md lets a phase prefix include the installs the plan names, and this plan names one)
+- Status: implemented (the lead's instruction of 2026-11-14 said to continue to P04 after the P03 specification was approved; AGENTS.md lets a phase prefix include the installs the plan names, and this plan names one)
 - Version: 1.1.0
 - Branch: `phase/M15-P04-verification-and-0-3-3` (stacked on the P03 tip `f566ace`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
@@ -17,8 +17,8 @@ Release acceptance once and whole, with numbers only as measured: the version `0
 - [x] 4. Idle window RSS at scale 1 and 2 (3 launches each) and hidden growth (3 repetitions), with `lico_measure run --candidates a2 --ui --menu --accounts 10 --realistic-text`.
 - [x] 5. `suite acceptance` (Python) and `cargo xtask accept` (Rust) on the final commit. Decision on retiring the Python one: only if the Rust one is shown to catch what it catches; otherwise both stay and the report says why.
 - [x] 6. Documents: CHANGELOG `0.3.3`, PLAN, roadmap, README, manual, index, milestone and plan statuses.
-- [ ] 7. Build with `build-release.sh` from the clean commit, hash, keep the `0.3.2` binary at `private/release_0_3_2_backup/lico`, install to `~/bin/lico`, run `lico --version`.
-- [ ] 8. Report and mail.
+- [x] 7. Build with `build-release.sh` from the clean commit, hash, keep the `0.3.2` binary at `private/release_0_3_2_backup/lico`, install to `~/bin/lico`, run `lico --version`.
+- [x] 8. Report and mail.
 
 ## Acceptance Criteria
 
