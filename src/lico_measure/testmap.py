@@ -33,6 +33,8 @@ class Selection:
     cargo: set = field(default_factory=set)         # cargo test filters; "" means the whole binary's tests
     acceptance: list = field(default_factory=list)  # the changed files that make the acceptance run due
     xtask: bool = False                             # the tools' own cargo tests (`cargo test -p lico-xtask`) are due
+    components: set = field(default_factory=set)    # packages of `components/` whose own tests (`cargo xtask test NAME`) are due
+    verify: bool = False                            # a receipt changed: `cargo xtask verify` is due (it names what no longer matches)
     reasons: list = field(default_factory=list)     # (changed file, why)
     warnings: list = field(default_factory=list)    # what the scan could not read and therefore assumed the worst of
 
@@ -219,6 +221,24 @@ def rust_uses(files, root=REPO, unreadable=None):
     return uses
 
 
+def component_packages(files, root=REPO):
+    """`components/<dir>/Cargo.toml` -> {directory: (package name, directories of the components it depends on by path)}."""
+    found = {}
+    for f in files:
+        parts = f.split("/")
+        if len(parts) == 3 and parts[0] == "components" and parts[2] == "Cargo.toml":
+            manifest = tomllib.loads((Path(root) / f).read_text())
+            deps = manifest.get("dependencies", {})
+            found[parts[1]] = (manifest["package"]["name"], {d["path"].removeprefix("../") for d in deps.values() if isinstance(d, dict) and str(d.get("path", "")).startswith("../")})
+    return found
+
+
+def component_consumers(files, package, root=REPO):
+    """The top-level modules of the program whose code names the library of this component (`lico_png`)."""
+    word = re.compile(r"\b" + re.escape(package.replace("-", "_")) + r"\b")
+    return {rust_module(f) for f in files if rust_module(f) and not f.startswith(HOSTD + "bin/") and word.search((Path(root) / f).read_text(errors="replace"))}
+
+
 def rust_dependents(uses, module):
     """The module and every module that, directly or not, uses it."""
     found, todo = {module}, [module]
@@ -241,6 +261,7 @@ def select(paths, tmap=None, files=None, root=REPO):
     unreadable = []
     uses = rust_uses(files, root, unreadable)
     areas_of_file = tmap.get("areas", {})
+    packages = component_packages(files, root)
     module_areas = tmap.get("rust", {}).get("modules", {})
     result = Selection()
     result.warnings = [f"rust module {m} names `{snippet}` in a shape the scan cannot read: assumed to use every module" for m, snippet in unreadable]
@@ -255,6 +276,7 @@ def select(paths, tmap=None, files=None, root=REPO):
     def everything(path, why):
         result.everything = True
         result.xtask = True
+        result.components |= {name for name, _ in packages.values()}
         result.cargo.add("")
         result.reasons.append((path, why))
 
@@ -263,13 +285,28 @@ def select(paths, tmap=None, files=None, root=REPO):
             result.acceptance.append(path)
         inert = next((entry for entry in tmap.get("inert", []) if glob_match(path, entry["glob"])), None)
         module = rust_module(path)
-        if inert:
+        if path.startswith("components/") and path.endswith("/RECEIPT.json"):
+            result.verify = True                                                         # a receipt is an output: its inputs are checked, no test runs for it
+            result.reasons.append((path, "a receipt: verified against its inputs"))
+        elif path.startswith("components/") and path.count("/") >= 2 and path.split("/")[1] in packages:
+            name = packages[path.split("/")[1]][0]
+            dependents = {d for d, (_, deps) in packages.items() if path.split("/")[1] in deps}   # components that depend on it: their own tests too
+            result.components |= {name} | {packages[d][0] for d in dependents}
+            consumers = component_consumers(files, name, root)
+            affected = consumers                                                        # the modules that name it, their own tests only (the rule), not what uses them
+            areas = set().union(*(set(module_areas.get(m, ["*"])) for m in affected)) if affected else set()
+            result.cargo |= {f"{m}::" for m in sorted(affected)}
+            result.files |= {f for f in test_files if runs(f, areas)} if affected else set()
+            result.reasons.append((path, f"component {name}: its own tests; consumers {', '.join(sorted(consumers)) or 'none'}; their own tests only"))
+        elif inert:
             result.reasons.append((path, f"inert: {inert['reason']}"))
         elif path.startswith("tools/xtask/"):
             result.xtask = True                                                          # the tools have tests of their own and nothing of the product reads them
             result.reasons.append((path, "the tools of the component rules: their own cargo tests"))
         elif any(glob_match(path, pattern) for pattern in tmap.get("rust", {}).get("everything", [])):
-            result.xtask = result.xtask or path in ("Cargo.toml", "Cargo.lock")          # the workspace manifest and the lock are theirs too
+            if path in ("Cargo.toml", "Cargo.lock"):                                     # the workspace manifest and the lock are theirs too
+                result.xtask = True
+                result.components |= {name for name, _ in packages.values()}
             result.cargo.add("")
             result.files |= {f for f in test_files if runs(f, {"*"})}                   # a build input: every test that runs the binary
             result.reasons.append((path, "build input of the binary: the whole binary's tests"))
@@ -319,6 +356,9 @@ def render(result, every_file):
         lines.append("cargo " + ("(all unit tests)" if "" in result.cargo else " ".join(sorted(result.cargo))))
     if result.xtask:
         lines.append("cargo -p lico-xtask (the tools' own tests)")
+    lines += [f"cargo xtask test {name} (a component's own tests)" for name in sorted(result.components)]
+    if result.verify:
+        lines.append("cargo xtask verify (a receipt changed)")
     lines += result.tests(every_file)
     if result.acceptance:
         lines.append("# acceptance run due (python -m lico_measure.suite acceptance): " + ", ".join(result.acceptance))

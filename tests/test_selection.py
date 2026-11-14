@@ -448,3 +448,32 @@ def test_the_hash_the_binary_is_built_from_covers_the_components_but_not_their_r
     assert any(p.endswith("components/png/src/lib.rs") for p in names), "a change to a component changes what the binary is built from"
     assert not any(p.endswith("RECEIPT.json") for p in names), "recording a receipt must not rebuild the binary"
     assert not any(p.endswith("tools/xtask/src/lib.rs") for p in names), "the tools are not in the binary"
+
+
+def test_a_change_inside_a_component_selects_its_own_tests_and_those_of_its_consumers_only():
+    result, _ = real("components/png/src/lib.rs")
+    assert result.components == {"lico-png"} and not result.everything and not result.xtask
+    assert result.cargo == {"capture::", "clipboard::"}, "the modules that name the component and their own tests, not the whole binary"
+    assert real("components/png/SPEC.md")[0].components == {"lico-png"}, "its specification is one of its inputs"
+    assert real("components/png/tests/contract.rs")[0].components == {"lico-png"}
+
+
+def test_a_change_in_a_consumer_selects_the_consumer_and_never_the_component():
+    result, _ = real("src/host/hostd/src/capture/mod.rs")
+    assert result.components == set() and any(c.startswith("capture") for c in result.cargo)
+
+
+def test_a_changed_receipt_asks_for_the_receipts_to_be_verified_and_runs_no_test():
+    result, tests = real("components/png/RECEIPT.json")
+    assert result.verify and result.components == set() and not result.cargo and not result.everything
+
+
+def test_a_build_input_of_the_binary_runs_every_component_too():
+    assert real("Cargo.lock")[0].components == {"lico-png"}
+
+
+def test_a_component_has_a_job_of_its_own_with_its_target_under_the_build_root_and_a_verify_job_exists(tmp_path):
+    job = suite.component_job("lico-png", tmp_path)
+    assert job.argv == ["cargo", "xtask", "test", "lico-png"] and job.name == "cargo xtask test lico-png"
+    assert job.extra_env["CARGO_TARGET_DIR"].startswith(str(receipts.build_root())), "build output stays under the private build root"
+    assert suite.verify_job(tmp_path).argv == ["cargo", "xtask", "verify"]

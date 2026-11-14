@@ -136,6 +136,28 @@ def xtask_job(out):
     return job
 
 
+def _xtask_env():
+    return {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": str(REPO / "private" / "cargo-home"), "CARGO_TARGET_DIR": str(receipts.build_root() / "xtask_test"), "CARGO_BUILD_JOBS": COMPILE_JOBS}
+
+
+def component_job(name, out):
+    """A component's own tests (`cargo xtask test NAME`, M15-P03): each test binary alone, the tree's memory and time against the manifest's budget."""
+    job = Job(f"cargo xtask test {name}", None, REPO, {})
+    job.log = out / f"component_{name}.log"
+    job.extra_env = _xtask_env()
+    job.argv = ["cargo", "xtask", "test", name]
+    return job
+
+
+def verify_job(out):
+    """The receipts of the components against their inputs (`cargo xtask verify`): names what no longer matches."""
+    job = Job("cargo xtask verify", None, REPO, {})
+    job.log = out / "verify.log"
+    job.extra_env = _xtask_env()
+    job.argv = ["cargo", "xtask", "verify"]
+    return job
+
+
 def execute(job, slot, env):
     job.slot = slot
     began = time.monotonic()
@@ -232,6 +254,13 @@ def run(args):
             jobs.insert(0, cargo_job([] if cargo_filters is None else cargo_filters, out))
     if (args.changed is None and not args.paths) or (selection is not None and selection.xtask):
         jobs.insert(1 if jobs and jobs[0].name.startswith("cargo") else 0, xtask_job(out))        # the tools' own tests (M15-P02)
+    full = args.changed is None and not args.paths
+    names = sorted(selection.components) if selection is not None else []
+    if full:
+        names = sorted(name for name, _ in testmap.component_packages(testmap.tracked()).values())
+    jobs += [component_job(name, out) for name in names]                                          # the components' own tests (M15-P03)
+    if full or (selection is not None and (selection.verify or selection.components)):
+        jobs.append(verify_job(out))
     if not jobs:
         stop.set()
         print(f"nothing to run: {len(skipped)} file(s) skipped by receipt")
