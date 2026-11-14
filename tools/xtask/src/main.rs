@@ -1,3 +1,156 @@
-fn main() {
-    println!("lico-xtask: no command yet");
+//! `cargo xtask <command>`: the tools of the component rules (M15-P02). Commands:
+//!   graph  [--root FILE] [--json OUT] [--cut]   the module graph of the crate (default root: src/host/hostd/src/unified.rs)
+//!   check  [--root DIR]                         the manifests and the dependency graph of the components; non-zero when anything is wrong
+//!   test   NAME [--root DIR] [--record]         the isolated run of a component against its budget; --record writes its RECEIPT.json when it passes
+//!   verify [--root DIR]                         every receipt against the inputs as they are now, naming what changed
+//!   hash   NAME [--root DIR]                    the hash of a component's inputs
+//!   accept [--repo DIR] [--script PATH] [--artifact NAME] [--scratch DIR]   two clean clones build the same bytes
+
+use lico_xtask::{accept, components, graph, runner};
+use std::path::PathBuf;
+use std::process::{Command, ExitCode};
+
+fn arg(args: &[String], name: &str) -> Option<String> {
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
+}
+
+fn toolchain() -> String {
+    Command::new("rustc").arg("-vV").output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let root = PathBuf::from(arg(&args, "--root").unwrap_or_else(|| ".".to_string()));
+    let Some(command) = args.first().map(String::as_str) else {
+        eprintln!("usage: cargo xtask graph|check|test|verify|hash|accept ...");
+        return ExitCode::from(2);
+    };
+    match command {
+        "graph" => {
+            let file = arg(&args, "--root").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("src/host/hostd/src/unified.rs"));
+            let g = match graph::analyse(&file) {
+                Ok(g) => g,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let big = g.sccs.first().map_or(0, Vec::len);
+            let mut layers: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+            for l in g.layers.values() {
+                *layers.entry(*l).or_default() += 1;
+            }
+            println!("{} modules, {} nodes, {} production edges, {} test-only edges, {} use sites", g.modules, g.nodes.len(), g.prod.len(), g.test.len(), g.prod.values().sum::<u32>() + g.test.values().sum::<u32>());
+            println!("cycles: {} (the biggest has {big} modules), two-way pairs in them: {}", g.sccs.len(), g.mutual_pairs);
+            println!("layers (modules per layer): {layers:?}");
+            println!("uncertain: {} glob imports, {} files with macro_rules!", g.glob_uses, g.macro_files);
+            if args.iter().any(|a| a == "--cut") {
+                let cut = g.best_cut();
+                println!("best cut found: {} edges (lower bound {}): {}", cut.len(), g.mutual_pairs, cut.iter().map(|(a, b)| format!("{a}->{b}")).collect::<Vec<_>>().join(" "));
+            }
+            if let Some(out) = arg(&args, "--json") {
+                if let Err(e) = std::fs::write(&out, serde_json::to_string_pretty(&g.to_json()).unwrap_or_default() + "\n") {
+                    eprintln!("{out}: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        "check" => {
+            let problems = components::check(&root);
+            for p in &problems {
+                eprintln!("{p}");
+            }
+            if problems.is_empty() {
+                println!("the components are in order");
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        "verify" => {
+            let problems = components::verify(&root, &toolchain());
+            for p in &problems {
+                eprintln!("{p}");
+            }
+            if problems.is_empty() {
+                println!("every receipt matches its inputs");
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            }
+        }
+        "hash" => {
+            let Some(name) = args.get(1) else { return ExitCode::from(2) };
+            match components::hash(&root, name, &toolchain()) {
+                Ok(h) => {
+                    println!("{}", h.hash);
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "test" => {
+            let Some(name) = args.get(1) else { return ExitCode::from(2) };
+            let all = match components::discover(&root) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let Some(c) = all.iter().find(|c| &c.name == name) else {
+                eprintln!("no component named {name}");
+                return ExitCode::FAILURE;
+            };
+            let target = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("target")).join("components").join(name);
+            match runner::run(&root, c, &target) {
+                Ok(run) => {
+                    println!("{name}: {} passed, {} failed, {} ignored; tests {:.2} s, peak {:.1} MiB (budget {} MiB, {} s); compile {:.1} s", run.passed, run.failed, run.ignored, run.wall_s, run.peak_mib, c.budget_mib, c.budget_s, run.compile_s);
+                    if let Some(why) = runner::over_budget(&run, c) {
+                        eprintln!("{why}");
+                        return ExitCode::FAILURE;
+                    }
+                    if run.failed > 0 {
+                        return ExitCode::FAILURE;
+                    }
+                    if args.iter().any(|a| a == "--record") {
+                        if let Err(e) = components::record(&root, name, &toolchain(), &run) {
+                            eprintln!("{e}");
+                            return ExitCode::FAILURE;
+                        }
+                        println!("{name}: receipt written");
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        "accept" => {
+            let repo = PathBuf::from(arg(&args, "--repo").unwrap_or_else(|| ".".to_string()));
+            let script = arg(&args, "--script").unwrap_or_else(|| "src/host/hostd/build-release.sh".to_string());
+            let artifact = arg(&args, "--artifact").unwrap_or_else(|| "lico".to_string());
+            let scratch = PathBuf::from(arg(&args, "--scratch").unwrap_or_else(|| "private/acceptance".to_string()));
+            match accept::run_acceptance(&repo, &script, &artifact, &scratch) {
+                Ok(digest) => {
+                    println!("two clean clones build the same {artifact}: {digest}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        other => {
+            eprintln!("unknown command {other}");
+            ExitCode::from(2)
+        }
+    }
 }

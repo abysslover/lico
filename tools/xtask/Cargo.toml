@@ -9,3 +9,7 @@ description = "The tools of the component rules: the module graph, the manifest 
 
 [dependencies]
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[[bin]]
+name = "xtask"
+path = "src/main.rs"

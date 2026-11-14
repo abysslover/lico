@@ -92,6 +92,14 @@ def test_a_rust_module_selects_its_unit_tests_those_of_its_users_and_the_tests_t
     print("gui/ui.rs -> cargo gui::; tests/test_window.py | core.rs -> cargo core:: gui::; tests/test_host.py, tests/test_window.py")
 
 
+def test_a_change_to_the_tools_selects_their_own_cargo_tests_and_no_test_of_the_product(tree):
+    (tree / "tools" / "xtask" / "src").mkdir(parents=True)
+    (tree / "tools" / "xtask" / "src" / "graph.rs").write_text("")
+    result, tests = chosen(tree, "tools/xtask/src/graph.rs")
+    assert result.xtask and not result.everything and not result.cargo and tests == []
+    assert not chosen(tree, "README.md")[0].xtask, "a document does not need the tools' tests"
+
+
 def test_a_rust_module_the_map_does_not_know_selects_everything(tree):
     (tree / (HOSTD + "newmod.rs")).write_text("")
     assert chosen(tree, HOSTD + "newmod.rs")[0].everything

@@ -32,6 +32,7 @@ class Selection:
     files: set = field(default_factory=set)         # test files, repo-relative
     cargo: set = field(default_factory=set)         # cargo test filters; "" means the whole binary's tests
     acceptance: list = field(default_factory=list)  # the changed files that make the acceptance run due
+    xtask: bool = False                             # the tools' own cargo tests (`cargo test -p lico-xtask`) are due
     reasons: list = field(default_factory=list)     # (changed file, why)
     warnings: list = field(default_factory=list)    # what the scan could not read and therefore assumed the worst of
 
@@ -253,6 +254,7 @@ def select(paths, tmap=None, files=None, root=REPO):
 
     def everything(path, why):
         result.everything = True
+        result.xtask = True
         result.cargo.add("")
         result.reasons.append((path, why))
 
@@ -263,7 +265,11 @@ def select(paths, tmap=None, files=None, root=REPO):
         module = rust_module(path)
         if inert:
             result.reasons.append((path, f"inert: {inert['reason']}"))
+        elif path.startswith("tools/xtask/"):
+            result.xtask = True                                                          # the tools have tests of their own and nothing of the product reads them
+            result.reasons.append((path, "the tools of the component rules: their own cargo tests"))
         elif any(glob_match(path, pattern) for pattern in tmap.get("rust", {}).get("everything", [])):
+            result.xtask = result.xtask or path in ("Cargo.toml", "Cargo.lock")          # the workspace manifest and the lock are theirs too
             result.cargo.add("")
             result.files |= {f for f in test_files if runs(f, {"*"})}                   # a build input: every test that runs the binary
             result.reasons.append((path, "build input of the binary: the whole binary's tests"))
@@ -311,6 +317,8 @@ def render(result, every_file):
     lines += [f"# {reason[1]}  <- {reason[0]}" for reason in result.reasons]
     if result.cargo:
         lines.append("cargo " + ("(all unit tests)" if "" in result.cargo else " ".join(sorted(result.cargo))))
+    if result.xtask:
+        lines.append("cargo -p lico-xtask (the tools' own tests)")
     lines += result.tests(every_file)
     if result.acceptance:
         lines.append("# acceptance run due (python -m lico_measure.suite acceptance): " + ", ".join(result.acceptance))

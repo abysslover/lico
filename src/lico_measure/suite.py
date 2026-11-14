@@ -126,6 +126,16 @@ def cargo_job(filters, out):
     return job
 
 
+def xtask_job(out):
+    """The tools' own tests (`tools/xtask`, M15-P02): a package of the workspace with a target directory of its own."""
+    job = Job("cargo test -p lico-xtask", None, REPO, {})
+    job.log = out / "xtask.log"
+    job.extra_env = {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": str(REPO / "private" / "cargo-home"), "CARGO_TARGET_DIR": str(receipts.build_root() / "xtask_test"),
+                     "CARGO_BUILD_JOBS": COMPILE_JOBS}
+    job.argv = ["cargo", "test", "--offline", "-p", "lico-xtask"]
+    return job
+
+
 def execute(job, slot, env):
     job.slot = slot
     began = time.monotonic()
@@ -220,6 +230,8 @@ def run(args):
             if test_build_s >= 0.5:
                 build_line = f"{build_line} (+ {test_build_s:.1f} s test build)"
             jobs.insert(0, cargo_job([] if cargo_filters is None else cargo_filters, out))
+    if (args.changed is None and not args.paths) or (selection is not None and selection.xtask):
+        jobs.insert(1 if jobs and jobs[0].name.startswith("cargo") else 0, xtask_job(out))        # the tools' own tests (M15-P02)
     if not jobs:
         stop.set()
         print(f"nothing to run: {len(skipped)} file(s) skipped by receipt")
