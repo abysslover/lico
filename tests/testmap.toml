@@ -112,6 +112,7 @@
 "tests/test_llm_discover.py" = ["cli", "host"]
 "tests/test_llm_discover_ssh.py" = ["cli", "host"]
 "tests/test_llm_discover_speed.py" = ["cli", "host"]
+"tests/test_llm_dialog_follow_up.py" = ["gui", "host"]
 "tests/test_llm_tool.py" = ["host"]
 "tests/test_llm_window.py" = ["gui", "host"]
 "tests/test_llm_end_to_end.py" = ["gui", "host", "cli"]

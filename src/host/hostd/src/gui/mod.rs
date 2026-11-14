@@ -21,6 +21,7 @@ mod sidebar_nav;
 mod newchat;
 mod jobs;
 mod llm_find;
+mod llm_rows;
 mod native_prompt;
 mod newchat_draw;
 mod sidebar_chats;
