@@ -493,6 +493,23 @@ fn the_header_of_a_one_pixel_file_is_exactly_the_bytes_of_the_specification() {
     assert_eq!(&wide[16..24], &[0, 0, 1, 2, 0, 0, 0, 1]);
 }
 
+/// The API lines of the specification, exactly: the names the crate makes public are these and no others (the check functions are not among
+/// them). It reads the source of the writer, so a new `pub` item cannot slip in without this list, and so the specification, changing.
+#[test]
+fn the_public_names_are_exactly_these() {
+    let source = include_str!("mod.rs");
+    let mut found: Vec<String> = source
+        .lines()
+        .map(str::trim_start)
+        .filter(|l| l.starts_with("pub ") && !l.starts_with("pub("))
+        .map(|l| l.trim_start_matches("pub ").split(|c| c == '(' || c == '<' || c == ':' || c == '{' || c == '=' || c == ' ').take(2).collect::<Vec<_>>().join(" "))
+        .collect();
+    found.sort();
+    let mut expected: Vec<String> = ["const IDAT_MAX", "const MAX_SIDE", "struct PngEncoder", "fn buffer_bytes", "fn finish", "fn new", "fn push_row"].iter().map(|s| s.to_string()).collect();
+    expected.sort();
+    assert_eq!(found, expected);
+}
+
 // ---- the readers can fail --------------------------------------------------------------------------------------------------
 
 #[test]

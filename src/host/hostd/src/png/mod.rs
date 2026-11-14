@@ -60,25 +60,25 @@ const CRC_TABLE: [u32; 256] = {
 
 /// CRC-32 (the PNG chunk check), fed in pieces.
 #[derive(Clone, Copy)]
-pub struct Crc32(u32);
+struct Crc32(u32);
 
 impl Crc32 {
-    pub fn new() -> Crc32 {
+    fn new() -> Crc32 {
         Crc32(!0)
     }
-    pub fn update(&mut self, data: &[u8]) {
+    fn update(&mut self, data: &[u8]) {
         let mut c = self.0;
         for &b in data {
             c = CRC_TABLE[((c ^ b as u32) & 0xFF) as usize] ^ (c >> 8);
         }
         self.0 = c;
     }
-    pub fn value(&self) -> u32 {
+    fn value(&self) -> u32 {
         !self.0
     }
 }
 
-pub fn crc32(data: &[u8]) -> u32 {
+fn crc32(data: &[u8]) -> u32 {
     let mut c = Crc32::new();
     c.update(data);
     c.value()
@@ -86,16 +86,16 @@ pub fn crc32(data: &[u8]) -> u32 {
 
 /// Adler-32 (the zlib check), fed in pieces.
 #[derive(Clone, Copy)]
-pub struct Adler32 {
+struct Adler32 {
     a: u32,
     b: u32,
 }
 
 impl Adler32 {
-    pub fn new() -> Adler32 {
+    fn new() -> Adler32 {
         Adler32 { a: 1, b: 0 }
     }
-    pub fn update(&mut self, data: &[u8]) {
+    fn update(&mut self, data: &[u8]) {
         // 5552 is the most bytes after which the sums cannot yet overflow 32 bits; the modulo is taken at the end of every such piece.
         for piece in data.chunks(5552) {
             for &x in piece {
@@ -106,12 +106,13 @@ impl Adler32 {
             self.b %= 65521;
         }
     }
-    pub fn value(&self) -> u32 {
+    fn value(&self) -> u32 {
         (self.b << 16) | self.a
     }
 }
 
-pub fn adler32(data: &[u8]) -> u32 {
+#[cfg(test)]
+fn adler32(data: &[u8]) -> u32 {
     let mut a = Adler32::new();
     a.update(data);
     a.value()
