@@ -1,14 +1,14 @@
 # M13 — Local LLM Discovery Follow-Up, Chat List Polish, and the Split of the Big GUI Tests (`lico 0.3.1`)
 
-- Status: implemented, waiting for the owner's G3 (G1 and G2 approved on 2026-11-14)
-- Version: 1.1.0
-- Approved: 2026-11-14 (G1 and G2 for M13-P01 to M13-P04: the owner's go-ahead and plan approval on 2026-11-14)
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-14)
+- Version: 1.1.1
+- Approved: 2026-11-14 (G1 and G2 for M13-P01 to M13-P04: the owner's go-ahead and plan approval on 2026-11-14; G3 and G4, with publication, on 2026-11-14)
 - Project: Lico
 - Updated: 2026-11-14
 - Base: `main` at `cc34ab4` (M12 accepted, merged and published); later phases are stacked on the previous phase tip
-- Milestone branch: `milestone/M13-*` is created by the lead at the closing commit, not by the implementing session
+- Milestone branch: `milestone/M13-discovery-follow-up-and-chat-list-polish` (created at the closing commit)
 - Implementation: `phase/M13-P01-test-split-and-flaky` .. `phase/M13-P04-verification-and-0-3-1` (`lico 0.3.1`)
-- Next gate: G3 after P04 (owner)
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-14)
 
 ## Goal
 
@@ -39,7 +39,14 @@ Discovery stays read-only, bounded and on demand, never in the background: GET o
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M13-P01 | Split the big GUI tests; reproduce the flaky ones | [Plan](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | [Report](../../reports/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_report.md) | implemented |
-| M13-P02 | Discovery dialog follow-up: cache, speed, fold, readable rows | [Plan](../../plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | [Report](../../reports/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_report.md) | implemented |
-| M13-P03 | Chat list polish | [Plan](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | [Report](../../reports/202611/20261114/20261114_06_M13-P03_chat_list_polish_report.md) | implemented |
-| M13-P04 | Verification and `lico 0.3.1` | [Plan](../../plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | [Report](../../reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md) | implemented |
+| M13-P01 | Split the big GUI tests; reproduce the flaky ones | [Plan](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | [Report](../../reports/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_report.md) | accepted & merged |
+| M13-P02 | Discovery dialog follow-up: cache, speed, fold, readable rows | [Plan](../../plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | [Report](../../reports/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_report.md) | accepted & merged |
+| M13-P03 | Chat list polish | [Plan](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | [Report](../../reports/202611/20261114/20261114_06_M13-P03_chat_list_polish_report.md) | accepted & merged |
+| M13-P04 | Verification and `lico 0.3.1` | [Plan](../../plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | [Report](../../reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md) | accepted & merged |
+
+## Gate record
+
+- G3, G4 and the push for this milestone were given by the owner in the chat on 2026-11-14, in one message: the owner said that the Local LLM search was now fast and good, and that the commit, the merge, the push and the rest were still open and should all be done. The chain moved to `main` by fast-forward to the M13-P04 tip `dde2883`, and this closing commit then recorded the acceptance. The owner named no individual tip.
+- What the owner had observed before giving it: the `Find Local LLM servers...` dialog used on the real machine (fast, good). Nothing else was recorded as observed: the chat list, the Native tag rule and the measurements were not reported by the owner as inspected, and the measurements in the phase reports were not independently reproduced at the gate.
+- Reported at the gate and not objected to: the `Native` tag rule was used instead of the group heading that the plan named (see the M13-P03 report); the product file `core.rs` was touched in P01 (the program's own hash is read in 64 KiB pieces, the value is identical).
+- The owner's later requests are not part of this milestone: the component rules (a separate document, approved the same day), a small release for a bottom status bar with the full path and a maximized first start, and the later work named in the Out of scope paragraph.

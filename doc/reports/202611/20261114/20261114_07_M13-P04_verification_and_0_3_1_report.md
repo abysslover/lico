@@ -1,7 +1,7 @@
 # M13-P04 Report — End-to-End Verification, Measurements, and `lico 0.3.1`
 
-- Status: implemented, waiting for the owner's G3
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M13-P04-verification-and-0-3-1` (stacked on `phase/M13-P03-chat-list-polish` at `b09bc19`; code commit `6b1b522`)
 - Plan: [M13-P04](../../plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md)
 

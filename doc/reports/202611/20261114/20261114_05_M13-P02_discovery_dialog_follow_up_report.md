@@ -1,7 +1,7 @@
 # M13-P02 Report — Discovery Dialog Follow-Up: Cache, Speed, Fold, Readable Rows
 
-- Status: implemented, waiting for the owner's G3
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M13-P02-discovery-dialog-follow-up` (stacked on `phase/M13-P01-test-split-and-flaky` at `e8a857c`; commits `d638389`, `a129945`)
 - Plan: [M13-P02](../../plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md)
 

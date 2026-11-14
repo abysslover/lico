@@ -1,7 +1,7 @@
 # M13-P01 Report — Memory Peak of the Cold Suite, and the Two Flaky Tests
 
-- Status: implemented, waiting for the owner's G3
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M13-P01-test-split-and-flaky` (from `main` at `cc34ab4`; commits `83cfd62`, `7e4ecdf` after the documentation commit `e885307`)
 - Plan: [M13-P01](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md)
 

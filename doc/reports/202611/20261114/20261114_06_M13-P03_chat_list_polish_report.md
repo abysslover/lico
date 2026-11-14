@@ -1,7 +1,7 @@
 # M13-P03 Report — Chat List Polish
 
-- Status: implemented, waiting for the owner's G3
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-14)
+- Version: 1.0.1
 - Branch: `phase/M13-P03-chat-list-polish` (stacked on `phase/M13-P02-discovery-dialog-follow-up` at `834504e`; commit `d9baeab`)
 - Plan: [M13-P03](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md)
 

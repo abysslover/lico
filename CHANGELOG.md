@@ -11,7 +11,7 @@ binaries (`python3 -m lico_measure.suite acceptance`).
 
 ## 0.3.1 — 2026-11-14 (`M13`)
 
-- **Milestone**: [M13 Discovery follow-up, chat list polish, and the split of the big GUI tests](doc/milestones/202611/20261114/20261114_02_M13_discovery_follow_up_chat_list_polish_and_test_split_milestone.md) (`milestone/M13-*` is created by the lead at the closing commit, [M13-P04 report](doc/reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md))
+- **Milestone**: [M13 Discovery follow-up, chat list polish, and the split of the big GUI tests](doc/milestones/202611/20261114/20261114_02_M13_discovery_follow_up_chat_list_polish_and_test_split_milestone.md) (`milestone/M13-discovery-follow-up-and-chat-list-polish`, [M13-P04 report](doc/reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md))
 - **Measured resources**: idle window `25.45..25.64` / `36.27..36.51 MiB`, `10 -> 100` hidden growth `+0.32 MiB`, cold 540-test suite `118.9..124.9 s`, tree peak `1,414.2..1,489.4 MiB` (was `1,964.8..1,998.7 MiB` at `0.3.0`)
 - **Highlights**:
   - **The discovery dialog keeps what it found.** The last result of each host and users' choice stays in the window's memory (nothing on disk) with its age, `found 3 min ago`; opening the dialog or choosing the host again shows it without a scan, and Enter or `Refresh` scans again. The command, the HTTP route and the tool still scan fresh.
