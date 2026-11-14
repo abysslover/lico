@@ -94,6 +94,7 @@
 | [M13-P01 plan](plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | Split the big GUI tests, reproduce the flaky ones |
 | [M13-P01 report](reports/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_report.md) | Where the cold memory peak came from, the Rust test memory fixes, the two flaky tests |
 | [M13-P02 plan](plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | Cache, speed, fold and readable rows in the discovery dialog |
+| [M13-P02 report](reports/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_report.md) | The two-stage scan (608 -> 160 ms on 46 fake sockets), the kept result, the fold, readable rows |
 | [M13-P03 plan](plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | Chat list: title and age of a live row, `Native` shown once |
 | [M13-P04 plan](plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | End-to-end verification, measurements, `lico 0.3.1` |
 
