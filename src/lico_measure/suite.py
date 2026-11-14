@@ -52,9 +52,9 @@ def over_budget(rows, table):
 # --- build once -----------------------------------------------------------------------------------------------
 
 def source_hash(files):
-    """A hash of everything the product binary is built from: the crate, the license text compiled in."""
+    """A hash of everything the product binary is built from: the crate, the components it uses (not their receipts), the license text compiled in."""
     hasher = hashlib.sha256()
-    for path in sorted(f for f in files if f.startswith("src/host/hostd/") or f in ("LICENSE", "Cargo.toml", "Cargo.lock")):
+    for path in sorted(f for f in files if f.startswith(("src/host/hostd/", "components/")) and not f.endswith("/RECEIPT.json") or f in ("LICENSE", "Cargo.toml", "Cargo.lock")):
         hasher.update(f"{path} {receipts.digest(REPO / path)}\n".encode())
     return hasher.hexdigest()
 

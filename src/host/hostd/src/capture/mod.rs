@@ -24,7 +24,7 @@ use x11rb::errors::ReplyError;
 use x11rb::protocol::xproto::{ConnectionExt, ImageFormat, ImageOrder, MapState, VisualClass};
 use x11rb::protocol::ErrorKind;
 
-use crate::png::PngEncoder;
+use lico_png::PngEncoder;
 use layout::{Layout, Parts};
 use shrink::{agent_size, Shrinker};
 

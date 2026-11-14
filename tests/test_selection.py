@@ -437,3 +437,14 @@ def test_the_checked_in_budget_has_a_default_a_cold_run_limit_and_a_reason_for_e
     assert table["default_s"] == 15 and table["cold_run_s"] == 180 and table["peak_rss_mib"] <= 2048
     for entry in table.get("allow", []):
         assert entry["seconds"] > table["default_s"] and entry["reason"].strip() and (testmap.REPO / entry["test"].split("::")[0]).exists(), entry
+
+
+def test_the_hash_the_binary_is_built_from_covers_the_components_but_not_their_receipts(monkeypatch):
+    seen = []
+    monkeypatch.setattr(suite.receipts, "digest", lambda path: seen.append(str(path)) or "d")
+    base = ["components/png/src/lib.rs", "components/png/Cargo.toml", "components/png/RECEIPT.json", "tools/xtask/src/lib.rs", "src/host/hostd/src/main.rs"]
+    suite.source_hash(base)
+    names = [p.split("17_lico/")[-1] if "17_lico/" in p else p for p in seen]
+    assert any(p.endswith("components/png/src/lib.rs") for p in names), "a change to a component changes what the binary is built from"
+    assert not any(p.endswith("RECEIPT.json") for p in names), "recording a receipt must not rebuild the binary"
+    assert not any(p.endswith("tools/xtask/src/lib.rs") for p in names), "the tools are not in the binary"

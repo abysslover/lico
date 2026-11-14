@@ -149,7 +149,7 @@ fn the_size_comes_from_the_header_and_nothing_else_is_a_png() {
     assert_eq!(size(b"\xFF\xD8\xFF\xE0 this is a JPEG, not a PNG, whatever the owner says it is"), Err("bad_image"));
     assert_eq!(size(&vec![b'x'; 5000]), Err("bad_image"));
     // a real picture written by our own encoder
-    let mut enc = crate::png::PngEncoder::new(Vec::new(), 13, 4).unwrap();
+    let mut enc = lico_png::PngEncoder::new(Vec::new(), 13, 4).unwrap();
     for _ in 0..4 {
         enc.push_row(&[7u8; 39]).unwrap();
     }

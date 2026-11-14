@@ -1,0 +1,26 @@
+[package]
+name = "lico-png"
+version = "1.0.0"
+edition = "2021"
+description = "A PNG writer: 8-bit RGB, no interlace, row by row to any Write, memory by width only."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# Test support (the readers, the inputs, a scratch folder) for whoever tests with the writer; never in the production build.
+testing = []
+
+[dependencies]
+
+[dev-dependencies]
+# The component's own tests (tests/contract.rs) use the test support the way a consumer does.
+lico-png = { path = ".", features = ["testing"] }
+
+[package.metadata.lico]
+purpose = "Writes an 8-bit RGB, non-interlaced PNG row by row to any Write with memory that depends on the width and not on the height."
+spec = "SPEC.md"
+depends = []
+external = ["python3", "identify", "convert"]
+budget = { mib = 256, seconds = 30 }

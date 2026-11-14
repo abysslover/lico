@@ -9,8 +9,7 @@
 use super::tests::reference;
 use super::*;
 use crate::handoff::{mode_of, Scratch};
-use crate::png::readers::{both_readers, outside, read_png};
-use crate::png::tests::{noise, text_like};
+use lico_png::testing::{both_readers, noise, outside, read_png, text_like};
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
@@ -279,7 +278,7 @@ fn ratio(f: &Fixture, shot: &Shot) -> f64 {
 
 /// 62 lines of source code in DejaVu Sans Mono 14 pt on white, drawn by ImageMagick: a real render, not a synthetic pattern.
 fn source_render() -> Vec<u8> {
-    let text: String = include_str!("../png/mod.rs").lines().take(62).map(|l| l.replace(['%', '\\'], "_")).collect::<Vec<_>>().join("\n");
+    let text: String = include_str!("../../../../../components/png/src/lib.rs").lines().take(62).map(|l| l.replace(['%', '\\'], "_")).collect::<Vec<_>>().join("\n");
     let out = Command::new("convert")
         .args(["-size", "1920x1080", "xc:white", "-font", "DejaVu-Sans-Mono", "-pointsize", "14", "-fill", "black", "-annotate", "+8+20"])
         .arg(&text)

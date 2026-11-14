@@ -5,7 +5,7 @@ use super::layout::{Layout, Parts};
 use super::shrink::{agent_size, Shrinker};
 use super::*;
 use crate::handoff::{mode_of, Scratch};
-use crate::png::tests::{noise, text_like};
+use lico_png::testing::{noise, text_like};
 use std::process::Command;
 
 // ---- layouts ---------------------------------------------------------------------------------------------------------------

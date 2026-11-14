@@ -24,3 +24,7 @@ cosmic-text = "=0.19.0"
 unicode-linebreak = "=0.1.5"
 x11rb = { version = "=0.13.2", default-features = false, features = ["xtest"] }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+lico-png = { path = "../../../components/png" }
+
+[dev-dependencies]
+lico-png = { path = "../../../components/png", features = ["testing"] }

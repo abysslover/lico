@@ -3,13 +3,13 @@
 //! crate: Python's `zlib` with a chunk parser that checks every CRC and the Adler-32 (the script `CHECK_PY`), and ImageMagick (`identify` for
 //! the size, `convert FILE rgb:-` for the pixels). A missing outside program fails the test, it never skips.
 
-use super::*;
+use crate::*;
 use std::path::PathBuf;
 use std::process::Command;
 
 // ---- reader 1: the test's own decoder --------------------------------------------------------------------------------------
 
-pub(crate) fn slow_crc(data: &[u8]) -> u32 {
+pub fn slow_crc(data: &[u8]) -> u32 {
     let mut c = 0xFFFF_FFFFu32;
     for &b in data {
         c ^= b as u32;
@@ -20,7 +20,7 @@ pub(crate) fn slow_crc(data: &[u8]) -> u32 {
     !c
 }
 
-pub(crate) fn slow_adler(data: &[u8]) -> u32 {
+pub fn slow_adler(data: &[u8]) -> u32 {
     let (mut a, mut b) = (1u32, 0u32);
     for &x in data {
         a = (a + x as u32) % 65521;
@@ -71,7 +71,7 @@ impl Rd<'_> {
 }
 
 /// Inflate for stored and fixed blocks; gives the bytes and how many input bytes the stream took. A dynamic block is an `Err`.
-pub(crate) fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
+pub fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
     // The bases and extra bits of the length and distance codes, worked out from the rule of RFC 1951 (not copied from the writer).
     let mut lens = Vec::new();
     let mut base = 3usize;
@@ -151,7 +151,7 @@ pub(crate) fn inflate(d: &[u8]) -> Result<(Vec<u8>, usize), String> {
     Ok((out, rd.pos))
 }
 
-pub(crate) fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
+pub fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
     if z.len() < 6 || z[0] & 0x0F != 8 || z[0] >> 4 > 7 || (z[0] as u32 * 256 + z[1] as u32) % 31 != 0 || z[1] & 0x20 != 0 {
         return Err("bad zlib header".into());
     }
@@ -166,7 +166,7 @@ pub(crate) fn unzlib(z: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-pub(crate) fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
+pub fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
     let (a, b, c) = (a as i32, b as i32, c as i32);
     let p = a + b - c;
     let (pa, pb, pc) = ((p - a).abs(), (p - b).abs(), (p - c).abs());
@@ -179,17 +179,17 @@ pub(crate) fn paeth_spec(a: u8, b: u8, c: u8) -> u8 {
     }) as u8
 }
 
-pub(crate) struct Decoded {
-    pub(crate) w: u32,
-    pub(crate) h: u32,
-    pub(crate) pix: Vec<u8>,
+pub struct Decoded {
+    pub w: u32,
+    pub h: u32,
+    pub pix: Vec<u8>,
     /// How often each filter type was used.
-    pub(crate) filters: [usize; 5],
-    pub(crate) idat_chunks: usize,
-    pub(crate) biggest_idat: usize,
+    pub filters: [usize; 5],
+    pub idat_chunks: usize,
+    pub biggest_idat: usize,
 }
 
-pub(crate) fn read_png(d: &[u8]) -> Result<Decoded, String> {
+pub fn read_png(d: &[u8]) -> Result<Decoded, String> {
     if d.get(..8) != Some(&[0x89, b'P', b'N', b'G', 13, 10, 26, 10][..]) {
         return Err("signature".into());
     }
@@ -258,7 +258,7 @@ pub(crate) fn read_png(d: &[u8]) -> Result<Decoded, String> {
 
 /// Python's zlib and a chunk parser: every CRC, the order of the chunks, IHDR, the size of every IDAT, the end of the zlib stream (its Adler-32
 /// is checked by zlib itself) and the length of the data. Prints `ok` or `bad: why`.
-pub(crate) const CHECK_PY: &str = r#"import struct, sys, zlib
+pub const CHECK_PY: &str = r#"import struct, sys, zlib
 def fail(why):
     print("bad: " + why)
     sys.exit(1)
@@ -301,10 +301,10 @@ print("ok")
 
 /// A folder under the temporary directory that goes with one test and is removed when it is dropped (the component's own, so that the
 /// proofs need nothing outside this module).
-pub(crate) struct Scratch(pub PathBuf);
+pub struct Scratch(pub PathBuf);
 
 impl Scratch {
-    pub(crate) fn new(tag: &str) -> Scratch {
+    pub fn new(tag: &str) -> Scratch {
         static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let path = std::env::temp_dir().join(format!("lico-png-{tag}-{}-{}", std::process::id(), COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
         std::fs::create_dir_all(&path).unwrap();
@@ -318,12 +318,12 @@ impl Drop for Scratch {
     }
 }
 
-pub(crate) fn run(cmd: &mut Command, what: &str) -> std::process::Output {
+pub fn run(cmd: &mut Command, what: &str) -> std::process::Output {
     cmd.output().unwrap_or_else(|e| panic!("{what} must be installed for these tests (they never skip): {e}"))
 }
 
 /// What the two outside programs say about `png`: Python's checker passes, `identify` gives the size, `convert` gives the pixels.
-pub(crate) fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, String) {
+pub fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, String) {
     let dir = Scratch::new("png");
     let (file, script) = (dir.0.join("t.png"), dir.0.join("check.py"));
     std::fs::write(&file, png).unwrap();
@@ -338,7 +338,7 @@ pub(crate) fn outside(png: &[u8], w: u32, h: u32) -> (bool, String, Vec<u8>, Str
 }
 
 /// Both readers on `png`, which was made from `pix`: the pixels must come back exactly. Returns the first reader's result for the callers' counts.
-pub(crate) fn both_readers(png: &[u8], w: u32, h: u32, pix: &[u8], name: &str) -> Decoded {
+pub fn both_readers(png: &[u8], w: u32, h: u32, pix: &[u8], name: &str) -> Decoded {
     let dec = read_png(png).unwrap_or_else(|e| panic!("{name}: the test decoder refuses: {e}"));
     assert_eq!((dec.w, dec.h), (w, h), "{name}");
     assert!(dec.pix == pix, "{name}: the test decoder's pixels differ from the input");
@@ -350,3 +350,73 @@ pub(crate) fn both_readers(png: &[u8], w: u32, h: u32, pix: &[u8], name: &str) -
     dec
 }
 
+// ---- inputs for the proofs (and for the tests of whoever uses the writer) -------------------------------------------------------
+
+pub struct Rng(pub u64);
+
+impl Rng {
+    pub fn next(&mut self) -> u64 {
+        self.0 ^= self.0 >> 12;
+        self.0 ^= self.0 << 25;
+        self.0 ^= self.0 >> 27;
+        self.0.wrapping_mul(0x2545_F491_4F6C_DD1D)
+    }
+    pub fn byte(&mut self) -> u8 {
+        (self.next() >> 32) as u8
+    }
+    /// A byte below 144: the fixed code writes it in 8 bits, so a block of these is never larger than a stored one.
+    pub fn small(&mut self) -> u8 {
+        ((self.next() >> 32) % 144) as u8
+    }
+}
+
+pub fn noise(w: usize, h: usize, seed: u64) -> Vec<u8> {
+    let mut r = Rng(seed | 1);
+    (0..w * h * 3).map(|_| r.byte()).collect()
+}
+
+pub fn colour(w: usize, h: usize, rgb: [u8; 3]) -> Vec<u8> {
+    (0..w * h).flat_map(|_| rgb).collect()
+}
+
+pub fn gradient(w: usize, h: usize) -> Vec<u8> {
+    let mut v = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        for x in 0..w {
+            v.extend_from_slice(&[(x * 255 / w) as u8, (y * 255 / h) as u8, ((x + y) & 255) as u8]);
+        }
+    }
+    v
+}
+
+/// Black blocks of 6 x 10 pixels on white, in bands of 16 rows with a gap between them, the way a screen of text looks.
+pub fn text_like(w: usize, h: usize) -> Vec<u8> {
+    let mut v = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        let (band, ly) = (y / 16, y % 16);
+        for x in 0..w {
+            let (cell, lx) = (x / 8, x % 8);
+            let ink = (3..13).contains(&ly) && lx < 6 && (cell * 7 + band * 13 + cell * band) % 5 < 3;
+            v.extend_from_slice(if ink { &[0, 0, 0] } else { &[255, 255, 255] });
+        }
+    }
+    v
+}
+
+pub fn encode(pix: &[u8], w: u32, h: u32) -> Vec<u8> {
+    let mut e = PngEncoder::new(Vec::new(), w, h).unwrap();
+    for row in pix.chunks(w as usize * 3) {
+        e.push_row(row).unwrap();
+    }
+    e.finish().unwrap()
+}
+
+/// The bytes ImageMagick's PNG writer makes of the same pixels (the writer `import` uses, its defaults).
+pub fn imagemagick_size(pix: &[u8], w: usize, h: usize) -> usize {
+    let dir = Scratch::new("pngratio");
+    let (raw, out) = (dir.0.join("in.rgb"), dir.0.join("out.png"));
+    std::fs::write(&raw, pix).unwrap();
+    let r = run(Command::new("convert").args(["-size", &format!("{w}x{h}"), "-depth", "8"]).arg(format!("rgb:{}", raw.display())).arg(&out), "convert (ImageMagick)");
+    assert!(r.status.success(), "convert: {}", String::from_utf8_lossy(&r.stderr));
+    std::fs::metadata(&out).unwrap().len() as usize
+}

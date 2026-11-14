@@ -11,10 +11,12 @@
 
 use std::io::{self, Write};
 
+/// Test support for whoever tests with the writer: the two readers, the inputs and a scratch folder. Only with the feature `testing` (or in this
+/// crate's own tests); the production build has none of it.
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 #[cfg(test)]
-pub(crate) mod readers;
-#[cfg(test)]
-pub(crate) mod tests;
+mod tests;
 
 /// The largest width or height a PNG may have.
 pub const MAX_SIDE: u32 = 0x7FFF_FFFF;
