@@ -237,9 +237,7 @@ def key_needed(status, body, truncated):
     return isinstance(v, dict) and isinstance(v.get('error'), (dict, str))
 def plain(kind, detail):
     return {'kind': kind, 'apis': [], 'auth': 'unknown', 'models': {'ids': [], 'total': 0, 'truncated': False}, 'detail': detail}
-def probe(ip, port, dl):
-    addr = target(ip, port)
-    state, s = contact(addr, dl)
+def probe(addr, state, s, dl):
     if state == 'speaks':
         return plain('not-http', 'speaks_first')
     if state == 'closed':
@@ -272,15 +270,24 @@ def probe(ip, port, dl):
     else:
         kind, auth, models = 'http-other', 'unknown', empty
     return {'kind': kind, 'apis': apis, 'auth': auth, 'models': models, 'detail': None}
-def run_one(item):
+def first_look(item):
     i, (ip, port, inode) = item
     t0 = time.monotonic()
-    found = probe(ip, port, deadline)
+    addr = target(ip, port)
+    state, s = contact(addr, deadline)
+    return i, ip, port, inode, addr, state, s, int((time.monotonic() - t0) * 1000)
+def run_one(first):
+    i, ip, port, inode, addr, state, s, spent = first
+    t0 = time.monotonic()
+    found = probe(addr, state, s, deadline)
     return i, {'port': port, 'bind': bind_of(ip), 'address': str(ip), 'kind': found['kind'], 'apis': found['apis'], 'auth': found['auth'],
                'models': found['models']['ids'], 'models_total': found['models']['total'], 'models_truncated': found['models']['truncated'],
-               'process': owners.get(inode), 'probe_ms': int((time.monotonic() - t0) * 1000), 'detail': found['detail']}
+               'process': owners.get(inode), 'probe_ms': spent + int((time.monotonic() - t0) * 1000), 'detail': found['detail']}
+# Stage 1: first contact with every socket at once, so the quiet period is waited for once for all of them; stage 2: the questions, PARALLEL at a time.
+with ThreadPoolExecutor(max_workers=max(1, len(probed))) as pool:
+    firsts = list(pool.map(first_look, list(enumerate(probed))))
 with ThreadPoolExecutor(max_workers=max(1, min(PARALLEL, len(probed)))) as pool:
-    results = list(pool.map(run_one, list(enumerate(probed))))
+    results = list(pool.map(run_one, firsts))
 results.sort(key=lambda r: (r[1]['kind'] not in ('openai', 'ollama'), r[0]))
 reply(listening=len(chosen), probed=len(probed), skipped=len(chosen) - len(probed), endpoints=[r[1] for r in results])
 "#;

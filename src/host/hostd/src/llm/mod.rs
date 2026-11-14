@@ -2,7 +2,7 @@
 //! (`GET /api/tags`), with their model names. Read-only and on demand: a request starts it, nothing runs in the background, nothing is stored and no answer is kept.
 //! Only sockets that listen on this machine are looked at, and only at the machine's own address; the default scope is the sockets of the user's own processes
 //! (`all_users` lists every listening socket). No configuration or credential file of another program is read (AUTH-08): the process table and HTTP answers only.
-//! Bounds: at most 64 sockets, 8 at a time, 1.5 s for a request, 8 s for the run. The reply carries what a later step that *uses* an endpoint would need: where it
+//! Bounds: at most 64 sockets (all of them get their first contact at once, with one shared quiet period), 8 questions at a time, 1.5 s for a request, 8 s for the run. The reply carries what a later step that *uses* an endpoint would need: where it
 //! listens (`address`, `bind`: a loopback bind on a remote machine needs a tunnel), what it is (`kind`, `apis`), whether it wants a key (`auth`), its model ids and the
 //! name of its process.
 
@@ -87,6 +87,12 @@ fn fault_detail(f: &Fault) -> (&'static str, &'static str) {
     }
 }
 
+/// What the first contact with a socket came to: an answer already (it spoke, closed or failed), or a quiet connection ready for the questions.
+enum Step {
+    Done(Found),
+    Quiet(std::net::TcpStream),
+}
+
 fn ask(target: std::net::SocketAddr, first: Option<std::net::TcpStream>, path: &str, deadline: Instant) -> Result<Response, Fault> {
     let stream = match first {
         Some(s) => s,
@@ -95,15 +101,9 @@ fn ask(target: std::net::SocketAddr, first: Option<std::net::TcpStream>, path: &
     http::get(stream, target, path, deadline)
 }
 
-/// Looks at one listening socket: first contact in silence, then the two questions.
-fn probe(listener: &Listener, deadline: Instant) -> Found {
+/// The rest of the look at a socket that was found quiet: the two questions (first contact in silence was made by the caller).
+fn probe(listener: &Listener, stream: std::net::TcpStream, deadline: Instant) -> Found {
     let target = listener.target();
-    let stream = match http::first_contact(target, deadline) {
-        Contact::Speaks => return plain("not-http", "speaks_first"),
-        Contact::Closed => return plain("not-http", "closed"),
-        Contact::Failed(why) => return plain("unknown", why),
-        Contact::Quiet(s) => s,
-    };
     let models = match ask(target, Some(stream), "/v1/models", deadline) {
         Ok(r) => r,
         Err(f) => {
@@ -153,6 +153,27 @@ pub fn run(root: &Path, all_users: bool, budget: Duration) -> Value {
     let listening = chosen.len();
     let probed = &chosen[..listening.min(MAX_PROBED)];
     let deadline = started + budget;
+    // Stage 1: first contact with every socket at once, in silence: the quiet period (a server that speaks first, SSH or a database, says so inside it) is waited for once
+    // for all of them. Stage 2: the two questions, `PARALLEL` at a time, only for the sockets that stayed quiet.
+    let first: Vec<(Step, u64)> = std::thread::scope(|scope_| {
+        let handles: Vec<_> = probed
+            .iter()
+            .map(|l| {
+                scope_.spawn(move || {
+                    let t0 = Instant::now();
+                    let step = match http::first_contact(l.target(), deadline) {
+                        Contact::Speaks => Step::Done(plain("not-http", "speaks_first")),
+                        Contact::Closed => Step::Done(plain("not-http", "closed")),
+                        Contact::Failed(why) => Step::Done(plain("unknown", why)),
+                        Contact::Quiet(stream) => Step::Quiet(stream),
+                    };
+                    (step, t0.elapsed().as_millis() as u64)
+                })
+            })
+            .collect();
+        handles.into_iter().map(|h| h.join().unwrap_or_else(|_| (Step::Done(plain("unknown", "io")), 0))).collect()
+    });
+    let waiting: Vec<Mutex<Option<(Step, u64)>>> = first.into_iter().map(|f| Mutex::new(Some(f))).collect();
     let next = AtomicUsize::new(0);
     let results: Mutex<Vec<(usize, Value)>> = Mutex::new(Vec::new());
     std::thread::scope(|scope_| {
@@ -160,9 +181,13 @@ pub fn run(root: &Path, all_users: bool, budget: Duration) -> Value {
             scope_.spawn(|| loop {
                 let i = next.fetch_add(1, Ordering::SeqCst);
                 let Some(listener) = probed.get(i) else { break };
+                let Some((step, spent)) = waiting[i].lock().unwrap().take() else { continue };
                 let t0 = Instant::now();
-                let found = probe(listener, deadline);
-                let value = endpoint(listener, owners.get(&listener.inode), found, t0.elapsed().as_millis() as u64);
+                let found = match step {
+                    Step::Done(found) => found,
+                    Step::Quiet(stream) => probe(listener, stream, deadline),
+                };
+                let value = endpoint(listener, owners.get(&listener.inode), found, spent + t0.elapsed().as_millis() as u64);
                 results.lock().unwrap().push((i, value));
             });
         }
