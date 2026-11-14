@@ -62,6 +62,7 @@ Semantic. Major: the contract breaks (a name removed or changed, an invariant we
 | `wrong_use_is_an_error_and_never_a_panic_or_a_bad_file` | E1 |
 | `a_write_error_comes_back_as_it_is_and_the_encoder_then_refuses` | E2 |
 | `the_public_names_are_exactly_these` | API |
+| `the_limits_have_the_values_of_the_specification` | API (`MAX_SIDE`, `IDAT_MAX`) |
 
 The 13 tests of `src/tests.rs` (the deflate, the filters, the check sums, and the two that show the test decoder able to fail) are white-box proofs of the inside; they are not contract.
 

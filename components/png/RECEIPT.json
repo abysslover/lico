@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.8,
-    "peak_mib": 82.3,
-    "wall_s": 4.31
+    "compile_s": 1.1,
+    "peak_mib": 94.8,
+    "wall_s": 4.17
   },
   "date": "2026-11-14",
-  "hash": "99f95688171a49abcffe8ae0be958bfd728253316bdfd924e15f81aa763017e9",
+  "hash": "97178ae5033001963ad80409e7871b9ec8294b8636ab832baaf44f48e6e982d2",
   "inputs": {
     "dependencies": [],
     "externals": [
@@ -25,7 +25,7 @@
       ],
       [
         "SPEC.md",
-        "021236be589713847d2707453cc8660d769b45e586b5d0955b4ef5306ed34da8"
+        "5c89878b588ffae02adb14f0aae3fe21e210a1646bf3ebd71007c29a306acc11"
       ],
       [
         "src/lib.rs",
@@ -41,17 +41,17 @@
       ],
       [
         "tests/contract.rs",
-        "7f0b819f409ded60950c183fa9297a4a91079cfcf175b5118bb200ee67a64f9d"
+        "30c872007664426c65f0efc14d61124d26aa288435b5fd5f16f42402f58de358"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 24,
+    "count": 25,
     "failed": 0,
     "ignored": 0,
-    "passed": 24
+    "passed": 25
   },
   "tool": "lico-xtask 0.1.0",
   "version": "1.0.0"

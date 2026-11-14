@@ -248,3 +248,11 @@ fn the_public_names_are_exactly_these() {
     expected.sort();
     assert_eq!(found, expected);
 }
+
+/// API 6 of the specification: the two limits have the documented values (found by the mutation check: a test that only compares against
+/// `IDAT_MAX` cannot notice that the constant itself changed).
+#[test]
+fn the_limits_have_the_values_of_the_specification() {
+    assert_eq!(MAX_SIDE, 0x7FFF_FFFF);
+    assert_eq!(IDAT_MAX, 32768);
+}
