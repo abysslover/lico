@@ -26,7 +26,7 @@ Discovery stays read-only, bounded and on demand, never in the background: GET o
 
 1. P01: per-file time and peak are measured with the ledger (commands in the report); the heaviest GUI and host files are split with the same tests (a by-name count proves nothing was lost); the cold tree peak is `<= 1,800 MiB` with time not worse than `120 s` by more than a few percent, or the measured best is reported with at least three alternatives and a recommendation; the cause of the two flaky tests is named and fixed where it is on the test side.
 2. P02: the dialog shows a cached result with its age and scans again on Refresh or Enter; the scan is measured before and after on fake servers of the owner's count with every bound kept; servers that list no model are folded behind one line; an `ssh`-owned row is labelled `via ssh` and never hidden by name; rows are readable at the default width and no cut text is unreachable; one plain line says what "no model listed" means.
-3. P03: a chat running elsewhere shows its title and when it was last written; `Native` is shown once as a group label; the running-elsewhere rule is unchanged.
+3. P03: a chat running elsewhere shows its title and when it was last written; `Native` is not repeated on every row (the default home says nothing, another account or ssh host is named); the running-elsewhere rule is unchanged.
 4. P04: cold full suite `<= 180.0 s` and `<= 2,048.0 MiB` (each of three runs reported, with the margin reached), idle RSS `< 50.0 MiB`, hidden growth `<= +10.0 MiB`, two-clone `suite acceptance`, the tool-list byte budget stated, `lico 0.3.1` installed to `~/bin/lico` (the `0.3.0` binary kept as a backup). Numbers only as measured.
 
 ## Out of scope
@@ -41,5 +41,5 @@ Discovery stays read-only, bounded and on demand, never in the background: GET o
 |---|---|---|---|---|
 | M13-P01 | Split the big GUI tests; reproduce the flaky ones | [Plan](../../plans/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_plan.md) | [Report](../../reports/202611/20261114/20261114_04_M13-P01_test_split_and_flaky_report.md) | implemented |
 | M13-P02 | Discovery dialog follow-up: cache, speed, fold, readable rows | [Plan](../../plans/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_plan.md) | [Report](../../reports/202611/20261114/20261114_05_M13-P02_discovery_dialog_follow_up_report.md) | implemented |
-| M13-P03 | Chat list polish | [Plan](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | pending | planned |
+| M13-P03 | Chat list polish | [Plan](../../plans/202611/20261114/20261114_06_M13-P03_chat_list_polish_plan.md) | [Report](../../reports/202611/20261114/20261114_06_M13-P03_chat_list_polish_report.md) | implemented |
 | M13-P04 | Verification and `lico 0.3.1` | [Plan](../../plans/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_plan.md) | pending | planned |
