@@ -103,6 +103,7 @@
 | [M14-P01 plan](plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | The bottom bar with the full path |
 | [M14-P01 report](reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | The bottom bar, the path shorteners listed, the bottom-edge tests changed |
 | [M14-P02 plan](plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | Reproduce and fix the unmaximized first start |
+| [M14-P02 report](reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | The lost maximize message, the window-manager model, the property fix, the icon |
 | [M14-P03 plan](plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | End-to-end verification, measurements, `lico 0.3.2` |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
 
