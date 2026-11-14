@@ -54,7 +54,7 @@ def over_budget(rows, table):
 def source_hash(files):
     """A hash of everything the product binary is built from: the crate, the license text compiled in."""
     hasher = hashlib.sha256()
-    for path in sorted(f for f in files if f.startswith("src/host/hostd/") or f == "LICENSE"):
+    for path in sorted(f for f in files if f.startswith("src/host/hostd/") or f in ("LICENSE", "Cargo.toml", "Cargo.lock")):
         hasher.update(f"{path} {receipts.digest(REPO / path)}\n".encode())
     return hasher.hexdigest()
 

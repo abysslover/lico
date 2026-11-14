@@ -31,7 +31,7 @@ def registry_src() -> Path:
 def locked_packages() -> list[tuple[str, str]]:
     """The crates of the Linux build: those of the lock file whose source cargo fetched. The lock file also names crates of
     other platforms (Android, Windows, macOS), which are neither downloaded nor compiled into this program."""
-    lock = tomllib.loads((HOSTD / "Cargo.lock").read_text())
+    lock = tomllib.loads((HOSTD.parent.parent.parent / "Cargo.lock").read_text())
     source = registry_src()
     return sorted((p["name"], p["version"]) for p in lock["package"]
                   if p.get("source", "").startswith("registry+") and (source / f"{p['name']}-{p['version']}").is_dir())

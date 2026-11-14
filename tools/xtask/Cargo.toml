@@ -1,0 +1,11 @@
+[package]
+name = "lico-xtask"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+description = "The tools of the component rules: the module graph, the manifest and graph check, receipts, the isolated test run, the release acceptance."
+
+[dependencies]
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }

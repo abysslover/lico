@@ -203,8 +203,10 @@ unified = ["*"]           # the dispatch: every role goes through it
 [rust]
 # Files that change the binary itself, whatever the module: every test that starts it, and the whole `cargo test --bin lico`.
 everything = [
+    "Cargo.toml",
+    "Cargo.lock",
+    ".cargo/config.toml",
     "src/host/hostd/Cargo.toml",
-    "src/host/hostd/Cargo.lock",
     "src/host/hostd/build-release.sh",
     "src/host/hostd/build.rs",          # bakes the commit into the binary
     "src/host/hostd/NOTICES.txt",       # printed by `lico licenses`, compiled in
@@ -219,8 +221,10 @@ only = []
 # The clean-clone build (tests/test_single_executable.py, mark `acceptance`, 80 s, 3.5 GiB) is due when one of these changes, and
 # before a merge or a release. Run it with: python -m lico_measure.suite acceptance
 triggers = [
+    "Cargo.toml",
+    "Cargo.lock",
+    ".cargo/config.toml",
     "src/host/hostd/Cargo.toml",
-    "src/host/hostd/Cargo.lock",
     "src/host/hostd/build-release.sh",
     "src/host/hostd/build.rs",
     "src/host/hostd/NOTICES.txt",
