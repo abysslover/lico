@@ -133,7 +133,7 @@ def test_a_long_path_with_wide_characters_keeps_its_end_and_a_click_copies_the_w
             w.proc.stdin.flush()
             wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 1 and u["sidebar"]["shown"] is True)
             subprocess.run(["xdotool", "windowsize", w.window_id(), "640", "560"], env=w.env, check=True)
-            narrow = wait_for(lambda: (u := w.ui()) and u["layout"]["window_size"][0] <= 700 and u["path_bar"]["text"].endswith(DEEP) and u)
+            narrow = wait_for(lambda: (u := w.ui()) and u["layout"]["window_size"][0] <= 700 and u["path_bar"]["rect"][2] <= 700 and u["path_bar"]["text"].endswith(DEEP) and u)  # drawn at the new size
             bar = narrow["path_bar"]
             assert bar["cut"] is True and bar["shown"].startswith("…") and bar["text"].endswith(bar["shown"][1:]), bar
             assert _cols(bar["shown"]) <= bar["cols"] and _cols(bar["text"]) > bar["cols"], (bar["cols"], _cols(bar["shown"]))

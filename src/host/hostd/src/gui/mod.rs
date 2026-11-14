@@ -23,6 +23,7 @@ mod jobs;
 mod llm_find;
 mod llm_rows;
 mod pathbar;
+mod windowstate;
 mod native_prompt;
 mod newchat_draw;
 mod sidebar_chats;
@@ -575,10 +576,12 @@ impl ApplicationHandler<Ev> for App {
             .with_title(if self.ui.markers || !self.ui.enabled { "Lico candidate A".to_string() } else { crate::ident::title() }) // the product window says version and commit; the measurement client keeps its marker title
             .with_inner_size(LogicalSize::new(1200.0, 800.0));
         if self.ui.maximized_requested {
-            attrs = attrs.with_maximized(true);
+            attrs = attrs.with_maximized(true).with_visible(false); // hidden until the state is set where a window manager reads it (windowstate.rs)
         }
         let window = Arc::new(event_loop.create_window(attrs).expect("window"));
         if self.ui.maximized_requested {
+            windowstate::set_initial_maximized(&window);
+            window.set_visible(true);
             window.set_maximized(true);
         }
         window.set_ime_allowed(true);

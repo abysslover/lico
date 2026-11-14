@@ -102,7 +102,10 @@ class ProductWindow:
         from .ime import _focus      # no window manager here: the keyboard goes where the focus is put
 
         since = self.frames()
-        _focus(self.xvfb.display)
+        try:
+            _focus(self.xvfb.display)
+        except subprocess.CalledProcessError:
+            pass                          # a window manager that has not mapped the window yet (the M14 model with a delay): the window is not focusable at this moment
         self.settle(since, 0.4 if self.ime else 0.08)
 
     def alive(self) -> bool:

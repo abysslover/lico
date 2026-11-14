@@ -71,6 +71,7 @@ pub struct UiState {
     pub markers: bool,
     pub workbench: bool,
     pub maximized_requested: bool,
+    pub win_btn: super::windowstate::WindowBtn, // the icon that switches between maximized and windowed (`M14-P02`)
     pub path_bar: super::pathbar::PathBar, // the status bar of the full path on the last row (`M14`)
     pub rows: Vec<Row>,
     pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>,
@@ -352,7 +353,7 @@ impl App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
-                self.dirty |= self.hover_moved() | self.path_hover_moved();
+                self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
                 }
@@ -377,7 +378,7 @@ impl App {
                     } else {
                         if !matches!(&hit, Some(Action::SidebarFilter)) { self.ui.sidebar.filter_focused = false; }
                         match hit {
-                            Some(ref a) if self.llm_click(a) || self.path_click(a) || self.native_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
+                            Some(ref a) if self.llm_click(a) || self.path_click(a) || self.window_btn_click(a) || self.native_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
@@ -394,7 +395,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::ReadCard) => self.card_open(),
-                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::NativeYes | Action::NativeNo | Action::NativeLater | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::PathCopy) => {}
+                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::NativeYes | Action::NativeNo | Action::NativeLater | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::PathCopy | Action::WindowMax) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarCallEntry(..) | Action::SidebarCallClose(..) | Action::SidebarCallStartPeer(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -575,7 +576,7 @@ impl App {
             "first_seq": view.and_then(|v| v.lines.front().map(|l| l.0)), "history_requests": self.ui.history_requests, "history_lines": self.ui.history_lines,
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "calls": self.calls_json(), "mention_popup": self.mention_popup_json(), "frame": frame,
-            "path_bar": self.path_bar_json(), "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
+            "path_bar": self.path_bar_json(), "window_btn": self.window_btn_json(), "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
             "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },

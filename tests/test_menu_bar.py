@@ -40,8 +40,9 @@ def test_a_closed_bar_with_four_titles_is_drawn_inside_the_window_and_not_clippe
         assert rects[0][0] >= 4 and rects[-1][2] <= 1200 - 4 and all(r[1] == 0 or r[1] >= 0 for r in rects)
         data, width, _ = w.gray()
         y0, y1 = int(rects[0][1]), int(rects[0][3])
-        lit = [x for x in range(width) if any(data[y * width + x] > 140 for y in range(y0, y1))]
-        assert lit and lit[0] >= 2 and lit[-1] < width // 2                             # the first letter is whole (not cut at the left edge) and the bar holds only its titles
+        icon = w.ui()["window_btn"]["rect"]                                           # M14-P02: the right end of the menu row holds the maximize/restore icon
+        lit = [x for x in range(int(icon[0]) - 2) if any(data[y * width + x] > 140 for y in range(y0, y1))]
+        assert lit and lit[0] >= 2 and lit[-1] < width // 2                             # the first letter is whole (not cut at the left edge) and, left of the icon, the bar holds only its titles
         assert sum(1 for y in range(y0, y1) for x in range(width) if data[y * width + x] > 140) > 100
 
 

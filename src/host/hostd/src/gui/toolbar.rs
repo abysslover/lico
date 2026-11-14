@@ -178,6 +178,7 @@ impl App {
             return;
         }
         let host_popup = if menu_open.is_none() { self.files_host_popup_draw_state() } else { None };
+        let (maximized, over_icon) = (self.window_is_maximized(), self.ui.win_btn.hover);
         let s = self.ui.scale.max(1.0);
         let lh = self.line_h() * s;
         let Some(fs) = self.font_system.as_mut() else { return };
@@ -201,6 +202,10 @@ impl App {
             self.ui.menu_geom.titles.push(r);
             x += w;
         }
+
+        let icon = crate::gui::windowstate::button_rect(width, menu_h, s);
+        crate::gui::windowstate::draw_icon(controls, buf, width, height, icon, maximized, over_icon, s);
+        self.ui.win_btn.rect = Some(icon);
 
         // 2. Action toolbar (y = menu_h .. bar_h)
         controls::fill(buf, width, height, [0.0, menu_h, width as f32, bar_h], 0xFF16_1D27);
