@@ -3,7 +3,7 @@
 - Status: implemented; waits for the owner's acceptance (G3)
 - Version: 1.0.0
 - Branch: `phase/M15-P04-verification-and-0-3-3` (stacked on the P03 tip `f566ace`; the measurements ran on the committed clean tree `4eaaf15`, the documents of this phase are the next commits)
-- Plan: [M15-P04](../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md)
+- Plan: [M15-P04](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md)
 
 ## 1. Measured verification (`lico 0.3.3`)
 
