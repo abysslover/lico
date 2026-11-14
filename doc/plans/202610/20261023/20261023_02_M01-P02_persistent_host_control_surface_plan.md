@@ -15,7 +15,7 @@ any product target**; the GUI idle RSS target stays at 50 MiB of process-tree RS
 The renderer is locked at the end of M01-P03, so this phase stays renderer
 independent and keeps both clients working against the real host.
 
-Evidence this plan is written from (see the P01 [report](../../reports/202610/20261023/20261023_01_M01-P01_architecture_measurement_report.md)):
+Evidence this plan is written from (see the P01 [report](../../../reports/202610/20261023/20261023_01_M01-P01_architecture_measurement_report.md)):
 
 - The Python host in `src/lico_host` is a prototype and becomes the **reference
   oracle** for conformance tests; it is not shipped.

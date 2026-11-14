@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M10-P02-resume-core` (stacked on the P01 tip; implementation commit `3a15c3a`)
-- Plan: [M10-P02](../../plans/202611/20261113/20261113_10_M10-P02_resume_core_plan.md)
+- Plan: [M10-P02](../../../plans/202611/20261113/20261113_10_M10-P02_resume_core_plan.md)
 
 ## What changed
 

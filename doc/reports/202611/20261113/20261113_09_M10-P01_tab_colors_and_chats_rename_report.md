@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M10-P01-tab-colors-and-chats-rename` (implementation commit `597cf66`)
-- Plan: [M10-P01](../../plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md)
+- Plan: [M10-P01](../../../plans/202611/20261113/20261113_09_M10-P01_tab_colors_and_chats_rename_plan.md)
 
 ## What changed
 

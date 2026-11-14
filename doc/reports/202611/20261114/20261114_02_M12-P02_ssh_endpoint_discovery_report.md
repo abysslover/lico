@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M12-P02-ssh-endpoint-discovery` (stacked on the P01 tip; implementation commit `3810693`)
-- Plan: [M12-P02](../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md)
+- Plan: [M12-P02](../../../plans/202611/20261114/20261114_02_M12-P02_ssh_endpoint_discovery_plan.md)
 
 ## What changed
 

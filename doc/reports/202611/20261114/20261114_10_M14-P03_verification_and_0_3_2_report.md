@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14); the owner's check on the real desktop found that the window still does not start maximized (see the gate record of the milestone)
 - Version: 1.0.1
 - Branch: `phase/M14-P03-verification-and-0-3-2` (stacked on `phase/M14-P02-maximized-first-start` at `928acf2`; code commit `ba7884a`)
-- Plan: [M14-P03](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md)
+- Plan: [M14-P03](../../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md)
 
 ## What changed
 

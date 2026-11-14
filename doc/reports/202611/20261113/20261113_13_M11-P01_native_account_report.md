@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M11-P01-native-account` (from the tip of `phase/M10-P04-verification-and-0-2-6`; implementation commit follows the document commit `9d461e1`)
-- Plan: [M11-P01](../../plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md)
+- Plan: [M11-P01](../../../plans/202611/20261113/20261113_13_M11-P01_native_account_plan.md)
 
 ## What changed
 

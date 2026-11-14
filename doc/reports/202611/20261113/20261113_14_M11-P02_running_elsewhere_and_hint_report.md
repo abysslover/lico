@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M11-P02-running-elsewhere-and-hint` (stacked on the P01 tip)
-- Plan: [M11-P02](../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md)
+- Plan: [M11-P02](../../../plans/202611/20261113/20261113_14_M11-P02_running_elsewhere_and_hint_plan.md)
 
 ## What changed
 

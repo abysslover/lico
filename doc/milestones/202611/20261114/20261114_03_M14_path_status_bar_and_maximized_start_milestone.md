@@ -37,9 +37,9 @@ The component rules of 2026-11-14 bind this new code: no new upward edge into a 
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M14-P01 | Bottom status bar with the full path | [Plan](../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | [Report](../../reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | accepted & merged |
-| M14-P02 | Maximized first start | [Plan](../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | [Report](../../reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | accepted & merged (maximized start not confirmed on the owner's desktop) |
-| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | [Report](../../reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | accepted & merged |
+| M14-P01 | Bottom status bar with the full path | [Plan](../../../plans/202611/20261114/20261114_08_M14-P01_path_status_bar_plan.md) | [Report](../../../reports/202611/20261114/20261114_08_M14-P01_path_status_bar_report.md) | accepted & merged |
+| M14-P02 | Maximized first start | [Plan](../../../plans/202611/20261114/20261114_09_M14-P02_maximized_first_start_plan.md) | [Report](../../../reports/202611/20261114/20261114_09_M14-P02_maximized_first_start_report.md) | accepted & merged (maximized start not confirmed on the owner's desktop) |
+| M14-P03 | Verification and `lico 0.3.2` | [Plan](../../../plans/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_plan.md) | [Report](../../../reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | accepted & merged |
 
 ## Gate record
 

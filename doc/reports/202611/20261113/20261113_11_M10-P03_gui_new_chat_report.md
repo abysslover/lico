@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M10-P03-gui-new-chat` (stacked on the P02 tip)
-- Plan: [M10-P03](../../plans/202611/20261113/20261113_11_M10-P03_gui_new_chat_plan.md)
+- Plan: [M10-P03](../../../plans/202611/20261113/20261113_11_M10-P03_gui_new_chat_plan.md)
 
 ## What changed
 

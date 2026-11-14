@@ -3,7 +3,7 @@
 - Status: accepted at G3 and merged to `main` (2026-11-14)
 - Version: 1.0.1
 - Branch: `phase/M12-P01-local-endpoint-discovery` (from `main` at `ece5706`; implementation commit `2dfaab5`)
-- Plan: [M12-P01](../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md)
+- Plan: [M12-P01](../../../plans/202611/20261114/20261114_01_M12-P01_local_endpoint_discovery_plan.md)
 
 ## What changed
 

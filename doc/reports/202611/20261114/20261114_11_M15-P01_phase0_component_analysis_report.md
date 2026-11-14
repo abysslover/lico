@@ -3,7 +3,7 @@
 - Status: written, waiting for the owner's choice of the first component (nothing was moved, deleted or built)
 - Version: 1.0.0
 - Branch: `phase/M15-P01-phase0-component-analysis` (from `main` at `38a319c`, `lico 0.3.2`)
-- Plan: [M15-P01](../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md)
+- Plan: [M15-P01](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md)
 - Appendix (the long tables): [M15-P01 appendix](20261114_11_M15-P01_phase0_component_analysis_appendix.md)
 
 Every figure is marked **MEASURED** (a tool run on this machine says so), **COMPUTED** (derived from the source text by a script of mine, method given) or **ASSUMED** (my judgement). The scratch scripts live in `private/phase0/` and are not committed; the P02 graph tool in Rust must reproduce the numbers of section 2 before it is trusted.
