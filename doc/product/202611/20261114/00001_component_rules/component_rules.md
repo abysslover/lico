@@ -1,12 +1,12 @@
 # Lico component rules: versioned components, explicit contracts, tests that stay inside their component
 
-- Status: draft, awaiting the owner's approval (nothing in it is binding until the owner approves it)
-- Version: 0.1.0
+- Status: approved by the owner on 2026-11-14 (in force for the work named in section 6; merged to `main` only on the owner's G4)
+- Version: 1.0.0
 - Project: Lico
 - Written: 2026-11-14
 - Origin: the owner's instruction of 2026-11-14: stop re-running every test for every change; manage the code as components with versions, explicit dependencies, a contract and a spec each; do not re-run a module's own tests when the module has not changed; keep the number of tests and the memory of a run under control; write this down before the dependencies grow further. The method is the one the owner already uses for the personal backend (`refactor`, decision D35): divide and conquer, interface specification first, release and pin.
 
-Every figure below is marked MEASURED (a report or a tool run says so), COMPUTED (derived here from the source with a rough script, to be redone in Phase 0) or PROPOSED (a rule or a number for the owner to accept or change).
+The rules below were approved as written. Wherever a rule says PROPOSED, it is now the owner's decision with the numbers given, to be changed only by a new version of this document. Every figure below is marked MEASURED (a report or a tool run says so), COMPUTED (derived here from the source with a rough script, to be redone in Phase 0) or PROPOSED (a rule or a number for the owner to accept or change).
 
 ## 1. Why now
 
@@ -42,10 +42,11 @@ A workspace crate `components/<name>/` (or the existing names) with `Cargo.toml`
 
 Bottom of the tree, no dependency on another module of the crate, size in lines, number of modules that use it: `dbus` 452 / 1, `mcp` 437 / 5, `quota` 428 / 5, `payload` 107 / 6, `marks` 226 / 1. One dependency: `png` 1,358 lines (uses `handoff` only), `keyring` (uses `dbus`), `ident`, `lines`, `tokens`, `helper`. The recommendation to be checked in Phase 0: start with `dbus` (smallest, no dependencies, and the planned Linux computer-use work would sit on it), then `payload` and `quota`. The hubs (`core`, `session`, `folders`, `transfer`, `handoff`, `codex`) come last and are dissolved by ports, not moved whole; `gui` is split into a display-free part (rows, layout, wording, state) and a thin painter.
 
-## 6. What the owner decides
+## 6. The owner's decisions (2026-11-14)
 
-1. Whether these rules are accepted as they are or changed (this document is a draft).
-2. The default budget of a component run (256 MiB, 30 s are proposals).
-3. Where receipts live: next to the component in the repository, so a reviewer sees them in the diff (recommended), or in a local build cache.
-4. Whether the first component is `dbus` or another candidate, after the Phase 0 report.
-5. The order against the other planned work (the small 0.3.2 release, using a found Local LLM server as a session, a lico host on an ssh host, computer use on Linux, then Windows and macOS, the removal of Python from the product, the measurement tools and the integration tests). The Python removal and this document go together: each component's Python tests are replaced by its Rust contract tests and then retired, and the measurement tools become the Rust tools of rule 10. `exp/` is cleaned up; `lico_chat.py` is the next milestone after that.
+1. The rules of section 2 are accepted as written.
+2. The default budget of a component run is 256 MiB and 30 s; a component that needs more says so in its manifest and the owner sees it.
+3. Receipts live next to the component in the repository (`RECEIPT.json`), so that a reviewer sees them in the diff.
+4. The first component is chosen by the owner from the Phase 0 report; `dbus` is only the lead's guess from a rough count.
+5. Order: the milestones already running (the 0.3.1 verification of M13 and the small 0.3.2 release of M14) finish under the old whole-suite rule, because no component and no receipt exists yet. Then the component foundation (Phase 0 report, workspace and Rust tools, the first component, release acceptance). Then using a found Local LLM server as a session, written as new components under these rules. Later, in the order the owner named: a lico host on an ssh host, computer use on Linux (the structure of agent-desktop as a reference only, Lico's own code), Windows, macOS.
+6. Python is to be almost eliminated: the product's run-time use (the remote `python3 -c` scripts), the measurement tools and the integration tests move to Rust, each component's Python tests being replaced by its Rust contract tests and then retired. `exp/` is cleaned up. `lico_chat.py` (a private tool outside the repository) is the milestone after that. The commit guard in `.git/hooks` is the owner's governance tool and is outside this scope unless the owner says otherwise.
