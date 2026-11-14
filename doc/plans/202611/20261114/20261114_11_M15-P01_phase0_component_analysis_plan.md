@@ -1,7 +1,7 @@
 # M15-P01 Plan — Phase 0: Measure and Decide (Read-Only)
 
-- Status: planned
-- Version: 1.0.0
+- Status: implemented (see report); stopped at the report as planned
+- Version: 1.1.0
 - Approved: 2026-11-14 (G2 for M15-P01 approved by the owner on 2026-11-14)
 - Branch: `phase/M15-P01-phase0-component-analysis` (from `main` at `38a319c`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
@@ -12,14 +12,14 @@ Write the Phase 0 report (`doc/reports/202611/20261114/20261114_11_M15-P01_phase
 
 ## Steps
 
-- [ ] S01: Documentation-only first commit (milestone note and four plan notes).
-- [ ] S02: Inventory (Rust modules and `gui` submodules, Python groups, `exp/`, build files).
-- [ ] S03: The import graph, cycles, layers, hub dependencies, the minimal cycle-breaking edges, external crates per module.
-- [ ] S04: Test ownership and cost: every Rust test alone (time, tree peak), every Python test file mapped and costed from a cold ledger.
-- [ ] S05: Python groups, `lico_measure` function by function, `exp/` proposal.
-- [ ] S06: At least five candidates and one recommendation; the build order of the next 6 to 10 components; the `gui` split; the hub ports.
-- [ ] S07: The design of the manifest, `SPEC.md`, `RECEIPT.json`, the hash, the isolated run, the system-test list.
-- [ ] S08: The report, the index and status updates, `done` file `113`, stop.
+- [x] S01: Documentation-only first commit (milestone note and four plan notes).
+- [x] S02: Inventory (Rust modules and `gui` submodules, Python groups, `exp/`, build files).
+- [x] S03: The import graph, cycles, layers, hub dependencies, the minimal cycle-breaking edges, external crates per module.
+- [x] S04: Test ownership and cost: every Rust test alone (time, tree peak), every Python test file mapped and costed from a cold ledger.
+- [x] S05: Python groups, `lico_measure` function by function, `exp/` proposal.
+- [x] S06: At least five candidates and one recommendation; the build order of the next 6 to 10 components; the `gui` split; the hub ports.
+- [x] S07: The design of the manifest, `SPEC.md`, `RECEIPT.json`, the hash, the isolated run, the system-test list.
+- [x] S08: The report, the index and status updates, `done` file `113`, stop.
 
 ## Acceptance Criteria
 
