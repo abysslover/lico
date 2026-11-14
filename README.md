@@ -24,7 +24,7 @@ full IDE, an embedded browser runtime, or an autonomous cloud scheduler.
   Closing or hiding `lico gui` never stops running work; hidden tabs release UI
   resources and reattach from a host snapshot plus subsequent events.
 - **Measured lightweight single executable.** Lico ships as one self-contained
-  Rust binary (`lico`, `0.3.0`) with a hand-drawn native client rather than a
+  Rust binary (`lico`, `0.3.1`) with a hand-drawn native client rather than a
   bundled webview. Resource budgets are enforced by automated measurement: an
   idle window stays well under `50 MiB` RSS (`~25 MiB` window / `~36 MiB` client
   tree; `~7.6 MiB` host), scaling from `10` to `100` background sessions adds

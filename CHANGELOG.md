@@ -9,6 +9,17 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.3.1 — 2026-11-14 (`M13`)
+
+- **Milestone**: [M13 Discovery follow-up, chat list polish, and the split of the big GUI tests](doc/milestones/202611/20261114/20261114_02_M13_discovery_follow_up_chat_list_polish_and_test_split_milestone.md) (`milestone/M13-*` is created by the lead at the closing commit, [M13-P04 report](doc/reports/202611/20261114/20261114_07_M13-P04_verification_and_0_3_1_report.md))
+- **Measured resources**: idle window `25.45..25.64` / `36.27..36.51 MiB`, `10 -> 100` hidden growth `+0.32 MiB`, cold 540-test suite `118.9..124.9 s`, tree peak `1,414.2..1,489.4 MiB` (was `1,964.8..1,998.7 MiB` at `0.3.0`)
+- **Highlights**:
+  - **The discovery dialog keeps what it found.** The last result of each host and users' choice stays in the window's memory (nothing on disk) with its age, `found 3 min ago`; opening the dialog or choosing the host again shows it without a scan, and Enter or `Refresh` scans again. The command, the HTTP route and the tool still scan fresh.
+  - **A faster scan with the same bounds.** Every port gets its silent first contact at once, so the quiet period that protects servers that speak first is waited for once, not once per round of eight: `608 -> 160 ms` on a fixture of 46 sockets, `464 -> 172 ms` for the script on an ssh host.
+  - **A quieter, readable list.** Servers that answered but list no model are folded behind one line; a row owned by `ssh` says `via ssh` and is never hidden by its name; rows are two lines with a selection and the selected row whole under the list; the host name is wrapped, never cut; one line says what "no model listed" means.
+  - **The Chats tab says when.** Every card starts its second line with when the chat was last written (`10m ago`), a chat that another program writes keeps its title whole and says `[elsewhere] written 4m ago`, and `Native (~/.claude)` is no longer repeated on every row (another account or an ssh host is still named).
+  - **A smaller test-suite memory peak.** `build_id()` hashed the program's own file whole (about `200 MiB` in a test binary, in every test that touched it); it is read in pieces now, and the font systems and private X servers of the Rust tests run a few at a time. Two flaky tests were found and fixed on the test side.
+
 ## 0.3.0 — 2026-11-14 (`M12`)
 
 - **Milestone**: [M12 Find OpenAI-compatible Local LLM endpoints on this machine and on ssh hosts](doc/milestones/202611/20261114/20261114_01_M12_local_llm_endpoint_discovery_milestone.md) (`milestone/M12-local-llm-endpoint-discovery`, [M12-P03 report](doc/reports/202611/20261114/20261114_03_M12-P03_verification_and_0_3_0_report.md))
