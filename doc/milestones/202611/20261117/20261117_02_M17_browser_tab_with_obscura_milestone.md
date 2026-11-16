@@ -5,6 +5,7 @@
 - Approved: not yet (G1 for the milestone waits for the Phase 0 report)
 - Project: Lico
 - Updated: 2026-11-17
+- Approvals of mail 144 (the Phase 0 answers: separate process the owner installs, Landlock as containment, commit-only Korean input in the page, `localhost` opt-in per tab, `v0.2.6` pinned for testing, stealth surfaces accepted with a sentence, no persistence, no agents, release `0.5.0`; the order P02 then P03) were given by the lead under the owner's delegation (the owner away) and are for the owner to confirm on return
 - Base: the M16-P08 tip `bd99509` (M16 is not merged yet: the owner's G3 and G4 wait for their return); M17 is stacked on it and touches no M16 branch
 - Implementation: `phase/M17-P01-browser-tab-phase0`; later phases get their prefix when the Phase 0 report is decided
 - Version of the program: P01 bumps nothing
@@ -22,7 +23,9 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
 | M17-P01 | Phase 0: how to embed, rendering, input, security, agents, components, one measurement (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_11_M17-P01_browser_tab_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md) | implemented; waits for the lead and the owner |
-| later | decided by the Phase 0 report | sketch | | after P01 |
+| M17-P02 | `lico-ws`, `lico-cdp-fake`, `lico-cdp` | [Plan](../../../plans/202611/20261117/20261117_13_M17-P02_ws_and_cdp_plan.md) | pending | plan waits for the lead's approval |
+| M17-P03 | `lico-sandbox` (the Landlock launcher) and the first measurement of the engine, then a stop for a re-plan | sketch (mail 144) | | after P02 |
+| later | decoder, tab model, host adapter, window, input, release `0.5.0`: re-planned by the lead from the measurement | sketch | | after P03 |
 
 ## Cost
 
