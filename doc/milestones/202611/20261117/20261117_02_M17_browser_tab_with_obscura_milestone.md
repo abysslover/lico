@@ -24,7 +24,7 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 |---|---|---|---|---|
 | M17-P01 | Phase 0: how to embed, rendering, input, security, agents, components, one measurement (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_11_M17-P01_browser_tab_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md) | implemented; waits for the lead and the owner |
 | M17-P02 | `lico-ws`, `lico-cdp-fake`, `lico-cdp` | [Plan](../../../plans/202611/20261117/20261117_13_M17-P02_ws_and_cdp_plan.md) | [Result](../../../plans/202611/20261117/20261117_13_M17-P02_ws_and_cdp_plan.md) (in the plan note) | implemented |
-| M17-P03 | `lico-sandbox` (the Landlock launcher) and the first measurement of the engine, then a stop for a re-plan | [Plan](../../../plans/202611/20261117/20261117_14_M17-P03_sandbox_and_first_measurement_plan.md) | pending | plan waits for the lead's approval |
+| M17-P03 | `lico-sandbox` (the Landlock launcher) and the first measurement of the engine, then a stop for a re-plan | [Plan](../../../plans/202611/20261117/20261117_14_M17-P03_sandbox_and_first_measurement_plan.md) | [Measurement note](../../../reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md) | implemented; waits for the lead's re-plan |
 | later | decoder, tab model, host adapter, window, input, release `0.5.0`: re-planned by the lead from the measurement | sketch | | after P03 |
 
 ## Cost

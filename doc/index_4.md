@@ -130,6 +130,7 @@
 | [M17-P01 report](reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md) | Phase 0: embedding, rendering, input, security, components and cost, the one inspection of the engine archive |
 | [M17-P02 plan](plans/202611/20261117/20261117_13_M17-P02_ws_and_cdp_plan.md) | `lico-ws`, `lico-cdp-fake`, `lico-cdp`: the specification drafts and the steps |
 | [M17-P03 plan](plans/202611/20261117/20261117_14_M17-P03_sandbox_and_first_measurement_plan.md) | `lico-sandbox` (Landlock launcher) and the first measurement of the engine: specification draft, tests first, conditions of the run |
+| [M17-P03 measurement note](reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md) | The engine run confined for the first time: what the fence does not close, what the engine tried, frames, rendering, input, identity, fonts |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |

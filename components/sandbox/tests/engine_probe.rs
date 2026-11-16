@@ -165,6 +165,19 @@ fn rss(label: &str, root: u32) {
     m("rss", json!({"at": label, "engine_total_mib": total as f64 / 1024.0, "processes": engine}));
 }
 
+/// Clock ticks (1/100 s) of user plus system time of the engine processes (not the strace).
+fn cpu_ticks(root: u32) -> u64 {
+    descendants(root)
+        .iter()
+        .filter(|p| p.2 != "strace")
+        .filter_map(|p| std::fs::read_to_string(format!("/proc/{}/stat", p.0)).ok())
+        .filter_map(|t| {
+            let rest = t.rsplit_once(") ")?.1.split(' ').map(str::to_string).collect::<Vec<_>>();
+            Some(rest.get(11)?.parse::<u64>().ok()? + rest.get(12)?.parse::<u64>().ok()?)
+        })
+        .sum()
+}
+
 fn kill_all(root: u32) {
     for (pid, _, _, _) in descendants(root).into_iter().rev() {
         unsafe extern "C" {
@@ -192,7 +205,7 @@ struct Engine {
     token: String,
 }
 
-fn start(engine_dir: &Path, out: &Path, fixture_port: u16, allow_private: bool, tag: &str) -> Engine {
+fn start(engine_dir: &Path, out: &Path, fixture_port: u16, allow_private: bool, with_fonts: bool, tag: &str) -> Engine {
     let port = free_port();
     let token = token();
     let (home, work) = (out.join(format!("home_{tag}")), out.join(format!("work_{tag}")));
@@ -206,7 +219,8 @@ fn start(engine_dir: &Path, out: &Path, fixture_port: u16, allow_private: bool, 
     }
     let mut read = vec![PathBuf::from("/etc/ld.so.cache"), PathBuf::from("/dev/urandom")];
     let fonts = Path::new("/usr/share/fonts/truetype/nanum");
-    if fonts.exists() {
+    let with_fonts = with_fonts && fonts.exists();
+    if with_fonts {
         read.push(fonts.to_path_buf());
     }
     let conf = Confinement {
@@ -220,7 +234,7 @@ fn start(engine_dir: &Path, out: &Path, fixture_port: u16, allow_private: bool, 
         ..Confinement::default()
     };
     let strace = Path::new("/usr/bin/strace");
-    let font_arg = fonts.exists().then(|| fonts.to_string_lossy().into_owned());
+    let font_arg = with_fonts.then(|| fonts.to_string_lossy().into_owned());
     let mut cmd;
     if strace.exists() {
         cmd = Command::new(strace);
@@ -292,7 +306,8 @@ impl Page {
     }
 }
 
-fn screencast(page: &mut Page, out: &Path, label: &str, format: ImageFormat, w: u32, h: u32, ack: bool, ms: u64) {
+fn screencast(page: &mut Page, out: &Path, label: &str, format: ImageFormat, w: u32, h: u32, ack: bool, ms: u64, root: u32) {
+    let cpu0 = cpu_ticks(root);
     let started = page.call(method::START_SCREENCAST, cmd::start_screencast(format, 80, w, h, 1));
     let t = Instant::now();
     let (mut n, mut bytes, mut max, mut first_at, mut times) = (0u64, 0usize, 0usize, None, Vec::new());
@@ -321,7 +336,7 @@ fn screencast(page: &mut Page, out: &Path, label: &str, format: ImageFormat, w: 
     }
     let _ = page.call("Page.stopScreencast", json!({}));
     m("screencast", json!({"label": label, "format": format!("{format:?}"), "size": [w, h], "ack": ack, "ms": ms, "start_result": started, "frames": n, "frame_b64_bytes_total": bytes, "frame_b64_bytes_max": max,
-        "first_frame_ms": first_at, "frame_times_ms": times.iter().take(40).collect::<Vec<_>>(), "first_frame_shape": keys}));
+        "cpu_ms": (cpu_ticks(root) - cpu0) * 10, "first_frame_ms": first_at, "frame_times_ms": times.iter().take(40).collect::<Vec<_>>(), "first_frame_shape": keys}));
 }
 
 #[test]
@@ -338,7 +353,7 @@ fn engine_probe() {
 
     // ---- run 1: the private-network switch ON (the fixtures are on 127.0.0.1) ----
     let t0 = Instant::now();
-    let mut eng = start(&engine_dir, &out, fx.port, true, "run1");
+    let mut eng = start(&engine_dir, &out, fx.port, true, true, "run1");
     let root = eng.child.id();
     let up = wait_port(eng.port, Duration::from_secs(20));
     m("start", json!({"port_open_ms": up.map(|d| d.as_millis() as u64), "pid_root": root, "waited_since_spawn_ms": t0.elapsed().as_millis() as u64}));
@@ -408,11 +423,11 @@ fn engine_probe() {
             Err(e) => m("screenshot", json!({"format": fmt, "error": e, "ms": ms})),
         }
     }
-    screencast(&mut page, &out, "still_jpeg_1200_ack", ImageFormat::Jpeg, 1200, 800, true, 3000);
-    screencast(&mut page, &out, "still_jpeg_1200_noack", ImageFormat::Jpeg, 1200, 800, false, 3000);
-    screencast(&mut page, &out, "still_png_1200_ack", ImageFormat::Png, 1200, 800, true, 3000);
+    screencast(&mut page, &out, "still_jpeg_1200_ack", ImageFormat::Jpeg, 1200, 800, true, 3000, root);
+    screencast(&mut page, &out, "still_jpeg_1200_noack", ImageFormat::Jpeg, 1200, 800, false, 3000, root);
+    screencast(&mut page, &out, "still_png_1200_ack", ImageFormat::Png, 1200, 800, true, 3000, root);
     m("setup", json!({"method": "viewport 640x560", "result": page.call(method::SET_VIEWPORT, cmd::set_viewport(640, 560, 1.0))}));
-    screencast(&mut page, &out, "still_jpeg_640_ack", ImageFormat::Jpeg, 640, 560, true, 2000);
+    screencast(&mut page, &out, "still_jpeg_640_ack", ImageFormat::Jpeg, 640, 560, true, 2000, root);
     rss("while_screencasting_after", root);
 
     // input on the fixture
@@ -446,7 +461,12 @@ fn engine_probe() {
     // an animated page, with and without acknowledgements
     let _ = page.call(method::NAVIGATE, cmd::navigate(&format!("{fx_url}/anim.html")));
     let _ = page.wait_for("Page.loadEventFired", 8000);
-    screencast(&mut page, &out, "anim_jpeg_1200_ack", ImageFormat::Jpeg, 1200, 800, true, 3000);
+    screencast(&mut page, &out, "anim_jpeg_1200_ack", ImageFormat::Jpeg, 1200, 800, true, 3000, root);
+    screencast(&mut page, &out, "anim_jpeg_1200_noack", ImageFormat::Jpeg, 1200, 800, false, 3000, root);
+    screencast(&mut page, &out, "anim_png_1200_ack", ImageFormat::Png, 1200, 800, true, 3000, root);
+    let _ = page.call(method::SET_VIEWPORT, cmd::set_viewport(640, 560, 1.0));
+    screencast(&mut page, &out, "anim_jpeg_640_ack", ImageFormat::Jpeg, 640, 560, true, 3000, root);
+    m("identity_after_ua_override", json!({"value": page.eval("JSON.stringify({ua:navigator.userAgent,platform:navigator.platform,vendor:navigator.vendor,webdriver:navigator.webdriver})")}));
     rss("after_animation", root);
     let closed = page.call("Target.closeTarget", json!({"targetId": target["targetId"].as_str().unwrap_or("")}));
     m("close_target", json!({"result": closed}));
@@ -461,7 +481,7 @@ fn engine_probe() {
 
     // ---- run 2: the private-network switch OFF: the block must refuse the fixture ----
     fx.seen.lock().unwrap().clear();
-    let mut eng = start(&engine_dir, &out, fx.port, false, "run2");
+    let mut eng = start(&engine_dir, &out, fx.port, false, true, "run2");
     let root = eng.child.id();
     if wait_port(eng.port, Duration::from_secs(20)).is_some() {
         let addr = SocketAddr::from(([127, 0, 0, 1], eng.port));
@@ -477,6 +497,30 @@ fn engine_probe() {
         }
     } else {
         m("run2_did_not_start", json!({}));
+    }
+    kill_all(root);
+    let _ = eng.child.wait();
+    // ---- run 3: no font directory (private-network switch ON again): does Korean text paint with what the machine has, from the allowed files only? ----
+    let mut eng = start(&engine_dir, &out, fx.port, true, false, "run3");
+    let root = eng.child.id();
+    if wait_port(eng.port, Duration::from_secs(20)).is_some() {
+        let addr = SocketAddr::from(([127, 0, 0, 1], eng.port));
+        let c = Client::connect(addr, &ws_path, Some(&eng.token), &limits).expect("connect run3");
+        let mut page = Page { c, session: None };
+        let target = page.call(method::CREATE_TARGET, cmd::create_target("about:blank"));
+        if let Some(id) = target["targetId"].as_str().map(str::to_string) {
+            page.session = page.call(method::ATTACH, cmd::attach(&id))["sessionId"].as_str().map(str::to_string);
+            let _ = page.call("Page.enable", json!({}));
+            let _ = page.call(method::SET_VIEWPORT, cmd::set_viewport(1200, 800, 1.0));
+            let _ = page.call(method::NAVIGATE, cmd::navigate(&format!("{fx_url}/index.html")));
+            let _ = page.wait_for("Page.loadEventFired", 8000);
+            std::thread::sleep(Duration::from_millis(500));
+            let shot = page.call(method::CAPTURE_SCREENSHOT, json!({"format": "png"}));
+            if let Some(d) = shot["data"].as_str() {
+                let _ = std::fs::write(out.join("shot_no_font_dir.png"), b64(d));
+            }
+            m("no_font_dir", json!({"shot_bytes": shot["data"].as_str().map(|d| b64(d).len()), "h1_height": page.eval("document.getElementById('h').getBoundingClientRect().height")}));
+        }
     }
     kill_all(root);
     let _ = eng.child.wait();

@@ -1,6 +1,6 @@
 # M17-P03 Plan — `lico-sandbox` and the First Measurement of the Engine
 
-- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, answer to question 130 (mail 146), in progress; the order (P03 = the sandbox component and the first measurement, then a stop for a re-plan) and the conditions of the run were given by the lead in mails 143 and 144
+- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, answer to question 130 (mail 146), done (measured below); the order (P03 = the sandbox component and the first measurement, then a stop for a re-plan) and the conditions of the run were given by the lead in mails 143 and 144
 - Version: 1.0.0
 - Branch: `phase/M17-P03-sandbox-and-first-measurement` (stacked on the P02 tip `23d543c`)
 - Milestone: [M17](../../../milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md); Phase 0: [report](../../../reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md)
@@ -67,9 +67,9 @@ What cannot be red first: the three system calls and the `pre_exec` order are th
 ## Steps
 
 - [x] 1. This plan, the specification draft and the question file (130); the lead's approval.
-- [ ] 2. `lico-sandbox`: the pure tests red, `plan` and the refusals green; then the denial tests red, the system calls and `confine` green; mutation checks; receipt; commits (`Cargo.lock` with the new member).
-- [ ] 3. The harness (ignored test) written and run once against a harmless program of the system to see it work with no engine (the sandboxed probe path), then the download (announced), the check of the hashes, the run, the figures.
-- [ ] 4. The measurement note (`doc/reports/...`, short, every figure MEASURED, the saved frames listed), the cleanup (archive and extracted files deleted, no process left), the result in this plan, the `done` file, and STOP for the lead.
+- [x] 2. `lico-sandbox`: the pure tests red, `plan` and the refusals green; then the denial tests red, the system calls and `confine` green; mutation checks; receipt; commits (`Cargo.lock` with the new member).
+- [x] 3. The harness (ignored test) written and run once against a harmless program of the system to see it work with no engine (the sandboxed probe path), then the download (announced), the check of the hashes, the run, the figures.
+- [x] 4. The measurement note (`doc/reports/...`, short, every figure MEASURED, the saved frames listed), the cleanup (archive and extracted files deleted, no process left), the result in this plan, the `done` file, and STOP for the lead.
 
 ## Estimate and the stop rule
 
@@ -82,3 +82,18 @@ What cannot be red first: the three system calls and the `pre_exec` order are th
 ## Addition of the lead (mail 146): what the engine tries, and what the fence does not close
 
 `strace` is installed on this machine (MEASURED: `/usr/bin/strace`; `ptrace_scope` is 1, so a tracer can follow its own children). During the run the engine is started as the child of `strace -f -e trace=network,openat -o FILE` where the strace is itself the confined child (the confinement is inherited by the engine and its worker; `FILE` is in the scratch directory that the confinement may write). Every `socket`, `connect`, `sendto` and every `openat` that failed with `EACCES` or went outside the fixtures and the system libraries is reported: what the engine tried, not only what it was allowed. The measurement note's first screen says in plain words **what the fence does not close**: abstract Unix sockets (the owner's X server listens on one), UDP, signals to other processes of the same user (and `/proc` of other processes, never opened by the policy), with the residual risk.
+
+## Result (2026-11-17, as measured)
+
+Approved by the lead under the owner's delegation (the owner away); nothing here is accepted (G3 and G4 stay with the owner). The measurement note is [here](../../../reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md); its first screen says what the fence does not close.
+
+| Check | Result |
+|---|---|
+| `lico-sandbox 0.1.0` | 26 tests and 1 ignored (the engine probe); about 560 lines of `src` and 700 of tests and the probe; the own run `0.39 s / 63.4 MiB` (budget 256 MiB, 30 s); `cargo xtask check` and `verify` pass; `Cargo.lock` with the new member |
+| Red first | the contract tests were written before the code and seen red (compile errors); the code then passed all but one test, which was a parsing mistake in the test (libtest prints the probe's line after its own `test zz_probe ... `); the first commit was made with one failure in the isolated run (a socket path over 108 bytes under the longer target directory) and a peak of 301 MiB (an allocation probe too big); the next commit fixed both and wrote the receipt |
+| Denials proved before the engine was started | a file outside the allowed paths, a write outside the scratch directory, a connection to a port that is not allowed, a bind to one that is not, and an execute from the scratch directory are all denied (`EACCES`), each with its control that succeeds when allowed; the environment is exactly the given one; no descriptor of the parent; `NO_NEW_PRIVS`; a session of its own; death with the parent; `min_abi` above the kernel's: no process; limits on address space and open files; `strace` works under the confinement and records a denied open |
+| The gaps, pinned by tests | UDP to loopback, an abstract Unix socket, a Unix socket by path in an allowed directory and a signal to another process of the same user are NOT stopped (four `known_gap_` tests) |
+| Mutation checks | 33 mutants: 32 caught, 1 equivalent (a relative program path is also refused by the check that the program is under `read_exec`, so the first check is a second wall that no test can reach); four mutants first failed only to compile and were redone as compiling mutants, all caught |
+| The first measurement | see the note: the engine ran confined on the first attempt, nothing was widened, fixtures only, the archive deleted, no process left; JPEG and PNG frames, 33 ms pacing with an acknowledgement per frame, one frame for a still page; the page sees a Windows Chrome identity by default; Korean needs a font directory |
+| The program | unchanged (no dependency on the new component); the tools `17 passed`; the selection test names the component |
+| Cost | about 3.5 USD for the component, the harness and the run, about 1 USD more for the note and the report (estimate 6.5 to 10; the stop rule was 15) |
