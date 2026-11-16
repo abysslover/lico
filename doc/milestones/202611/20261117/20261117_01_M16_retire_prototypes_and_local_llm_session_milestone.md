@@ -1,6 +1,6 @@
 # M16 — Retire the Prototypes, and a Found Local LLM Server as Its Own Session Kind (Phase 0)
 
-- Status: in progress (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
+- Status: P01 and P02 implemented; the owner picks the design (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
 - Version: 1.0.0
 - Approved: 2026-11-17 (the owner's approval of the short plan for P01 and P02)
 - Project: Lico
@@ -22,7 +22,7 @@ The component rules 1.0.1 (new code is new components with a version, downward-o
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
 | M16-P01 | Retire the prototypes | [Plan](../../../plans/202611/20261117/20261117_02_M16-P01_retire_prototypes_plan.md) | pending | implemented (`575f757`) |
-| M16-P02 | Phase 0 for the Local LLM session (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | pending | approved |
+| M16-P02 | Phase 0 for the Local LLM session (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md) | implemented; waits for the owner's pick |
 | M16-P03.. | The components and the session kind | sketch in the P02 plan | | after the owner picks the design |
 
 ## Cost

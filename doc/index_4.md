@@ -118,6 +118,7 @@
 | [M16 milestone](milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md) | Retire the prototypes (P01); Phase 0 for a found Local LLM server as its own session kind (P02, a report) |
 | [M16-P01 plan](plans/202611/20261117/20261117_02_M16-P01_retire_prototypes_plan.md) | Delete the retired prototype clients and hosts and what only runs them |
 | [M16-P02 plan](plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | The Phase 0 report for the Local LLM session (read-only) |
+| [M16-P02 report](reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md) | Phase 0 for the Local LLM session: what exists, the model side, the tool loop, security, five components, the cost per phase, ten questions |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
 | [M14-P03 report](reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | Measured budgets, three cold runs, acceptance, `lico 0.3.2`, install |
 

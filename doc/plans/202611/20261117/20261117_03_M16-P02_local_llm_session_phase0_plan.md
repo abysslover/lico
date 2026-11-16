@@ -1,6 +1,6 @@
 # M16-P02 Plan — Phase 0 for the Local LLM Session (Read-Only)
 
-- Status: approved by the owner on 2026-11-17 (the plan shown on the screen); waits for P01
+- Status: approved by the owner on 2026-11-17 (the plan shown on the screen); implemented; the report is [here](../../../reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md); the phase stops for the owner's pick
 - Version: 1.0.0
 - Branch: `phase/M16-P02-local-llm-session-phase0` (stacked on the P01 tip)
 - Milestone: [M16](../../../milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md)
@@ -21,8 +21,8 @@ One report, no code and no moves, then stop for the owner's pick: `doc/reports/2
 
 ## Steps
 
-- [ ] 1. Targeted reading and greps of the code named above (no whole-tree dumps); `cargo xtask graph` for the edges into the hubs.
-- [ ] 2. The report; the mail; stop.
+- [x] 1. Targeted reading and greps of the code named above (no whole-tree dumps); `cargo xtask graph` for the edges into the hubs.
+- [x] 2. The report; the mail; stop.
 
 ## Acceptance Criteria
 
