@@ -1,6 +1,6 @@
 # M17-P01 Plan — Phase 0 for a Browser Tab with Obscura (Read-Only)
 
-- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, answer to question 126 (mail 143), with conditions on the measurement (below); in progress
+- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, answer to question 126 (mail 143), with conditions on the measurement (below); done: the engine was NOT run (`unshare` does not work here), the report is from documentation and from reading the archive
 - Version: 1.0.0
 - Branch: `phase/M17-P01-browser-tab-phase0` (from the M16-P08 tip `bd99509`)
 - Milestone: [M17](../../../milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md)
@@ -23,9 +23,9 @@ One report, then stop: `doc/reports/202611/20261117/20261117_12_M17-P01_browser_
 ## Steps
 
 - [x] 1. The lead's approval of this plan (question 126).
-- [ ] 2. Reading: the project's README, wiki and release page (WebFetch), Lico's own code where the painter, tabs, IME and input meet a new tab kind (targeted greps), `cargo xtask graph` for the edges.
-- [ ] 3. The measurement of item 7, if its conditions hold.
-- [ ] 4. The report; the `done` mail; stop.
+- [x] 2. Reading: the project's README, wiki and release page (WebFetch), Lico's own code where the painter, tabs, IME and input meet a new tab kind (targeted greps), `cargo xtask graph` for the edges.
+- [x] 3. The measurement of item 7, if its conditions hold (they did not: `unshare` and bubblewrap fail on this machine, so only the archive was inspected and then deleted).
+- [x] 4. The report; the `done` mail; stop.
 
 ## Estimate and the stop rule
 

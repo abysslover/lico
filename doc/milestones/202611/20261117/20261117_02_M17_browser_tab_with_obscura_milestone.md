@@ -1,6 +1,6 @@
 # M17 — A Browser in a Tab, with the Obscura Engine (Phase 0)
 
-- Status: planned; P01 (Phase 0, read-only) waits for the lead's approval of its plan (the owner is away: approvals are given by the lead under the owner's delegation and recorded as such); later phases are sketches until the Phase 0 report is decided
+- Status: P01 (Phase 0, read-only) implemented, its plan approved by the lead under the owner's delegation (the owner away); later phases are sketches until the report is decided
 - Version: 1.0.0
 - Approved: not yet (G1 for the milestone waits for the Phase 0 report)
 - Project: Lico
@@ -21,7 +21,7 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M17-P01 | Phase 0: how to embed, rendering, input, security, agents, components, one measurement (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_11_M17-P01_browser_tab_phase0_plan.md) | pending | plan waits for the lead's approval |
+| M17-P01 | Phase 0: how to embed, rendering, input, security, agents, components, one measurement (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_11_M17-P01_browser_tab_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md) | implemented; waits for the lead and the owner |
 | later | decided by the Phase 0 report | sketch | | after P01 |
 
 ## Cost

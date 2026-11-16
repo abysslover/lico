@@ -125,6 +125,9 @@
 | [M16-P06 plan](plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) | The driver port, the adapter and parity, with the measured result |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session, with the measured result, the audit and the screenshots |
 | [M16-P08 plan](plans/202611/20261117/20261117_10_M16-P08_verification_and_release_0_4_0_plan.md) | Verification and release (`lico 0.4.0`) |
+| [M17 milestone](milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) | A browser in a tab of the window, with the Obscura engine as a separate process (Phase 0) |
+| [M17-P01 plan](plans/202611/20261117/20261117_11_M17-P01_browser_tab_phase0_plan.md) | Phase 0 for the browser tab (read-only) |
+| [M17-P01 report](reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md) | Phase 0: embedding, rendering, input, security, components and cost, the one inspection of the engine archive |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
