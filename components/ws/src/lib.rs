@@ -21,9 +21,10 @@ use std::time::{Duration, Instant};
 pub const MAX_HEAD: usize = 16 * 1024;
 /// The most header lines in a head: a real one has about ten; a peer that sends hundreds is refused.
 pub const MAX_HEADERS: usize = 64;
-/// The default cap of one message (and of one frame): PROPOSED, until the first measurement shows the engine's real screencast frames (a 1200x800 frame is 3.84 MB as raw pixels; a
-/// compressed one is far less). A caller that knows better passes its own `Limits`.
-pub const DEFAULT_MAX_MESSAGE: usize = 8 * 1024 * 1024;
+/// The default cap of one message (and of one frame): 4 MiB, from the first measurement of the engine (M17-P03): its largest screencast frame was 69,612 bytes; a 1920x1080 frame
+/// is 8.3 MB as raw pixels and a compressed one is a fraction of it (ASSUMED: under 2 MB for a busy page), so 4 MiB leaves room and keeps a hostile peer from making the host buffer
+/// more. A caller that knows better passes its own `Limits`.
+pub const DEFAULT_MAX_MESSAGE: usize = 4 * 1024 * 1024;
 /// The most a caller can ask for as the cap of a message: a bug elsewhere cannot make this crate buffer gigabytes.
 pub const HARD_MAX_MESSAGE: usize = 64 * 1024 * 1024;
 /// The most a control frame (ping, pong, close) may carry (RFC 6455 section 5.5).

@@ -1,4 +1,4 @@
-# lico-cdp 0.1.0 — specification
+# lico-cdp 0.1.1 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages and the names and parameters of the commands, from Chrome's public protocol reference), **PROPOSED** (a choice made here that the first measurement of the engine may change; a command the engine lacks is found by that measurement, not guessed here).
 
@@ -26,7 +26,7 @@ A synchronous CDP client over one WebSocket on this machine: a call is sent with
 |---|---|---|
 | `MAX_QUEUED_EVENTS` | 64 | events kept between two reads: a tab sends a frame every few tens of milliseconds while it changes, and a caller that reads each time it wakes has a few at most; 64 is room for a slow moment; when full the OLDEST is dropped (a newer frame replaces an older one) and counted |
 | `DEFAULT_CALL_TIMEOUT` | 30 s | for a caller with no better figure: the engine's own deadlines are 30 s for a navigation and 60 s for a command (its documentation) |
-| the size of a message | `Limits.max_message` of `lico-ws` (default 8 MiB, **PROPOSED** until the engine's real frames are measured) | a larger message is `TooBig` and ends the connection |
+| the size of a message | `Limits.max_message` of `lico-ws` (default 4 MiB since `lico-ws 0.2.0`, from the engine's measured frames: the largest was 69,612 bytes) | a larger message is `TooBig` and ends the connection |
 
 ## Invariants
 
@@ -40,4 +40,4 @@ A synchronous CDP client over one WebSocket on this machine: a call is sent with
 
 ## Versioning and budget
 
-`0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.1`: the default cap follows `lico-ws 0.2.0`; `0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.

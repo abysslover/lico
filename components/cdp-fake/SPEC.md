@@ -1,4 +1,4 @@
-# lico-cdp-fake 0.1.0 — specification
+# lico-cdp-fake 0.1.1 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages: `{id, method, params, sessionId}` calls, `{id, result}` or `{id, error: {code, message}}` replies, `{method, params, sessionId}` events; the error code `-32601` for an unknown method), **PROPOSED** (the screencast frame event in the Chrome shape: the engine may differ; re-fitted after the measurement of M17-P03).
 
@@ -23,7 +23,7 @@ A reply carries the `sessionId` of the call it answers (none if the call had non
 
 | Constant | Value | Reason |
 |---|---|---|
-| `MAX_MESSAGE` | 8 MiB (= `lico_ws::DEFAULT_MAX_MESSAGE`, **PROPOSED**) | the most a client may send in one message; a screencast acknowledgement or a navigation is far smaller; a larger one ends the connection |
+| `MAX_MESSAGE` | 4 MiB (= `lico_ws::DEFAULT_MAX_MESSAGE` of `0.2.0`) | the most a client may send in one message; a screencast acknowledgement or a navigation is far smaller; a larger one ends the connection |
 | `CONNECTION_IDLE` | 5 s | a connection that says nothing for that long is ended: a test that forgot to close cannot keep a thread for ever |
 | the head | `lico_ws::MAX_HEAD` (16 KiB) | as `lico-ws` |
 
@@ -38,4 +38,4 @@ A reply carries the `sessionId` of the call it answers (none if the call had non
 
 ## Versioning and budget
 
-`0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.1`: the cap follows `lico-ws 0.2.0` (4 MiB); `0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.

@@ -179,7 +179,7 @@ fn a_connection_that_says_nothing_ends_after_the_idle_time() {
     assert!(matches!(c.recv(), Ok(Message::Close { .. }) | Err(Error::Closed)));
     assert!(t.elapsed() < Duration::from_secs(2));
     assert_eq!(CONNECTION_IDLE, Duration::from_secs(5));
-    assert_eq!((MAX_MESSAGE, lico_ws::MAX_HEAD), (8 * 1024 * 1024, 16 * 1024));
+    assert_eq!((MAX_MESSAGE, lico_ws::MAX_HEAD), (4 * 1024 * 1024, 16 * 1024));
 }
 
 #[test]

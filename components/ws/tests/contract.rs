@@ -22,6 +22,7 @@ fn the_limits_are_named_constants_with_the_defaults_they_give() {
     let d = Limits::default();
     assert_eq!((d.connect, d.handshake, d.idle, d.max_message), (DEFAULT_CONNECT, DEFAULT_HANDSHAKE, DEFAULT_IDLE, DEFAULT_MAX_MESSAGE));
     assert_eq!((MAX_HEAD, MAX_HEADERS, MAX_CONTROL_PAYLOAD), (16 * 1024, 64, 125));
+    assert_eq!(DEFAULT_MAX_MESSAGE, 4 * 1024 * 1024, "the figure of the first measurement: the largest frame was 69,612 bytes");
     assert!(DEFAULT_MAX_MESSAGE <= HARD_MAX_MESSAGE && HARD_MAX_MESSAGE <= 64 << 20);
     assert!(DEFAULT_CONNECT <= Duration::from_secs(10) && DEFAULT_HANDSHAKE <= Duration::from_secs(10) && DEFAULT_IDLE <= Duration::from_secs(120));
 }

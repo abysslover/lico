@@ -1,6 +1,6 @@
 [package]
 name = "lico-ws"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A WebSocket (RFC 6455) connection between two ends on this machine: the client role, and behind a feature the server role for tests; loopback only, no TLS, no extensions."
 publish = false

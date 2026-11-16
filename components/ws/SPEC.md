@@ -1,4 +1,4 @@
-# lico-ws 0.1.0 — specification
+# lico-ws 0.2.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shapes of RFC 6455 and RFC 4648, SHA-1 of FIPS 180), **PROPOSED** (a value chosen here that the first measurement of the engine may change).
 
@@ -25,7 +25,7 @@ A WebSocket connection between two ends on this machine: the client role (always
 |---|---|---|
 | `MAX_HEAD` | 16 KiB | a real upgrade request or answer is under 1 KiB; the room is for a long path and a token; a peer that never ends a head is stopped |
 | `MAX_HEADERS` | 64 | a real head has about ten lines |
-| `DEFAULT_MAX_MESSAGE` | 8 MiB (**PROPOSED**) | the cap of one message and of one frame (a frame cannot be larger than the message it belongs to): a 1200x800 screencast frame is 3.84 MB as raw pixels and a compressed one is far less; the first measurement of the engine (M17-P03) fixes the real size, then this is set from it |
+| `DEFAULT_MAX_MESSAGE` | 4 MiB (MEASURED, M17-P03: the largest screencast frame was 69,612 bytes; changed from the proposed 8 MiB in `0.2.0`) | the cap of one message and of one frame (a frame cannot be larger than the message it belongs to): a 1920x1080 frame is 8.3 MB as raw pixels (COMPUTED) and a compressed one is a fraction of it (ASSUMED: under 2 MB for a busy page), so 4 MiB leaves room and keeps a hostile peer from making the host buffer more |
 | `HARD_MAX_MESSAGE` | 64 MiB | the most a caller can ask for: a bug elsewhere cannot make this crate buffer gigabytes (a larger `Limits.max_message` is cut to it) |
 | `MAX_CONTROL_PAYLOAD` | 125 | the RFC (section 5.5): ping, pong and close frames carry at most 125 bytes |
 | `DEFAULT_CONNECT` | 3 s | a loopback connect is immediate; 3 s is for a machine under load |
@@ -45,4 +45,4 @@ A WebSocket connection between two ends on this machine: the client role (always
 
 ## Versioning and budget
 
-`0.1.0` while the limits have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.2.0`: the default cap was lowered to 4 MiB from the figure of the first measurement (a changed default is a changed behaviour); semantic after. Budget: the default 256 MiB and 30 s.

@@ -1,6 +1,6 @@
 [package]
 name = "lico-cdp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A synchronous Chrome DevTools Protocol client over one WebSocket on this machine: numbered calls matched to their replies, events queued, builders of the parameters; no thread."
 publish = false

@@ -5,23 +5,23 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.1,
-    "peak_mib": 3.4,
-    "wall_s": 0.93
+    "compile_s": 1.0,
+    "peak_mib": 3.6,
+    "wall_s": 0.85
   },
   "date": "2026-11-16",
-  "hash": "2dc7b8544b696f807814bdeb75bdd91c700768a9c4420bc405fbf6d661424a2d",
+  "hash": "485914711c1e390c8e9371754a94cb9eba50a175893024374406d713bde73606",
   "inputs": {
     "dependencies": [],
     "externals": [],
     "files": [
       [
         "Cargo.toml",
-        "7991185d949e535b37b8296e6c14837b8c3b5a7b920d6903f796a9988bff3dce"
+        "11595917bfee0ac00e130b342eacf43c88ffafb13d5c9c0befd57422262bd5d8"
       ],
       [
         "SPEC.md",
-        "6bad0c16f49e6db28b8aa2a36740a60bdd59f9c8ba7c444dcd52af3e5ad95341"
+        "5796a1b1272e64e14b211caec3494ec9c337e071e3e2093ab7a1fed5881316fa"
       ],
       [
         "src/frame.rs",
@@ -29,7 +29,7 @@
       ],
       [
         "src/lib.rs",
-        "06f834c238f494253b1abcb36cd8d22de73c6b4c0331721a1f0b12ac5ee0a6ea"
+        "4d194695f96216ca1095e70a5521585ba8f9a6b7d37ff9ffda9166a007f3304d"
       ],
       [
         "src/sha1.rs",
@@ -41,7 +41,7 @@
       ],
       [
         "tests/contract.rs",
-        "b5f25b49ea986e21844fb56b2e3f5d575f041369b31a65cc61440110ef8402bb"
+        "fbdf3b58f4979c373d8558f3acad54755217769f6f6450e8eedf67e4184d6377"
       ]
     ],
     "lock": "",
@@ -54,5 +54,5 @@
     "passed": 34
   },
   "tool": "lico-xtask 0.1.0",
-  "version": "0.1.0"
+  "version": "0.2.0"
 }
