@@ -1,0 +1,54 @@
+{
+  "component": "lico-proxy",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 1.5,
+    "peak_mib": 3.9,
+    "wall_s": 3.43
+  },
+  "date": "2026-11-16",
+  "hash": "7717070158ff297da26748acbcfd8e4a4fc8f7c6d4f0ab2f00aa8308cef18261",
+  "inputs": {
+    "dependencies": [],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "35ff180065ccc152b7ad78577ec37b675819514354e7b4ba500a96ae41a11d4b"
+      ],
+      [
+        "SPEC.md",
+        "afa227b352ea8578940e55e244f4d6cfaa8decbeb03952146ee86e33cc8fffca"
+      ],
+      [
+        "src/http.rs",
+        "74c2c5613a8c81f6a2acc839bdf0ef3e1b620d259b3d1c79e3373ef45d5d2768"
+      ],
+      [
+        "src/lib.rs",
+        "828f2e6573326083273c9221cb7ab86f61265676425c9b037b6d5a6c3677faaf"
+      ],
+      [
+        "src/policy.rs",
+        "758651d0f106a19e04d7264819ed8a6e0a65a0f2e4b96ac925d6d753de067e64"
+      ],
+      [
+        "tests/contract.rs",
+        "f54d37472a10ae6fda36afddccec418a5e468fce5377e7578e42598cc5dd4226"
+      ]
+    ],
+    "lock": "",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 25,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 25
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}

@@ -1,0 +1,18 @@
+[package]
+name = "lico-proxy"
+version = "0.1.0"
+edition = "2021"
+description = "A small HTTP and CONNECT proxy on a loopback port, the fetch guard of a browser engine: it resolves names itself, refuses addresses that are not public, connects to the address it checked and relays; one destination per connection."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.lico]
+purpose = "A small HTTP and CONNECT proxy on a loopback port, the fetch guard of a browser engine: it resolves names itself and refuses every address that is not public (the person may opt loopback in), connects to the address it checked, fixes one destination per connection, forces Connection: close, and has caps on connections, headers, bodies, time and bytes."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
