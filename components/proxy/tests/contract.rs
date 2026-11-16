@@ -213,7 +213,7 @@ fn every_range_of_the_address_table_has_its_class_and_only_public_is_allowed() {
         (v6("::"), Unspecified), (v6("::1"), Loopback), (v6("::ffff:127.0.0.1"), Loopback), (v6("::ffff:10.1.2.3"), Private), (v6("::ffff:169.254.169.254"), LinkLocal), (v6("::ffff:8.8.8.8"), Public),
         (v6("64:ff9b::7f00:1"), Loopback), (v6("64:ff9b::a00:1"), Private), (v6("64:ff9b::808:808"), Public), (v6("64:ff9b:1::1"), Reserved), (v6("2002:7f00:1::1"), Loopback),
         (v6("2002:c0a8:101::1"), Private), (v6("2002:808:808::1"), Public), (v6("::7f00:1"), Reserved), (v6("::2"), Reserved), (v6("fc00::1"), Private), (v6("fdff::1"), Private),
-        (v6("fec0::1"), Private), (v6("fe80::1"), LinkLocal), (v6("febf::1"), LinkLocal), (v6("ff02::1"), Multicast), (v6("2001::1"), Reserved), (v6("2001:db8::1"), Documentation),
+        (v6("fec0::1"), Private), (v6("fe80::1"), LinkLocal), (v6("febf::1"), LinkLocal), (v6("ff02::1"), Multicast), (v6("ff0e::1"), Multicast), (v6("ff00::1"), Multicast), (v6("ffff::1"), Multicast), (v6("2001::1"), Reserved), (v6("2001:db8::1"), Documentation),
         (v6("2001:2::1"), Reserved), (v6("100::1"), Reserved), (v6("2606:4700::1111"), Public), (v6("2a00:1450::1"), Public), (v6("4000::1"), Reserved), (v6("1::1"), Reserved),
     ];
     for (ip, want) in rows {
@@ -236,12 +236,14 @@ fn a_host_is_checked_before_any_lookup() {
     assert_eq!(check_host("1.2.3.4"), Ok(Host::Ip(IpAddr::V4(Ipv4Addr::new(1, 2, 3, 4)))));
     assert_eq!(check_host("2001:db8::1"), Ok(Host::Ip("2001:db8::1".parse().unwrap())));
     assert_eq!(check_host("::ffff:1.2.3.4"), Ok(Host::Ip("::ffff:1.2.3.4".parse().unwrap())));
-    for tricky in ["127.1", "2130706433", "0x7f.0.0.1", "0177.0.0.1", "1.2.3", "1.2.3.4.5", "1.2.3.256", "0x7f000001", "010.1.1.1.", "1", "0"] {
+    for tricky in ["127.1", "2130706433", "0x7f.0.0.1", "0177.0.0.1", "1.2.3", "1.2.3.4.5", "1.2.3.256", "0x7f000001", "010.1.1.1.", "1", "0", "0x", "0x.1", "0X.0X.0X.0X"] {
         assert_eq!(check_host(tricky), Err(HostError::Numeric), "{tricky}: the system lookup would read it as an address");
     }
     assert_eq!(check_host("한글.test"), Err(HostError::NonAscii));
     assert_eq!(check_host(&"a".repeat(254)), Err(HostError::TooLong));
     assert!(check_host(&format!("{}.com", "a".repeat(60))).is_ok());
+    assert!(check_host(&format!("{}.com", "a".repeat(63))).is_ok(), "a label of 63 is the longest");
+    assert_eq!(check_host(&format!("{}.com", "a".repeat(64))), Err(HostError::Invalid), "64 is one too many");
     assert_eq!(check_host(""), Err(HostError::Empty));
     for bad in ["a b", "a/b", "a\\b", "a@b", "a:b", "a\u{7}b", "-.", "a..b", ".a", "a,b", "a;b", "a<b"] {
         assert_eq!(check_host(bad), Err(HostError::Invalid), "{bad:?}");
@@ -449,6 +451,11 @@ fn everything_that_could_smuggle_a_request_is_refused_and_the_origin_sees_nothin
         ("a CONNECT with a path", "CONNECT public.test:443/x HTTP/1.1\r\n\r\n".into(), 400),
         ("a CONNECT without a port", "CONNECT public.test HTTP/1.1\r\n\r\n".into(), 400),
         ("a CONNECT with a bad port", "CONNECT public.test:0 HTTP/1.1\r\n\r\n".into(), 400),
+        ("a bare line feed inside a head that does end", "GET http://public.test/ HTTP/1.1\r\nHost: public.test\nX-A: b\r\n\r\n".into(), 400),
+        ("a control character in a target", "GET http://public.test/\u{1}x HTTP/1.1\r\nHost: public.test\r\n\r\n".into(), 400),
+        ("a DEL in a target", "GET http://public.test/\u{7f} HTTP/1.1\r\nHost: public.test\r\n\r\n".into(), 400),
+        ("a non-ASCII character in a target", "GET http://public.test/caf\u{e9} HTTP/1.1\r\nHost: public.test\r\n\r\n".into(), 400),
+        ("a control character (not NUL) in a header value", "GET http://public.test/ HTTP/1.1\r\nHost: public.test\r\nX-A: a\u{1}b\r\n\r\n".into(), 400),
         ("a header block over the cap", format!("GET http://public.test/ HTTP/1.1\r\nHost: public.test\r\nX-Big: {}\r\n\r\n", "a".repeat(MAX_HEAD)), 431),
         ("more headers than the cap", format!("GET http://public.test/ HTTP/1.1\r\nHost: public.test\r\n{}\r\n", (0..=MAX_HEADERS).map(|i| format!("X-{i}: v\r\n")).collect::<String>()), 431),
         ("a request line that never ends", "GET http://public.test/".to_string() + &"a".repeat(MAX_HEAD), 431),
@@ -675,4 +682,100 @@ fn stop_ends_every_connection_and_the_listener_and_returns_quickly() {
     assert!(matches!(tunnel.read(&mut buf), Ok(0) | Err(_)));
     assert!(matches!(idle.read(&mut buf), Ok(0) | Err(_)));
     assert!(TcpStream::connect_timeout(&addr, Duration::from_millis(300)).is_err(), "nothing listens any more");
+}
+
+#[test]
+fn the_header_cap_is_exact_and_the_fragment_of_an_address_never_reaches_the_origin() {
+    let r = rig(config(), Some(ok_reply()));
+    let build = |n: usize| format!("GET http://public.test/p#frag HTTP/1.1\r\nHost: public.test\r\n{}\r\n", (0..n).map(|i| format!("X-{i}: v\r\n")).collect::<String>());
+    assert_eq!(status(&talk(r.proxy.addr(), build(MAX_HEADERS - 1).as_bytes())), 200, "Host and 99 more are 100 headers");
+    let seen = String::from_utf8(r.origin.requests.lock().unwrap()[0].clone()).unwrap();
+    assert!(seen.starts_with("GET /p HTTP/1.1\r\n"), "the fragment is cut: {seen}");
+    assert_eq!(status(&talk(r.proxy.addr(), build(MAX_HEADERS).as_bytes())), 431, "Host and 100 more are one too many");
+}
+
+#[test]
+fn a_token_that_differs_in_one_character_is_refused_whatever_its_length() {
+    let r = rig(Config { token: Some("s3cret-token-value".into()), ..config() }, Some(ok_reply()));
+    for wrong in ["s3cret-token-valuX", "X3cret-token-value", "s3cret-token-valu", "s3cret-token-valueX", ""] {
+        let extra = format!("Proxy-Authorization: Basic {}\r\n", basic(wrong));
+        assert_eq!(status(&talk(r.proxy.addr(), &get("public.test", &extra))), 407, "{wrong:?}");
+    }
+    assert_eq!(r.origin.conns.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn a_destination_with_a_public_and_a_loopback_answer_keeps_the_public_ports_and_the_first_checked_address_is_used() {
+    let o = origin(None);
+    let resolver = Arc::new(
+        FakeResolver::default()
+            .with("mixlo.test", vec![vec![LOOP, PUBLIC_A]])
+            .with("two.test", vec![vec![PUBLIC_A, IpAddr::V4(Ipv4Addr::new(93, 184, 216, 35))]]),
+    );
+    let connector = Arc::new(FakeConnector { to: o.addr, seen: Mutex::new(Vec::new()), fail: false });
+    let p = Proxy::start(loopback_ok(), resolver, connector.clone()).unwrap();
+    for (host, want) in [("mixlo.test:25", 403), ("mixlo.test:443", 200), ("two.test:443", 200)] {
+        let mut s = TcpStream::connect(p.addr()).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        s.write_all(format!("CONNECT {host} HTTP/1.1\r\n\r\n").as_bytes()).unwrap();
+        let mut buf = [0u8; 64];
+        let n = s.read(&mut buf).unwrap();
+        assert_eq!(status(&buf[..n]), want, "{host}");
+    }
+    assert_eq!(*connector.seen.lock().unwrap(), vec![(LOOP, 443), (PUBLIC_A, 443)], "the first answer, the one that was checked first");
+}
+
+#[test]
+fn a_body_that_comes_longer_than_announced_and_an_interim_answer_are_refused() {
+    let r = rig(config(), Some(ok_reply()));
+    let mut s = TcpStream::connect(r.proxy.addr()).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(4))).unwrap();
+    s.write_all(b"POST http://public.test/ HTTP/1.1\r\nHost: public.test\r\nContent-Length: 5\r\n\r\nab").unwrap();
+    thread::sleep(Duration::from_millis(150));
+    s.write_all(b"cdefgh").unwrap(); // three bytes more than announced
+    let mut resp = Vec::new();
+    let _ = s.read_to_end(&mut resp);
+    assert_eq!(status(&resp), 400);
+    let r = rig(config(), Some(b"HTTP/1.1 100 Continue\r\n\r\n".to_vec()));
+    assert_eq!(status(&talk(r.proxy.addr(), &get("public.test", ""))), 502, "an interim answer is not an answer");
+}
+
+#[test]
+fn a_response_is_cut_at_the_byte_cap_and_a_busy_tunnel_ends_at_the_total_time() {
+    let mut cfg = config();
+    cfg.limits.max_bytes = 100_000;
+    let big = [b"HTTP/1.1 200 OK\r\nContent-Length: 2000000\r\n\r\n".to_vec(), vec![b'z'; 2_000_000]].concat();
+    let r = rig(cfg, Some(big));
+    let resp = talk(r.proxy.addr(), &get("public.test", ""));
+    assert!(resp.len() < 100_000 + 20_000, "the relay stopped near the cap: {} bytes", resp.len());
+    // a tunnel with data flowing all the time: only the total time can end it
+    let mut cfg = config();
+    cfg.limits.total = Duration::from_millis(700);
+    cfg.limits.idle = Duration::from_secs(30);
+    let r = rig(cfg, None);
+    let mut s = TcpStream::connect(r.proxy.addr()).unwrap();
+    s.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+    s.write_all(b"CONNECT public.test:443 HTTP/1.1\r\n\r\n").unwrap();
+    let mut buf = [0u8; 256];
+    let mut got = s.read(&mut buf).unwrap();
+    let t = Instant::now();
+    let mut ended = None;
+    while t.elapsed() < Duration::from_secs(3) {
+        if s.write_all(b"ping").is_err() {
+            ended = Some(t.elapsed());
+            break;
+        }
+        match s.read(&mut buf) {
+            Ok(0) => {
+                ended = Some(t.elapsed());
+                break;
+            }
+            Ok(n) => got += n,
+            Err(_) => {}
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    assert!(got > 39, "data did flow");
+    let ended = ended.expect("the total time ended a tunnel that was never idle");
+    assert!(ended < Duration::from_millis(1500), "{ended:?}");
 }

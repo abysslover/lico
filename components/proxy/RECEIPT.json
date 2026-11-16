@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.5,
-    "peak_mib": 3.9,
-    "wall_s": 3.43
+    "compile_s": 1.0,
+    "peak_mib": 8.0,
+    "wall_s": 3.42
   },
   "date": "2026-11-16",
-  "hash": "7717070158ff297da26748acbcfd8e4a4fc8f7c6d4f0ab2f00aa8308cef18261",
+  "hash": "1a1134a228c2ac87b7c5fe8ac02996ed98ba6c355303398a348210ebc25dcf7b",
   "inputs": {
     "dependencies": [],
     "externals": [],
@@ -37,17 +37,17 @@
       ],
       [
         "tests/contract.rs",
-        "f54d37472a10ae6fda36afddccec418a5e468fce5377e7578e42598cc5dd4226"
+        "5dcbe5d6385629c33d6431211b7f30e98b75accc5d1fe34d07100b4d064c51b1"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 25,
+    "count": 30,
     "failed": 0,
     "ignored": 0,
-    "passed": 25
+    "passed": 30
   },
   "tool": "lico-xtask 0.1.0",
   "version": "0.1.0"
