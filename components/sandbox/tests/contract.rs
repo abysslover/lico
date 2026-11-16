@@ -388,11 +388,11 @@ fn an_address_space_limit_stops_a_probe_that_allocates_more() {
     landlock();
     let scratch = fresh("limit");
     let free = base(&scratch);
-    assert_eq!(run(&free, "alloc", "300"), Probe::Ok("allocated".into()), "the control: 300 MiB with no limit");
-    let limited = Confinement { limits: Limits { address_space: Some(1 << 30), ..Limits::default() }, ..base(&scratch) };
-    let p = run(&limited, "alloc", "2000");
+    assert_eq!(run(&free, "alloc", "64"), Probe::Ok("allocated".into()), "the control: 64 MiB with no limit");
+    let limited = Confinement { limits: Limits { address_space: Some(512 << 20), ..Limits::default() }, ..base(&scratch) };
+    let p = run(&limited, "alloc", "1024");
     assert!(matches!(&p, Probe::Err(e) if e.contains("memory") || e.contains("alloc")), "{p:?}");
-    assert_eq!(run(&limited, "alloc", "100"), Probe::Ok("allocated".into()), "a smaller one still works under the limit");
+    assert_eq!(run(&limited, "alloc", "32"), Probe::Ok("allocated".into()), "a smaller one still works under the limit");
 }
 
 #[test]
@@ -433,12 +433,16 @@ fn known_gap_an_abstract_unix_socket_is_not_stopped() {
 #[test]
 fn known_gap_a_unix_socket_by_path_in_an_allowed_directory_is_not_stopped() {
     landlock();
-    let scratch = fresh("unixpath");
+    // a socket path must be under 108 bytes: a short directory in memory (tmpfs), removed at the end
+    let scratch = PathBuf::from(format!("/dev/shm/lico-sbx-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
     let path = scratch.join("s.sock");
     let listener = UnixListener::bind(&path).unwrap();
     let h = std::thread::spawn(move || listener.accept().map(|_| ()));
     assert_eq!(run(&base(&scratch), "unix", path.to_str().unwrap()), Probe::Ok("connected".into()));
     assert!(h.join().unwrap().is_ok());
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 #[test]
