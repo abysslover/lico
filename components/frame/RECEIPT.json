@@ -1,0 +1,71 @@
+{
+  "component": "lico-frame",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 0.7,
+    "peak_mib": 3.2,
+    "wall_s": 0.44
+  },
+  "date": "2026-11-16",
+  "hash": "dae3052c1f2a7ee51fe0ae12a0ee23ecacf803544f5addf0b758df9d5b4dd59a",
+  "inputs": {
+    "dependencies": [
+      {
+        "hash": "97178ae5033001963ad80409e7871b9ec8294b8636ab832baaf44f48e6e982d2",
+        "name": "lico-png (dev)"
+      }
+    ],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "7e19b8189376f557af8afcc8adeff45edc106246732a4e1dbf98d390d2475423"
+      ],
+      [
+        "SPEC.md",
+        "9e81abc14567e0a2fa3ef6d151cc499388df05cd878da3599e33e9cb9ccbd374"
+      ],
+      [
+        "src/inflate.rs",
+        "dfdbdd90e73160e50f8c8756ffd179ec3988b4a0afa5f311dee3e431c68339ad"
+      ],
+      [
+        "src/lib.rs",
+        "ac42b7cbb2b3af54633ee333cd3ffddb5de6ced0756482caff48961c407f3da1"
+      ],
+      [
+        "src/png.rs",
+        "a09318b61df55f20fc947b67b322ecd9973316ffebb239545b6dff4b40bb8d55"
+      ],
+      [
+        "src/tests.rs",
+        "ff5dbb20bef14929f52249d9e630dd777fc7a2d0f6565498b57780fc0641fdf4"
+      ],
+      [
+        "tests/contract.rs",
+        "1ecc5e985d93175f78f4399734cdad2cd6f04c394fe7b682e2262093ff96678c"
+      ],
+      [
+        "tests/fixtures/rgba_48x32_zlib9.bin",
+        "52e3054c99143c6fd423c5b0d20b5da554048ea40f91a25c88cd1d2edec7e549"
+      ],
+      [
+        "tests/real_frames.rs",
+        "e63b0d57e2ab0c768a9361d410889a2a1488520de27fea61574b0975f518beba"
+      ]
+    ],
+    "lock": "",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 21,
+    "failed": 0,
+    "ignored": 1,
+    "passed": 20
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}

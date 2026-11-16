@@ -662,6 +662,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-frame"
+version = "0.1.0"
+dependencies = [
+ "lico-png",
+]
+
+[[package]]
 name = "lico-llm-fake"
 version = "0.1.0"
 dependencies = [
