@@ -10,9 +10,10 @@ pub const SYSTEM_DIRS: [&str; 3] = ["/usr", "/lib", "/lib64"];
 pub const READ_FILES: [&str; 2] = ["/etc/ld.so.cache", "/dev/urandom"];
 /// The one device it writes.
 pub const NULL_DEVICE: &str = "/dev/null";
-/// `RLIMIT_DATA` of the engine: the private memory it may map, not the address space (an engine reserves address space it never uses). PROPOSED 1 GiB; the real-engine probe
-/// says whether it binds.
-pub const DATA_LIMIT: u64 = 1 << 30;
+/// `RLIMIT_DATA` of the engine: the private memory it may map, not the address space (an engine reserves address space it never uses). MEASURED (P06 probe): at 1 GiB the
+/// engine cannot start (V8 fails to reserve its code range); at 2 and 3 GiB it starts and a page that allocates without end stops it; at 4 GiB the same; with no limit that
+/// page runs on. 4 GiB is the first value that is not flaky.
+pub const DATA_LIMIT: u64 = 4 << 30;
 /// Open files of the engine.
 pub const OPEN_FILES: u64 = 1024;
 
@@ -91,7 +92,7 @@ mod tests {
         assert_eq!(names, ["OBSCURA_CDP_TOKEN", "HOME", "OBSCURA_PROXY"], "the whole environment");
         assert!(!c.env.iter().any(|(k, _)| k.contains("PRIVATE") || k == "PATH" || k == "DISPLAY"), "no private-network variable and nothing from the host");
         assert_eq!(c.env[1].1, "/state/browser/scratch-1", "HOME is the empty scratch directory");
-        assert_eq!(c.limits, Limits { address_space: None, data: Some(1 << 30), cpu_seconds: None, open_files: Some(1024) });
+        assert_eq!(c.limits, Limits { address_space: None, data: Some(4 << 30), cpu_seconds: None, open_files: Some(1024) });
     }
 
     #[test]

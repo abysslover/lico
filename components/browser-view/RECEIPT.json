@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.0,
+    "compile_s": 0.9,
     "peak_mib": 8.8,
-    "wall_s": 0.12
+    "wall_s": 0.06
   },
   "date": "2026-11-16",
-  "hash": "2ef2a441db770faf6e70a5dd397f000a0427510f5fb3b7bda8a2bea279f914ac",
+  "hash": "80c58d33a020e7cfac82e6f510591e3a9e31aecce8b4da74a92edc33411d0ed3",
   "inputs": {
     "dependencies": [
       {
@@ -30,15 +30,15 @@
       ],
       [
         "SPEC.md",
-        "d6661f6cf0e1a3f4dc2bcaf59913dcec87dc79704972d61c54a9aa41847f50b8"
+        "a6e38429104f0ef63949e0c456264a18987a94ffdf8491fb8e1cdc3070f5f178"
       ],
       [
         "src/lib.rs",
-        "036290643801606b652261b2815bc94efbe80f928c269136812cb8cb84fac4e7"
+        "92cccf79c586f976d7f63c610e3aeadd157b923277bb83884dc3160bb0c1a746"
       ],
       [
         "tests/contract.rs",
-        "29d3c2d99a7cbf8d9a58bc70092d5a112e8a71ff55f606fe8097ed95b271bbef"
+        "3a182fdaca6e9f121beaf2e3a7b37095355d8bf4935d6bfb7f4a3aff4146b109"
       ]
     ],
     "lock": "",

@@ -16,19 +16,25 @@ extern "C" {
     fn kill(pid: i32, sig: i32) -> i32;
 }
 
-struct Rig {
-    dir: PathBuf,
-    socket: String,
+pub(super) struct Rig {
+    pub(super) dir: PathBuf,
+    pub(super) socket: String,
     http_port: u16,
     token: String,
-    child: Child,
+    pub(super) child: Child,
     _stdout: BufReader<std::process::ChildStdout>,
+    /// The file the engine process runs (the fake's copy, or the real engine in its pinned place).
+    pub(super) engine_exe: PathBuf,
 }
 
 impl Rig {
     fn start(name: &str) -> Rig {
+        Rig::start_with(name, None)
+    }
+
+    /// `real`: a directory with the real engine's two files, put in the pinned place of the private home (no setting file: the hash is checked). None: the fake, by the setting.
+    pub(super) fn start_with(name: &str, real: Option<&Path>) -> Rig {
         let binary = std::env::var("LICO_BIN").unwrap_or_else(|_| panic!("LICO_BIN must name the release binary (cargo xtask system sets it); a system test never skips"));
-        let fake = std::env::var("LICO_FAKE_ENGINE").unwrap_or_else(|_| panic!("LICO_FAKE_ENGINE must name the fake engine (cargo xtask system sets it); a system test never skips"));
         let dir = std::env::temp_dir().join(format!("lico_browser_system_{name}_{}", crate::core::random_hex(6)));
         let state = dir.join("state");
         let engine = dir.join("engine");
@@ -36,10 +42,30 @@ impl Rig {
             std::fs::create_dir_all(d).unwrap();
             std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        std::fs::copy(&fake, engine.join("obscura")).unwrap();
-        std::fs::set_permissions(engine.join("obscura"), std::fs::Permissions::from_mode(0o700)).unwrap();
-        std::fs::write(state.join("browser.json"), json!({"engine_dir": engine.to_str().unwrap()}).to_string()).unwrap();
-        std::fs::set_permissions(state.join("browser.json"), std::fs::Permissions::from_mode(0o600)).unwrap();
+        let engine_exe = match real {
+            None => {
+                let fake = std::env::var("LICO_FAKE_ENGINE").unwrap_or_else(|_| panic!("LICO_FAKE_ENGINE must name the fake engine (cargo xtask system sets it); a system test never skips"));
+                std::fs::copy(&fake, engine.join("obscura")).unwrap();
+                std::fs::set_permissions(engine.join("obscura"), std::fs::Permissions::from_mode(0o700)).unwrap();
+                std::fs::write(state.join("browser.json"), json!({"engine_dir": engine.to_str().unwrap()}).to_string()).unwrap();
+                std::fs::set_permissions(state.join("browser.json"), std::fs::Permissions::from_mode(0o600)).unwrap();
+                engine.join("obscura")
+            }
+            Some(from) => {
+                let pinned = dir.join(".local/share/lico/browser/v0.2.6");
+                let mut at = dir.clone();
+                for part in pinned.strip_prefix(&dir).unwrap().components() {
+                    at.push(part);
+                    std::fs::create_dir_all(&at).unwrap();
+                    std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o700)).unwrap();
+                }
+                for name in ["obscura", "obscura-worker"] {
+                    std::fs::copy(from.join(name), pinned.join(name)).unwrap();
+                    std::fs::set_permissions(pinned.join(name), std::fs::Permissions::from_mode(0o700)).unwrap();
+                }
+                pinned.join("obscura")
+            }
+        };
         let socket = dir.join("host.sock").to_string_lossy().into_owned();
         let token_file = dir.join("http.token");
         let mut child = Command::new(binary)
@@ -60,10 +86,10 @@ impl Rig {
         let ready: Value = serde_json::from_str(line.trim()).expect("a ready line");
         let http_port = ready["http_port"].as_u64().expect("the HTTP door is open") as u16;
         let token = std::fs::read_to_string(&token_file).unwrap().trim().to_string();
-        Rig { dir, socket, http_port, token, child, _stdout: stdout }
+        Rig { dir, socket, http_port, token, child, _stdout: stdout, engine_exe }
     }
 
-    fn call(&self, request: Value) -> Value {
+    pub(super) fn call(&self, request: Value) -> Value {
         crate::cli::call_once(&self.socket, request)
     }
 
@@ -78,15 +104,15 @@ impl Rig {
         serde_json::from_str(text.split("\r\n\r\n").nth(1).unwrap_or("{}")).unwrap_or(Value::Null)
     }
 
-    fn tabs(&self) -> Vec<Value> {
+    pub(super) fn tabs(&self) -> Vec<Value> {
         self.call(json!({"op": "browser.list"}))["tabs"].as_array().cloned().unwrap_or_default()
     }
 
-    fn tab(&self, id: &str) -> Value {
+    pub(super) fn tab(&self, id: &str) -> Value {
         self.tabs().into_iter().find(|t| t["tab"] == json!(id)).unwrap_or(Value::Null)
     }
 
-    fn wait<T>(&self, secs: u64, what: &str, mut f: impl FnMut() -> Option<T>) -> T {
+    pub(super) fn wait<T>(&self, secs: u64, what: &str, mut f: impl FnMut() -> Option<T>) -> T {
         let end = Instant::now() + Duration::from_secs(secs);
         loop {
             if let Some(v) = f() {
@@ -97,15 +123,15 @@ impl Rig {
         }
     }
 
-    fn open(&self, url: &str) -> String {
+    pub(super) fn open(&self, url: &str) -> String {
         let reply = self.call(json!({"op": "browser.open", "url": url}));
         assert_eq!(reply["ok"], json!(1), "{reply}");
         reply["tab"].as_str().unwrap().to_string()
     }
 
     /// The processes that run the fake engine of this rig (by the file they run).
-    fn engines(&self) -> Vec<i32> {
-        let want = self.dir.join("engine/obscura");
+    pub(super) fn engines(&self) -> Vec<i32> {
+        let want = self.engine_exe.clone();
         std::fs::read_dir("/proc")
             .unwrap()
             .filter_map(|e| e.ok())
@@ -114,11 +140,11 @@ impl Rig {
             .collect()
     }
 
-    fn threads(&self) -> usize {
+    pub(super) fn threads(&self) -> usize {
         std::fs::read_to_string(format!("/proc/{}/status", self.child.id())).unwrap().lines().find_map(|l| l.strip_prefix("Threads:")).and_then(|v| v.trim().parse().ok()).unwrap()
     }
 
-    fn scratch_dirs(&self) -> usize {
+    pub(super) fn scratch_dirs(&self) -> usize {
         std::fs::read_dir(self.dir.join("state/browser")).map(|r| r.filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("scratch-")).count()).unwrap_or(0)
     }
 }
@@ -170,6 +196,8 @@ fn browser_tab_opens_and_paints_a_fake_frame() {
     let notice = tab["notice"].as_str().unwrap();
     assert!(notice.contains("203.0.113.5") && notice.contains("private network"), "{notice}");
     assert!(rig.tab(&first)["notice"].is_null(), "a tab that is not loading is not told");
+    let engines = rig.call(json!({"op": "browser.list"}))["engines"].clone();
+    assert!(engines[0]["guard_refused"].as_u64().unwrap() >= 1 && engines[0]["guard_accepted"].as_u64().unwrap() >= 1, "the list says how many connections the guard served and refused: {engines}");
     // the other door answers the same: the list and an error, over the socket and over POST /v1
     for request in [json!({"op": "browser.list"}), json!({"op": "browser.close", "tab": "b99"}), json!({"op": "browser.open", "url": "ftp://x.test/"}), json!({"op": "browser.shot", "tab": "b1", "path": "relative.png"})] {
         let (socket, http) = (strip(rig.call(request.clone())), strip(rig.http(&request)));

@@ -211,7 +211,7 @@ impl Browser {
         let status: Vec<Value> = engines
             .iter()
             .enumerate()
-            .map(|(i, e)| json!({"localhost": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
+            .map(|(i, e)| json!({"localhost": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
             .collect();
         Ok(obj(json!({"tabs": tabs, "engines": status, "max_tabs": MAX_TABS})))
     }

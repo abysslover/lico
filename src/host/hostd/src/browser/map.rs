@@ -122,10 +122,10 @@ pub fn engine_events(event: &Event) -> Vec<EngineEvent> {
     }
 }
 
-/// The text of the engine's own refusal of a numeric private or loopback address (MEASURED, P05): matched here once; if the engine's wording changes the person only loses the
-/// nicer note.
-pub fn is_numeric_local_refusal(message: &str) -> bool {
-    message.contains("private/internal IP address")
+/// The text of the engine's own refusal of an address on this computer or a private network (MEASURED, P05 for a number, P06 for the name `localhost`): matched here once; if
+/// the engine's wording changes the person only loses the nicer note.
+pub fn is_local_refusal(message: &str) -> bool {
+    message.contains("private/internal IP address") || message.contains("localhost domain")
 }
 
 /// The host of an address as the guard names it: between `://` and the next `/`, `:`, `?` or `#`, in lowercase. An address with no scheme gives an empty host.
@@ -225,8 +225,9 @@ mod tests {
 
     #[test]
     fn the_engines_own_refusal_of_a_numeric_address_is_recognised_only_by_its_words() {
-        assert!(is_numeric_local_refusal("Access to private/internal IP address 127.0.0.1 is blocked"));
-        assert!(!is_numeric_local_refusal("net::ERR_NAME_NOT_RESOLVED") && !is_numeric_local_refusal(""));
+        assert!(is_local_refusal("Access to private/internal IP address 127.0.0.1 is blocked"));
+        assert!(is_local_refusal("Network error: Network error: Access to localhost domain 'localhost' is not allowed"), "the name localhost is refused by the engine too (measured in P06)");
+        assert!(!is_local_refusal("net::ERR_NAME_NOT_RESOLVED") && !is_local_refusal(""));
     }
 
     #[test]

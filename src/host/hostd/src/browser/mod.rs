@@ -10,6 +10,8 @@ mod profile;
 mod sha256;
 mod supervisor;
 #[cfg(test)]
+mod real_probe;
+#[cfg(test)]
 mod system_tests;
 
 /// Registers the browser's operations with the host (called once, from the root).

@@ -67,6 +67,8 @@ pub struct Engine {
     pub unpinned: bool,
     /// What the engine says its product is (`Browser.getVersion`), cleaned: information for the person, never used to decide anything.
     pub reported: Arc<Mutex<String>>,
+    /// What the fetch guard has served: connections accepted and refused (counts only).
+    pub guard: Arc<Mutex<(u64, u64)>>,
 }
 
 impl Engine {
@@ -171,17 +173,18 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
     let (ready_tx, ready_rx) = mpsc::channel::<Result<(), &'static str>>();
     let dead = Arc::new(AtomicBool::new(false));
     let reported = Arc::new(Mutex::new(String::new()));
+    let guard_counts = Arc::new(Mutex::new((0u64, 0u64)));
     let unpinned = setup.located.unpinned;
-    let (d2, r2) = (dead.clone(), reported.clone());
+    let (d2, r2, g2) = (dead.clone(), reported.clone(), guard_counts.clone());
     let join = thread::Builder::new()
         .name("lico-browser-engine".into())
         .spawn(move || {
-            run(setup, rx, ready_tx, &r2);
+            run(setup, rx, ready_tx, &r2, &g2);
             d2.store(true, Ordering::SeqCst);
         })
         .map_err(|_| StartError("engine_failed"))?;
     match ready_rx.recv_timeout(READY_WAIT) {
-        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, reported }),
+        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, reported, guard: guard_counts }),
         Ok(Err(why)) => {
             let _ = join.join();
             Err(StartError(why))
@@ -201,7 +204,7 @@ struct Running {
     scratch: PathBuf,
 }
 
-fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>) {
+fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>, counts: &Arc<Mutex<(u64, u64)>>) {
     let (gtx, grx) = mpsc::channel::<(u16, String)>();
     let mut running = match bring_up(&setup, gtx) {
         Ok(r) => r,
@@ -217,7 +220,7 @@ fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>,
         }
     }
     let _ = ready.send(Ok(()));
-    let crashed = serve(&setup, &mut running, &rx, &grx);
+    let crashed = serve(&setup, &mut running, &rx, &grx, counts);
     let status = tear_down(running);
     match status {
         Some(code) => log(&format!("engine ended, exit code {code}")),
@@ -291,7 +294,7 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
 }
 
 /// The loop. True when the engine died on its own (the socket closed or the process ended), false when it was asked to end.
-fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<(u16, String)>) -> bool {
+fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<(u16, String)>, counts: &Arc<Mutex<(u64, u64)>>) -> bool {
     let began = Instant::now();
     loop {
         // commands first: a command waits at most one poll (see the top of this file)
@@ -310,6 +313,10 @@ fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<(u16
             Ok(Some(event)) => on_event(setup, &mut r.client, &event),
             Ok(None) => {}
             Err(_) => return true,
+        }
+        if let Some(g) = &r.guard {
+            let st = g.stats();
+            *counts.lock().unwrap() = (st.accepted, st.refused);
         }
         if r.child.try_wait().ok().flatten().is_some() {
             return true;
@@ -422,11 +429,11 @@ fn run_effects(setup: &Setup, client: &mut Client, id: &str, fx: Vec<Effect>) {
                     }
                 }
             }
-            Err(CdpError::Remote { message, .. }) if matches!(effect, Effect::Navigate(_)) && map::is_numeric_local_refusal(&message) => {
-                deliver(setup, client, id, EngineEvent::NumericLocalAddress);
+            Err(CdpError::Remote { message, .. }) if matches!(effect, Effect::Navigate(_)) && map::is_local_refusal(&message) => {
+                deliver(setup, client, id, EngineEvent::LocalAddressRefused);
                 deliver(setup, client, id, EngineEvent::LoadFinished);
             }
-            Err(CdpError::Remote { .. }) | Err(CdpError::Timeout) => log("a call of the engine failed"),
+            Err(CdpError::Remote { .. }) | Err(CdpError::Timeout) => log(&format!("a call of the engine failed ({})", wire.method)),
             Err(_) => return, // the connection is gone: the loop sees it on its next read
         }
     }

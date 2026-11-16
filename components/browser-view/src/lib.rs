@@ -287,8 +287,8 @@ pub enum EngineEvent {
     NoFontFound,
     /// The fetch guard refused or could not complete a fetch for this page (a status of its own: 403, 502, 504) of `host`. The engine shows a blank page and no error.
     FetchRefused { status: u16, host: String },
-    /// The person typed a numeric loopback or private address and the engine refused it before any fetch.
-    NumericLocalAddress,
+    /// The engine refused the address before any fetch because it is on this computer or a private network (a number, or the name `localhost`: MEASURED, P06).
+    LocalAddressRefused,
     /// The engine is not the pinned release (the owner's setting says so).
     UnpinnedEngine,
 }
@@ -651,8 +651,8 @@ impl Tab {
                 self.notice = Some(clean(&line, MAX_NOTICE));
                 Vec::new()
             }
-            EngineEvent::NumericLocalAddress => {
-                self.notice = Some("the engine refuses numeric local addresses; type localhost".into());
+            EngineEvent::LocalAddressRefused => {
+                self.notice = Some("the engine refuses addresses on this computer or a private network, by number and as localhost".into());
                 Vec::new()
             }
             EngineEvent::UnpinnedEngine => {

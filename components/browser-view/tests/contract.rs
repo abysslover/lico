@@ -482,10 +482,10 @@ fn a_new_navigation_clears_the_notice_and_the_unpinned_mark_stays() {
 }
 
 #[test]
-fn a_numeric_local_address_has_its_own_plain_notice() {
+fn an_address_the_engine_refuses_as_local_has_its_own_plain_notice() {
     let mut t = ready();
-    t.engine_event(EngineEvent::NumericLocalAddress);
-    assert_eq!(t.notice(), Some("the engine refuses numeric local addresses; type localhost"));
+    t.engine_event(EngineEvent::LocalAddressRefused);
+    assert_eq!(t.notice(), Some("the engine refuses addresses on this computer or a private network, by number and as localhost"));
 }
 
 #[test]

@@ -7,7 +7,7 @@ path = "local::system_tests::a_message_through_a_local_session_streams_lines_int
 why = "needs the real host binary, its socket, its registry and its log: a message of the person reaches a local session through the operation `input`, the answer streams into the log as lines and the conversation record is written"
 mib = 512
 seconds = 60
-measured_mib = "19.1"
+measured_mib = "18.6"
 measured_seconds = "0.1"
 
 [[test]]
@@ -16,7 +16,7 @@ path = "local::system_tests::a_tool_that_needs_a_card_waits_the_person_allows_an
 why = "needs the real host: the approval card of a tool call is answered through the operation `approval.answer`, and the host's message about the decision starts the next turn of the local session"
 mib = 512
 seconds = 60
-measured_mib = "20.1"
+measured_mib = "19.5"
 measured_seconds = "0.2"
 
 [[test]]
@@ -34,7 +34,7 @@ path = "local::system_tests::a_server_that_vanishes_is_said_so_and_the_session_r
 why = "needs the real host: a model server that goes away is said so in the log, and the session works again on the next message without a restart"
 mib = 512
 seconds = 60
-measured_mib = "19.5"
+measured_mib = "19.7"
 measured_seconds = "0.2"
 
 [[test]]
@@ -43,7 +43,7 @@ path = "browser::system_tests::browser_tab_opens_and_paints_a_fake_frame"
 why = "needs the real host binary and a real child process behind the fence and the fetch guard (a fake engine program): a tab is opened, the engine's frame is painted and written as a picture, the guard's refusal reaches the tab as a notice, and the socket and POST /v1 answer the same"
 mib = 512
 seconds = 60
-measured_mib = "21.6"
+measured_mib = "21.8"
 measured_seconds = "0.4"
 
 [[test]]
@@ -52,5 +52,5 @@ path = "browser::system_tests::browser_engine_ends_with_the_last_tab_and_never_s
 why = "needs the real process boundary: no engine process, scratch directory or thread without a tab, one engine for all tabs, the last close and a host stop end it and clean up, a killed engine is shown in its tabs and restarted by the next action, and the tab cap holds"
 mib = 512
 seconds = 60
-measured_mib = "23.1"
-measured_seconds = "2.3"
+measured_mib = "23.3"
+measured_seconds = "2.2"
