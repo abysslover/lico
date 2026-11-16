@@ -177,6 +177,11 @@ impl App {
             self.ui.composed = None;
         }
         self.sidebar_sync_to_active_session();
+        if row.provider == "local" {
+            self.ui.flash = Some("A local session has no folder.".into());
+            self.dirty = true;
+            return;
+        }
         if row.is_global() {
             self.ui.flash = Some("Global general session (no fixed working directory).".into());
             self.dirty = true;
@@ -289,7 +294,9 @@ impl App {
         };
 
         let global = row.is_global();
-        let cwd_text = if global {
+        let cwd_text = if row.provider == "local" {
+            "Local (no files)".to_string()
+        } else if global {
             if !row.ssh_host.is_empty() {
                 format!("Global [ssh:{}]", row.ssh_host)
             } else {
@@ -434,5 +441,16 @@ mod tests {
         assert_eq!(fmt_reset(1_000, Some(1_000 + 45 * 60)), " (45m)");
         assert_eq!(fmt_reset(1_000, Some(1_000 + 3_600 + 16 * 60)), " (1h16m)");
         assert_eq!(fmt_reset(1_000, Some(1_000 + 4 * 86_400 + 9 * 3_600)), " (4d9h)");
+    }
+
+    #[test]
+    fn a_local_session_shows_its_model_and_says_it_has_no_folder() {
+        let mut a = super::super::super::scroll_oracle::app(1.0, false);
+        a.session = "s".into();
+        a.ui.rows = vec![crate::gui::ui::Row { session: "s".into(), provider: "local".into(), chosen_model: "qwen-small".into(), state: "running".into(), ..Default::default() }];
+        let parts = a.session_telemetry_parts(&a.ui.rows[0].clone());
+        assert_eq!((parts.0.as_str(), parts.5.as_str()), ("qwen-small", "Local (no files)"));
+        a.focus_active_session_dir();
+        assert_eq!(a.ui.flash.as_deref(), Some("A local session has no folder."));
     }
 }

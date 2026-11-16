@@ -255,7 +255,12 @@ fn rows(app: &App) -> Vec<String> {
 
 #[test]
 fn local_is_the_third_provider_and_asks_for_a_server_and_a_model_but_not_for_an_account_a_folder_or_an_effort() {
-    let mut app = local();
+    let mut app = opened();
+    app.ui.panel.as_mut().unwrap().notice = "The claude program's own help could not be read: only the default model and effort are offered.".into();
+    app.form_focus(Field::Provider);
+    app.form_cycle(1);
+    app.form_cycle(1);
+    assert_eq!(app.ui.panel.as_ref().unwrap().notice, "", "a notice about the claude program is not for another provider");
     assert_eq!(form(&app)["provider"], "local");
     assert_eq!(rows(&app), ["Provider", "Server", "Model", "Name", "Start"]);
     let (_, body) = app.panel_view().unwrap();
@@ -274,6 +279,7 @@ fn opening_the_form_never_looks_for_servers_and_says_how_to_look() {
     assert_eq!((f["servers"].as_array().unwrap().len(), f["scanned"].clone()), (0, json!(false)));
     let (_, body) = app.panel_view().unwrap();
     assert!(body.iter().any(|l| l.contains("press Enter on the Server row to look for model servers on this machine")), "{body:?}");
+    assert!(body.iter().any(|l| l.starts_with("  Server") && l.ends_with("(none yet)")), "the row itself does not repeat the hint: {body:?}");
     assert!(form(&app)["problem"].as_str().unwrap().contains("Server row"), "{}", form(&app));
 }
 

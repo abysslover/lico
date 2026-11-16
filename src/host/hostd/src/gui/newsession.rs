@@ -380,7 +380,7 @@ impl App {
             .map(|field| {
                 let value = match field {
                     Field::Provider => format!("< {} >", p.provider),
-                    Field::Server => f.servers.get(f.server).map_or("(none yet: Enter looks for servers)".to_string(), |s| format!("< {} >", local_rows::line(s))),
+                    Field::Server => f.servers.get(f.server).map_or("(none yet)".to_string(), |s| format!("< {} >", local_rows::line(s))),
                     Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
                         t if t.is_empty() && field == Field::Folder => "(Global general session: gets a scratch workspace of its own)".into(),
@@ -492,6 +492,7 @@ impl App {
                     p.account = p.first_account(); // none for Local
                     (f.model, f.effort) = (DEFAULT.into(), DEFAULT.into()); // the program's choices are claude's
                     f.local = p.provider == "local";
+                    p.notice.clear(); // what the form said about the program of one provider is not for the next
                 }
             }
             Field::Server if f.local => {

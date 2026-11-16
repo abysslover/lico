@@ -102,6 +102,16 @@ fn has(lines: &[String], needle: &str) -> bool {
 }
 
 #[test]
+fn the_status_names_the_model_of_a_local_session_from_the_start_so_the_window_header_can_show_it() {
+    let w = world("model_named");
+    let fake = Fake::start(Script::new()).unwrap();
+    let (id, _) = create(&w, fake.addr(), crate::driver::Api::OpenAi, 0);
+    let status = crate::core::status(&w.shared).unwrap();
+    let entry = status["sessions"].as_array().unwrap().iter().find(|e| e["session"] == json!(id)).unwrap();
+    assert_eq!((entry["provider"].clone(), entry["model"].clone()), (json!(w.kind), json!("fake")), "{entry}");
+}
+
+#[test]
 fn a_message_streams_the_answer_into_the_log_and_both_sides_into_the_record() {
     let w = world("stream");
     let fake = Fake::start(Script::new().on("POST", CHAT, sse(&[text("Hello "), text("there\nsecond line"), Piece::Finish("stop".into()), Piece::End]))).unwrap();

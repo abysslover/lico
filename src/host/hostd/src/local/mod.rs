@@ -129,8 +129,10 @@ impl Driver for Local {
         let shared: Arc<Shared> = shared.clone().downcast().map_err(|_| "bad_request")?;
         let session: Arc<Mutex<Session>> = session.clone().downcast().map_err(|_| "bad_request")?;
         let (id, target) = {
-            let s = session.lock().unwrap();
-            (s.id.clone(), s.settings.target.clone().ok_or("bad_request")?)
+            let mut s = session.lock().unwrap();
+            let target = s.settings.target.clone().ok_or("bad_request")?;
+            s.model = Some(target.model.clone()); // what the status and the window header name
+            (s.id.clone(), target)
         };
         let path = shared.cfg.registry_dir.join("local").join(format!("{id}.jsonl"));
         let (convo, opened) = match Convo::open(&path) {

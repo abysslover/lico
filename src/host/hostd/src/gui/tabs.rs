@@ -87,12 +87,12 @@ impl App {
     }
 
     fn tab_caption(&self, row: &Row) -> String {
-        let prefix = if row.is_global() {
+        let prefix = if row.provider == "local" {
+            "L" // it has no folder, and is not a Global general session
+        } else if row.is_global() {
             "G"
         } else if row.provider == "claude" {
             "C"
-        } else if row.provider == "local" {
-            "L"
         } else {
             "X"
         };
@@ -455,5 +455,7 @@ mod tests {
         let row = |provider: &str| Row { session: "s".into(), provider: provider.into(), name: "n".into(), cwd: "/w".into(), state: "running".into(), ..Default::default() };
         let captions: Vec<String> = ["claude", "codex", "local"].iter().map(|k| a.tab_caption(&row(k))).collect();
         assert!(captions[0].starts_with("C\u{b7}") && captions[1].starts_with("X\u{b7}") && captions[2].starts_with("L\u{b7}"), "{captions:?}");
+        let no_folder = Row { cwd: String::new(), ..row("local") }; // a local session has no folder, and is still not a Global general session
+        assert!(a.tab_caption(&no_folder).starts_with("L\u{b7}"), "{}", a.tab_caption(&no_folder));
     }
 }
