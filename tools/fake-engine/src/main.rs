@@ -10,8 +10,6 @@ use std::net::TcpStream;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-const SESSION: &str = "S1";
-const TARGET: &str = "page-1";
 
 fn base64(bytes: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -69,13 +67,14 @@ fn main() {
     let proxy = std::env::var("OBSCURA_PROXY").ok();
     let counter = std::sync::Arc::new(AtomicU64::new(1));
     let (c1, c2, c3) = (counter.clone(), counter.clone(), counter.clone());
+    let targets = AtomicU64::new(1);
     let script = Script::new()
         .token(&token)
         .idle(Duration::from_secs(3600))
         .http("/json/version", 200, &json!({"Browser": "Chrome/145.0.0.0", "webSocketDebuggerUrl": format!("ws://127.0.0.1:{port}/devtools/browser")}).to_string())
         .on("Browser.getVersion", Answer::result(json!({"product": "Chrome/145.0.0.0", "userAgent": "fake"})))
-        .on("Target.createTarget", Answer::result(json!({"targetId": TARGET})))
-        .on("Target.attachToTarget", Answer::result(json!({"sessionId": SESSION})))
+        .on_fn("Target.createTarget", move |_| Answer::result(json!({"targetId": format!("page-{}", targets.fetch_add(1, Ordering::SeqCst))})))
+        .on_fn("Target.attachToTarget", |call: &Call| Answer::result(json!({"sessionId": format!("S-{}", call.params["targetId"].as_str().unwrap_or("page-0"))})))
         .on("Target.closeTarget", Answer::result(json!({"success": true})))
         .on("Page.enable", Answer::result(json!({})))
         .on("Runtime.enable", Answer::result(json!({})))
@@ -87,9 +86,9 @@ fn main() {
         .on("Input.dispatchKeyEvent", Answer::result(json!({})))
         .on("Input.insertText", Answer::result(json!({})))
         .on("Runtime.evaluate", Answer::result(json!({"result": {"type": "string", "value": "A fake page"}})))
-        .on_fn("Page.startScreencast", move |_| {
+        .on_fn("Page.startScreencast", move |call: &Call| {
             let n = c1.fetch_add(1, Ordering::SeqCst);
-            Answer::result(json!({})).event_in(SESSION, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
+            Answer::result(json!({})).event_in(call.session_id.as_deref().unwrap_or("S"), "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
         })
         .on_fn("Page.captureScreenshot", move |_| {
             let n = c2.fetch_add(1, Ordering::SeqCst);
@@ -97,15 +96,16 @@ fn main() {
         })
         .on_fn("Page.navigate", move |call: &Call| {
             let url = call.params["url"].as_str().unwrap_or("").to_string();
-            if let (Some(p), true) = (proxy.clone(), url.starts_with("http://")) {
-                let u = url.clone();
-                std::thread::spawn(move || fetch_through_proxy(&p, &u));
+            // like the real engine, the page's fetch is part of the navigation: it is done before the navigation is answered and the load event fires
+            if let (Some(p), true) = (proxy.as_deref(), url.starts_with("http://")) {
+                fetch_through_proxy(p, &url);
             }
             let n = c3.fetch_add(1, Ordering::SeqCst);
+            let session = call.session_id.clone().unwrap_or_else(|| "S".into());
             Answer::result(json!({"frameId": "F1", "loaderId": "L1"}))
-                .event_in(SESSION, "Page.frameNavigated", json!({"frame": {"id": "F1", "url": url}}))
-                .event_in(SESSION, "Page.loadEventFired", json!({"timestamp": 1}))
-                .event_in(SESSION, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
+                .event_in(&session, "Page.frameNavigated", json!({"frame": {"id": "F1", "url": url}}))
+                .event_in(&session, "Page.loadEventFired", json!({"timestamp": 1}))
+                .event_in(&session, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
         })
         .on_fn("Browser.close", |_| {
             std::thread::spawn(|| {

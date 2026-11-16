@@ -333,3 +333,17 @@ fn the_adapter_of_the_local_kind_and_the_port_stay_outside_the_cycle_of_the_hubs
         assert!(g.prod.keys().all(|(from, to)| !(to == "local" && from == hub)), "{hub} must not name the adapter");
     }
 }
+
+#[test]
+fn the_browser_adapter_stays_outside_the_cycle_of_the_hubs_and_only_the_root_names_it() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src/host/hostd/src/unified.rs");
+    let g = graph::analyse(&root).expect("the program's source is read");
+    assert_eq!(g.sccs.iter().map(Vec::len).max().unwrap(), 48, "M17-P06 must not make the cycle of the hubs larger (48 before and after)");
+    let in_cycle = |m: &str| g.sccs.iter().any(|c| c.len() > 1 && c.iter().any(|x| x == m));
+    assert!(!in_cycle("browser"), "the adapter is not part of the cycle");
+    let importers = |m: &str| g.prod.keys().filter(|(_, to)| to == m).map(|(from, _)| from.as_str()).collect::<Vec<_>>();
+    assert_eq!(importers("browser"), ["unified"], "nothing but the root names the adapter");
+    for hub in ["core", "ipc", "http", "cli", "session", "folders", "transfer", "handoff", "codex", "admin"] {
+        assert!(g.prod.keys().all(|(from, to)| !(to == "browser" && from == hub)), "{hub} must not name the adapter");
+    }
+}

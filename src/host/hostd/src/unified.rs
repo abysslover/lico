@@ -12,6 +12,7 @@ mod capture;
 mod claude;
 mod cli;
 mod clipboard;
+mod browser;
 mod clipwrite;
 mod codex;
 mod computer;
@@ -78,6 +79,7 @@ const NOTICES: &str = include_str!("../NOTICES.txt");
 
 fn main() {
     memory::init_allocator();
+    browser::register(); // the browser tab's operations (M17-P06): nothing runs until a tab is opened
     driver::register(std::sync::Arc::new(local::Local::new(std::sync::Arc::new(local::Keyring)))); // the session kind `local` (M16-P06)
     let args: Vec<String> = std::env::args().collect();
     let name = std::path::Path::new(&args[0]).file_name().and_then(|n| n.to_str()).unwrap_or("lico").to_string();

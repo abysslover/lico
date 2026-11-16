@@ -170,7 +170,19 @@ fn main() -> ExitCode {
                 eprintln!("the test binary of the program was not found");
                 return ExitCode::FAILURE;
             };
-            let env = vec![("LICO_BIN".to_string(), binary.to_string_lossy().into_owned())];
+            // the test double of the browser engine, built beside the host binary (the system tests of the browser adapter run it in place of the real engine)
+            let fake_engine = match std::env::var("LICO_FAKE_ENGINE") {
+                Ok(f) => PathBuf::from(f),
+                Err(_) => {
+                    let built = std::process::Command::new("cargo").args(["build", "--release", "--locked", "--offline", "--bin", "lico-fake-engine", "-p", "lico-fake-engine", "--target-dir"]).arg(&target).status();
+                    if !matches!(built, Ok(s) if s.success()) {
+                        eprintln!("the fake engine did not build");
+                        return ExitCode::FAILURE;
+                    }
+                    target.join("release/lico-fake-engine")
+                }
+            };
+            let env = vec![("LICO_BIN".to_string(), binary.to_string_lossy().into_owned()), ("LICO_FAKE_ENGINE".to_string(), fake_engine.to_string_lossy().into_owned())];
             let mut outcomes = Vec::new();
             let mut failed = false;
             for entry in entries.iter().filter(|e| only.as_ref().map_or(true, |o| &e.name == o)) {

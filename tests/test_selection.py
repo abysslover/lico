@@ -432,7 +432,7 @@ def test_the_hash_the_binary_is_built_from_covers_the_components_but_not_their_r
 def test_a_change_inside_a_component_selects_its_own_tests_and_those_of_its_consumers_only():
     result, _ = real("components/png/src/lib.rs")
     assert result.components == {"lico-png"} and not result.everything and not result.xtask
-    assert result.cargo == {"capture::", "clipboard::"}, "the modules that name the component and their own tests, not the whole binary"
+    assert result.cargo == {"browser::", "capture::", "clipboard::"}, "the modules that name the component and their own tests, not the whole binary"
     assert real("components/png/SPEC.md")[0].components == {"lico-png"}, "its specification is one of its inputs"
     assert real("components/png/tests/contract.rs")[0].components == {"lico-png"}
 

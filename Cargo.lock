@@ -623,11 +623,16 @@ name = "lico"
 version = "0.4.0"
 dependencies = [
  "cosmic-text",
+ "lico-browser-view",
+ "lico-cdp",
  "lico-convo",
+ "lico-frame",
  "lico-llm-fake",
  "lico-llm-http",
  "lico-llm-wire",
  "lico-png",
+ "lico-proxy",
+ "lico-sandbox",
  "lico-toolloop",
  "serde_json",
  "softbuffer",
