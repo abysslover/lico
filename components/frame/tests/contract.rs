@@ -213,6 +213,24 @@ fn ancillary_chunks_are_skipped_and_an_image_in_several_idat_chunks_is_joined() 
 }
 
 #[test]
+fn a_stream_of_many_chunks_is_stopped_at_the_cap() {
+    let rows: Vec<Vec<u8>> = (0..2).map(|y| (0..2).flat_map(|x| formula(x, y)).collect()).collect();
+    let z = zlib_stored(&scanlines(&rows, 4, &|_| 0));
+    let many = |n: usize| {
+        let mut out = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+        out.extend(ihdr(2, 2, 8, 6, 0));
+        for _ in 0..n {
+            out.extend(chunk(b"teXt", b"x"));
+        }
+        out.extend(chunk(b"IDAT", &z));
+        out.extend(chunk(b"IEND", &[]));
+        out
+    };
+    assert!(decode(&many(MAX_CHUNKS - 4), &limits()).is_ok(), "just under the cap");
+    assert!(matches!(err(&many(MAX_CHUNKS + 4)), Error::Chunk(_)), "over the cap");
+}
+
+#[test]
 fn decoding_is_deterministic() {
     let png = png_from(48, 32, 8, 6, &[], ZLIB9);
     assert_eq!(decode(&png, &limits()), decode(&png, &limits()));
@@ -296,6 +314,10 @@ fn the_size_is_checked_from_the_header_before_anything_is_allocated() {
     assert_eq!(err(&just_over), Error::TooBig, "one column over the pixel cap");
     assert!(matches!(err(&png_from(1920, 1200, 8, 6, &[], &zlib_stored(&[0; 16]))), Error::Inflate(_)), "exactly the cap is allowed (and then its data is short)");
     assert!(t.elapsed() < std::time::Duration::from_secs(2));
+    let cap = Limits { max_pixels: 100, ..Limits::default() };
+    let at = |w: u32| png_from(w, 1, 8, 6, &[], &zlib_stored(&scanlines(&[vec![0; w as usize * 4]], 4, &|_| 0)));
+    assert!(decode(&at(100), &cap).is_ok(), "exactly the cap");
+    assert_eq!(decode(&at(101), &cap), Err(Error::TooBig), "one pixel over");
     let small = Limits { max_input: 100, ..Limits::default() };
     assert_eq!(decode(&png_from(48, 32, 8, 6, &[], ZLIB9), &small), Err(Error::TooBig), "the input over its cap");
     let tight = Limits { max_pixels: 100, ..Limits::default() };
@@ -321,17 +343,21 @@ fn a_stream_that_says_a_different_size_than_the_header_is_refused() {
 fn a_broken_zlib_stream_is_an_error_of_its_kind() {
     let good = zlib_stored(&scanlines(&[vec![1; 8], vec![2; 8]], 4, &|_| 0));
     let mut p = good.clone();
-    p[0] = 0x79; // not method 8
+    p[0] = 0x79;
+    p[1] = 0x18; // method 9 with check bits that are right: only the method is wrong
     assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Inflate(_)));
     let mut p = good.clone();
-    p[1] = 0x20 | 0x01; // the check bits are wrong
+    p[1] = 0x02; // the method is right and the check bits are wrong
+    assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Inflate(_)));
+    let mut p = good.clone();
+    p[1] = 0x20; // check bits right, a preset dictionary announced: not supported
     assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Inflate(_)));
     let mut p = good.clone();
     let n = p.len();
     p[n - 1] ^= 0xff;
     assert_eq!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Adler);
     let mut p = good.clone();
-    p[3] ^= 0xff; // LEN no longer matches NLEN
+    p[5] ^= 0xff; // NLEN is no longer the complement of LEN (the data itself is whole)
     assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Inflate(_)));
     let mut p = good.clone();
     p.extend([0, 0]);
@@ -339,6 +365,15 @@ fn a_broken_zlib_stream_is_an_error_of_its_kind() {
     let mut p = good.clone();
     p[2] = 0x07; // block type 3 (reserved)
     assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &p)), Error::Inflate(_)));
+    // a reserved block, then the rest of the stream laid out so that a decoder that skipped the reserved block would read the whole data
+    let body = scanlines(&[vec![1; 8], vec![2; 8]], 4, &|_| 0);
+    let mut sneaky = vec![0x78, 0x01, 0x06]; // not final, type 3, then zero bits: "not final, stored" if the reserved block were skipped
+    sneaky.extend((body.len() as u16).to_le_bytes());
+    sneaky.extend((!(body.len() as u16)).to_le_bytes());
+    sneaky.extend(&body);
+    sneaky.extend([0x01, 0, 0, 0xff, 0xff]);
+    sneaky.extend(adler32(&body).to_be_bytes());
+    assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &sneaky)), Error::Inflate(_)));
     assert!(matches!(err(&png_from(2, 2, 8, 6, &[], &good[..2])), Error::Inflate(_)), "the stream ends at once");
 }
 
@@ -406,4 +441,24 @@ fn random_bytes_are_never_a_png() {
         with_sig.extend(&junk);
         assert!(decode(&with_sig, &limits()).is_err());
     }
+}
+
+#[test]
+fn a_second_or_short_header_or_no_data_are_refused() {
+    let z = zlib_stored(&scanlines(&[vec![0; 4]], 4, &|_| 0));
+    let mut two = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    two.extend(ihdr(1, 1, 8, 6, 0));
+    two.extend(ihdr(1, 1, 8, 6, 0));
+    two.extend(chunk(b"IDAT", &z));
+    two.extend(chunk(b"IEND", &[]));
+    assert!(matches!(err(&two), Error::Chunk(_)), "a second header");
+    let mut short = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    short.extend(chunk(b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0]));
+    short.extend(chunk(b"IDAT", &z));
+    short.extend(chunk(b"IEND", &[]));
+    assert!(matches!(err(&short), Error::Chunk(_)), "a header of 12 bytes");
+    let mut none = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    none.extend(ihdr(1, 1, 8, 6, 0));
+    none.extend(chunk(b"IEND", &[]));
+    assert_eq!(err(&none), Error::Chunk("no image data"));
 }

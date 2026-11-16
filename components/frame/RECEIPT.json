@@ -6,11 +6,11 @@
       "seconds": 30
     },
     "compile_s": 0.7,
-    "peak_mib": 3.2,
-    "wall_s": 0.44
+    "peak_mib": 3.4,
+    "wall_s": 0.52
   },
   "date": "2026-11-16",
-  "hash": "dae3052c1f2a7ee51fe0ae12a0ee23ecacf803544f5addf0b758df9d5b4dd59a",
+  "hash": "a73e4980339ebfa1631a88b9fa12861bb0e65e780dd5efefe18578b5cb5ce22d",
   "inputs": {
     "dependencies": [
       {
@@ -42,11 +42,15 @@
       ],
       [
         "src/tests.rs",
-        "ff5dbb20bef14929f52249d9e630dd777fc7a2d0f6565498b57780fc0641fdf4"
+        "fd337b2c0fb219f215ce2cfcb02dda600a54af225e5c7aa745b5f1188fc7bf6e"
       ],
       [
         "tests/contract.rs",
-        "1ecc5e985d93175f78f4399734cdad2cd6f04c394fe7b682e2262093ff96678c"
+        "ea36d6784f9c75e2e6890015a1e4b38f5f2cc4eb1c821687a210220fcf315e4a"
+      ],
+      [
+        "tests/fixtures/far_distance_zlib9.bin",
+        "0846a988c56f09cb7666845e5fa6cd9a6cda7a7e5a710eef285e790b8a37fabb"
       ],
       [
         "tests/fixtures/rgba_48x32_zlib9.bin",
@@ -61,10 +65,10 @@
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 21,
+    "count": 28,
     "failed": 0,
     "ignored": 1,
-    "passed": 20
+    "passed": 27
   },
   "tool": "lico-xtask 0.1.0",
   "version": "0.1.0"

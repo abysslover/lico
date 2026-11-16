@@ -94,3 +94,111 @@ impl BitWriter {
         self.out
     }
 }
+
+// ---- the dynamic blocks and the far distances --------------------------------------------------------------------------------------------------------
+
+#[test]
+fn a_copy_from_the_far_end_of_the_window_is_read() {
+    // 300 bytes, 24,800 zeros, the same 300 bytes: the copy is at a distance of 25,100 (distance code 29 with 13 extra bits)
+    let x: Vec<u8> = (0..300u64).map(|j| (((j * j * 31 + j * 7) & 0xFFFF_FFFF) >> 3) as u8).collect();
+    let mut want = x.clone();
+    want.extend(vec![0u8; 24800]);
+    want.extend(&x);
+    let z = include_bytes!("../tests/fixtures/far_distance_zlib9.bin");
+    assert_eq!(inflate::zlib(z, want.len()).unwrap(), want);
+}
+
+/// The header of a dynamic block: final, type 2, `hlit` and `hdist` and `hclen` as the stream stores them, then the code-length code lengths in their order.
+fn dynamic_head(w: &mut BitWriter, hlit: u32, hdist: u32, cl_lengths: &[u32]) {
+    w.bits(1, 1);
+    w.bits(2, 2);
+    w.bits(hlit, 5);
+    w.bits(hdist, 5);
+    w.bits(cl_lengths.len() as u32 - 4, 4);
+    for l in cl_lengths {
+        w.bits(*l, 3);
+    }
+}
+
+fn zlib_of(bits: BitWriter, data: &[u8]) -> Vec<u8> {
+    let mut z = vec![0x78, 0x01];
+    z.extend(bits.finish());
+    z.extend(inflate::adler32(data).to_be_bytes());
+    z
+}
+
+#[test]
+fn a_code_length_code_that_is_over_subscribed_or_incomplete_is_refused() {
+    // order of the code-length symbols: 16, 17, 18, 0: four codes of length 1 do not fit
+    let mut w = BitWriter::default();
+    dynamic_head(&mut w, 0, 0, &[1, 1, 1, 1]);
+    assert!(matches!(inflate::zlib(&zlib_of(w, b"a"), 1), Err(Error::Inflate(why)) if why.contains("over-subscribed")));
+    // lengths 1 and 2 leave a quarter of the codes unused
+    let mut w = BitWriter::default();
+    dynamic_head(&mut w, 0, 0, &[1, 0, 2, 0]);
+    assert!(matches!(inflate::zlib(&zlib_of(w, b"a"), 1), Err(Error::Inflate(why)) if why.contains("incomplete")));
+}
+
+#[test]
+fn a_repeat_with_nothing_before_it_and_too_many_codes_are_refused() {
+    // symbols 16 and 0 of length 1: '0' is the code of 0 and '1' the code of 16; the first length symbol is 16
+    let mut w = BitWriter::default();
+    dynamic_head(&mut w, 0, 0, &[1, 0, 0, 1]);
+    w.bits(1, 1);
+    w.bits(0, 2);
+    assert!(matches!(inflate::zlib(&zlib_of(w, b"a"), 1), Err(Error::Inflate(why)) if why.contains("nothing before")));
+    let mut w = BitWriter::default();
+    dynamic_head(&mut w, 31, 0, &[1, 0, 0, 1]); // 288 length codes: two of them do not exist
+    assert!(matches!(inflate::zlib(&zlib_of(w, b"a"), 1), Err(Error::Inflate(why)) if why.contains("too many")));
+    let mut w = BitWriter::default();
+    dynamic_head(&mut w, 0, 31, &[1, 0, 0, 1]); // 32 distance codes: two of them do not exist
+    assert!(matches!(inflate::zlib(&zlib_of(w, b"a"), 1), Err(Error::Inflate(why)) if why.contains("too many")));
+}
+
+#[test]
+fn a_dynamic_block_with_codes_of_all_lengths_up_to_fifteen_is_read() {
+    // the literals 97 to 111 get the code lengths 1 to 15 and the end-of-block code a second length of 15: a complete code that uses every length
+    let mut lit = [0u32; 257];
+    for (i, l) in (1..=15u32).enumerate() {
+        lit[97 + i] = l;
+    }
+    lit[256] = 15;
+    let mut w = BitWriter::default();
+    // the code-length alphabet: the 16 symbols 0 to 15, each of length 4 (the symbols 16, 17 and 18 unused); their lengths come in the order 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
+    let mut cl = [4u32; 19];
+    cl[0] = 0;
+    cl[1] = 0;
+    cl[2] = 0;
+    dynamic_head(&mut w, 0, 0, &cl);
+    for l in lit {
+        w.code(l, 4); // each symbol 0..=15 has the 4-bit code of its own value
+    }
+    w.code(0, 4); // the one distance code: no length
+    // the code of the literal 111: the first of the two codes of length 15 (fourteen 1s and a 0); then the end of block: fifteen 1s
+    for _ in 0..14 {
+        w.bits(1, 1);
+    }
+    w.bits(0, 1);
+    for _ in 0..15 {
+        w.bits(1, 1);
+    }
+    assert_eq!(inflate::zlib(&zlib_of(w, &[111]), 1).unwrap(), vec![111]);
+}
+
+#[test]
+fn a_deflate_bomb_is_stopped_at_the_size_the_header_says_and_not_after_it_has_grown() {
+    // 'a', then 400,000 copies of 258 bytes at distance 1 (103 MB if it were let go), for a stream that may give 1,000 bytes
+    let mut w = BitWriter::default();
+    w.bits(1, 1);
+    w.bits(1, 2);
+    w.huff_literal(b'a');
+    for _ in 0..400_000 {
+        w.code(0xC5, 8); // the length code 285: 258
+        w.code(0, 5); // the distance code 0: 1
+    }
+    w.huff_end();
+    let bomb = zlib_of(w, b"");
+    let t = std::time::Instant::now();
+    assert!(matches!(inflate::zlib(&bomb, 1000), Err(Error::Inflate(_))));
+    assert!(t.elapsed() < std::time::Duration::from_millis(250), "the bomb was let grow: {:?}", t.elapsed());
+}
