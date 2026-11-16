@@ -28,7 +28,7 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 | M17-P03 | `lico-sandbox` (the Landlock launcher) and the first measurement of the engine, then a stop for a re-plan | [Plan](../../../plans/202611/20261117/20261117_14_M17-P03_sandbox_and_first_measurement_plan.md) | [Measurement note](../../../reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md) | implemented; waits for the lead's re-plan |
 | M17-P04 | `lico-frame` (PNG decoder), `lico-browser-view` (display-free tab model), the 4 MiB default cap of `lico-ws` | [Plan](../../../plans/202611/20261117/20261117_16_M17-P04_frame_and_browser_view_plan.md) | [Result](../../../plans/202611/20261117/20261117_16_M17-P04_frame_and_browser_view_plan.md) (in the plan note) | implemented |
 | M17-P05 | `lico-proxy` (the fetch guard) and the second measurement (does the engine honour `--proxy`) | [Plan](../../../plans/202611/20261117/20261117_17_M17-P05_lico_proxy_and_second_measurement_plan.md) | [Measurement note](../../../reports/202611/20261117/20261117_18_M17-P05_second_measurement_note.md) | implemented; waits for the lead's fence profile |
-| M17-P06 | the host adapter `browser/`, CLI and HTTP parity, system tests | sketch (mail 147) | | `question` file for the plan |
+| M17-P06 | the host adapter `browser/`, CLI and HTTP parity, system tests | [Plan](../../../plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md) | pending | plan waits for the lead's approval (`question` file 134) |
 | M17-P07 | the tab kind in the window | sketch (mail 147) | | `question` file for the plan |
 | M17-P08 | input | sketch (mail 147) | | after P07 |
 | M17-P09 | verification and the release `0.5.0` | sketch (mail 147) | | after P08 |
