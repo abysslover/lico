@@ -670,6 +670,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-toolloop"
+version = "0.1.0"
+dependencies = [
+ "lico-convo",
+ "lico-llm-fake",
+ "lico-llm-http",
+ "lico-llm-wire",
+ "serde_json",
+]
+
+[[package]]
 name = "lico-xtask"
 version = "0.1.0"
 dependencies = [

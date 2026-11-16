@@ -1,0 +1,67 @@
+{
+  "component": "lico-toolloop",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 2.8,
+    "peak_mib": 3.2,
+    "wall_s": 0.22
+  },
+  "date": "2026-11-16",
+  "hash": "a360f96a56c82748f9461217cd0a47587590cfb2272b6ecca98fe5e9b2e988ec",
+  "inputs": {
+    "dependencies": [
+      {
+        "hash": "a244a83fcb7abbc6cf8d01d0fd314e20cdc4a078b6ca46beaab5fe2edffa1265",
+        "name": "lico-llm-wire"
+      },
+      {
+        "hash": "48bd56f65ce4c0f8e2c36ff2fee06e5f2ce943adabf5522547ffe1bea244a75c",
+        "name": "lico-convo (dev)"
+      },
+      {
+        "hash": "5f0a05ad6a6821c53216d5bb8c365fa9550648c586fc909d16e8e3b721532799",
+        "name": "lico-llm-fake (dev)"
+      },
+      {
+        "hash": "22268f286ed0b3489a1eb36c68688752a1b6bfc77a40b65e12b5351c3cf2f6e9",
+        "name": "lico-llm-http (dev)"
+      }
+    ],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "8139fc1e1a9b508406f9269faf7e13aefe20f11a3a33e43d3bcab3969f4cfd55"
+      ],
+      [
+        "SPEC.md",
+        "9940e6a4aecc8dff99aae1606b559df06f5377ca5cfb6c2d9b89fb70c872b136"
+      ],
+      [
+        "src/lib.rs",
+        "9247ded806e63904d6cfa515bffcddcb714cfc357d16cee8f8c0f1da66a2da89"
+      ],
+      [
+        "tests/contract.rs",
+        "21a3a0affcf9f6c08c57a0ed9eb3461dfb8343f0d093a894fc0cc3b1a3cdd6f6"
+      ],
+      [
+        "tests/end_to_end.rs",
+        "5f361627c4a785761cbcdfd0ae11b8cc2ab5617628f877fc7f4d0c987eca1c04"
+      ]
+    ],
+    "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 24,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 24
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}

@@ -1,0 +1,26 @@
+[package]
+name = "lico-toolloop"
+version = "0.1.0"
+edition = "2021"
+description = "One turn of a local session as pure logic over four ports: ask the model, hand its tool calls to the host, feed the results back, within limits."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lico-llm-wire = { path = "../llm-wire" }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# The one end-to-end test goes through the real client, the fake server and the record: inputs of the tests, not dependencies.
+lico-llm-http = { path = "../llm-http" }
+lico-llm-fake = { path = "../llm-fake" }
+lico-convo = { path = "../convo" }
+
+[package.metadata.lico]
+purpose = "One turn of a local session as pure logic over four ports (model, tools, record, environment): the person's message goes in, the model is asked, its tool calls are handed to the host one by one within limits, their results go back, until the model is done, a tool waits for the person, or a limit is reached."
+spec = "SPEC.md"
+depends = ["lico-llm-wire"]
+external = []
+budget = { mib = 256, seconds = 30 }

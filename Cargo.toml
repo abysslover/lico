@@ -2,7 +2,7 @@
 # Profiles are read from here only: they are the ones the program has always been built with.
 [workspace]
 resolver = "2"
-members = ["components/convo", "components/llm-fake", "components/llm-http", "components/llm-wire", "components/png", "src/host/hostd", "tools/xtask"]
+members = ["components/convo", "components/llm-fake", "components/llm-http", "components/llm-wire", "components/toolloop", "components/png", "src/host/hostd", "tools/xtask"]
 
 [profile.release]
 opt-level = 2
