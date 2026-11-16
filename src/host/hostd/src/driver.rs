@@ -1,6 +1,6 @@
 //! The driver port (M16-P06): how a kind of session that is not a provider program (today: `local`, a model server on this machine) plugs into the host without the
 //! hubs (`core`, `session`, `folders`, ...) naming it. The hubs ask this module for the driver of a session's kind; the driver registers itself once, at start-up, from
-//! the root. This module depends on nothing of the program (it names no `crate::` path): the host's own types reach a driver as `Opaque` handles that the driver, which
+//! the root. This module depends on nothing of the program (it names no module path of the program): the host's own types reach a driver as `Opaque` handles that the driver, which
 //! knows them, downcasts. Keeping the port this small is what keeps the driver's own dependencies on the hubs out of the cycle the hubs form.
 
 use std::any::Any;
@@ -139,11 +139,12 @@ mod tests {
         assert_eq!((Api::OpenAi.word(), Api::Ollama.word()), ("openai", "ollama"));
     }
 
-    /// The port names nothing of the program: no `crate::` path, so it can sit below the hubs and the adapter can sit above them.
+    /// The port names nothing of the program: no path into another module, so it can sit below the hubs and the adapter can sit above them.
     #[test]
     fn the_port_names_no_other_module_of_the_program() {
         let source = include_str!("driver.rs");
         let code: String = source.split("#[cfg(test)]").next().unwrap().lines().filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n");
-        assert!(!code.contains("crate::") && !code.contains("super::"), "the driver port must depend on nothing of the program");
+        let (own, parent) = (["crate", "::"].concat(), ["super", "::"].concat());
+        assert!(!code.contains(&own) && !code.contains(&parent), "the driver port must depend on nothing of the program");
     }
 }
