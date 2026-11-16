@@ -70,7 +70,7 @@ pub fn load(dir: &Path, accounts: &crate::accounts::Accounts) -> Result<Vec<Entr
             return Err(format!("sessions.json names a session id that cannot be right: {session:?}"));
         }
         let provider = value["provider"].as_str().unwrap_or("").to_string();
-        if provider != "codex" && provider != "claude" {
+        if provider != "codex" && provider != "claude" && crate::driver::get(&provider).is_none() {
             return Err(format!("sessions.json names an unknown provider for {session}"));
         }
         let generation = value["generation"].as_u64().filter(|g| *g >= 1).ok_or_else(|| format!("sessions.json has no valid generation for {session}"))?;

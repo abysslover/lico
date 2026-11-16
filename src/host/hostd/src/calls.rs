@@ -399,7 +399,9 @@ pub(crate) fn flush_deferred(s: &mut crate::session::Session) {
     while !s.busy {
         let Some(item) = s.peer_turn.deferred_replies.pop_front() else { break };
         s.peer_turn.next_reply_slot = item.reply_slot;
-        let sent = if s.codex.is_some() {
+        let sent = if let Some(link) = s.driver.as_mut() {
+            link.send_input(&item.request_id, &item.send_text).map(|()| s.set_busy(true))
+        } else if s.codex.is_some() {
             crate::codex::send_input(s, &item.request_id, &item.send_text).map(|()| s.set_busy(true))
         } else if s.claude.is_some() {
             crate::claude::send_input(s, &item.request_id, &item.send_text, None)

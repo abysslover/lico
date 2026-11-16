@@ -604,6 +604,20 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
     Ok(obj(json!({"session": s.id, "generation": s.generation})))
 }
 
+/// Starts the work of a session of a driver kind and keeps the link the driver gives (also for a resume and a restart).
+pub(crate) fn start_driver(driver: &Arc<dyn crate::driver::Driver>, shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), &'static str> {
+    if session.lock().unwrap().purged {
+        return Err("busy");
+    }
+    let (shared_handle, session_handle): (crate::driver::Opaque, crate::driver::Opaque) = (shared.clone(), session.clone());
+    let link = driver.start(&shared_handle, &session_handle)?;
+    let mut s = session.lock().unwrap();
+    s.driver = Some(link);
+    s.set_state(State::Running);
+    s.set_busy(false);
+    Ok(())
+}
+
 fn start_provider(shared: &Arc<Shared>, session: &Arc<Mutex<Session>>) -> Result<(), &'static str> {
     let provider = session.lock().unwrap().provider;
     if provider == "claude" {
@@ -630,6 +644,10 @@ pub fn session_purge_with(shared: &Arc<Shared>, session: &str, generation: i64, 
         s.input_tx = None;
         s.codex = None;
         s.claude = None;
+        if let Some(mut link) = s.driver.take() {
+            link.stop();
+            link.purge();
+        }
         s.approvals.clear();
         s.stop_process();
         s.purge_log();
@@ -670,11 +688,17 @@ pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> R
     {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
-        if s.codex_thread.is_none() { return Err("bad_request"); }
+        if s.codex_thread.is_none() && crate::driver::get(s.provider).is_none() { return Err("bad_request"); }
         s.generation += 1; // every target of the old execution is stale from now on
     }
     let provider = found.lock().unwrap().provider;
-    let resumed = if provider == "claude" { crate::claude::resume(shared, &found) } else { crate::codex::resume(shared, &found) };
+    let resumed = if let Some(driver) = crate::driver::get(provider) {
+        if found.lock().unwrap().state != State::Disconnected { Err("busy") } else { start_driver(&driver, shared, &found) }
+    } else if provider == "claude" {
+        crate::claude::resume(shared, &found)
+    } else {
+        crate::codex::resume(shared, &found)
+    };
     if let Err(code) = resumed {
         found.lock().unwrap().generation -= 1;
         return Err(code);
@@ -707,6 +731,7 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
     }
     if s.state == State::Disconnected { return Err("session_disconnected"); }
     if s.state == State::Exited { return Err("session_exited"); }
+    if s.driver.is_some() && attachment.is_some() { return Err("option_unavailable"); } // a local model gets text only
     let picture = crate::pasted::take(shared, attachment, s.claude.is_some())?;
     let shown_buf = s.claude.is_some().then(|| crate::pasted::echo(text, picture.as_ref()));
     let shown = shown_buf.as_deref().unwrap_or(text);
@@ -714,7 +739,11 @@ pub fn input(shared: &Shared, session: &str, generation: Option<i64>, request_id
         let state = s.input_state(request_id).unwrap_or(InputState::Accepted);
         return Ok(obj(json!({"session": s.id, "request_id": request_id, "state": state.name(), "duplicate": false})));
     }
-    if s.codex.is_some() {
+    if let Some(link) = s.driver.as_mut() {
+        link.send_input(request_id, send_text)?;
+        s.set_busy(true);
+        s.record_input(request_id, text, origin, crate::session::now_secs());
+    } else if s.codex.is_some() {
         crate::codex::send_input(&mut s, request_id, send_text)?;
         s.record_input(request_id, text, origin, crate::session::now_secs());
     } else if s.claude.is_some() {

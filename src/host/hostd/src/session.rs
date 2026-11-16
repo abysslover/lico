@@ -416,6 +416,7 @@ pub struct Session {
     pub auto_title: Option<String>, // derived from the first user prompt (`>> `) when unnamed
     pub codex: Option<crate::codex::Link>,
     pub claude: Option<crate::claude::Link>,
+    pub driver: Option<Box<dyn crate::driver::Link>>, // the link of a session of a driver kind, such as `local` (M16-P06)
     pub mode: &'static str, // "auto" (permissions skipped, the default of a new session) or "default" (the provider asks for what needs approval)
     pub provider: &'static str, // "codex" or "claude" for a provider session, empty otherwise
     pub settings: crate::folders::Settings, // what the person chose: folder, name, model, effort
@@ -492,6 +493,7 @@ impl Session {
             generation: 1,
             codex: None,
             claude: None,
+            driver: None,
             provider: "",
             settings: crate::folders::Settings::default(),
             mode: "auto",
@@ -584,7 +586,11 @@ impl Session {
         s.bytes_total = s.log.disk_bytes() as i64;
         s.text_mode = true;
         s.generation = entry.generation;
-        s.provider = if entry.provider == "claude" { "claude" } else { "codex" };
+        s.provider = match (entry.provider.as_str(), crate::driver::get(&entry.provider)) {
+            ("claude", _) => "claude",
+            (_, Some(driver)) => driver.kind(),
+            _ => "codex",
+        };
         s.codex_thread = entry.provider_session.clone();
         s.account = entry.account.clone();
         s.mode = entry.mode;

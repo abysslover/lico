@@ -72,6 +72,8 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
         Err("busy")
     } else if kind == "codex" || kind == "claude" {
         crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
+    } else if crate::driver::get(kind).is_some() {
+        crate::folders::start_driver_session(shared, kind, chosen)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };

@@ -22,6 +22,9 @@ mod creds;
 mod dbus;
 mod echo;
 mod folders;
+mod driver;
+#[cfg(test)]
+mod driver_hubs_tests;
 mod fsview;
 mod gui;
 mod handoff;

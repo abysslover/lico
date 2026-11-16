@@ -23,7 +23,7 @@ pub fn session_close_opts(
     let (id, out_gen, repo, remove_wt) = {
         let mut s = found.lock().unwrap();
         check_generation(&s, Some(generation))?;
-        if s.codex_thread.is_none() || (hide_tab && !s.has_conversation()) {
+        if (s.codex_thread.is_none() && s.driver.is_none() && crate::driver::get(s.provider).is_none()) || (hide_tab && !s.has_conversation()) {
             return Err("no_conversation_yet"); // the program has not told its session id (or a blank 0-turn tab was dismissed): a close now would be a delete
         }
         if s.state == State::Exited {
@@ -45,6 +45,9 @@ pub fn session_close_opts(
             s.input_tx = None;
             s.claude = None; // its approvals and unanswered requests are stale now
             s.codex = None;
+            if let Some(mut link) = s.driver.take() {
+                link.stop();
+            }
             s.drop_program_approvals();
             if s.provider == "claude" {
                 crate::claude::note(&mut s, "[session closed]");

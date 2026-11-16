@@ -34,6 +34,7 @@ pub struct Settings {
     pub worktree_branch: Option<String>, // branch created for that worktree (M02-P06)
     pub resume_id: Option<String>,       // provider session/thread id to resume (`M07-P03`)
     pub resume_latest: bool,             // a request, not a choice that is kept: continue the latest chat of the folder and account (`M10-P02`)
+    pub target: Option<crate::driver::Target>, // where the model of a local session is (M16-P06): a loopback endpoint, the format, the model and the window
 }
 
 /// A character a name or a folder path never holds: a control character, or one that draws nothing or reorders text
@@ -112,6 +113,7 @@ impl Settings {
             worktree_branch: field("worktree_branch"),
             resume_id: field("resume_id"),
             resume_latest: request.get("resume_latest").and_then(Value::as_bool).unwrap_or(false),
+            target: target_of_request(request),
         }
     }
 
@@ -129,6 +131,11 @@ impl Settings {
             if let Some(value) = value {
                 fields.insert(key.to_string(), json!(value));
             }
+        }
+        if let Some(t) = &self.target {
+            fields.insert("local_endpoint".into(), json!(t.addr.to_string()));
+            fields.insert("local_api".into(), json!(t.api.word()));
+            fields.insert("local_context".into(), json!(t.context_tokens));
         }
         fields
     }
@@ -166,7 +173,18 @@ impl Settings {
             }
             _ => text("name", name_shape)?,
         };
-        Ok(Settings { cwd, name, model: text("chosen_model", valid_model)?, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch, resume_id: None, resume_latest: false })
+        let model = text("chosen_model", valid_model)?;
+        let target = match value.get("local_endpoint") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(endpoint)) => {
+                let addr = crate::driver::parse_endpoint(endpoint).ok_or_else(|| bad("local endpoint"))?;
+                let api = value.get("local_api").and_then(Value::as_str).and_then(crate::driver::parse_api).ok_or_else(|| bad("local api"))?;
+                let context_tokens = value.get("local_context").and_then(Value::as_u64).filter(|n| *n <= 1_048_576).ok_or_else(|| bad("local context"))? as u32;
+                Some(crate::driver::Target { addr, api, model: model.clone().ok_or_else(|| bad("model"))?, context_tokens })
+            }
+            Some(_) => return Err(bad("local endpoint")),
+        };
+        Ok(Settings { target, cwd, name, model, effort: text("chosen_effort", valid_effort)?, worktree_repo, worktree_branch, resume_id: None, resume_latest: false })
     }
 }
 
@@ -201,6 +219,18 @@ pub fn check_folder(shared: &Shared, text: &str) -> Result<String, &'static str>
 /// What a `session.create` may ask for, checked before anything starts: the folder (and made canonical), and the
 /// model and effort, which only a Claude Code session has (the efforts must be the ones the program lists).
 pub fn prepare(shared: &Shared, kind: &str, mut chosen: Settings) -> Result<Settings, &'static str> {
+    if let Some(driver) = crate::driver::get(kind) {
+        // a session of a driver kind has no folder, no worktree, no effort and no provider chat to resume: only a model and a target
+        if chosen.cwd.is_some() || chosen.worktree_branch.is_some() || chosen.effort.is_some() || chosen.resume_id.is_some() {
+            return Err("option_unavailable");
+        }
+        driver.accepts(chosen.target.as_ref())?;
+        if chosen.target.as_ref().map(|t| Some(&t.model)) != Some(chosen.model.as_ref()) {
+            return Err("bad_request");
+        }
+        chosen.name = chosen.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+        return Ok(chosen);
+    }
     if let Some(folder) = &chosen.cwd {
         if kind == "synthetic" {
             return Err("option_unavailable");
@@ -279,6 +309,38 @@ fn remove_scratch_in(root: &Path, id: &str, scratch: bool) {
     if std::fs::symlink_metadata(&path).map_or(false, |m| m.is_dir()) {
         let _ = std::fs::remove_dir_all(&path);
     }
+}
+
+/// The `endpoint`, `api` and `context_tokens` of a `session.create` request, with the model: a target, when the request has all that makes one.
+fn target_of_request(request: &Map<String, Value>) -> Option<crate::driver::Target> {
+    let addr = crate::driver::parse_endpoint(request.get("endpoint")?.as_str()?)?;
+    let api = crate::driver::parse_api(request.get("api")?.as_str()?)?;
+    let model = request.get("model")?.as_str().filter(|m| !m.is_empty())?.to_string();
+    let context_tokens = request.get("context_tokens").and_then(Value::as_u64).unwrap_or(0) as u32;
+    Some(crate::driver::Target { addr, api, model, context_tokens })
+}
+
+/// A session of a driver kind (`local`): no program, no folder and no account; the driver does the work. Nothing of one that never became ready remains.
+pub fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
+    let driver = crate::driver::get(kind).ok_or("bad_request")?;
+    let id = format!("s{}", crate::core::random_hex(8));
+    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
+    {
+        let mut s = session.lock().unwrap();
+        s.text_mode = true;
+        s.mode = "auto";
+        s.provider = driver.kind();
+        s.settings = chosen;
+    }
+    if let Err(code) = crate::core::start_driver(&driver, shared, &session) {
+        let mut s = session.lock().unwrap();
+        s.purged = true;
+        s.purge_log();
+        return Err(code);
+    }
+    shared.sessions.write().unwrap().push(session.clone());
+    crate::registry::save(shared);
+    Ok(session)
 }
 
 /// A session backed by a provider program (or its simulator): one process, one provider session, running in the chosen
