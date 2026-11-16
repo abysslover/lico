@@ -670,6 +670,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-fake-engine"
+version = "0.1.0"
+dependencies = [
+ "lico-cdp-fake",
+ "lico-png",
+ "serde_json",
+]
+
+[[package]]
 name = "lico-frame"
 version = "0.1.0"
 dependencies = [

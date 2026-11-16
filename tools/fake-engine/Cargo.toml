@@ -1,0 +1,17 @@
+[package]
+name = "lico-fake-engine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "MIT"
+publish = false
+description = "A test double for the browser engine of the host adapter: it takes the engine's arguments and environment, serves CDP on the port it is given (through lico-cdp-fake) and paints fake frames. Never part of the shipped program."
+
+[[bin]]
+name = "lico-fake-engine"
+path = "src/main.rs"
+
+[dependencies]
+lico-cdp-fake = { path = "../../components/cdp-fake" }
+lico-png = { path = "../../components/png" }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
