@@ -1,6 +1,6 @@
 [package]
 name = "lico-sandbox"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Starts a program as a child under a Landlock confinement (files by path, TCP by port), a cleared environment, resource limits and its own session; fails closed when the kernel cannot give what was asked."
 publish = false

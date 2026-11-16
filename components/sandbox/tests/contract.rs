@@ -316,6 +316,67 @@ fn no_descriptor_of_the_parent_is_open_in_the_child() {
     drop(leak);
 }
 
+// ---- running the file that was opened (0.2.0) ------------------------------------------------------------------------------------------------------
+
+fn fd_probe(conf: &Confinement, action: &str, file: &std::fs::File) -> Probe {
+    let mut c = conf.clone();
+    c.env.push(("LICO_PROBE_ACTION".into(), action.into()));
+    let mut cmd = confine_fd(file, &c).unwrap();
+    cmd.args(["zz_probe", "--exact", "--nocapture", "--test-threads=1"]).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let out = cmd.output().expect("the confined probe starts from the open file");
+    parse(&String::from_utf8_lossy(&out.stdout), &String::from_utf8_lossy(&out.stderr))
+}
+
+#[test]
+fn the_open_file_runs_under_the_fence_and_leaves_no_descriptor_in_the_child() {
+    landlock();
+    let scratch = fresh("fd_runs");
+    let file = std::fs::File::open(exe()).unwrap();
+    // the path walk through /proc/self/fd/N happens after the fence is applied: a real run proves the engine's directory right covers the opened file
+    assert_eq!(fd_probe(&base(&scratch), "cwd", &file), Probe::Ok(scratch.to_string_lossy().into_owned()));
+    assert_eq!(fd_probe(&base(&scratch), "fds", &file), Probe::Ok(String::new()), "the descriptor of the program is not open after the exec");
+    // the fence still holds for a program started this way
+    let outside = fresh("fd_outside");
+    std::fs::write(outside.join("secret.txt"), "no").unwrap();
+    let mut c = base(&scratch);
+    c.env.push(("LICO_PROBE_ARG".into(), outside.join("secret.txt").to_string_lossy().into_owned()));
+    assert!(denied(&fd_probe(&c, "read", &file)));
+}
+
+#[test]
+fn the_file_that_was_hashed_runs_even_when_the_path_is_replaced_after_the_hash() {
+    landlock();
+    let dir = fresh("fd_swap");
+    let path = dir.join("engine");
+    std::fs::copy("/usr/bin/true", &path).unwrap();
+    let opened = std::fs::File::open(&path).unwrap(); // the file that was checked and hashed
+    std::fs::copy("/usr/bin/false", dir.join("other")).unwrap();
+    std::fs::rename(dir.join("other"), &path).unwrap(); // another program takes the path after the hash
+    let c = Confinement { read_exec: vec![dir.clone(), "/usr".into(), "/lib".into(), "/lib64".into()], read: vec!["/etc/ld.so.cache".into()], cwd: dir.clone(), ..Confinement::default() };
+    let status = confine_fd(&opened, &c).unwrap().status().unwrap();
+    assert!(status.success(), "the opened program (true) ran, not the one now at the path");
+    let mut by_path = Command::new(&path);
+    confine(&mut by_path, &c).unwrap();
+    assert!(!by_path.status().unwrap().success(), "the control: by path the replacement (false) runs");
+}
+
+#[test]
+fn an_open_file_that_could_not_run_is_refused_before_any_process() {
+    landlock();
+    let scratch = fresh("fd_refuse");
+    // the scratch directory is also a read_exec path here, so that only the kind of file decides in the first two cases
+    let mut c = base(&scratch);
+    c.read_exec.push(scratch.clone());
+    c.read_write.clear();
+    // a directory, a file that is not executable, and a program outside every read_exec path
+    assert!(matches!(confine_fd(&std::fs::File::open(&scratch).unwrap(), &c), Err(Error::Path(_))));
+    std::fs::write(scratch.join("plain.txt"), "x").unwrap();
+    assert!(matches!(confine_fd(&std::fs::File::open(scratch.join("plain.txt")).unwrap(), &c), Err(Error::Path(_))));
+    let outside = Confinement { read_exec: vec!["/usr".into(), "/lib".into(), "/lib64".into()], ..c.clone() };
+    assert!(matches!(confine_fd(&std::fs::File::open(exe()).unwrap(), &outside), Err(Error::Path(_))), "the file lies outside the read_exec paths");
+    assert!(confine_fd(&std::fs::File::open("/usr/bin/true").unwrap(), &outside).is_ok(), "the control: a program under /usr is accepted");
+}
+
 #[test]
 fn privileges_cannot_be_regained_the_child_leads_its_own_session_and_is_not_the_parents_group() {
     landlock();

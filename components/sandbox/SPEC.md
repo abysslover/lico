@@ -1,4 +1,4 @@
-# lico-sandbox 0.1.0 — specification
+# lico-sandbox 0.2.0 — specification
 
 Written with the P03 plan (M17-P03); approved by the lead under the owner's delegation (the owner away), mails 144 to 146. Marks: **KNOWN FROM DOCUMENTATION** (the Landlock kernel interface: `landlock_create_ruleset`, `landlock_add_rule`, `landlock_restrict_self`, the access-right bits of ABI 1 to 5, `PR_SET_NO_NEW_PRIVS`, `close_range`), **MEASURED** (the denials, by the tests below, on the kernel of this machine, Landlock ABI 4).
 
@@ -13,6 +13,7 @@ Run a program as a child with (a) the filesystem limited to the listed paths, (b
 | `Confinement { read_exec, read, read_write, connect_ports, bind_ports, env, cwd, limits, min_abi }`, `Default` | what the child may do. Every path is absolute, clean (no `.` or `..`), exists, is not `/` and is listed once; a file is allowed as well as a directory (the rights are cut to what a file can have). `read_exec`: read and execute (the program, its libraries); `read`: read only; `read_write`: read, write, create, remove and rename but **not** execute (one scratch directory). `env` is the WHOLE environment of the child. `cwd` must exist. `min_abi` defaults to `MIN_ABI` |
 | `Limits { address_space, data, cpu_seconds, open_files }`, all `Option<u64>` | `RLIMIT_AS`, `RLIMIT_DATA`, `RLIMIT_CPU`, `RLIMIT_NOFILE`; `address_space` may not suit a program that reserves virtual memory (an engine does: a measurement says) |
 | `confine(&mut Command, &Confinement) -> Result<(), Error>` | checks everything and builds the ruleset in the parent, then configures the command: environment cleared and set, working directory, and the child's system calls between fork and program; the program must be an absolute path under a `read_exec` path; the caller chooses the standard streams and spawns |
+| `confine_fd(&File, &Confinement) -> Result<Command, Error>` | (0.2.0, M17-P06) the same confinement for a program that is already OPEN: the command runs `/proc/self/fd/N` of that descriptor, so the kernel executes the very file the caller checked and hashed, whatever is put at its path afterwards (closes the check-then-run gap). The file must be a regular file with an execute bit and the path it was opened from (`readlink` of the descriptor) must lie under a `read_exec` path, else `Error::Path` and no process. The descriptor is close-on-exec: the program does not have it (a test lists its descriptors). MEASURED on this kernel: the path walk through `/proc/self/fd/N` after the fence is applied works, the rule of the program's directory covers the opened file. Works for a program file (an ELF); a `#!` script would not (the descriptor is closed before its interpreter opens it). The caller keeps the file open until it has spawned |
 | `abi_version() -> Result<u32, Error>` | the Landlock ABI of this kernel; `Unsupported { have: 0 }` when there is none |
 | `plan(&Confinement, abi, &dyn Fn(&Path) -> Option<PathKind>) -> Result<Plan, Error>`, `Plan { handled_fs, handled_net, paths, ports }`, `PathRule`, `PortRule`, `PathKind`, `handled_fs(abi)`, `handled_net(abi)` | the pure part: every check and every rule for an ABI, with no system call |
 | `Error { Unsupported { have, need }, Path, Port, TooMany, Env, Os(call, errno) }` | `Debug` of a `Confinement` and of an `Error` shows the names of the environment variables and never a value (the token travels there) |
@@ -39,4 +40,4 @@ What the child does between the fork and the program, in this order, with system
 
 ## Versioning and budget
 
-`0.1.0` while it has met one program (the engine of M17-P03); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while it has met one program (the engine of M17-P03); `0.2.0` adds `confine_fd` (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
