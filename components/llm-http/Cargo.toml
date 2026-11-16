@@ -1,0 +1,24 @@
+[package]
+name = "lico-llm-http"
+version = "0.1.0"
+edition = "2021"
+description = "A small loopback-only HTTP/1.1 client for Local LLM servers: POST and GET, streamed bodies, deadlines, cancellation, byte caps."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+# The tests run against the fake server, and the cross tests also read the replies with the wire formats: they are inputs of the tests, not dependencies.
+lico-llm-fake = { path = "../llm-fake" }
+lico-llm-wire = { path = "../llm-wire" }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[package.metadata.lico]
+purpose = "A small HTTP/1.1 client for a Local LLM server on this machine: loopback addresses only, POST and GET, bodies handed on as they arrive (plain, with a length, or chunked), deadlines, cancellation and byte caps, with no TLS, no proxy, no name lookup and no redirects."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
