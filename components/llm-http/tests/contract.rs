@@ -141,6 +141,43 @@ fn the_body_limit_is_exact_and_a_callback_may_stop_the_read() {
     assert!(started.elapsed() < Duration::from_secs(1), "stopping did not wait for the rest: {:?}", started.elapsed());
 }
 
+#[test]
+fn the_head_is_handed_on_before_the_first_piece_of_the_body_and_a_callback_on_it_may_end_the_call() {
+    let f = fake_with("/h", Behaviour::Answer(Reply::chunked(401, "application/json", pieces(&["{\"error\":", "\"key\"}"])).gap(MS(150)).header("X-Seen", "head")));
+    let order = std::cell::RefCell::new(Vec::new());
+    let req = Request { addr: f.addr(), method: Method::Post, path: "/h", headers: &[], body: b"" };
+    let head = send_with_head(
+        &req,
+        &fast(),
+        &Cancel::new(),
+        &mut |h| {
+            order.borrow_mut().push(format!("head {} {}", h.status, h.header("x-seen").unwrap_or("")));
+            Flow::Continue
+        },
+        &mut |piece| {
+            order.borrow_mut().push(format!("body {}", piece.len()));
+            Flow::Continue
+        },
+    )
+    .unwrap();
+    assert_eq!(head.status, 401);
+    assert_eq!(*order.borrow(), ["head 401 head", "body 9", "body 6"], "the status is known before any of the body is read");
+    // stopping at the head: no body is read and the call returns at once with the head
+    let slow = fake_with("/h", Behaviour::Answer(Reply::chunked(200, "text/plain", pieces(&["a", "b", "c"])).gap(MS(500))));
+    let started = Instant::now();
+    let mut pieces_seen = 0;
+    let req = Request { addr: slow.addr(), method: Method::Post, path: "/h", headers: &[], body: b"" };
+    let head = send_with_head(&req, &fast(), &Cancel::new(), &mut |_| Flow::Stop, &mut |_| {
+        pieces_seen += 1;
+        Flow::Continue
+    })
+    .unwrap();
+    assert_eq!((head.status, pieces_seen), (200, 0));
+    assert!(started.elapsed() < MS(400), "{:?}", started.elapsed());
+    // `send` is the same call without a head callback
+    assert_eq!(post(f.addr(), "/h", b"").body(), b"{\"error\":\"key\"}");
+}
+
 // ---- failures --------------------------------------------------------------------------------------------------------------------
 
 #[test]
@@ -341,7 +378,7 @@ fn the_public_names_are_exactly_these_and_the_limits_have_their_values() {
         }
     }
     found.sort();
-    let mut expected: Vec<String> = ["MAX_HEAD_BYTES", "Method", "Request", "Limits", "Cancel", "Head", "Flow", "Phase", "HttpError", "send"].iter().map(|s| s.to_string()).collect();
+    let mut expected: Vec<String> = ["MAX_HEAD_BYTES", "Method", "Request", "Limits", "Cancel", "Head", "Flow", "Phase", "HttpError", "send", "send_with_head"].iter().map(|s| s.to_string()).collect();
     expected.sort();
     assert_eq!(found, expected);
     assert_eq!(MAX_HEAD_BYTES, 16 * 1024);

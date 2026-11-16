@@ -123,5 +123,11 @@ pub enum HttpError {
 /// Sends the request and calls `on_body` with each piece of the reply body, in order, as it arrives. Returns the head when the body is complete, or when `on_body`
 /// answered `Stop`. When the reply is cut or fails, the pieces that arrived have already been handed on.
 pub fn send(request: &Request, limits: &Limits, cancel: &Cancel, on_body: &mut dyn FnMut(&[u8]) -> Flow) -> Result<Head, HttpError> {
-    client::run(request, limits, cancel, on_body)
+    client::run(request, limits, cancel, &mut |_| Flow::Continue, on_body)
+}
+
+/// Like `send`, and `on_head` is called once with the status and headers as soon as they are read, before any piece of the body: a caller that reads an error body
+/// differently from a stream knows which it has. Answering `Stop` ends the call there (no body is read) and returns the head.
+pub fn send_with_head(request: &Request, limits: &Limits, cancel: &Cancel, on_head: &mut dyn FnMut(&Head) -> Flow, on_body: &mut dyn FnMut(&[u8]) -> Flow) -> Result<Head, HttpError> {
+    client::run(request, limits, cancel, on_head, on_body)
 }

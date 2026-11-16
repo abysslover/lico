@@ -1,4 +1,4 @@
-# lico-llm-http 0.1.0 — specification
+# lico-llm-http 0.2.0 — specification
 
 Draft written with the P04 plan (M16-P04); no separate owner stop (lead's mail 137). Marks: **PROPOSED**, **KNOWN FROM DOCUMENTATION** (HTTP/1.1 message framing, RFC 9112), **SEEN IN CODE** (the discovery probe's rules, which this client does not copy).
 
@@ -11,6 +11,7 @@ A small HTTP/1.1 client for a Local LLM server on this machine: one request, the
 | Name | Meaning |
 |---|---|
 | `send(&Request, &Limits, &Cancel, on_body: &mut dyn FnMut(&[u8]) -> Flow) -> Result<Head, HttpError>` | sends the request and calls `on_body` with each piece of the body, in order, as it arrives; returns the head when the body is complete (or when `on_body` said `Stop`) |
+| `send_with_head(&Request, &Limits, &Cancel, on_head: &mut dyn FnMut(&Head) -> Flow, on_body) -> Result<Head, HttpError>` (0.2.0, M16-P06) | like `send`, and `on_head` is called once with the status and headers before any piece of the body; `Stop` there ends the call and returns the head (a caller that reads an error body differently from a stream knows which it has) |
 | `Request { addr: SocketAddr, method, path, headers, body }`, `Method { Get, Post }` | a loopback address (no host name), a path that starts with `/`, extra headers, a body; `Debug` shows no header value of `Authorization`, `Proxy-Authorization`, `Cookie` or a name containing `key` or `token` |
 | `Limits { connect, first_byte, idle, total, max_body }`, `Default` | 2 s, 120 s, 60 s, 600 s, 8 MiB |
 | `Cancel` (`new`, `clone`, `cancel`, `is_cancelled`) | a shared flag; the call ends with `Cancelled` within about 1 s |
@@ -40,4 +41,4 @@ A small HTTP/1.1 client for a Local LLM server on this machine: one request, the
 
 ## Versioning and budget
 
-`0.1.0` while the formats have not met a real server. Budget: the default 256 MiB and 30 s.
+`0.2.0` (`send_with_head` added in M16-P06, found needed by the host adapter: the status must be known before the body is read) while the formats have not met a real server. Budget: the default 256 MiB and 30 s.

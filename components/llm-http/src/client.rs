@@ -230,7 +230,7 @@ impl Body<'_> {
     }
 }
 
-pub(crate) fn run(req: &Request, limits: &Limits, cancel: &Cancel, on_body: &mut dyn FnMut(&[u8]) -> Flow) -> Result<Head, HttpError> {
+pub(crate) fn run(req: &Request, limits: &Limits, cancel: &Cancel, on_head: &mut dyn FnMut(&Head) -> Flow, on_body: &mut dyn FnMut(&[u8]) -> Flow) -> Result<Head, HttpError> {
     if !req.addr.ip().is_loopback() {
         return Err(HttpError::NotLoopback);
     }
@@ -297,6 +297,9 @@ pub(crate) fn run(req: &Request, limits: &Limits, cancel: &Cancel, on_body: &mut
                     }
                     let parsed = parse_head(&head_bytes[..end])?;
                     let framing = framing_of(&parsed, limits.max_body)?;
+                    if on_head(&parsed) == Flow::Stop {
+                        return Ok(parsed);
+                    }
                     let remaining = if let Framing::Length(n) = framing { n } else { 0 };
                     body = Some(Body { framing, chunk: Chunk::Size(Vec::new()), remaining, delivered: 0, max: limits.max_body, on_body: &mut *on_body, stopped: false });
                     head = Some(parsed);

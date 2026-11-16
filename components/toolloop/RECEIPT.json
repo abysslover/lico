@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 2.8,
+    "compile_s": 2.1,
     "peak_mib": 3.2,
-    "wall_s": 0.22
+    "wall_s": 0.3
   },
   "date": "2026-11-16",
-  "hash": "a360f96a56c82748f9461217cd0a47587590cfb2272b6ecca98fe5e9b2e988ec",
+  "hash": "88b7440340c6d8b480e1c30bccc101bb04e6a28fe8db4da9e921a9d1e43bf340",
   "inputs": {
     "dependencies": [
       {
@@ -26,7 +26,7 @@
         "name": "lico-llm-fake (dev)"
       },
       {
-        "hash": "22268f286ed0b3489a1eb36c68688752a1b6bfc77a40b65e12b5351c3cf2f6e9",
+        "hash": "ff5072ecc1691bfd55312b84e77939c7cc749d24c89b1cb30090f9b20b5161a6",
         "name": "lico-llm-http (dev)"
       }
     ],
