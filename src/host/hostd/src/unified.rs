@@ -86,6 +86,7 @@ fn main() {
         (_, Some("host")) if args.get(2).map(String::as_str) == Some("stop") => cli::run(args), // `lico host stop` asks a running host to end
         (_, Some("host")) => host::run(shifted("lico-host")),
         (_, Some("cred")) => credcmd::run(shifted("lico-cred")),
+        (_, Some("local-key")) => std::process::exit(local::key_command(&args[2..])), // the key of a model server, in the keyring (M16-P06)
         (_, Some("gui")) => gui::run(shifted("lico-gui")),
         (_, Some("licenses")) => print!("{LICENSE}\n{NOTICES}"),
         (_, Some("xjob")) => xjob::run(&args[2..]), // hidden: the job side of the helper process (no usage text names it)

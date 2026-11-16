@@ -14,10 +14,14 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   status                         host and session status\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
-  session create [--kind synthetic|codex|claude] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
+  session create [--kind synthetic|codex|claude|local] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
                  [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID | --resume-latest]\n\
                  (--resume-latest: continue the latest chat of --cwd for the account, or make a new session and say so; the reply says which)\n\
                  (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
+  session create --kind local --endpoint ADDRESS:PORT --api openai|ollama --model NAME [--context TOKENS] [--name TEXT]\n\
+                 (a model server on this machine: a loopback address only; no account, no folder; its key is stored with `lico local-key`)\n\
+  local-key set ADDRESS:PORT     store the key of a model server in the OS keyring (the key on standard input)\n\
+  local-key clear ADDRESS:PORT   remove it\n\
   chat latest [--cwd DIR] [--ssh-host HOST] [--account ID]   the latest chat of a folder and account that has a saved transcript (the first item of `chat list --recorded`)\n\
   chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--recorded] [--others] [--offset N] [--limit N]\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
@@ -260,6 +264,14 @@ pub fn run(args: Vec<String>) {
             }
             if let Some(branch) = flag(&args, "--worktree") {
                 request["worktree_branch"] = json!(branch);
+            }
+            for (option, key) in [("--endpoint", "endpoint"), ("--api", "api")] {
+                if let Some(v) = flag(&args, option) {
+                    request[key] = json!(v);
+                }
+            }
+            if let Some(v) = flag(&args, "--context") {
+                request["context_tokens"] = json!(v.parse::<i64>().unwrap_or_else(|_| die(1, USAGE)));
             }
             if let Some(rid) = flag(&args, "--resume") {
                 request["resume_id"] = json!(rid);

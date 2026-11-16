@@ -311,6 +311,10 @@ tests = ["tests/test_protocol_conformance.py"]
 reason = "the reference host in Python, run as `python -m lico_host` by the conformance test"
 
 [[inert]]
+glob = "tests/system_tests.toml"
+reason = "the short list of Rust system tests, read by `cargo xtask system` only"
+
+[[inert]]
 glob = "**/*.md"
 reason = "documents"
 

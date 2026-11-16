@@ -1,0 +1,38 @@
+# The short named list of system tests (M16-P06). Each needs a real process boundary that no component test has; the budget of every one is at most 512 MiB and 60 s.
+# `cargo xtask system --record` writes the measured peak and time (of the last passing run) next to each test.
+
+[[test]]
+name = "local_message_streams_into_the_log"
+path = "local::system_tests::a_message_through_a_local_session_streams_lines_into_the_log"
+why = "needs the real host binary, its socket, its registry and its log: a message of the person reaches a local session through the operation `input`, the answer streams into the log as lines and the conversation record is written"
+mib = 512
+seconds = 60
+measured_mib = "18.6"
+measured_seconds = "0.1"
+
+[[test]]
+name = "local_tool_card_waits_and_resumes"
+path = "local::system_tests::a_tool_that_needs_a_card_waits_the_person_allows_and_the_answer_ends"
+why = "needs the real host: the approval card of a tool call is answered through the operation `approval.answer`, and the host's message about the decision starts the next turn of the local session"
+mib = 512
+seconds = 60
+measured_mib = "19.1"
+measured_seconds = "0.2"
+
+[[test]]
+name = "local_stop_cancels_a_stream"
+path = "local::system_tests::a_stop_cancels_a_running_stream_within_about_a_second"
+why = "needs the real host: `session.close` must end a running model stream through the open connection while the host keeps serving"
+mib = 512
+seconds = 60
+measured_mib = "18.6"
+measured_seconds = "0.4"
+
+[[test]]
+name = "local_server_vanishes_and_recovers"
+path = "local::system_tests::a_server_that_vanishes_is_said_so_and_the_session_recovers_on_the_next_message"
+why = "needs the real host: a model server that goes away is said so in the log, and the session works again on the next message without a restart"
+mib = 512
+seconds = 60
+measured_mib = "18.2"
+measured_seconds = "0.2"

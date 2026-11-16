@@ -350,3 +350,11 @@ fn for_an_ollama_server_the_window_and_tool_support_are_asked_of_the_server_when
     let chat = fake.requests().into_iter().filter(|r| r.path == "/api/chat").last().unwrap();
     assert_eq!(serde_json::from_slice::<Value>(&chat.body).unwrap()["options"]["num_ctx"], 4096);
 }
+
+#[test]
+fn the_key_command_refuses_a_bad_endpoint_and_a_bad_command_before_it_touches_the_keyring() {
+    let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+    for bad in [args(&[]), args(&["set"]), args(&["set", "192.168.1.5:80"]), args(&["set", "localhost:80"]), args(&["forget", "127.0.0.1:80"]), args(&["clear", "0.0.0.0:80"]), args(&["set", "127.0.0.1:80", "extra"])] {
+        assert_eq!(key_command(&bad), 2, "{bad:?}");
+    }
+}

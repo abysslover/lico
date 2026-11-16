@@ -6,7 +6,7 @@
 //!   hash   NAME [--root DIR]                    the hash of a component's inputs
 //!   accept [--repo DIR] [--script PATH] [--artifact NAME] [--scratch DIR]   two clean clones build the same bytes
 
-use lico_xtask::{accept, components, graph, runner};
+use lico_xtask::{accept, components, graph, runner, system};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
@@ -131,6 +131,65 @@ fn main() -> ExitCode {
                     ExitCode::FAILURE
                 }
             }
+        }
+        "system" => {
+            let root = std::env::current_dir().unwrap_or_default();
+            let list = root.join("tests/system_tests.toml");
+            let mut entries = match std::fs::read_to_string(&list).map_err(|e| e.to_string()).and_then(|t| system::parse(&t)) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("tests/system_tests.toml: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let listed = system::problems(&entries);
+            if !listed.is_empty() {
+                eprintln!("{}", listed.join("\n"));
+                return ExitCode::FAILURE;
+            }
+            let only = args.iter().skip(2).find(|a| !a.starts_with("--")).cloned();
+            let target = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| root.join("private/build/system"));
+            let binary = match std::env::var("LICO_BIN") {
+                Ok(b) => PathBuf::from(b),
+                Err(_) => {
+                    let built = std::process::Command::new("cargo").args(["build", "--release", "--locked", "--offline", "--bin", "lico", "-p", "lico", "--target-dir"]).arg(&target).status();
+                    if !matches!(built, Ok(s) if s.success()) {
+                        eprintln!("the release binary did not build");
+                        return ExitCode::FAILURE;
+                    }
+                    target.join("release/lico")
+                }
+            };
+            let compiled = std::process::Command::new("cargo").args(["test", "--offline", "--no-run", "--message-format=json", "--bin", "lico", "-p", "lico", "--target-dir"]).arg(&target).output();
+            let Some(compiled) = compiled.ok().filter(|o| o.status.success()) else {
+                eprintln!("the tests of the program did not compile");
+                return ExitCode::FAILURE;
+            };
+            let exe = String::from_utf8_lossy(&compiled.stdout).lines().filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok()).find(|v| v["reason"] == "compiler-artifact" && v["profile"]["test"] == true && v["target"]["name"] == "lico" && v["executable"].is_string()).and_then(|v| v["executable"].as_str().map(PathBuf::from));
+            let Some(exe) = exe else {
+                eprintln!("the test binary of the program was not found");
+                return ExitCode::FAILURE;
+            };
+            let env = vec![("LICO_BIN".to_string(), binary.to_string_lossy().into_owned())];
+            let mut outcomes = Vec::new();
+            let mut failed = false;
+            for entry in entries.iter().filter(|e| only.as_ref().map_or(true, |o| &e.name == o)) {
+                let out = system::run_one(&exe, entry, &env, &root.join("src/host/hostd"));
+                println!("{}: {} in {:.1} s, peak {:.1} MiB (budget {} MiB, {} s)", entry.name, if out.passed { "passed" } else { "FAILED" }, out.wall_s, out.peak_mib, entry.mib, entry.seconds);
+                if let Some(p) = &out.problem {
+                    eprintln!("{p}");
+                    failed = true;
+                }
+                outcomes.push(out);
+            }
+            if args.iter().any(|a| a == "--record") && !failed && only.is_none() {
+                system::apply(&mut entries, &outcomes);
+                if let Err(e) = std::fs::write(&list, system::render(&entries)) {
+                    eprintln!("the list could not be written: {e}");
+                    return ExitCode::FAILURE;
+                }
+            }
+            if failed { ExitCode::FAILURE } else { ExitCode::SUCCESS }
         }
         "accept" => {
             let repo = PathBuf::from(arg(&args, "--repo").unwrap_or_else(|| ".".to_string()));

@@ -6,7 +6,7 @@ mod hosttools;
 mod keys;
 mod model;
 
-pub use keys::{clear as clear_key, set as set_key, Keyring, Keys};
+pub use keys::{Keyring, Keys};
 
 use lico_convo::Convo;
 use lico_llm_http as http;
@@ -19,6 +19,52 @@ use std::time::Instant;
 use crate::core::Shared;
 use crate::driver::{Driver, Link, Opaque, Target};
 use crate::session::{Session, State};
+
+/// `lico local-key set|clear ADDRESS:PORT`: the key of a model server, in the keyring only (LLM-05). The key comes on standard input and is never an argument. Returns the exit code.
+pub fn key_command(args: &[String]) -> i32 {
+    use std::io::{IsTerminal, Read};
+    let usage = |why: &str| -> i32 {
+        eprintln!("{why}\nusage: lico local-key set ADDRESS:PORT   (the key on standard input)\n       lico local-key clear ADDRESS:PORT");
+        2
+    };
+    let (Some(action), Some(endpoint)) = (args.first().map(String::as_str), args.get(1)) else { return usage("a command and an endpoint are needed") };
+    let Some(addr) = crate::driver::parse_endpoint(endpoint) else { return usage("the endpoint must be a loopback address with a port") };
+    let failed = |e: crate::keyring::Error| {
+        eprintln!("{}", e.action());
+        e.exit_code()
+    };
+    match (action, args.len()) {
+        ("set", 2) => {
+            if std::io::stdin().is_terminal() {
+                return usage("the key is read from standard input: pipe it in");
+            }
+            let mut key = Vec::new();
+            let _ = std::io::stdin().lock().take(8193).read_to_end(&mut key);
+            if key.last() == Some(&b'\n') {
+                key.pop();
+            }
+            if key.is_empty() || key.len() > 8192 {
+                crate::keyring::wipe_secret(&mut key);
+                return usage("the key is 1 to 8192 bytes");
+            }
+            match keys::set(addr, key) {
+                Ok(()) => {
+                    println!("stored the key for {addr}");
+                    0
+                }
+                Err(e) => failed(e),
+            }
+        }
+        ("clear", 2) => match keys::clear(addr) {
+            Ok(()) => {
+                println!("removed the key for {addr}");
+                0
+            }
+            Err(e) => failed(e),
+        },
+        _ => usage("unknown command"),
+    }
+}
 
 const MAX_RECORD: usize = 4096;
 const QUEUE: usize = 16;
@@ -291,3 +337,6 @@ fn end_lines(end: &TurnEnd, target: &Target) -> Vec<String> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod system_tests;

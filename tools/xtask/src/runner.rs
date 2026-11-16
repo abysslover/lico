@@ -58,7 +58,7 @@ fn tree_bytes(root: u32, page: u64, known: &mut BTreeSet<u32>) -> u64 {
 }
 
 /// Runs `command` to its end and returns its stdout, the wall time and the peak of its process tree.
-fn measured(mut command: Command) -> Result<(String, f64, f64), String> {
+pub(crate) fn measured(mut command: Command) -> Result<(String, f64, f64), String> {
     let page = page_size();
     let start = Instant::now();
     let child = command.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e| e.to_string())?;

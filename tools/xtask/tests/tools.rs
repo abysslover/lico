@@ -255,3 +255,65 @@ fn a_changed_dev_dependency_invalidates_the_receipt_of_the_component_that_tests_
     let before = components::hash(&root, "a", "rustc 1").unwrap().hash;
     assert_eq!(components::hash(&root, "a", "rustc 1").unwrap().hash, before);
 }
+
+// ---- the short named list of system tests (M16-P06) -----------------------------------------------------------------------------
+
+use lico_xtask::system;
+
+fn list_text(body: &str) -> String {
+    format!("[[test]]\nname = \"a\"\npath = \"m::a\"\nwhy = \"needs the real host\"\nmib = 512\nseconds = 60\n{body}")
+}
+
+#[test]
+fn the_list_of_system_tests_is_read_and_its_problems_are_named() {
+    let entries = system::parse(&format!("{}\n[[test]]\nname = \"b\"\npath = \"m::b\"\nwhy = \"another\"\nmib = 256\nseconds = 30\nmeasured_mib = \"81.3\"\nmeasured_seconds = \"4.2\"\n", list_text(""))).unwrap();
+    assert_eq!(entries.iter().map(|e| (e.name.as_str(), e.mib, e.seconds)).collect::<Vec<_>>(), [("a", 512, 60), ("b", 256, 30)]);
+    assert_eq!(entries[1].measured_mib.as_deref(), Some("81.3"));
+    assert!(system::problems(&entries).is_empty());
+    for (text, word) in [
+        (list_text("").replace("why = \"needs the real host\"\n", ""), "why"),
+        (list_text("").replace("mib = 512", "mib = 600"), "512 MiB"),
+        (list_text("").replace("seconds = 60", "seconds = 61"), "60 seconds"),
+        (list_text("").replace("mib = 512", "mib = 0"), "budget"),
+        (format!("{0}\n{0}", list_text("")), "twice"),
+        (String::new(), "no system test"),
+    ] {
+        let found = system::parse(&text).map(|e| system::problems(&e).join("; ")).unwrap_or_else(|e| e);
+        assert!(found.contains(word), "{word}: {found}");
+    }
+}
+
+#[test]
+fn a_system_test_is_run_alone_with_its_time_and_memory_against_its_own_budget() {
+    let dir = scratch("system");
+    let script = dir.join("fake_test_binary");
+    fs::write(&script, "#!/bin/sh\ncase \"$*\" in *--exact*m::a*--ignored*|*--ignored*--exact*m::a*) ;; *) echo \"wrong arguments: $*\"; exit 2;; esac\nif [ \"$LICO_BIN\" != /the/binary ]; then echo no binary; exit 3; fi\nsleep \"$NAP\"\necho 'test result: ok. 1 passed; 0 failed; 1 ignored'\n").unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let entry = |seconds: u64| system::parse(&list_text("").replace("seconds = 60", &format!("seconds = {seconds}"))).unwrap().remove(0);
+    let env = |nap: &str| vec![("LICO_BIN".to_string(), "/the/binary".to_string()), ("NAP".to_string(), nap.to_string())];
+    let ok = system::run_one(&script, &entry(60), &env("0.3"), &dir);
+    assert!(ok.passed && ok.problem.is_none() && ok.wall_s >= 0.3 && ok.peak_mib >= 0.0, "{ok:?}");
+    let slow = system::run_one(&script, &entry(1), &env("1.5"), &dir);
+    assert!(slow.passed && slow.problem.as_deref().is_some_and(|p| p.contains("over its budget of 1 seconds")), "{slow:?}");
+    let wrong = system::run_one(&script, &system::parse(&list_text("").replace("m::a", "m::other")).unwrap().remove(0), &env("0"), &dir);
+    assert!(!wrong.passed && wrong.problem.as_deref().is_some_and(|p| p.contains("did not pass")), "{wrong:?}");
+    let nothing = system::run_one(&dir.join("no_such_binary"), &entry(60), &env("0"), &dir);
+    assert!(!nothing.passed && nothing.problem.is_some(), "{nothing:?}");
+}
+
+#[test]
+fn recording_writes_what_was_measured_next_to_each_test_and_nothing_else_changes() {
+    let mut entries = system::parse(&list_text("")).unwrap();
+    let results = vec![system::Outcome { passed: true, wall_s: 4.234, peak_mib: 81.26, problem: None }];
+    system::apply(&mut entries, &results);
+    let text = system::render(&entries);
+    let again = system::parse(&text).unwrap();
+    assert_eq!((again[0].measured_mib.as_deref(), again[0].measured_seconds.as_deref()), (Some("81.3"), Some("4.2")));
+    assert_eq!((again[0].name.as_str(), again[0].path.as_str(), again[0].why.as_str(), again[0].mib, again[0].seconds), ("a", "m::a", "needs the real host", 512, 60));
+    // a failed run records nothing
+    let before = again.clone();
+    let mut kept = again;
+    system::apply(&mut kept, &[system::Outcome { passed: false, wall_s: 9.0, peak_mib: 9.0, problem: Some("x".into()) }]);
+    assert_eq!(kept[0].measured_mib, before[0].measured_mib);
+}

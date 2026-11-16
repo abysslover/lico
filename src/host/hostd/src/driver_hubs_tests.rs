@@ -243,3 +243,22 @@ fn a_deleted_session_is_not_started_by_a_driver_and_a_deferred_reply_goes_to_the
     assert_eq!(entries(&log), ["start", "input peer1 a peer's reply"]);
     assert!(s.busy && s.peer_turn.deferred_replies.is_empty());
 }
+
+#[test]
+fn the_socket_door_and_the_http_door_make_the_same_session_of_a_driver_kind() {
+    let request = |kind: &str| -> Map<String, Value> {
+        json!({"op": "session.create", "kind": kind, "endpoint": "127.0.0.1:11434", "api": "ollama", "model": "qwen", "context_tokens": 4096, "name": "mine"}).as_object().unwrap().clone()
+    };
+    let mut answers = Vec::new();
+    for via_http in [false, true] {
+        let (shared, log, kind) = world(if via_http { "door_http" } else { "door_socket" });
+        let map = request(kind);
+        assert!(crate::ipc::valid_request("session.create", &map), "the one check serves both doors");
+        let reply = crate::ipc::dispatch_request(&shared, "session.create", &map, via_http).expect("the operation is served at this door").unwrap();
+        let found = crate::core::find(&shared, reply["session"].as_str().unwrap()).unwrap();
+        let s = found.lock().unwrap();
+        answers.push((reply.keys().cloned().collect::<Vec<_>>(), s.provider == kind, s.settings.name.clone(), s.settings.target.clone(), entries(&log)));
+    }
+    assert_eq!(answers[0], answers[1], "the same answer, the same session, the same start from either door");
+    assert_eq!(answers[0].2.as_deref(), Some("mine"));
+}

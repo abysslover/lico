@@ -7,4 +7,5 @@ pub mod components;
 pub mod graph;
 pub mod runner;
 pub mod sha256;
+pub mod system;
 pub mod toml;
