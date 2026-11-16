@@ -1,0 +1,19 @@
+[package]
+name = "lico-llm-fake"
+version = "0.1.0"
+edition = "2021"
+description = "A scripted fake of a Local LLM server (OpenAI-compatible and Ollama replies, with failures) on an ephemeral loopback port, for tests."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[package.metadata.lico]
+purpose = "A scripted fake of a Local LLM server on an ephemeral loopback port: replies in the shapes of the OpenAI-compatible and Ollama documentation, and scripted failures, so that the client and the tool loop are tested without a real server."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
