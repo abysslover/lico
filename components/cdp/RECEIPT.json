@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 2.2,
+    "compile_s": 1.3,
     "peak_mib": 3.2,
-    "wall_s": 1.81
+    "wall_s": 0.7
   },
   "date": "2026-11-16",
-  "hash": "634a900cc81baec1eb71c989822ee8bfc528b6711646edee180c4690da3b4544",
+  "hash": "29ea152cc787cd50ff6e8a69b78a5413a9cfb6507cf149375e1704d883d466c3",
   "inputs": {
     "dependencies": [
       {
@@ -18,7 +18,7 @@
         "name": "lico-ws"
       },
       {
-        "hash": "26af40495790965856bf1ea945cd6ea6514fd4e69fa2d43a6b53c6dc9b541e54",
+        "hash": "8ef1e31365df2fe4b6a1d1a6e90be0bfb33f1b39ef62f7ce8b2e89401325e11f",
         "name": "lico-cdp-fake (dev)"
       }
     ],
@@ -38,7 +38,7 @@
       ],
       [
         "tests/contract.rs",
-        "51a1628e1c18a0aa1aa69d1ae0ca5926729f873cc5cef8f833e4b424826e6bf3"
+        "b1856f236e69fc54cdf27ee133bfdd153b6b44d440c3416b6dc13c88fddbca3b"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",

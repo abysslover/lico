@@ -4,6 +4,7 @@ use lico_cdp::*;
 use lico_cdp_fake::{screencast_frame, Answer, Fake, Script};
 use serde_json::{json, Value};
 use std::net::{SocketAddr, TcpListener};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -184,25 +185,33 @@ fn an_endpoint_that_ends_is_closed_and_stays_closed() {
 }
 
 #[test]
-fn what_is_not_a_cdp_message_is_a_protocol_error_and_ends_the_connection() {
+fn what_is_not_a_cdp_message_is_a_protocol_error_and_ends_the_connection_at_once() {
     for bad in ["not json", "[1,2]", "42", "{\"neither\": true}", "{\"id\": \"x\", \"result\": 1}"] {
+        let (release, wait) = mpsc::channel::<()>();
         let (addr, h) = raw(move |mut c| {
             let _ = text(&mut c);
             let _ = c.send_text(bad);
-            thread::sleep(Duration::from_millis(300));
+            let _ = wait.recv_timeout(Duration::from_secs(5)); // the socket stays open: the client must end the connection by itself
         });
         let mut c = Client::connect(addr, "/", None, &limits()).unwrap();
         assert!(matches!(c.call("A.b", json!({}), None, SEC), Err(Error::Protocol(_))), "{bad}");
+        let t = Instant::now();
         assert_eq!(c.call("A.b", json!({}), None, SEC), Err(Error::Closed), "{bad}: the connection is over");
+        assert_eq!(c.next_event(SEC), Err(Error::Closed));
+        assert!(t.elapsed() < Duration::from_millis(500), "{bad}: refused without asking the socket: {:?}", t.elapsed());
+        release.send(()).unwrap();
         h.join().unwrap();
     }
-    let (addr, h) = raw(|mut c| {
+    let (release, wait) = mpsc::channel::<()>();
+    let (addr, h) = raw(move |mut c| {
         let _ = text(&mut c);
         let _ = c.send_binary(&[1, 2, 3]);
-        thread::sleep(Duration::from_millis(300));
+        let _ = wait.recv_timeout(Duration::from_secs(5));
     });
     let mut c = Client::connect(addr, "/", None, &limits()).unwrap();
     assert!(matches!(c.call("A.b", json!({}), None, SEC), Err(Error::Protocol(_))), "a binary message");
+    assert_eq!(c.call("A.b", json!({}), None, SEC), Err(Error::Closed));
+    release.send(()).unwrap();
     h.join().unwrap();
 }
 

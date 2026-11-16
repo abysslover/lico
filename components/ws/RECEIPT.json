@@ -5,9 +5,9 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.0,
-    "peak_mib": 3.6,
-    "wall_s": 0.85
+    "compile_s": 0.1,
+    "peak_mib": 3.4,
+    "wall_s": 0.93
   },
   "date": "2026-11-16",
   "hash": "2dc7b8544b696f807814bdeb75bdd91c700768a9c4420bc405fbf6d661424a2d",

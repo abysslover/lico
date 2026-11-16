@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 2.2,
-    "peak_mib": 3.0,
+    "compile_s": 1.4,
+    "peak_mib": 3.2,
     "wall_s": 0.57
   },
   "date": "2026-11-16",
-  "hash": "26af40495790965856bf1ea945cd6ea6514fd4e69fa2d43a6b53c6dc9b541e54",
+  "hash": "8ef1e31365df2fe4b6a1d1a6e90be0bfb33f1b39ef62f7ce8b2e89401325e11f",
   "inputs": {
     "dependencies": [
       {
@@ -34,7 +34,7 @@
       ],
       [
         "tests/contract.rs",
-        "2cea55f411402fced8536d184d60fd44a72408e6aa7e312c58a069bc00d1375b"
+        "c682bdbce007542b3e745434bc11d7455b603aa37e73549ec06abda54f126806"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",

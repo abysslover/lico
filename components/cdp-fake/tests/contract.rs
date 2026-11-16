@@ -145,11 +145,13 @@ fn a_required_token_is_checked_before_the_upgrade_and_before_a_plain_answer_and_
 
 #[test]
 fn plain_http_rules_answer_by_path_and_the_rest_is_a_404() {
+    let started = Instant::now();
     let fake = Fake::start(Script::new().http("/json/version", 200, r#"{"webSocketDebuggerUrl":"ws://127.0.0.1:1/x"}"#).http("/json/new", 405, "no")).unwrap();
     assert_eq!(http_get(fake.addr(), "/json/version", None), (200, r#"{"webSocketDebuggerUrl":"ws://127.0.0.1:1/x"}"#.to_string()));
     assert_eq!(http_get(fake.addr(), "/json/version?x=1", None).0, 200, "the query is not part of the match");
     assert_eq!(http_get(fake.addr(), "/json/new", None).0, 405);
     assert_eq!(http_get(fake.addr(), "/missing", None).0, 404);
+    assert!(started.elapsed() < Duration::from_secs(2), "each answer ends its connection at once: {:?}", started.elapsed());
 }
 
 #[test]
@@ -158,8 +160,11 @@ fn a_message_that_is_not_a_json_object_or_is_too_big_ends_the_connection() {
     for bad in ["not json", "[1,2]", "{\"id\": \"x\"}", "{\"method\": 5}"] {
         let mut c = open(fake.addr(), None).unwrap();
         c.send_text(bad).unwrap();
-        assert!(matches!(c.recv(), Ok(Message::Close { .. }) | Err(Error::Closed)), "{bad}");
+        assert!(matches!(c.recv(), Ok(Message::Close { code: Some(1007), .. })), "{bad}: closed with the code of invalid data");
     }
+    let mut c = open(fake.addr(), None).unwrap();
+    c.send_binary(&[1, 2, 3]).unwrap();
+    assert!(matches!(c.recv(), Ok(Message::Close { code: Some(1003), .. })), "a binary message: the code of unsupported data");
     let mut c = open(fake.addr(), None).unwrap();
     c.send_text(&format!("{{\"id\":1,\"method\":\"X.y\",\"params\":{{\"pad\":\"{}\"}}}}", "a".repeat(2000))).unwrap();
     assert!(matches!(c.recv(), Ok(Message::Close { .. }) | Err(Error::Closed)), "over the cap");
