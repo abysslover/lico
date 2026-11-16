@@ -1,4 +1,4 @@
-# lico-cdp-fake 0.1.1 — specification
+# lico-cdp-fake 0.2.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages: `{id, method, params, sessionId}` calls, `{id, result}` or `{id, error: {code, message}}` replies, `{method, params, sessionId}` events; the error code `-32601` for an unknown method), **PROPOSED** (the screencast frame event in the Chrome shape: the engine may differ; re-fitted after the measurement of M17-P03).
 
@@ -29,7 +29,7 @@ A reply carries the `sessionId` of the call it answers (none if the call had non
 
 ## Invariants
 
-1. Loopback only: it binds `127.0.0.1` with port 0 and names no other address.
+1. Loopback only: `Fake::start` binds `127.0.0.1` with port 0; `Fake::start_at(addr, script)` (0.2.0) binds the given address, which must be a loopback one (`InvalidInput` otherwise) and a port in use is an error.
 2. The token is checked first: with a required token, a head without `Authorization: Bearer TOKEN` (plain or upgrade) is a 401 and nothing else is done; the token appears in no `Debug` of this crate.
 3. Recorded: every head with a complete request line is recorded, and every call (a text message that is a JSON object with a numeric `id` and a string `method`), answered by a rule or not. A message that is not one ends the connection with the close code 1007 and is not a call; a binary message ends it with 1003.
 4. Stoppable: `stop` returns within about 2 s whatever the connections do (a `silent` or an idle one included): every connection is shut down.
@@ -38,4 +38,4 @@ A reply carries the `sessionId` of the call it answers (none if the call had non
 
 ## Versioning and budget
 
-`0.1.1`: the cap follows `lico-ws 0.2.0` (4 MiB); `0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.2.0` (M17-P06, mail 150): `start_at` and `Script::observe(f)`, a function that runs for every call before its reply, and `Script::on_fn(method, f)`, a rule whose answer is built from the call, both used by the fake engine program; `0.1.1`: the cap follows `lico-ws 0.2.0` (4 MiB); `0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.

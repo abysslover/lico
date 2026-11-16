@@ -207,3 +207,53 @@ fn the_screencast_frame_has_the_chrome_shape() {
     let p = screencast_frame(3, "QUJD", 1200, 800);
     assert_eq!(p, json!({"data": "QUJD", "sessionId": 3, "metadata": {"offsetTop": 0, "pageScaleFactor": 1, "deviceWidth": 1200, "deviceHeight": 800, "scrollOffsetX": 0, "scrollOffsetY": 0, "timestamp": 0}}));
 }
+
+// ---- 0.2.0: a given address, and an observer ---------------------------------------------------------------------------------------------------------
+
+fn free_loopback_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+}
+
+#[test]
+fn start_at_listens_on_the_given_loopback_address_and_refuses_any_other() {
+    let addr: SocketAddr = format!("127.0.0.1:{}", free_loopback_port()).parse().unwrap();
+    let fake = Fake::start_at(addr, Script::new().on("A.b", Answer::result(json!({"ok": true})))).unwrap();
+    assert_eq!(fake.addr(), addr);
+    let mut c = open(addr, None).unwrap();
+    assert_eq!(call(&mut c, 1, "A.b", json!({}), None), json!({"id": 1, "result": {"ok": true}}));
+    // the port is taken now: a second start there is an error, not a silent second listener
+    assert!(Fake::start_at(addr, Script::new()).is_err());
+    for bad in ["0.0.0.0:0", "192.0.2.1:9"] {
+        let e = Fake::start_at(bad.parse().unwrap(), Script::new()).err().unwrap();
+        assert_eq!(e.kind(), std::io::ErrorKind::InvalidInput, "{bad}: loopback only");
+    }
+}
+
+#[test]
+fn an_observer_sees_each_call_before_the_reply_is_sent() {
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let s2 = seen.clone();
+    let fake = Fake::start(Script::new().observe(move |c| s2.lock().unwrap().push(format!("{}:{}", c.method, c.params))).on("A.b", Answer::result(json!({})))).unwrap();
+    let mut c = open(fake.addr(), None).unwrap();
+    // the reply is sent after the observer ran, so when it is in, the observer has already seen the call
+    call(&mut c, 1, "A.b", json!({"n": 1}), None);
+    assert_eq!(seen.lock().unwrap().clone(), vec!["A.b:{\"n\":1}".to_string()]);
+    call(&mut c, 2, "No.rule", json!({}), None);
+    assert_eq!(seen.lock().unwrap().len(), 2, "a call with no rule is observed too");
+}
+
+#[test]
+fn a_dynamic_rule_builds_its_answer_from_the_call_and_obeys_its_count_rules_like_a_fixed_one() {
+    let fake = Fake::start(Script::new().on_fn("Page.navigate", |c| {
+        let url = c.params["url"].as_str().unwrap_or("").to_string();
+        Answer::result(json!({"frameId": "F1"})).event_in("S1", "Page.frameNavigated", json!({"frame": {"url": url}}))
+    })).unwrap();
+    let mut c = open(fake.addr(), None).unwrap();
+    let reply = call(&mut c, 1, "Page.navigate", json!({"url": "http://a.test/"}), Some("S1"));
+    assert_eq!(reply, json!({"id": 1, "result": {"frameId": "F1"}, "sessionId": "S1"}));
+    let event = next_json(&mut c);
+    assert_eq!(event, json!({"method": "Page.frameNavigated", "params": {"frame": {"url": "http://a.test/"}}, "sessionId": "S1"}));
+    let reply = call(&mut c, 2, "Page.navigate", json!({"url": "http://b.test/"}), Some("S1"));
+    assert_eq!(reply["id"], json!(2));
+    assert_eq!(next_json(&mut c)["params"]["frame"]["url"], json!("http://b.test/"), "the answer is built again for each call");
+}

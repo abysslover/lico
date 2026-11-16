@@ -70,8 +70,14 @@ impl Answer {
 
 struct Rule {
     method: String,
-    answer: Answer,
+    answer: Made,
     left: Option<usize>,
+}
+
+#[derive(Clone)]
+enum Made {
+    Fixed(Answer),
+    FromCall(Arc<dyn Fn(&Call) -> Answer + Send + Sync>),
 }
 
 struct Plain {
@@ -87,7 +93,10 @@ pub struct Script {
     plain: Vec<Plain>,
     idle: Option<Duration>,
     max_message: Option<usize>,
+    observer: Option<Observer>,
 }
+
+type Observer = Arc<dyn Fn(&Call) + Send + Sync>;
 
 impl Script {
     pub fn new() -> Script {
@@ -103,15 +112,26 @@ impl Script {
         self
     }
     pub fn on(mut self, method: &str, answer: Answer) -> Script {
-        self.rules.push(Rule { method: method.to_string(), answer, left: None });
+        self.rules.push(Rule { method: method.to_string(), answer: Made::Fixed(answer), left: None });
+        self
+    }
+    /// A rule whose answer is built from the call each time (a fake engine echoes the address a page navigated to); it may also do what the call would do.
+    pub fn on_fn(mut self, method: &str, f: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Script {
+        self.rules.push(Rule { method: method.to_string(), answer: Made::FromCall(Arc::new(f)), left: None });
         self
     }
     pub fn times(mut self, n: usize, method: &str, answer: Answer) -> Script {
-        self.rules.push(Rule { method: method.to_string(), answer, left: Some(n) });
+        self.rules.push(Rule { method: method.to_string(), answer: Made::Fixed(answer), left: Some(n) });
         self
     }
     pub fn idle(mut self, idle: Duration) -> Script {
         self.idle = Some(idle);
+        self
+    }
+    /// `f` runs for every call (answered by a rule or not) on the connection's thread, BEFORE the reply is sent: a fake engine uses it to do what a call would do (fetch a page
+    /// through its proxy, end itself). It must not block for long: the connection waits for it.
+    pub fn observe(mut self, f: impl Fn(&Call) + Send + Sync + 'static) -> Script {
+        self.observer = Some(Arc::new(f));
         self
     }
     pub fn max_message(mut self, n: usize) -> Script {
@@ -156,6 +176,7 @@ struct State {
     plain: Vec<Plain>,
     idle: Duration,
     max_message: usize,
+    observer: Option<Observer>,
     calls: Mutex<Vec<Call>>,
     heads: Mutex<Vec<Seen>>,
     stop: AtomicBool,
@@ -170,7 +191,16 @@ pub struct Fake {
 
 impl Fake {
     pub fn start(script: Script) -> std::io::Result<Fake> {
-        let listener = TcpListener::bind("127.0.0.1:0")?;
+        Fake::start_at(SocketAddr::from(([127, 0, 0, 1], 0)), script)
+    }
+
+    /// Like `start`, at a given loopback address (a fake engine listens on the port its host picked). A non-loopback address is `InvalidInput`; a port in use is the
+    /// listener's own error.
+    pub fn start_at(addr: SocketAddr, script: Script) -> std::io::Result<Fake> {
+        if !addr.ip().is_loopback() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the fake listens on a loopback address only"));
+        }
+        let listener = TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
         let state = Arc::new(State {
@@ -179,6 +209,7 @@ impl Fake {
             plain: script.plain,
             idle: script.idle.unwrap_or(CONNECTION_IDLE),
             max_message: script.max_message.unwrap_or(MAX_MESSAGE),
+            observer: script.observer,
             calls: Mutex::new(Vec::new()),
             heads: Mutex::new(Vec::new()),
             stop: AtomicBool::new(false),
@@ -296,8 +327,12 @@ fn serve(mut stream: TcpStream, st: &Arc<State>) {
             let _ = conn.close(1007);
             return;
         };
-        st.calls.lock().unwrap().push(Call { method: method.clone(), params, session_id: session.clone() });
-        let answer = take_rule(st, &method);
+        let call = Call { method: method.clone(), params, session_id: session.clone() };
+        st.calls.lock().unwrap().push(call.clone());
+        if let Some(f) = &st.observer {
+            f(&call);
+        }
+        let answer = take_rule(st, &call);
         if !run(&mut conn, id, &method, session.as_deref(), answer) {
             return;
         }
@@ -314,13 +349,19 @@ fn parse(text: &str) -> Option<(u64, String, Value, Option<String>)> {
     Some((id, method, params, session))
 }
 
-fn take_rule(st: &Arc<State>, method: &str) -> Option<Answer> {
+fn take_rule(st: &Arc<State>, call: &Call) -> Option<Answer> {
+    let method = call.method.as_str();
     let mut rules = st.rules.lock().unwrap();
     let rule = rules.iter_mut().find(|r| r.method == method && r.left != Some(0))?;
     if let Some(n) = rule.left.as_mut() {
         *n -= 1;
     }
-    Some(rule.answer.clone())
+    let made = rule.answer.clone();
+    drop(rules);
+    Some(match made {
+        Made::Fixed(a) => a,
+        Made::FromCall(f) => f(call),
+    })
 }
 
 /// False when the connection is to end.
