@@ -39,7 +39,7 @@ A WebSocket connection between two ends on this machine: the client role (always
 3. The rules of the RFC that a peer can break are `Protocol`: reserved bits, an unknown opcode, a fragmented control frame, a control frame over 125 bytes, a continuation with nothing to continue, a new message while one is open, a length with the top bit set, text that is not UTF-8 (checked on the whole message, so a character split between fragments is fine), a bad close code or reason, a masked frame from a server, an unmasked frame from a client.
 4. The cap is checked from the length in the header: a frame over the cap is `TooBig` before its payload is buffered; the parts of a fragmented message are counted together. After an error the decoder and the connection stay failed (`Closed`).
 5. Client frames are masked with a fresh non-zero mask each; the mask and the key are not secrets (no proxy is in the way), they come from a counter, the clock and the process's random hash keys.
-6. A header value the caller sends (a token) appears in no `Debug`, `Display` or error of this crate.
+6. A header value the caller sends (a token) appears in no `Debug`, `Display` or error of this crate; the `Debug` of a `Head` (server role) hides the values of `Authorization`, `Proxy-Authorization` and `Cookie`.
 7. `recv` never hangs past its timeout (`set_read_timeout`, else `idle`) and ends at once for a `Canceller`; `Drop` shuts the socket down (also when a `Canceller` still holds a duplicate).
 8. The server role is only compiled with the feature `server`; the product's build of the crate has none of it. No thread is ever started.
 

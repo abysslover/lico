@@ -1,0 +1,20 @@
+[package]
+name = "lico-cdp-fake"
+version = "0.1.0"
+edition = "2021"
+description = "A scripted fake of a Chrome DevTools Protocol endpoint (plain HTTP rules, the WebSocket upgrade with an optional bearer token, scripted replies and events) on an ephemeral loopback port, for tests."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lico-ws = { path = "../ws", features = ["server"] }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[package.metadata.lico]
+purpose = "A scripted fake of a CDP endpoint on an ephemeral loopback port: HTTP rules for discovery, the WebSocket upgrade with an optional bearer token, replies and events by method, scripted failures and recorded calls, so that the CDP client is tested without an engine."
+spec = "SPEC.md"
+depends = ["lico-ws"]
+external = []
+budget = { mib = 256, seconds = 30 }

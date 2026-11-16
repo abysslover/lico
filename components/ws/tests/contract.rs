@@ -550,3 +550,22 @@ fn a_ping_from_the_server_is_answered_with_a_pong_of_the_same_bytes_while_the_cl
     assert_eq!(c.recv(), Err(Error::Timeout), "the ping is no message");
     h.join().unwrap();
 }
+
+#[test]
+fn the_head_the_server_role_read_never_shows_a_secret_header_in_debug() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let h = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let head = read_request(&mut s, &fast()).unwrap();
+        tx.send(head.clone()).unwrap();
+        let _ = accept(s, &head, &fast());
+    });
+    let _c = connect(&Request { addr, path: "/p", headers: &[("Authorization", "Bearer SECRET-TOKEN"), ("Cookie", "k=SECRET-COOKIE"), ("X-Plain", "visible")] }, &fast()).unwrap();
+    let head = rx.recv().unwrap();
+    assert_eq!(head.header("authorization"), Some("Bearer SECRET-TOKEN"), "the value is there for whoever checks it");
+    let shown = format!("{head:?}");
+    assert!(!shown.contains("SECRET-TOKEN") && !shown.contains("SECRET-COOKIE") && shown.contains("visible") && shown.contains("authorization"), "{shown}");
+    h.join().unwrap();
+}

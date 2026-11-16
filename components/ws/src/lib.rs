@@ -416,11 +416,23 @@ pub fn connect(req: &Request<'_>, limits: &Limits) -> Result<Conn, Error> {
 
 /// The head of a request read by the server role: names in lower case.
 #[cfg(feature = "server")]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Head {
     pub method: String,
     pub path: String,
     pub headers: Vec<(String, String)>,
+}
+
+/// The headers whose values are secrets: `Debug` of a `Head` shows their names and not their values.
+#[cfg(feature = "server")]
+const SECRET_HEADERS: [&str; 3] = ["authorization", "proxy-authorization", "cookie"];
+
+#[cfg(feature = "server")]
+impl fmt::Debug for Head {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let shown: Vec<String> = self.headers.iter().map(|(n, v)| if SECRET_HEADERS.contains(&n.as_str()) { format!("{n}: <hidden>") } else { format!("{n}: {v}") }).collect();
+        f.debug_struct("Head").field("method", &self.method).field("path", &self.path).field("headers", &shown).finish()
+    }
 }
 
 #[cfg(feature = "server")]
