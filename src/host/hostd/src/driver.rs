@@ -3,6 +3,7 @@
 //! the root. This module depends on nothing of the program (it names no module path of the program): the host's own types reach a driver as `Opaque` handles that the driver, which
 //! knows them, downcasts. Keeping the port this small is what keeps the driver's own dependencies on the hubs out of the cycle the hubs form.
 
+use serde_json::{Map, Value};
 use std::any::Any;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -83,6 +84,50 @@ pub fn register(driver: Arc<dyn Driver>) {
 
 pub fn get(kind: &str) -> Option<Arc<dyn Driver>> {
     DRIVERS.lock().unwrap().iter().find(|d| d.kind() == kind).cloned()
+}
+
+/// Operations that an adapter serves besides its sessions (the browser's `browser.open` and the like): the hubs hand a request whose name an adapter lists to the adapter, for
+/// the socket and for `POST /v1` alike, and tell it when the host stops. The port names no operation itself.
+pub trait Ops: Send + Sync {
+    /// Every operation name this adapter serves.
+    fn names(&self) -> &'static [&'static str];
+    /// Whether `request` is a well-formed `op` (unknown fields are not): the one check both doors use.
+    fn valid(&self, op: &str, request: &Map<String, Value>) -> bool;
+    /// Runs a valid `op`; `shared` is the host's `Arc<Shared>`. The error is a code of the protocol.
+    fn call(&self, shared: &Opaque, op: &str, request: &Map<String, Value>) -> Result<Map<String, Value>, &'static str>;
+    /// The host is stopping: end whatever this adapter runs (processes, threads, files it made).
+    fn stop(&self);
+}
+
+static OPS: Mutex<Vec<Arc<dyn Ops>>> = Mutex::new(Vec::new());
+
+/// Registers an adapter's operations (a second registration that lists a name replaces the first one that listed it).
+pub fn register_ops(ops: Arc<dyn Ops>) {
+    let mut all = OPS.lock().unwrap();
+    all.retain(|o| !o.names().iter().any(|n| ops.names().contains(n)));
+    all.push(ops);
+}
+
+fn serving(op: &str) -> Option<Arc<dyn Ops>> {
+    OPS.lock().unwrap().iter().find(|o| o.names().contains(&op)).cloned()
+}
+
+/// `Some(valid)` when an adapter serves `op`, `None` when none does.
+pub fn ops_valid(op: &str, request: &Map<String, Value>) -> Option<bool> {
+    serving(op).map(|o| o.valid(op, request))
+}
+
+/// `Some(reply)` when an adapter serves `op`, `None` when none does.
+pub fn ops_call(shared: &Opaque, op: &str, request: &Map<String, Value>) -> Option<Result<Map<String, Value>, &'static str>> {
+    serving(op).map(|o| o.call(shared, op, request))
+}
+
+/// The host is stopping: every adapter is told (the list is copied first, so that an adapter may register or take its time without holding the port's lock).
+pub fn stop_all() {
+    let all: Vec<Arc<dyn Ops>> = OPS.lock().unwrap().clone();
+    for ops in all {
+        ops.stop();
+    }
 }
 
 #[cfg(test)]

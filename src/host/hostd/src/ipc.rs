@@ -92,6 +92,9 @@ pub fn valid_label(value: &Value) -> bool {
 
 /// Strict validation mirroring the v1 request schemas: unknown fields are refused.
 pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
+    if let Some(served) = crate::driver::ops_valid(op, request) {
+        return served; // an operation of an adapter (the browser): its own check, for both doors
+    }
     let required: &[&str] = match op {
         "hello" | "capabilities" | "status" | "session.list" | "resources" | "account.list" | "host.stop" | "session.options" | "picture.slot" | "real_screen.stop" | "ssh.hosts" | "llm.discover" | "session.chats" | "call.list" => &[],
         "call.get" | "call.hangup" | "call.close" => &["call"],
@@ -276,6 +279,9 @@ fn transfer_shape(request: &Map<String, Value>) -> bool {
 pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<String, Value>, via_http: bool) -> Option<core::Reply> {
     if via_http && (crate::admin::SOCKET_ONLY_OPS.contains(&op) || (op == "input" && request.contains_key("attachment"))) {
         return Some(Err("bad_request"));
+    }
+    if let Some(reply) = crate::driver::ops_call(&(shared.clone() as crate::driver::Opaque), op, request) {
+        return Some(reply);
     }
     let session = text(request, "session");
     let generation = int(request, "generation");

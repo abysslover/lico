@@ -56,7 +56,7 @@ impl Driver for Dummy {
     }
 }
 
-fn shared(dir: &std::path::Path) -> Arc<Shared> {
+pub(crate) fn shared(dir: &std::path::Path) -> Arc<Shared> {
     std::fs::create_dir_all(dir.join("log")).unwrap();
     std::fs::create_dir_all(dir.join("accounts")).unwrap();
     let cfg = Config {
