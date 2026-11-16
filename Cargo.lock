@@ -716,6 +716,7 @@ version = "0.1.0"
 dependencies = [
  "lico-cdp",
  "lico-png",
+ "lico-proxy",
  "serde_json",
 ]
 

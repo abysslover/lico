@@ -6,11 +6,11 @@
       "seconds": 30
     },
     "compile_s": 1.5,
-    "peak_mib": 64.3,
-    "wall_s": 0.39
+    "peak_mib": 59.6,
+    "wall_s": 0.4
   },
   "date": "2026-11-16",
-  "hash": "518282378089daeff4531c899ba9375356e8685de12d0e2fc6e73fde8e6a58c6",
+  "hash": "165dadfef3ec749e3a1fb17ed1c0bce21734006437965646a34a624a5a61f536",
   "inputs": {
     "dependencies": [
       {
@@ -20,13 +20,17 @@
       {
         "hash": "97178ae5033001963ad80409e7871b9ec8294b8636ab832baaf44f48e6e982d2",
         "name": "lico-png (dev)"
+      },
+      {
+        "hash": "1a1134a228c2ac87b7c5fe8ac02996ed98ba6c355303398a348210ebc25dcf7b",
+        "name": "lico-proxy (dev)"
       }
     ],
     "externals": [],
     "files": [
       [
         "Cargo.toml",
-        "02c7a15af4532bf2f52f4be67afad625e6f90a5d071c6fed95321461a63ac594"
+        "c72f68a59f0b18d2b15a0c05af9134221bb4239577edba214326bb30dc84ab14"
       ],
       [
         "SPEC.md",
@@ -50,16 +54,16 @@
       ],
       [
         "tests/engine_probe.rs",
-        "f08167dbb9b469aff7d0ca9e36d3647117ca470f6ebc3c3f231e2e21dcfa9352"
+        "17a2b7b4522f5889849e364e8558eeef74ded7e52997dacaa082d8d306f8b463"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 27,
+    "count": 28,
     "failed": 0,
-    "ignored": 1,
+    "ignored": 2,
     "passed": 26
   },
   "tool": "lico-xtask 0.1.0",

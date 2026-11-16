@@ -74,7 +74,13 @@ fn fixture() -> Fixture {
                         let head = String::from_utf8_lossy(&buf[..n]).to_string();
                         let path = head.split(' ').nth(1).unwrap_or("").to_string();
                         s3.lock().unwrap().push(path.clone());
+                        let mut extra = String::new();
                         let (ctype, body): (&str, Vec<u8>) = match path.split('?').next().unwrap_or("") {
+                            "/redirect" => {
+                                extra = "Location: /second.html\r\n".into();
+                                ("text/html", b"moved".to_vec())
+                            }
+                            "/hosts.html" => ("text/html; charset=utf-8", format!("<!doctype html><html><head><meta charset=utf-8><title>hosts</title></head><body><img id=i src='http://other.test:{port}/pic.png' width=120 height=80><div id=out>wait</div><script>fetch('/second.html').then(function(r){{return r.text()}}).then(function(t){{document.getElementById('out').textContent='fetched '+t.length;window.__fetched=t.length}}).catch(function(e){{window.__fetched='error '+e}})</script></body></html>").into_bytes()),
                             "/" | "/index.html" => ("text/html; charset=utf-8", INDEX.into()),
                             "/style.css" => ("text/css", CSS.into()),
                             "/app.js" => ("application/javascript", JS.into()),
@@ -83,8 +89,8 @@ fn fixture() -> Fixture {
                             "/anim.html" => ("text/html; charset=utf-8", ANIM.into()),
                             _ => ("text/plain", b"not found".to_vec()),
                         };
-                        let status = if ctype == "text/plain" { "404 Not Found" } else { "200 OK" };
-                        let _ = c.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).as_bytes());
+                        let status = if ctype == "text/plain" { "404 Not Found" } else if !extra.is_empty() { "302 Found" } else { "200 OK" };
+                        let _ = c.write_all(format!("HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len()).as_bytes());
                         let _ = c.write_all(&body);
                     });
                 }
@@ -528,4 +534,217 @@ fn engine_probe() {
     let leftovers: Vec<u32> = processes().into_iter().filter(|p| p.2.starts_with("obscura") || p.2 == "strace").map(|p| p.0).collect();
     m("processes_left_by_name", json!({"pids": leftovers}));
     let _ = HashMap::<u8, u8>::new();
+}
+
+
+// ---- the second measurement (M17-P05): the engine behind the fetch guard `lico-proxy` ----------------------------------------------------------------------
+
+struct Names;
+
+impl lico_proxy::Resolver for Names {
+    /// Only the two names of the fixture, both to loopback: nothing is ever looked up for real.
+    fn resolve(&self, host: &str, _t: Duration) -> std::io::Result<Vec<std::net::IpAddr>> {
+        match host {
+            "origin.test" | "other.test" => Ok(vec!["127.0.0.1".parse().unwrap()]),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "not a name of the fixture")),
+        }
+    }
+}
+
+type Events = std::sync::Arc<Mutex<Vec<lico_proxy::Event>>>;
+
+fn proxy(allow_loopback: bool, token: Option<&str>) -> (lico_proxy::Proxy, Events) {
+    let events: Events = Default::default();
+    let e2 = events.clone();
+    let cfg = lico_proxy::Config {
+        token: token.map(str::to_string),
+        policy: lico_proxy::Policy { allow_loopback },
+        observe: Some(std::sync::Arc::new(move |e: &lico_proxy::Event| e2.lock().unwrap().push(e.clone()))),
+        ..lico_proxy::Config::default()
+    };
+    (lico_proxy::Proxy::start(cfg, std::sync::Arc::new(Names), std::sync::Arc::new(lico_proxy::StdConnector)).unwrap(), events)
+}
+
+fn drain(label: &str, events: &Events, fx: &Fixture) {
+    let ev: Vec<Value> = events.lock().unwrap().drain(..).map(|e| json!({"kind": format!("{:?}", e.kind), "host": e.host, "port": e.port, "authenticated": e.authenticated})).collect();
+    let paths: Vec<String> = fx.seen.lock().unwrap().drain(..).collect();
+    m("proxy_view", json!({"after": label, "proxy_events": ev, "fixture_requests": paths}));
+}
+
+/// `how`: `"env"` gives the proxy to the engine in OBSCURA_PROXY, `"arg"` with `--proxy`, `"none"` not at all. The fence allows TCP to the proxy port only.
+fn start_proxied(engine_dir: &Path, out: &Path, proxy_port: u16, proxy_url: &str, how: &str, allow_private: bool, port_arg: Option<u16>, tag: &str) -> (Engine, Option<u16>) {
+    let port = port_arg.unwrap_or_else(free_port);
+    let token = token();
+    let (home, work) = (out.join(format!("home_{tag}")), out.join(format!("work_{tag}")));
+    for d in [&home, &work] {
+        let _ = std::fs::remove_dir_all(d);
+        std::fs::create_dir_all(d).unwrap();
+    }
+    let mut env = vec![("OBSCURA_CDP_TOKEN".to_string(), token.clone()), ("HOME".to_string(), home.to_string_lossy().into_owned())];
+    if allow_private {
+        env.push(("OBSCURA_ALLOW_PRIVATE_NETWORK".into(), "1".into()));
+    }
+    if how == "env" {
+        env.push(("OBSCURA_PROXY".into(), proxy_url.to_string()));
+    }
+    let fonts = Path::new("/usr/share/fonts/truetype/nanum");
+    let mut read = vec![PathBuf::from("/etc/ld.so.cache"), PathBuf::from("/dev/urandom")];
+    if fonts.exists() {
+        read.push(fonts.to_path_buf());
+    }
+    let conf = Confinement {
+        read_exec: vec![engine_dir.to_path_buf(), "/usr".into(), "/lib".into(), "/lib64".into()],
+        read,
+        read_write: vec![out.to_path_buf(), "/dev/null".into()],
+        connect_ports: if how == "none" { vec![] } else { vec![proxy_port] },
+        bind_ports: if port_arg == Some(0) { vec![] } else { vec![port] },
+        env,
+        cwd: work,
+        ..Confinement::default()
+    };
+    let strace = Path::new("/usr/bin/strace");
+    let mut cmd = Command::new(strace);
+    cmd.args(["-f", "-qq", "-s", "96", "-e", "trace=network,openat,open,execve,bind,listen", "-o"]).arg(out.join(format!("strace_{tag}.txt"))).arg("--").arg(engine_dir.join("obscura"));
+    cmd.arg("serve").arg("--port").arg(port.to_string());
+    if how == "arg" {
+        cmd.arg("--proxy").arg(proxy_url);
+    }
+    if fonts.exists() {
+        cmd.arg("--font-dir").arg(fonts);
+    }
+    confine(&mut cmd, &conf).expect("the confinement can be made");
+    cmd.stdout(Stdio::from(std::fs::File::create(out.join(format!("engine_stdout_{tag}.txt"))).unwrap())).stderr(Stdio::from(std::fs::File::create(out.join(format!("engine_stderr_{tag}.txt"))).unwrap()));
+    let child = cmd.spawn().expect("the confined engine starts");
+    let mut banner_port = None;
+    if port_arg == Some(0) {
+        let t = Instant::now();
+        while t.elapsed() < Duration::from_secs(5) && banner_port.is_none() {
+            std::thread::sleep(Duration::from_millis(100));
+            let text = std::fs::read_to_string(out.join(format!("engine_stdout_{tag}.txt"))).unwrap_or_default();
+            banner_port = text.lines().find_map(|l| l.split("ws://127.0.0.1:").nth(1)).and_then(|r| r.split('/').next()).and_then(|p| p.parse::<u16>().ok());
+        }
+    }
+    (Engine { child, port: banner_port.unwrap_or(port), token }, banner_port)
+}
+
+fn session(engine: &Engine, ws_path: &str) -> Option<Page> {
+    let addr = SocketAddr::from(([127, 0, 0, 1], engine.port));
+    let limits = Limits { connect: Duration::from_secs(3), handshake: Duration::from_secs(5), idle: Duration::from_secs(30), max_message: 32 << 20 };
+    let c = Client::connect(addr, ws_path, Some(&engine.token), &limits).ok()?;
+    let mut page = Page { c, session: None };
+    let target = page.call(method::CREATE_TARGET, cmd::create_target("about:blank"));
+    let id = target["targetId"].as_str()?.to_string();
+    page.session = page.call(method::ATTACH, cmd::attach(&id))["sessionId"].as_str().map(str::to_string);
+    let _ = page.call("Page.enable", json!({}));
+    let _ = page.call("Runtime.enable", json!({}));
+    let _ = page.call(method::SET_VIEWPORT, cmd::set_viewport(1200, 800, 1.0));
+    Some(page)
+}
+
+fn visit(page: &mut Page, label: &str, url: &str) {
+    let t = Instant::now();
+    let nav = page.call(method::NAVIGATE, cmd::navigate(url));
+    let loaded = page.wait_for("Page.loadEventFired", 8000);
+    std::thread::sleep(Duration::from_millis(600));
+    let text = page.eval("document.body ? document.body.innerText.slice(0,200) : null");
+    m("visit", json!({"label": label, "url": url, "navigate": nav, "load_event_ms": loaded.map(|d| d.as_millis() as u64), "total_ms": t.elapsed().as_millis() as u64, "location": page.eval("location.href"), "title": page.eval("document.title"), "body_text": text}));
+}
+
+#[test]
+#[ignore = "needs an extracted engine: LICO_ENGINE_DIR and LICO_PROBE_OUT (see the head of this file)"]
+fn engine_proxy_probe() {
+    let engine_dir = PathBuf::from(std::env::var("LICO_ENGINE_DIR").expect("LICO_ENGINE_DIR")).canonicalize().unwrap();
+    let out = PathBuf::from(std::env::var("LICO_PROBE_OUT").expect("LICO_PROBE_OUT"));
+    std::fs::create_dir_all(&out).unwrap();
+    let out = out.canonicalize().unwrap();
+    m("env", json!({"landlock_abi": lico_sandbox::abi_version().ok(), "strace": Path::new("/usr/bin/strace").exists()}));
+    let fx = fixture();
+    let fxp = fx.port;
+    let mut ws_path = "/devtools/browser".to_string();
+
+    // ---- run 1: the proxy asks for a token, loopback is opted in, the engine is given the proxy in its environment, no private-network switch ----
+    for (variant, allow_private, how, with_token) in [("run1_env_token", false, "env", true), ("run2_arg_token", false, "arg", true)] {
+        let (px, events) = proxy(true, with_token.then_some("probe-token-0123456789abcdef"));
+        let url = format!("http://lico:probe-token-0123456789abcdef@127.0.0.1:{}", px.addr().port());
+        let (mut eng, _) = start_proxied(&engine_dir, &out, px.addr().port(), &url, how, allow_private, None, variant);
+        let root = eng.child.id();
+        if wait_port(eng.port, Duration::from_secs(20)).is_none() {
+            m("failed_to_start", json!({"variant": variant, "stderr": std::fs::read_to_string(out.join(format!("engine_stderr_{variant}.txt"))).unwrap_or_default().chars().take(800).collect::<String>()}));
+            kill_all(root);
+            let _ = eng.child.wait();
+            continue;
+        }
+        m("start", json!({"variant": variant, "how": how, "proxy_port": px.addr().port()}));
+        if let Some(mut page) = session(&eng, &ws_path) {
+            visit(&mut page, "named origin", &format!("http://origin.test:{fxp}/index.html"));
+            drain("named origin", &events, &fx);
+            visit(&mut page, "redirect", &format!("http://origin.test:{fxp}/redirect"));
+            drain("redirect", &events, &fx);
+            visit(&mut page, "two hosts and a script fetch", &format!("http://origin.test:{fxp}/hosts.html"));
+            m("fetched", json!({"value": page.eval("window.__fetched")}));
+            drain("two hosts", &events, &fx);
+            visit(&mut page, "literal loopback address", &format!("http://127.0.0.1:{fxp}/index.html"));
+            drain("literal loopback", &events, &fx);
+            visit(&mut page, "https through CONNECT", &format!("https://origin.test:{fxp}/index.html"));
+            drain("https", &events, &fx);
+            visit(&mut page, "a name the guard does not know", "http://unknown.test/");
+            drain("unknown name", &events, &fx);
+            rss(&format!("{variant}_after_pages"), root);
+            let _ = page.c.call("Browser.close", json!({}), None, Duration::from_secs(2));
+        } else {
+            m("no_session", json!({"variant": variant}));
+        }
+        m("proxy_stats", json!({"variant": variant, "stats": format!("{:?}", px.stats())}));
+        kill_all(root);
+        let _ = eng.child.wait();
+        px.stop();
+        fx.seen.lock().unwrap().clear();
+    }
+
+    // ---- run 3: the same without the token (does the engine send credentials at all?), and loopback NOT opted in ----
+    let (px, events) = proxy(false, None);
+    let url = format!("http://127.0.0.1:{}", px.addr().port());
+    let (mut eng, _) = start_proxied(&engine_dir, &out, px.addr().port(), &url, "env", false, None, "run3_no_token_no_optin");
+    let root = eng.child.id();
+    if wait_port(eng.port, Duration::from_secs(20)).is_some() {
+        if let Some(mut page) = session(&eng, &ws_path) {
+            visit(&mut page, "loopback not opted in", &format!("http://origin.test:{fxp}/index.html"));
+            drain("not opted in", &events, &fx);
+            let _ = page.c.call("Browser.close", json!({}), None, Duration::from_secs(2));
+        }
+    }
+    kill_all(root);
+    let _ = eng.child.wait();
+    px.stop();
+
+    // ---- run 4: the private-network switch ON and loopback opted in: does the engine's own check stand in front of the proxy? ----
+    let (px, events) = proxy(true, None);
+    let url = format!("http://127.0.0.1:{}", px.addr().port());
+    let (mut eng, _) = start_proxied(&engine_dir, &out, px.addr().port(), &url, "env", true, None, "run4_private_switch");
+    let root = eng.child.id();
+    if wait_port(eng.port, Duration::from_secs(20)).is_some() {
+        if let Some(mut page) = session(&eng, &ws_path) {
+            visit(&mut page, "named origin, switch on", &format!("http://origin.test:{fxp}/index.html"));
+            drain("switch on", &events, &fx);
+            let _ = page.c.call("Browser.close", json!({}), None, Duration::from_secs(2));
+        }
+    }
+    kill_all(root);
+    let _ = eng.child.wait();
+    px.stop();
+
+    // ---- run 5: --port 0 ----
+    let (px, _events) = proxy(true, None);
+    let (mut eng, banner) = start_proxied(&engine_dir, &out, px.addr().port(), &format!("http://127.0.0.1:{}", px.addr().port()), "none", false, Some(0), "run5_port0");
+    let root = eng.child.id();
+    let reachable = banner.is_some_and(|p| wait_port(p, Duration::from_secs(5)).is_some());
+    m("port_zero", json!({"banner_port": banner, "reachable": reachable, "stdout": std::fs::read_to_string(out.join("engine_stdout_run5_port0.txt")).unwrap_or_default().lines().filter(|l| l.contains("ws://") || l.contains("port")).collect::<Vec<_>>(), "stderr": std::fs::read_to_string(out.join("engine_stderr_run5_port0.txt")).unwrap_or_default().chars().take(400).collect::<String>()}));
+    kill_all(root);
+    let _ = eng.child.wait();
+    px.stop();
+    fx.stop.store(true, Ordering::SeqCst);
+    let leftovers: Vec<u32> = processes().into_iter().filter(|p| p.2.starts_with("obscura") || p.2 == "strace").map(|p| p.0).collect();
+    m("processes_left_by_name", json!({"pids": leftovers}));
+    let _ = ws_path.len();
+    ws_path.clear();
 }

@@ -14,6 +14,7 @@ path = "src/lib.rs"
 # The ignored measurement test of the engine drives the confined engine with the CDP client; a normal run does not use it.
 lico-cdp = { path = "../cdp" }
 lico-png = { path = "../png" }
+lico-proxy = { path = "../proxy" }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 
 [package.metadata.lico]
