@@ -381,7 +381,7 @@ impl App {
             for (provider, account) in &groups {
                 let qtag = self.ui.quotas.get(account).map(|&(w, s)| super::row::format_quota_list_tag(w, s)).unwrap_or_default();
                 let named = self.ui.rows.iter().find(|r| &r.provider == provider && &r.account == account).map_or_else(|| self.label_of(account), |r| self.row_label(r));
-                items.push(ListItem::Heading(format!("{provider} / {named}{qtag}")));
+                items.push(ListItem::Heading(if provider == "local" { "Local / this machine".to_string() } else { format!("{provider} / {named}{qtag}") }));
                 let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {
@@ -417,6 +417,19 @@ mod tests {
             finished_seq,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_local_sessions_are_listed_under_a_heading_of_their_own_not_under_no_account() {
+        let mut a = app(1.0, false);
+        a.session = "s1".into();
+        let mut local = sample_row("s2", "notes", None);
+        (local.provider, local.account) = ("local".into(), String::new());
+        a.ui.rows = vec![sample_row("s1", "front", None), local];
+        a.refresh_list();
+        assert!(a.ui.list_sig.contains("Local / this machine"), "{}", a.ui.list_sig);
+        assert!(!a.ui.list_sig.contains("local / no account") && !a.ui.list_sig.contains("Local / no account"), "{}", a.ui.list_sig);
+        assert!(a.ui.list_sig.contains("claude / "), "the others keep their heading: {}", a.ui.list_sig);
     }
 
     #[test]

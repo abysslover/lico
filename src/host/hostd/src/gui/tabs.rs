@@ -91,6 +91,8 @@ impl App {
             "G"
         } else if row.provider == "claude" {
             "C"
+        } else if row.provider == "local" {
+            "L"
         } else {
             "X"
         };
@@ -439,5 +441,19 @@ impl App {
         );
         self.ui.tabs_geom.new_rect = Some(n_rect);
         self.ui.tabs_geom.new_global_rect = Some(g_rect);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::scroll_oracle::app;
+    use super::super::Row;
+
+    #[test]
+    fn a_tab_names_its_kind_by_one_letter_and_a_local_session_is_l_not_x() {
+        let a = app(1.0, false);
+        let row = |provider: &str| Row { session: "s".into(), provider: provider.into(), name: "n".into(), cwd: "/w".into(), state: "running".into(), ..Default::default() };
+        let captions: Vec<String> = ["claude", "codex", "local"].iter().map(|k| a.tab_caption(&row(k))).collect();
+        assert!(captions[0].starts_with("C\u{b7}") && captions[1].starts_with("X\u{b7}") && captions[2].starts_with("L\u{b7}"), "{captions:?}");
     }
 }

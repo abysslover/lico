@@ -165,6 +165,7 @@ impl App {
         match self.selected_row() {
             None => Some("no session is open"),
             Some(r) if r.provider.is_empty() => Some("not a provider session"),
+            Some(r) if r.provider == "local" => Some("a local session has no account"),
             Some(r) if r.state == "running" => Some("close the session first"),
             Some(r) if r.state != "disconnected" => Some("the session has ended"),
             Some(_) => None,
@@ -259,6 +260,7 @@ impl App {
         match self.selected_row() {
             None => Some("no session is open"),
             Some(r) if r.provider.is_empty() => Some("not a provider session"),
+            Some(r) if r.provider == "local" => Some("a local session has no permission mode"),
             Some(r) if r.state == "exited" => Some("the session has ended"),
             Some(r) if r.holds_a_turn() => Some("a turn is open"),
             Some(_) => None,
@@ -297,5 +299,22 @@ impl App {
             self.ui.flash = Some(format!("Permission mode: {err}"));
         }
         self.dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod local_tests {
+    use super::super::super::scroll_oracle::app;
+    use crate::gui::ui::Row;
+
+    #[test]
+    fn a_local_session_has_no_account_to_change_and_no_permission_mode_to_switch_and_says_so() {
+        let mut a = app(1.0, false);
+        a.session = "s".into();
+        a.ui.rows = vec![Row { session: "s".into(), provider: "local".into(), state: "disconnected".into(), ..Default::default() }];
+        assert_eq!(a.rebind_reason(), Some("a local session has no account"));
+        assert_eq!(a.mode_reason(), Some("a local session has no permission mode"));
+        a.ui.rows[0].provider = "claude".into();
+        assert_eq!(a.rebind_reason(), None);
     }
 }

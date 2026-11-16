@@ -194,6 +194,9 @@ impl Row {
         } else {
             String::new()
         };
+        if self.provider == "local" {
+            return format!("Local | {model} | {}{extra}", self.state_with_clock(now)); // no account, and no provider permission mode: the host asks for the person's decision per tool
+        }
         format!("{} | {label} | {model} | {}{mode}{issue}{extra}", self.provider, self.state_with_clock(now))
     }
 
@@ -349,6 +352,19 @@ mod tests {
             session: "s".into(), provider: "claude".into(), account: String::new(), model: "m".into(), state: "running".into(), state_at: 100, activity: "working".into(),
             generation: 1, approvals: Vec::new(), issue: String::new(), mode: String::new(), busy_since, last_event_at, stalled, ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_local_session_header_says_local_and_the_model_and_has_neither_an_account_nor_the_provider_mode_words() {
+        let row = Row { session: "s".into(), provider: "local".into(), model: "llama3".into(), state: "running".into(), activity: "idle".into(), mode: "auto".into(), ..Default::default() };
+        let header = row.header_line("no account", 0, false, None);
+        assert!(header.starts_with("Local | llama3 | "), "{header}");
+        assert!(!header.contains("mode") && !header.contains("account") && !header.contains("skipped"), "{header}");
+        let shown = Row { name: "notes".into(), ..row.clone() }.header_line("no account", 0, true, None);
+        assert!(shown.starts_with("Local | llama3 | ") && shown.contains("| notes"), "{shown}");
+        // the other providers keep their header
+        let claude = Row { provider: "claude".into(), ..row }.header_line("Work", 0, false, None);
+        assert!(claude.starts_with("claude | Work | llama3 | ") && claude.contains("mode: auto (permissions skipped)"), "{claude}");
     }
 
     #[test]
