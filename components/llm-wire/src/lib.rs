@@ -5,9 +5,11 @@
 mod decode;
 mod encode;
 mod failure;
+mod show;
 mod types;
 
 pub use decode::{Decoder, MAX_CALLS, MAX_CALL_ARGUMENT_BYTES, MAX_LINE_BYTES, MAX_WHOLE_BYTES};
 pub use encode::{encode, CONTENT_TYPE, MAX_REQUEST_BYTES};
 pub use failure::classify;
+pub use show::{read_show, show_request, Show};
 pub use types::{Api, Done, EncodeError, Encoded, Event, Failure, FailureKind, Framing, Message, Request, StopReason, StreamError, ToolCall, ToolDef, Usage};

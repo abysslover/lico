@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.7,
-    "peak_mib": 15.5,
-    "wall_s": 1.12
+    "compile_s": 0.5,
+    "peak_mib": 17.2,
+    "wall_s": 1.13
   },
   "date": "2026-11-16",
-  "hash": "23a8b8ce29276f8d60063ed5f241949425b2b242ff2a9417841e298f3c0e1862",
+  "hash": "a244a83fcb7abbc6cf8d01d0fd314e20cdc4a078b6ca46beaab5fe2edffa1265",
   "inputs": {
     "dependencies": [],
     "externals": [],
@@ -25,7 +25,7 @@
       ],
       [
         "src/decode.rs",
-        "7e836b13d3a77a986ad6d7bbf8f1a91d67a1f176e458f0011005599219736861"
+        "8f1a2b502ef9c32688afcaeeb8460e583a1d4c463aa127e8d7ff0e0e17f3d836"
       ],
       [
         "src/encode.rs",
@@ -37,7 +37,11 @@
       ],
       [
         "src/lib.rs",
-        "bc8b552f0ea7f36fb72fd541723d911999d9fc87269206c0ce649531a5cf84a1"
+        "22a973e409e37078f6ad6a45eb75f9c070f1ed385e5bba9b7d7a2ee99dbd19b5"
+      ],
+      [
+        "src/show.rs",
+        "d402b71aeb3ffc15d0ffee2b5dc3bf883e755e980ea249771e61c2abdf329b28"
       ],
       [
         "src/types.rs",
@@ -45,11 +49,11 @@
       ],
       [
         "tests/contract.rs",
-        "c699cf2c83570a88eda94c44a3beb3273788e91257d13f2ae31a9e2cac427c84"
+        "e3a187655c0fb7d7b22a60569c11c0c7f0337e99e47f578eec38c6f345efacd6"
       ],
       [
         "tests/reply.rs",
-        "64593d22efa4aca72884200fe32d95851a37aed4d831a46ad4ddc421a9086b92"
+        "93e12d35993044c7edbd087b5e1069325356ce1f19c86d8c2d1ed20666ebcd6f"
       ],
       [
         "tests/samples/ollama_error.ndjson",
@@ -104,10 +108,10 @@
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 29,
+    "count": 31,
     "failed": 0,
     "ignored": 0,
-    "passed": 29
+    "passed": 31
   },
   "tool": "lico-xtask 0.1.0",
   "version": "0.1.0"

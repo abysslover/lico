@@ -162,7 +162,7 @@ fn the_public_names_are_exactly_these() {
         }
     }
     found.sort();
-    let mut expected: Vec<String> = ["encode", "classify", "Decoder", "CONTENT_TYPE", "MAX_REQUEST_BYTES", "MAX_CALLS", "MAX_CALL_ARGUMENT_BYTES", "MAX_LINE_BYTES", "MAX_WHOLE_BYTES", "Api", "Done", "EncodeError", "Encoded", "Event", "Failure", "FailureKind", "Framing", "Message", "Request", "StopReason", "StreamError", "ToolCall", "ToolDef", "Usage"].iter().map(|s| s.to_string()).collect();
+    let mut expected: Vec<String> = ["encode", "classify", "read_show", "show_request", "Show", "Decoder", "CONTENT_TYPE", "MAX_REQUEST_BYTES", "MAX_CALLS", "MAX_CALL_ARGUMENT_BYTES", "MAX_LINE_BYTES", "MAX_WHOLE_BYTES", "Api", "Done", "EncodeError", "Encoded", "Event", "Failure", "FailureKind", "Framing", "Message", "Request", "StopReason", "StreamError", "ToolCall", "ToolDef", "Usage"].iter().map(|s| s.to_string()).collect();
     expected.sort();
     assert_eq!(found, expected);
 }
@@ -174,4 +174,30 @@ fn the_limits_have_the_values_of_the_specification() {
     assert_eq!(MAX_WHOLE_BYTES, 4 * 1024 * 1024);
     assert_eq!(MAX_CALL_ARGUMENT_BYTES, 64 * 1024);
     assert_eq!(MAX_CALLS, 16);
+}
+
+/// SPEC.md, Purpose and Dependencies: the crate is pure (no IO, no clock, no randomness, no global state) and its only dependency is `serde_json`.
+#[test]
+fn the_crate_is_pure_and_has_only_serde_json_as_a_dependency() {
+    let manifest = include_str!("../Cargo.toml");
+    let deps: Vec<&str> = manifest.split("[dependencies]").nth(1).unwrap().lines().skip(1).take_while(|l| !l.starts_with('[')).filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(deps.len(), 1, "{deps:?}");
+    assert!(deps[0].starts_with("serde_json "), "{deps:?}");
+    assert!(!manifest.contains("[dev-dependencies]") && !manifest.contains("[features]"));
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+    let forbidden = ["std::net", "std::fs", "std::time", "std::thread", "std::env", "std::process", "std::io", "unsafe", "static mut", "lazy_static", "OnceLock", "OnceCell", "Atomic", "thread_local", "Instant", "SystemTime", "rand"];
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let code = std::fs::read_to_string(&path).unwrap();
+        for (n, line) in code.lines().enumerate() {
+            let line = line.trim();
+            if line.starts_with("//") {
+                continue;
+            }
+            assert!(!line.starts_with("static ") && !line.starts_with("pub static "), "{}:{}: a global in {line}", path.display(), n + 1);
+            for word in forbidden {
+                assert!(!line.contains(word), "{}:{}: `{word}` in {line}", path.display(), n + 1);
+            }
+        }
+    }
 }

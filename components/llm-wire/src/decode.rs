@@ -430,7 +430,6 @@ fn call_event(id: String, name: String, args: String, value: Option<Value>) -> E
         return bad(id, name, args, "the call has no name");
     }
     let parsed = match value {
-        Some(Value::String(s)) => parse_args(&s),
         Some(v) => Ok(v),
         None => parse_args(&args),
     };

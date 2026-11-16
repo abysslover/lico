@@ -221,6 +221,12 @@ fn the_limits_end_the_reply_with_too_large() {
     ok.extend_from_slice(b"\"}}]}\n\ndata: [DONE]\n\n");
     let e = run(Api::OpenAi, Framing::Stream, &ok);
     assert!(matches!(&e[0], Event::Text(t) if t.len() == MAX_LINE_BYTES - 200), "{}", e.len());
+    // a complete line of one byte over the limit is refused even when it arrives with its newline in one piece
+    let mut over = vec![b'x'; MAX_LINE_BYTES + 1];
+    over.push(b'\n');
+    for api in [Api::OpenAi, Api::Ollama] {
+        assert_eq!(run(api, Framing::Stream, &over), vec![Event::Error(StreamError::TooLarge)], "{api:?}");
+    }
     // arguments over the limit, and more calls than the limit
     let piece = format!("{}", "z".repeat(1024));
     let mut args = String::new();
@@ -369,4 +375,22 @@ fn a_failure_has_a_kind_from_the_status_and_the_words_and_the_servers_text_clean
     let f = classify(Api::OpenAi, 500, "한".repeat(1000).as_bytes());
     assert_eq!(f.message.chars().count(), 300, "the cut is by characters, never inside one");
     assert_eq!(classify(Api::OpenAi, 500, &[0xFF, b'a']).message, "\u{FFFD}a");
+}
+
+// ---- the facts of an Ollama model ----------------------------------------------------------------------------------------------
+
+#[test]
+fn an_ollama_show_request_and_its_answer_give_the_context_size_and_whether_tools_are_known() {
+    let e = show_request("llama3");
+    assert_eq!(e.path, "/api/show");
+    assert_eq!(serde_json::from_slice::<Value>(&e.body).unwrap(), json!({"model": "llama3"}));
+    let both = json!({"capabilities": ["completion", "tools"], "model_info": {"general.architecture": "llama", "llama.context_length": 131072, "llama.block_count": 32}}).to_string();
+    assert_eq!(read_show(both.as_bytes()), Show { context_tokens: Some(131072), tools: Some(true) });
+    let no_tools = json!({"capabilities": ["completion"], "model_info": {"qwen2.context_length": 32768}}).to_string();
+    assert_eq!(read_show(no_tools.as_bytes()), Show { context_tokens: Some(32768), tools: Some(false) });
+    let old = json!({"model_info": {"general.architecture": "llama"}}).to_string();
+    assert_eq!(read_show(old.as_bytes()), Show { context_tokens: None, tools: None }, "a server that does not say gives None, not a guess");
+    assert_eq!(read_show(b"not json"), Show { context_tokens: None, tools: None });
+    assert_eq!(read_show(br#"{"model_info": {"x.context_length": "big"}}"#).context_tokens, None);
+    assert_eq!(read_show(br#"{"capabilities": "tools"}"#).tools, None);
 }
