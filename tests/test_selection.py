@@ -266,27 +266,6 @@ LEGACY_FILES = ["tests/test_korean_ime.py", "tests/test_view_lifecycle.py", "tes
                 "tests/test_protocol_conformance.py"]
 
 
-def collected(*options):
-    done = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", *options, *LEGACY_FILES],
-                          cwd=testmap.REPO, capture_output=True, text=True)
-    return [line for line in done.stdout.splitlines() if "::" in line]
-
-
-def test_the_retired_prototype_clients_and_hosts_run_only_behind_the_legacy_marker():
-    daily = collected()
-    legacy = collected("-o", "addopts=", "-m", "legacy_candidates")
-    ids = lambda rows: sorted(row.split("[")[1].rstrip("]") for row in rows if "[" in row)
-    assert daily and legacy
-    retired = {"a", "b", "c", "c2", "d", "rust_std", "rust_serde"}                                      # clients a b c c2 d; hosts rust_std rust_serde c
-    assert set(ids(legacy)) <= retired
-    assert not set(ids(daily)) & retired, ids(daily)                                                   # the daily run has none of them
-    assert {"a2"} <= set(ids(daily)) and {"oracle", "hostd"} <= set(ids(daily))                        # the product under its old name, the reference host and the product host stay
-    listed = {"a", "b", "c", "c2", "d"} | (set(rig.host_impls()) & {"rust_std", "rust_serde"})         # the two retired hosts are listed where their binaries are built
-    assert listed == set(ids(legacy))                                                                  # nothing is deleted: the marker selects them
-    assert not any("[a2]" in row or "[oracle]" in row or "[hostd]" in row for row in legacy)
-    print(f"daily rows of the five files: {len(daily)}; behind the marker: {len(legacy)} ({', '.join(sorted(set(ids(legacy))))})")
-
-
 def test_the_cargo_job_hands_several_module_filters_to_the_test_binary_not_to_cargo(tmp_path):
     # `cargo test --bin lico a:: b::` is refused ("unexpected argument"); libtest takes any number of filters after `--` (a core.rs change found this)
     argv = suite.cargo_job(["core::", "gui::", "session::"], tmp_path).argv
@@ -477,3 +456,14 @@ def test_a_component_has_a_job_of_its_own_with_its_target_under_the_build_root_a
     assert job.argv == ["cargo", "xtask", "test", "lico-png"] and job.name == "cargo xtask test lico-png"
     assert job.extra_env["CARGO_TARGET_DIR"].startswith(str(receipts.build_root())), "build output stays under the private build root"
     assert suite.verify_job(tmp_path).argv == ["cargo", "xtask", "verify"]
+
+
+def test_the_rig_and_the_tree_know_only_the_product_rows_the_retired_prototypes_are_gone():
+    for name in ("a", "b", "b2", "b3", "c", "c2", "d"):
+        with pytest.raises(ValueError):
+            rig.candidate_command(name, "x")
+    assert rig.candidate_command("a2", "x")[0].endswith("lico-candidate-a2")
+    assert set(rig.HOST_BUILD) == {"hostd"} and not hasattr(rig, "CANDIDATE_ENV")
+    for gone in ("src/lico_measure/legacy.py", "src/lico_measure/hostcmp.py", "src/candidates", "src/host/rust", "src/host/c"):
+        assert not (testmap.REPO / gone).exists(), gone
+    assert "legacy_candidates" not in (testmap.REPO / "pyproject.toml").read_text()

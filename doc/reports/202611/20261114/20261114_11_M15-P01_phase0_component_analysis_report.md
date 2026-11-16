@@ -298,3 +298,5 @@ Honest notes:
 - The Python-to-module mapping is my reading of 117 files; where a test names several modules the table says so and the per-module sums overlap.
 - Time and memory of single Rust tests include process start (median 0.05 s); the sum (171 s) is therefore not what a whole run costs (14 s).
 - Effort figures are my estimates (ASSUMED). Nothing in the repository was changed except this report, its appendix, the plan notes and the index.
+
+> Note (M16-P01, 2026-11-17): the retired prototypes this document names (`src/candidates`, `src/host/rust`, `src/host/c`, `legacy.py`, `hostcmp.py`, the `legacy_candidates` marker) were deleted in M16-P01 on the owner's answer A; git history keeps them at `6712fe5`.

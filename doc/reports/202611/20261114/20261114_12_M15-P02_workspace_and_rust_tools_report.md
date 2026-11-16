@@ -63,3 +63,5 @@ The test selection knows the tools: `testmap.select` names `cargo test -p lico-x
 ## 7. What waits
 
 The answer to mail 114 (the retired prototypes, A or B). P03: the interface specification of `png`, shown to the owner on the screen (the stop of this milestone before P04's last steps).
+
+> Note (M16-P01, 2026-11-17): the retired prototypes this document names (`src/candidates`, `src/host/rust`, `src/host/c`, `legacy.py`, `hostcmp.py`, the `legacy_candidates` marker) were deleted in M16-P01 on the owner's answer A; git history keeps them at `6712fe5`.

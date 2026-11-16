@@ -25,9 +25,9 @@ def collect_p02(out: Path) -> dict:
     results["cli"] = p02.cli_transcript()
     results["input_states"] = p02.input_states_demo()
     results["hostile"] = run_hostd_suite()
-    results["gui_kill"] = {name: p02.gui_kill(name) for name in ("a2", "c2")}
-    results["view_switch"] = {name: p02.view_switch(name) for name in ("a2", "c2")}
-    results["shots"] = {name: p02.gui_kill_shots(name, out / "screens") for name in ("a2", "c2")}
+    results["gui_kill"] = {name: p02.gui_kill(name) for name in ("a2",)}
+    results["view_switch"] = {name: p02.view_switch(name) for name in ("a2",)}
+    results["shots"] = {name: p02.gui_kill_shots(name, out / "screens") for name in ("a2",)}
     return results
 
 

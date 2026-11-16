@@ -1,9 +1,8 @@
 import pytest
 
-from lico_measure import legacy
 from lico_measure.p02 import gui_kill, view_switch
 
-CLIENTS = legacy.clients(["a2", "c2"])
+CLIENTS = ["a2"]
 
 
 @pytest.mark.parametrize("name", CLIENTS)

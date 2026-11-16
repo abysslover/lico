@@ -2,13 +2,12 @@ import time
 
 import pytest
 
-from lico_measure import legacy
 from lico_measure.rig import (
     Client, Host, HostConn, Xvfb, private_dir, session_rgb,
 )
 from lico_measure.xpixel import PixelReader
 
-CANDIDATES = legacy.clients(["a", "a2", "b", "c", "d"])
+CANDIDATES = ["a2"]
 
 
 @pytest.fixture

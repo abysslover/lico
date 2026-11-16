@@ -21,29 +21,9 @@ FONT_FALLBACK = "/usr/share/fonts/truetype/nanum/NanumSquare_acR.ttf"
 
 def candidate_command(name: str, sock: str) -> list[str]:
     build = Path(os.environ.get("LICO_BUILD_ROOT", REPO / "private" / "build"))
-    if name == "a":
-        return [str(build / "a_native" / "release" / "lico-candidate-a"), "--socket", sock,
-                "--font", FONT_PRIMARY, "--font2", FONT_FALLBACK]
-    if name == "a2":
+    if name == "a2":                                    # the product under its old name (`lico-candidate-a2` is a link to `lico`)
         return [str(build / "host_hostd" / "release" / "lico-candidate-a2"), "--socket", sock]
-    if name in ("b", "b2", "b3"):
-        return [str(build / "b_gtk" / "candidate-b"), "--socket", sock]
-    if name == "d":
-        return [str(build / "d_webkit" / "candidate-d"), "--socket", sock]
-    if name in ("c", "c2"):
-        return [str(build / "c_qt" / "candidate-c"), "--socket", sock]
     raise ValueError(name)
-
-
-# environment that distinguishes variants built from the same binary
-CANDIDATE_ENV = {
-    "b2": {"GDK_DEBUG": "gl-disable", "__GLX_VENDOR_LIBRARY_NAME": "none"},
-    # experiment only: an empty libGL stub first on the library path keeps the GL driver stack unmapped
-    "b3": {"GDK_DEBUG": "gl-disable", "LD_LIBRARY_PATH": str(REPO / "private" / "build" / "stubs")},
-    "d": {"WEBKIT_DISABLE_COMPOSITING_MODE": "1", "WEBKIT_DISABLE_DMABUF_RENDERER": "1"},
-    "c": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0"},
-    "c2": {"QT_QPA_PLATFORM": "xcb", "QT_ACCESSIBILITY": "0", "QT_XCB_GL_INTEGRATION": "none"},
-}
 
 
 def short_base(sub: str) -> Path:
@@ -94,8 +74,7 @@ class Xvfb:
         self.proc.wait()
 
 
-HOST_BUILD = {"rust_std": "host_rust_std/release/lico-host", "rust_serde": "host_rust_serde/release/lico-host",
-              "c": "host_c/lico-host-c", "hostd": "host_hostd/release/lico-host"}
+HOST_BUILD = {"hostd": "host_hostd/release/lico-host"}
 
 
 def _host_command(impl: str) -> list[str]:
@@ -210,7 +189,7 @@ class Client:
                "XDG_RUNTIME_DIR": str(home / "run"), "GDK_BACKEND": "x11", "NO_AT_BRIDGE": "1",
                # the one place a rig asks the window to print the text it is given (the `ime` events); the product window prints none
                "LICO_GUI_EVENTS": "1",
-               **CANDIDATE_ENV.get(name, {}), **(extra_env or {})}
+               **(extra_env or {})}
         if DISPLAY_SCALE != 1:
             env["WINIT_X11_SCALE_FACTOR"] = str(DISPLAY_SCALE)
         self.proc = subprocess.Popen(

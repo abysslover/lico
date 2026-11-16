@@ -3,8 +3,7 @@
 The suite is `tests/test_*.py` (pytest) and the Rust unit tests (`cargo test --bin lico`). Tests use synthetic fixtures and
 meaningful failure conditions: host and window lifetime, snapshot and delta continuity, account isolation, an unavailable keyring,
 secret canaries in every sink. Unit, integration and acceptance evidence stay distinct: the **acceptance** group (a clean clone
-builds the same executable twice) has its own command and its own triggers; the daily run leaves it out, and so it does the **legacy**
-group (`lico_measure.legacy`: the retired prototype clients and hosts, kept and runnable, outside the receipts and the budget).
+builds the same executable twice) has its own command and its own triggers; the daily run leaves it out. (The retired prototype clients and hosts were deleted in M16-P01; git history keeps them at `6712fe5`.)
 
 ## Commands
 
@@ -20,7 +19,6 @@ The suite needs Python 3.11 or newer: `requires-python = ">=3.11"` in `pyproject
 | `… run --cold` | ignore receipts (the cold run is the whole suite with none skipped) |
 | `… select --changed [BASE]` | print what a change needs, run nothing |
 | `… acceptance` | the clean-clone build; due when a trigger of `testmap.toml` changes, and before a merge or a release |
-| `… legacy` | the retired prototypes (candidate clients a, b, c, c2, d; host prototypes rust_std, rust_serde, c), marker `legacy_candidates`; on demand, with binaries built by hand; never in `run` |
 | `cargo xtask graph [--cut] [--json OUT]` | (M15) the module graph of the crate read from its source: edges, test-only uses, the cycles, the layers; run it from the repository root |
 | `cargo xtask check` / `verify` / `test NAME [--record]` / `hash NAME` | (M15) the components under `components/`: the manifests and the dependency graph, the receipts against the inputs as they are, the isolated run of one component against its budget (it writes `RECEIPT.json` with `--record`) |
 | `cargo xtask test lico-png` | (M15-P03) the first component's own tests, each test binary alone against its budget; `suite select` names it when a file under `components/png/` changes, with the cargo tests of the program modules that name it |
@@ -42,7 +40,7 @@ Rust module runs; a changed file nobody declared selects everything. `size_allow
 3. **Which class is it, and what does it cost?** Class from the ledger (`python -m lico_measure.ledger_report LEDGER.json`):
    L0 unit (no process), L1 protocol (a host, no display), L2 a window client without a display, L3 end to end on an X server,
    A acceptance (a build or a clone). A new L3 test needs a reason; the ledger gives its seconds and peak MiB. Over 15 s needs an
-   entry in `budget.toml`. Never parametrize a daily test over a retired prototype: `legacy.clients([...])` marks them.
+   entry in `budget.toml`. The only client row is `a2` (the product under its old name).
 4. **Can it share a fixture?** One X server, one host or one input method per module (`captures.ProductWindow`,
    `ime.CompositionRig`) instead of one per test, without making a test depend on the one before it. Wait for a condition
    (the frame counter, a line in the log, a state in the status), never for a fixed sleep.

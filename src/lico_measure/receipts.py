@@ -18,8 +18,7 @@ from pathlib import Path
 from . import testmap
 
 DIRECTORY = testmap.REPO / "private" / "receipts"
-# the executables the daily tests start (see rig.HOST_BUILD and rig.candidate_command): relative to the build root. The retired prototypes
-# (tests marked legacy_candidates) are not here: rebuilding one must not invalidate a receipt of the product's tests.
+# the executables the daily tests start (see rig.HOST_BUILD and rig.candidate_command): relative to the build root.
 BINARIES = ("host_hostd/release/lico", "host_hostd/release/lico-synth-agent")
 
 

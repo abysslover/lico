@@ -17,7 +17,7 @@ from .real_turn import DEFAULT_PROMPT as DEFAULT_REAL_PROMPT
 from .rig import REPO
 
 
-ONLY_FOR = {"glyph_stress": {"a", "a2"}, "korean_ime": {"a", "a2", "b", "c2"}}
+ONLY_FOR = {"glyph_stress": {"a2"}, "korean_ime": {"a2"}}
 
 
 def _capture(*cmd: str) -> str:
@@ -119,21 +119,6 @@ def cmd_bundle(args: argparse.Namespace) -> int:
         return 2
     build_bundle([Path(p) for p in args.raw], Path(args.out), "python -m lico_measure " + " ".join(sys.argv[1:]),
                  _git("rev-parse", "HEAD"))
-    return 0
-
-
-def cmd_hostcmp(args: argparse.Namespace) -> int:
-    from .hostcmp import compare
-
-    dirty = _git("status", "--porcelain")
-    if dirty and not args.allow_dirty:
-        print("refusing to measure a dirty tree (use --allow-dirty to record it)", file=sys.stderr)
-        return 2
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    results = compare()
-    (out / "raw.json").write_text(json.dumps({"hosts": results, "commit": _git("rev-parse", "HEAD"),
-                                               "tree_dirty": bool(dirty), "environment": environment()}, indent=1))
     return 0
 
 
@@ -281,7 +266,7 @@ def _p02_hashes() -> dict:
     hashes = {}
     for name, path in (("lico-host", p02.HOSTD), ("lico", p02.LICO), ("lico-synth-agent", p02.AGENT)):
         hashes[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    hashes.update(_binary_hashes(["a2", "c2"]))
+    hashes.update(_binary_hashes(["a2"]))
     return hashes
 
 
@@ -351,10 +336,6 @@ def main() -> int:
     bundle.add_argument("--out", required=True)
     bundle.add_argument("--allow-dirty", action="store_true")
     bundle.set_defaults(func=cmd_bundle)
-    hostcmp = sub.add_parser("hostcmp", help="compare host implementations by size and memory")
-    hostcmp.add_argument("--out", required=True)
-    hostcmp.add_argument("--allow-dirty", action="store_true")
-    hostcmp.set_defaults(func=cmd_hostcmp)
     p02 = sub.add_parser("p02", help="run the M01-P02 scenarios and experiments")
     p02.add_argument("--out", required=True)
     p02.add_argument("--allow-dirty", action="store_true")

@@ -41,7 +41,7 @@ def screens(out: Path) -> dict:
     Korean typed through the real input method and shown as the agent's echo."""
     out.mkdir(parents=True, exist_ok=True)
     shots: dict[str, dict[str, str]] = {}
-    for name in ("a2", "c2"):
+    for name in ("a2",):
         shots[name] = {}
         with private_dir() as directory:
             xvfb = Xvfb()

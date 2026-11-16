@@ -3,7 +3,6 @@
     pri-heavy --label lico --cap 5G --wait 3600 -- python -m lico_measure.suite run [--changed [BASE]] [--receipts | --cold] [--workers N]
     python -m lico_measure.suite select --changed [BASE]      # print what a change needs, run nothing
     pri-heavy --label lico --cap 5G --wait 3600 -- python -m lico_measure.suite acceptance
-    pri-heavy --label lico --cap 5G --wait 3600 -- python -m lico_measure.suite legacy        # the retired prototypes: never in `run`
 
 `run` builds the product once (not when the hash of its sources is the one the binary was built from), pre-builds the Rust unit
 test binary when cargo tests are selected, and then runs the test files on up to 4 workers, a file at a time, the longest first.
@@ -372,12 +371,6 @@ def acceptance(args):
     return marked("acceptance")
 
 
-def legacy(args):
-    """The retired prototypes (candidate clients a b c c2 d, host prototypes): marked `legacy_candidates`, left out of the daily run, receipts and
-    budget. They need their binaries built by hand under the build root (the GTK, Qt and WebKitGTK development packages); a missing one fails its test."""
-    return marked("legacy_candidates")
-
-
 def select(args):
     files = testmap.tracked()
     every = sorted(f for f in files if re.fullmatch(r"tests/test_[^/]+\.py", f))
@@ -403,9 +396,8 @@ def main(argv=None):
     chooser.add_argument("--changed", nargs="?", const="", default="", metavar="BASE")
     chooser.add_argument("--json", action="store_true")
     sub.add_parser("acceptance", help="the clean-clone build")
-    sub.add_parser("legacy", help="the retired prototype clients and hosts (marker legacy_candidates; hand-built binaries)")
     args = parser.parse_args(argv)
-    return {"run": run, "select": select, "acceptance": acceptance, "legacy": legacy}[args.command](args)
+    return {"run": run, "select": select, "acceptance": acceptance}[args.command](args)
 
 
 if __name__ == "__main__":

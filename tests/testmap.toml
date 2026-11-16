@@ -213,7 +213,7 @@ everything = [
 ]
 
 [acceptance]
-# Test files whose every test is marked `acceptance` or `legacy_candidates`: the daily run collects nothing from them (pytest rc 5),
+# Test files whose every test is marked `acceptance`: the daily run collects nothing from them (pytest rc 5),
 # and only for these files is that a pass - anywhere else a file that collects nothing fails the run. None today.
 only = []
 
@@ -309,16 +309,6 @@ reason = "the simulator of the Claude stream and its capabilities, started by pa
 glob = "src/lico_host/**"
 tests = ["tests/test_protocol_conformance.py"]
 reason = "the reference host in Python, run as `python -m lico_host` by the conformance test"
-
-[[sources]]
-glob = "src/host/rust/**"
-tests = ["tests/test_protocol_conformance.py"]
-reason = "a second Rust host, built and run by the conformance test when present"
-
-[[sources]]
-glob = "src/host/c/**"
-tests = ["tests/test_protocol_conformance.py"]
-reason = "the host in C, built and run by the conformance test when present"
 
 [[inert]]
 glob = "**/*.md"

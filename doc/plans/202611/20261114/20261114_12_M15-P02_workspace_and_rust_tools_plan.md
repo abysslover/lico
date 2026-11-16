@@ -31,3 +31,5 @@
 | 3 | A cycle is refused, a changed file invalidates a receipt, an over-budget run is reported, a differing build is refused | `cargo test -p lico-xtask` (12 tests) |
 | 4 | Two clean clones build the same bytes with the Rust acceptance | `cargo xtask accept` |
 | 5 | The whole suite passes | cold run |
+
+> Note (M16-P01, 2026-11-17): the retired prototypes this document names (`src/candidates`, `src/host/rust`, `src/host/c`, `legacy.py`, `hostcmp.py`, the `legacy_candidates` marker) were deleted in M16-P01 on the owner's answer A; git history keeps them at `6712fe5`.

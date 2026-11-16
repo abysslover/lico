@@ -395,3 +395,5 @@
 | `testmap.py` | 317 | K -> xtask (selection by changed files; superseded by component receipts) | `class Selection`, `glob_match`, `load_map`, `git`, `tracked`, `changed`, `_candidates`, `python_graph`, `importers`, `rust_module`, `_group_heads`, `crate_names`, `rust_uses`, `rust_dependents`, `select`, `render` |
 | `workload.py` | 37 | X | `class Record`, `record`, `records` |
 | `xpixel.py` | 111 | K (pixel and selection reader over libX11) | `class PixelReader` |
+
+> Note (M16-P01, 2026-11-17): the retired prototypes this document names (`src/candidates`, `src/host/rust`, `src/host/c`, `legacy.py`, `hostcmp.py`, the `legacy_candidates` marker) were deleted in M16-P01 on the owner's answer A; git history keeps them at `6712fe5`.
