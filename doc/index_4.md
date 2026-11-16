@@ -121,6 +121,8 @@
 | [M16-P02 report](reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md) | Phase 0 for the Local LLM session: what exists, the model side, the tool loop, security, five components, the cost per phase, ten questions |
 | [M16-P03 plan](plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) | `llm-wire`: the approved interface specification and the steps |
 | [M16-P04 plan](plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | `llm-http` and `llm-fake`: the specification and the steps |
+| [M16-P05 plan](plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) | `convo` and `toolloop`: the approved specifications and the steps |
+| [M16-P06 plan](plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) | The driver port, the adapter and parity (sketch) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
 | [M14-P03 report](reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | Measured budgets, three cold runs, acceptance, `lico 0.3.2`, install |
 
