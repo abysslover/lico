@@ -1,6 +1,6 @@
 # M16-P06 Plan — The Driver Port, the Adapter, CLI and HTTP Parity, System Tests
 
-- Status: approved by the owner on 2026-11-17 (the plan and the spec proposal below, shown on the screen: G2 of P06 and the owner's yes to the spec text, S1 and S2 included); in progress
+- Status: approved by the owner on 2026-11-17 (the plan and the spec proposal below, shown on the screen: G2 of P06 and the owner's yes to the spec text, S1 and S2 included); implemented
 - Version: 1.1.0
 - Branch: `phase/M16-P06-driver-port-and-adapter` (stacked on the P05 tip `5b9e200`)
 - Milestone: [M16](../../../milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md)
@@ -60,3 +60,25 @@ A file `tests/system_tests.toml` (name, why it is on the list, budget 512 MiB an
 
 ## 7. Estimate
 P05 cost about 4.1 USD (measured, spec page included; 1,650 lines against 2,150 estimated). P06: about 1,400 lines (adapter 500, hub edits 150, tests 600, `xtask system` 150) at the measured rate 1.2 to 2 USD per 1,000 lines plus the risk of touching hubs: **4 to 7 USD**. The ledger stood at 133.89 of 235 at the lead's last read.
+
+## Result (2026-11-17, as measured)
+
+**Done in this order** (commits in the branch): the spec text (`f39d174`, applied as accepted), the driver port and the hub hooks (`2e0d471`), `lico-llm-http 0.2.0` with `send_with_head` (`bedb61b`), the adapter `local` (`b4aba84`), the CLI flags, `local-key`, the list of system tests and `cargo xtask system` (`581c12d`), the graph test and the selection fixes, the lock file. About 2,100 lines added in 36 files (source and tests).
+
+| Check | Result |
+|---|---|
+| Host unit tests (`cargo test --bin lico`, `umask 022` and `umask 077`) | `673 passed`, `5 ignored` (the four system tests and the helper test), both umasks; 24 new: the port 3, the hubs through a dummy driver 8, the adapter against the fake server 12 (the key command included), plus the two-doors test |
+| Tools (`cargo test -p lico-xtask`) | `17 passed` (the system list 3 and the graph test 1 are new) |
+| Components | `cargo xtask check` and `verify` pass; `lico-llm-http` is `0.2.0` (26 tests); the others are unchanged |
+| System tests (`cargo xtask system --record`, each alone, the real binary) | all four pass: `0.1 s / 18.8 MiB`, `0.2 s / 18.8 MiB`, `0.4 s / 18.2 MiB`, `0.2 s / 18.0 MiB` (tree peak, test process and host together; budget 512 MiB and 60 s each) |
+| Module graph | 175 modules, 65 nodes, **the cycle is still 48 modules**; `driver` (9 importers) and `local` are outside it, `local` is named only by `unified`; hub fan-in before and after: `core 41 to 42`, `session 35 to 36`, `transfer 15 to 16`, `codex 17 to 18`, `calls 13 to 14`, `folders 22`, `handoff 7` unchanged (each increase is the adapter's own import) |
+| Idle window RSS (3 launches) | scale 1 `25.51 MiB` (`25.23..25.51`), scale 2 `36.65 MiB` (`36.50..36.65`), host `8.21` and `8.19 MiB`; `0.3.3` had `25.65`, `36.62`, `8.27`, `8.30`; limit `< 50 MiB` |
+| Hidden growth, 10 to 100 sessions | `+0.52 MiB` (`0.26..0.52`), limit `+10`; `0.3.3` had `+0.40` |
+| Host RSS with local sessions (one measurement) | `6.38 MiB` with none, `7.12 MiB` with one idle local session, and the same with five |
+| Tool list | `4,849` bytes (writing off) and `5,103` (on), unchanged, limit `5,120` |
+| Release binary | `9,892,560` bytes from the clean commit, `+111,328` bytes (`+1.14 %`) over `0.3.3` (`9,781,232`): the adapter, the port and the four components |
+| Affected host tests (the Python files that start a host and use sessions, 19 files, 196 tests) | 192 passed; 3 failures in `test_selection` were mine (the new modules were not in the test map, and one expectation named one component instead of six) and are fixed; one failure, `test_adapter_contract` (`installed version 0.169.0 is not the pinned 0.167.1`), also fails without any change of mine: the installed provider command is newer than the pinned version |
+| Link scan | 0 dead links in 189 files |
+
+**Honest notes.** (1) The hub hooks, the adapter and the system tests were written before their tests (the first two were then checked by mutation: 26 and 25 mutations, all caught but one unreachable defence); `llm-http` and the list tests were test first. (2) `llm-http` had to grow one function (`send_with_head`): the adapter must know the status before it reads the body, or an error body is read as a stream. (3) The commits that added the dependencies of the program did not include `Cargo.lock`; it was committed afterwards (`chore(M16-P06)`), so those intermediate commits do not build with `--locked`. (4) One test hung for 10 minutes in my own run because it read standard input; it was removed. (5) The key is read from the keyring only after a server answers 401 or 403, which is how LLM-05 is kept without asking the keyring on every request to a server that needs none. (6) Not done here: the window (P07), the whole suite, the version bump, the install.
+
