@@ -97,6 +97,19 @@ Access/refresh tokens owned by Lico are keyring secrets. Serialize refresh per a
 
 Required account tests: A/B concurrent login and request routing, independent refresh/revoke/logout, session binding after a default change, keyring locked/missing, refresh races, cancellation/replayed callback, and a canary secret absent from every collected nonsecret sink.
 
+### Local LLM sessions
+
+| ID | Requirement |
+|---|---|
+| LLM-01 | Discovery of Local LLM endpoints is on demand and read-only: it looks only at sockets that listen on the machine itself (this machine, or an ssh host the person named), with GET requests that have short timeouts, a bounded response, no body, no redirect and no credential, and never in the background; nothing it finds is persisted. |
+| LLM-02 | Discovery reads no other application's configuration or credential file (AUTH-08); it uses the list of listening ports and the HTTP answers only. A server that wants a key is reported as such and no key is tried. |
+| LLM-03 | A discovered endpoint is not a provider or an account until an explicit later flow makes it one; a key for it lives only in the OS keyring (AUTH-01, AUTH-02). |
+| LLM-04 | A Local LLM server becomes a session of its own kind (`local`), chosen by the person next to Claude and Codex, on this machine only. Claude and Codex keep their own sign-in and are never routed to a local model. |
+| LLM-05 | A local session connects only to a loopback address, with no redirect, no proxy and no TLS. A server key is read from the OS keyring for each request, sent only as an `Authorization` header, and is never written to a log, a record, a file or a command line. |
+| LLM-06 | A local session keeps its conversation in an owner-only record (directory mode 0700, file 0600) that holds only what the person typed, what the model answered and the results of its tool calls (each at most 8 KiB): no key, no raw server response, no reasoning text. A torn last line is repaired on opening; any other damage refuses the record. When the conversation no longer fits the model's window, whole oldest turns are left out of what is sent (never from the record) and the person is told. |
+| LLM-07 | The host runs the tool loop: only the tools the host offers can be called, with the approvals every session has (the tools that need none run at once, every other tool leaves its card and ends the turn until the person decides); at most 8 rounds, 4 calls an answer, 16 calls and 10 minutes for one message of the person; a reply that is cut or fails runs no call. |
+| LLM-08 | A local session has no access to files or a shell; a tool for either needs its own requirement and the person's approvals first. |
+
 ## 7. Control surface and event contract
 
 One canonical host implementation serves GUI, CLI and a local REST API. Command IDs and event cursors are stable within the documented protocol version. Auth is enforced even on loopback. Prefer an owner-only OS IPC channel for the GUI; an optional HTTP listener defaults to loopback and validates credentials, Host and Origin. Do not expose remote access in the first release.
