@@ -1,6 +1,6 @@
 # M16 — Retire the Prototypes, and a Found Local LLM Server as Its Own Session Kind (Phase 0)
 
-- Status: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 in progress (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
+- Status: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 implemented (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
 - Version: 1.0.0
 - Approved: 2026-11-17 (the owner's approval of the short plan for P01 and P02)
 - Project: Lico
@@ -23,8 +23,8 @@ The component rules 1.0.1 (new code is new components with a version, downward-o
 |---|---|---|---|---|
 | M16-P01 | Retire the prototypes | [Plan](../../../plans/202611/20261117/20261117_02_M16-P01_retire_prototypes_plan.md) | pending | implemented (`575f757`) |
 | M16-P02 | Phase 0 for the Local LLM session (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md) | implemented; waits for the owner's pick |
-| M16-P03 | `llm-wire` (the pure formats) | [Plan](../../../plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) | pending | approved, in progress |
-| M16-P04 | `llm-http` and `llm-fake` | [Plan](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | pending | approved |
+| M16-P03 | `llm-wire` (the pure formats) | [Plan](../../../plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) | [Report](../../../plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) (the result is in the plan note) | implemented |
+| M16-P04 | `llm-http` and `llm-fake` | [Plan](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | [Result](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) (in the plan note) | implemented |
 | M16-P05.. | `convo`, `toolloop`, the driver port and adapter, the GUI, the release `0.4.0` | sketch in the P02 report | | the lead's next pointer |
 
 ## Cost
