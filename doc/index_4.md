@@ -133,6 +133,7 @@
 | [M17-P03 measurement note](reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md) | The engine run confined for the first time: what the fence does not close, what the engine tried, frames, rendering, input, identity, fonts |
 | [M17-P04 plan](plans/202611/20261117/20261117_16_M17-P04_frame_and_browser_view_plan.md) | `lico-frame`, `lico-browser-view` and the lower frame cap of `lico-ws` |
 | [M17-P05 plan](plans/202611/20261117/20261117_17_M17-P05_lico_proxy_and_second_measurement_plan.md) | `lico-proxy` (the fetch guard) and the second measurement of the engine |
+| [M17-P05 measurement note](reports/202611/20261117/20261117_18_M17-P05_second_measurement_note.md) | The engine behind the fetch guard: it honours the proxy and sends credentials, does no lookup of its own, and the fence needs the guard port only |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |

@@ -1,6 +1,6 @@
 # M17-P05 Plan — `lico-proxy` (the fetch guard) and the Second Measurement
 
-- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, in mail 148 (P05 as in mail 147 sections 2 and 3: the plan note and the approval recorded, then go on; no `question` file; a `done` file and a stop after the measurement); in progress; on the owner's list "for the owner to confirm on return"
+- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, in mail 148 (P05 as in mail 147 sections 2 and 3: the plan note and the approval recorded, then go on; no `question` file; a `done` file and a stop after the measurement); done (measured below); on the owner's list "for the owner to confirm on return"
 - Version: 1.0.0
 - Branch: `phase/M17-P05-lico-proxy-and-second-measurement` (stacked on the P04 tip `25e70e5`)
 - Milestone: [M17](../../../milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md); before it: [P03 note](../../../reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md)
@@ -32,10 +32,10 @@ Pure parts first (the address table, the host rules, the request parser and rewr
 ## Steps
 
 - [x] 1. This note and the approval recorded.
-- [ ] 2. `lico-proxy`: tests red, code, SPEC, receipt, mutation checks, commits (`Cargo.lock` with the new member).
-- [ ] 3. The probe (an ignored test of `lico-sandbox`, next to the P03 probe, with `lico-proxy` as a dev-dependency), written and compiled.
-- [ ] 4. The download of the same archive (`v0.2.6`, SHA-256 `eed986e4...bd76`, the two program hashes of P03) under the conditions of mails 143 and 144, the run under the fence with strace, no real site and no real lookup, the figures; the archive and the extracted files deleted.
-- [ ] 5. The measurement note, the result in this plan, the `done` file (133), and STOP.
+- [x] 2. `lico-proxy`: tests red, code, SPEC, receipt, mutation checks, commits (`Cargo.lock` with the new member).
+- [x] 3. The probe (an ignored test of `lico-sandbox`, next to the P03 probe, with `lico-proxy` as a dev-dependency), written and compiled.
+- [x] 4. The download of the same archive (`v0.2.6`, SHA-256 `eed986e4...bd76`, the two program hashes of P03) under the conditions of mails 143 and 144, the run under the fence with strace, no real site and no real lookup, the figures; the archive and the extracted files deleted.
+- [x] 5. The measurement note, the result in this plan, the `done` file (133), and STOP.
 
 ## Estimate and the stop rule
 
@@ -44,3 +44,16 @@ Pure parts first (the address table, the host rules, the request parser and rewr
 ## Acceptance Criteria
 
 A component with a version, `SPEC.md`, contract tests, a receipt and mutation figures; no real network or lookup in any test; the measurement note answers every question of mail 147 section 3 (P05) with a figure or a plain "not observed" and says what the fence needs; the archive deleted and no process left; the program, its binary and its tests unchanged; `cargo xtask check` and `verify` pass.
+
+## Result (2026-11-17, as measured)
+
+Approved by the lead under the owner's delegation (the owner away); nothing here is accepted (G3 and G4 stay with the owner). The measurement note is [here](../../../reports/202611/20261117/20261117_18_M17-P05_second_measurement_note.md); its first screen says the engine honours the guard and what the fence needs.
+
+| Check | Result |
+|---|---|
+| `lico-proxy 0.1.0` | 30 tests; the own run `3.4 s / 8.0 MiB` (budget 256 MiB, 30 s); about 780 lines of source and 700 of tests; no real name lookup and no real network in any test (fakes for the resolver and the connector; every origin a loopback socket of the test's own) |
+| Red first | the contract tests were written before the code (a compile error), then 23 of 25 passed at once and the two failures were mistakes in the tests (a base64 replacement that changed nothing; a byte count that counted one direction), not in the code |
+| Mutation checks | 82 mutants of the address table, the host rules, the parser, the rewriters and the connection code: 59 caught by the first tests, 15 tests added, **72 caught**; **10 not caught and argued redundant** (a second wall refuses the same input with the same status): the IPv4-compatible IPv6 range and `100::/64` (both also fall to "outside 2000::/3: reserved"), a NUL in the head (also refused as a NUL in a name, a value or a target), a request line with an empty part (the version check refuses it), a folded header (it has no valid name or colon), `https` in absolute form (it is not `http://`), a user name in the address (the host rules refuse the `@` or the port), the token length (the comparison also sees a missing byte), and the total time of a busy tunnel (the read timeout shrinks to the deadline and its own branch ends it) |
+| The second measurement | see the note: the engine honours `--proxy` and `OBSCURA_PROXY`, sends credentials, sends absolute-form for http and `CONNECT` for https, keeps every fetch behind the guard, does no lookup of its own, and the fence needs only the guard's port and the CDP port; `--port 0` does not work under the fence; a refused or failed fetch is a blank page without a CDP error |
+| The program | unchanged (no dependency on the new component); the module graph is the same; the selection test names the component; `cargo xtask check` and `verify` pass |
+| Cost | about 5.1 USD (estimate 4 to 6; the stop rule was 9); the counter since mail 137 passed 50 USD during this phase |
