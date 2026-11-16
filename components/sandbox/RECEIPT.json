@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.4,
-    "peak_mib": 63.4,
-    "wall_s": 0.39
+    "compile_s": 1.7,
+    "peak_mib": 69.0,
+    "wall_s": 0.36
   },
   "date": "2026-11-16",
-  "hash": "255775ecd6e414144b4a9b0cc81a2443748b119087b69f88364192b4b7f6b205",
+  "hash": "0cd6c2d97d831846da6782206b4f87963fd26b46181e722d2bc323e371808630",
   "inputs": {
     "dependencies": [
       {
@@ -50,7 +50,7 @@
       ],
       [
         "tests/engine_probe.rs",
-        "d04048eb4f82bd07bdcfd26505b6eb80d1d363507da8e68854e5f05ee7b4fb3a"
+        "f08167dbb9b469aff7d0ca9e36d3647117ca470f6ebc3c3f231e2e21dcfa9352"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
