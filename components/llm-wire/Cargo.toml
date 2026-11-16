@@ -1,0 +1,19 @@
+[package]
+name = "lico-llm-wire"
+version = "0.1.0"
+edition = "2021"
+description = "The wire formats of two chat APIs (OpenAI-compatible and Ollama) as pure functions: request bodies, streamed replies, failures."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[package.metadata.lico]
+purpose = "Pure translation between Lico's neutral conversation types and the bytes of the OpenAI-compatible and Ollama chat APIs: request bodies, replies read in any split into events, failures and model facts."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
