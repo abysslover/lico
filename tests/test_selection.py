@@ -448,7 +448,7 @@ def test_a_changed_receipt_asks_for_the_receipts_to_be_verified_and_runs_no_test
 
 
 def test_a_build_input_of_the_binary_runs_every_component_too():
-    assert real("Cargo.lock")[0].components == {"lico-png", "lico-convo", "lico-llm-fake", "lico-llm-http", "lico-llm-wire", "lico-toolloop", "lico-ws", "lico-cdp", "lico-cdp-fake"}
+    assert real("Cargo.lock")[0].components == {"lico-png", "lico-convo", "lico-llm-fake", "lico-llm-http", "lico-llm-wire", "lico-toolloop", "lico-ws", "lico-cdp", "lico-cdp-fake", "lico-sandbox"}
 
 
 def test_a_component_has_a_job_of_its_own_with_its_target_under_the_build_root_and_a_verify_job_exists(tmp_path):

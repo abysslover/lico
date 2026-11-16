@@ -1,0 +1,22 @@
+[package]
+name = "lico-sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "Starts a program as a child under a Landlock confinement (files by path, TCP by port), a cleared environment, resource limits and its own session; fails closed when the kernel cannot give what was asked."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+# The ignored measurement test of the engine drives the confined engine with the CDP client; a normal run does not use it.
+lico-cdp = { path = "../cdp" }
+
+[package.metadata.lico]
+purpose = "Starts a program as a child under a Landlock confinement (files by path, TCP connect and bind by port), a cleared environment, resource limits, its own session and death with its parent, and fails closed when the kernel cannot give what was asked."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }

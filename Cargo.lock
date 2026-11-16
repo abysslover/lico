@@ -692,6 +692,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-sandbox"
+version = "0.1.0"
+dependencies = [
+ "lico-cdp",
+]
+
+[[package]]
 name = "lico-toolloop"
 version = "0.1.0"
 dependencies = [

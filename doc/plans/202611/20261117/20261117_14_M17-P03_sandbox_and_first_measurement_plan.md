@@ -1,6 +1,6 @@
 # M17-P03 Plan — `lico-sandbox` and the First Measurement of the Engine
 
-- Status: proposed; waits for the lead's approval under the owner's delegation (the owner away); the order (P03 = the sandbox component and the first measurement, then a stop for a re-plan) and the conditions of the run were given by the lead in mails 143 and 144
+- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, answer to question 130 (mail 146), in progress; the order (P03 = the sandbox component and the first measurement, then a stop for a re-plan) and the conditions of the run were given by the lead in mails 143 and 144
 - Version: 1.0.0
 - Branch: `phase/M17-P03-sandbox-and-first-measurement` (stacked on the P02 tip `23d543c`)
 - Milestone: [M17](../../../milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md); Phase 0: [report](../../../reports/202611/20261117/20261117_12_M17-P01_browser_tab_phase0_report.md)
@@ -66,7 +66,7 @@ What cannot be red first: the three system calls and the `pre_exec` order are th
 
 ## Steps
 
-- [ ] 1. This plan, the specification draft and the question file (130); the lead's approval.
+- [x] 1. This plan, the specification draft and the question file (130); the lead's approval.
 - [ ] 2. `lico-sandbox`: the pure tests red, `plan` and the refusals green; then the denial tests red, the system calls and `confine` green; mutation checks; receipt; commits (`Cargo.lock` with the new member).
 - [ ] 3. The harness (ignored test) written and run once against a harmless program of the system to see it work with no engine (the sandboxed probe path), then the download (announced), the check of the hashes, the run, the figures.
 - [ ] 4. The measurement note (`doc/reports/...`, short, every figure MEASURED, the saved frames listed), the cleanup (archive and extracted files deleted, no process left), the result in this plan, the `done` file, and STOP for the lead.
@@ -78,3 +78,7 @@ What cannot be red first: the three system calls and the `pre_exec` order are th
 ## Acceptance Criteria
 
 `lico-sandbox` with a version, `SPEC.md`, contract tests, a receipt and its mutation figures, its denial tests green before the engine is started; the measurement note with every figure marked and the archive deleted; `cargo xtask check` and `verify` pass; the program, its binary and its tests unchanged; nothing installed; the phase stops with a `done` file.
+
+## Addition of the lead (mail 146): what the engine tries, and what the fence does not close
+
+`strace` is installed on this machine (MEASURED: `/usr/bin/strace`; `ptrace_scope` is 1, so a tracer can follow its own children). During the run the engine is started as the child of `strace -f -e trace=network,openat -o FILE` where the strace is itself the confined child (the confinement is inherited by the engine and its worker; `FILE` is in the scratch directory that the confinement may write). Every `socket`, `connect`, `sendto` and every `openat` that failed with `EACCES` or went outside the fixtures and the system libraries is reported: what the engine tried, not only what it was allowed. The measurement note's first screen says in plain words **what the fence does not close**: abstract Unix sockets (the owner's X server listens on one), UDP, signals to other processes of the same user (and `/proc` of other processes, never opened by the policy), with the residual risk.
