@@ -25,6 +25,11 @@ unicode-linebreak = "=0.1.5"
 x11rb = { version = "=0.13.2", default-features = false, features = ["xtest"] }
 serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 lico-png = { path = "../../../components/png" }
+lico-llm-wire = { path = "../../../components/llm-wire" }
+lico-llm-http = { path = "../../../components/llm-http" }
+lico-convo = { path = "../../../components/convo" }
+lico-toolloop = { path = "../../../components/toolloop" }
 
 [dev-dependencies]
 lico-png = { path = "../../../components/png", features = ["testing"] }
+lico-llm-fake = { path = "../../../components/llm-fake" }

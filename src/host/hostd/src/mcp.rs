@@ -204,7 +204,7 @@ fn offered(tool: &Tool, write_enabled: bool) -> bool {
     tool.name != WRITE_TOOL || write_enabled
 }
 
-fn list(write_enabled: bool) -> Value {
+pub(crate) fn list(write_enabled: bool) -> Value {
     let tools: Vec<Value> = TOOLS.iter().filter(|t| offered(t, write_enabled)).map(|t| json!({"name": t.name, "description": t.description, "inputSchema": schema(t)})).collect();
     json!({"tools": tools})
 }

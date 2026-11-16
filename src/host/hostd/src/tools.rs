@@ -327,7 +327,7 @@ fn mcp_rename(shared: &Arc<Shared>, caller: &str, arguments: &Map<String, Value>
     Ok(json!({"renamed": true, "session": caller, "name": done["name"]}).to_string())
 }
 
-fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
+pub(crate) fn run(shared: &Arc<Shared>, caller: &str, name: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
     match name {
         "sessions" => Ok(Answer::Text(sessions(shared, caller))),
         "send" => {

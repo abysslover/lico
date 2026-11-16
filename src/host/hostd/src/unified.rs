@@ -39,6 +39,7 @@ mod keyring;
 mod leads;
 mod llm;
 mod lifecycle;
+mod local;
 mod lines;
 mod login;
 mod marks;
@@ -74,6 +75,7 @@ const NOTICES: &str = include_str!("../NOTICES.txt");
 
 fn main() {
     memory::init_allocator();
+    driver::register(std::sync::Arc::new(local::Local::new(std::sync::Arc::new(local::Keyring)))); // the session kind `local` (M16-P06)
     let args: Vec<String> = std::env::args().collect();
     let name = std::path::Path::new(&args[0]).file_name().and_then(|n| n.to_str()).unwrap_or("lico").to_string();
     let shifted = |first: &str| -> Vec<String> { std::iter::once(first.to_string()).chain(args.iter().skip(2).cloned()).collect() };
