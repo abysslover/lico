@@ -1,6 +1,6 @@
 # M17-P04 Plan — `lico-frame`, `lico-browser-view` and the lower frame cap of `lico-ws`
 
-- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, in mail 147 (the re-plan of P04 to P09 from the P03 figures; P04 has no stop: this note is written, the approval recorded, and the phase goes on); in progress; every approval of mail 147 is on the list "for the owner to confirm on return"
+- Status: approved by the lead under the owner's delegation (the owner away), 2026-11-17, in mail 147 (the re-plan of P04 to P09 from the P03 figures; P04 has no stop: this note is written, the approval recorded, and the phase goes on); done (measured below); every approval of mail 147 is on the list "for the owner to confirm on return"
 - Version: 1.0.0
 - Branch: `phase/M17-P04-frame-and-browser-view` (stacked on the P03 tip `6a7390c`)
 - Milestone: [M17](../../../milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md); measurements: [P03 note](../../../reports/202611/20261117/20261117_15_M17-P03_first_measurement_note.md)
@@ -31,12 +31,12 @@ Each component starts with its contract tests (compile-red, then red by assertio
 
 ## Steps
 
-- [ ] 1. This note, the approval recorded (the milestone note), `cargo xtask check` as it is.
-- [ ] 2. `lico-ws 0.2.0`: the tests that name the cap change first (red), the constant, the SPEC, the receipt; the fake and `lico-cdp` follow in the same commit (their tests, SPEC text, receipts).
-- [ ] 3. `lico-frame`: tests red, code, SPEC, receipt, mutation checks; the ignored real-frame test run once on the saved frames.
-- [ ] 4. `lico-browser-view`: tests red, code, SPEC, receipt, mutation checks.
-- [ ] 5. `cargo xtask check` and `verify`, the tools tests, the selection test (it names every component), the module graph (unchanged), link scan.
-- [ ] 6. The result in this note, the `done` file (132), and STOP only because P05 starts on the lead's pointer.
+- [x] 1. This note, the approval recorded (the milestone note), `cargo xtask check` as it is.
+- [x] 2. `lico-ws 0.2.0`: the tests that name the cap change first (red), the constant, the SPEC, the receipt; the fake and `lico-cdp` follow in the same commit (their tests, SPEC text, receipts).
+- [x] 3. `lico-frame`: tests red, code, SPEC, receipt, mutation checks; the ignored real-frame test run once on the saved frames.
+- [x] 4. `lico-browser-view`: tests red, code, SPEC, receipt, mutation checks.
+- [x] 5. `cargo xtask check` and `verify`, the tools tests, the selection test (it names every component), the module graph (unchanged), link scan.
+- [x] 6. The result in this note, the `done` file (132), and STOP only because P05 starts on the lead's pointer.
 
 ## Estimate and the stop rule
 
@@ -45,3 +45,18 @@ About 2,300 lines (`lico-frame` 450 + 450 tests, `lico-browser-view` 650 + 700, 
 ## Acceptance Criteria
 
 Two new components and a re-accepted `lico-ws`, each with a version, `SPEC.md`, contract tests, a receipt and mutation figures; `cargo xtask check` and `verify` pass; every commit builds with `--locked` and has no red test; the program, its binary and its tests unchanged.
+
+## Result (2026-11-17, as measured)
+
+Approved by the lead under the owner's delegation (the owner away); nothing here is accepted (G3 and G4 stay with the owner).
+
+| Check | Result |
+|---|---|
+| `lico-ws 0.2.0` | the default cap is 4 MiB (in its own first commit, tests first); `lico-cdp-fake 0.1.1` and `lico-cdp 0.1.1` follow, the receipt of `lico-sandbox` (a dev-dependency) re-recorded; the tests of the four components pass |
+| `lico-frame 0.1.0` | 27 tests and 1 ignored; the own run `0.52 s / 3.4 MiB`; about 600 lines of source and 600 of tests; mutation checks: 39 mutants, 20 caught by the first tests, 7 tests added, 35 caught, 4 equivalent (a literal over the size, which the final size check also refuses and which cannot amplify; a dynamic block without an end code, which fails later with the same error; the Paeth tie between the two neighbours, which cannot change a result because a tie means the third candidate is exact; a palette image without its palette, which the row conversion refuses with the same error) |
+| The real frames | `tests/real_frames.rs` (ignored; reads the frames saved in P03) decodes the four PNG frames of the engine to **the same pixels as an independent decoder** (identical FNV checksums), at **9.2 to 9.8 ms per 1200x800 frame** in a release build (best of five), 3.84 MB decoded each |
+| `lico-browser-view 0.1.0` | 24 tests; the own run `0.07 s / 9.0 MiB`; about 790 lines of source and 480 of tests; mutation checks: 47 mutants, 40 caught by the first tests, tests added for the 7 missed, 47 of 47 |
+| Memory on Lico's side (COMPUTED from the constants and checked by tests) | one decoded picture at most 1920 x 1200 x 4 = 9.2 MB (a 1200x800 frame: 3.84 MB) and one compressed frame at most 4 MiB (the largest seen: 69,612 bytes) per tab; the decode scratch is the same size again and is freed inside `decode`; a hidden tab keeps only the compressed frame. The gate "the window with one shown tab under 50 MiB RSS" is measured in the phases that build the window |
+| Decisions as written | the inflate was written new (not promoted: the test-support one has no output bound and sits behind a feature named `testing`); a frame is acknowledged at once even when hidden or too big; the model keeps its own history |
+| The program | unchanged (no dependency on the new components); the module graph is the same (`178` modules, the cycle `48`); the tools `17 passed`; the selection test names every component; `cargo xtask check` and `verify` pass; every commit builds with `--locked` |
+| Cost | about 3.5 USD (estimate 4 to 5; the stop rule was 7.5) for about 2,500 lines of source and tests together with the three SPECs |
