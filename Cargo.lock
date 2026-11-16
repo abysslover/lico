@@ -686,6 +686,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-ws"
+version = "0.1.0"
+dependencies = [
+ "lico-ws",
+]
+
+[[package]]
 name = "lico-xtask"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,26 @@
+[package]
+name = "lico-ws"
+version = "0.1.0"
+edition = "2021"
+description = "A WebSocket (RFC 6455) connection between two ends on this machine: the client role, and behind a feature the server role for tests; loopback only, no TLS, no extensions."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[features]
+# The server role (read the upgrade request, answer it): only for the fake CDP server and the tests, never in the program's build.
+server = []
+
+[dependencies]
+
+[dev-dependencies]
+# The tests of the client talk to the server role of this same crate.
+lico-ws = { path = ".", features = ["server"] }
+
+[package.metadata.lico]
+purpose = "A WebSocket connection between two ends on this machine: loopback addresses only, the client role (and the server role behind a feature, for tests), message framing with caps, deadlines and cancellation, with no TLS, no proxy, no extensions and no thread."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
