@@ -317,3 +317,19 @@ fn recording_writes_what_was_measured_next_to_each_test_and_nothing_else_changes
     system::apply(&mut kept, &[system::Outcome { passed: false, wall_s: 9.0, peak_mib: 9.0, problem: Some("x".into()) }]);
     assert_eq!(kept[0].measured_mib, before[0].measured_mib);
 }
+
+#[test]
+fn the_adapter_of_the_local_kind_and_the_port_stay_outside_the_cycle_of_the_hubs() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src/host/hostd/src/unified.rs");
+    let g = graph::analyse(&root).expect("the program's source is read");
+    let biggest = g.sccs.iter().map(Vec::len).max().unwrap();
+    assert_eq!(biggest, 48, "the cycle of the hubs is the one measured in M15-P01: a new kind of session must not make it larger");
+    let in_cycle = |m: &str| g.sccs.iter().any(|c| c.len() > 1 && c.iter().any(|x| x == m));
+    assert!(!in_cycle("local") && !in_cycle("driver"), "the adapter and the port are not part of the cycle");
+    let importers = |m: &str| g.prod.keys().filter(|(_, to)| to == m).map(|(from, _)| from.as_str()).collect::<Vec<_>>();
+    assert_eq!(importers("local"), ["unified"], "nothing but the root names the adapter");
+    assert!(g.prod.keys().all(|(from, to)| from != "driver" || to == "driver"), "the port depends on nothing of the program");
+    for hub in ["core", "session", "folders", "transfer", "handoff", "codex"] {
+        assert!(g.prod.keys().all(|(from, to)| !(to == "local" && from == hub)), "{hub} must not name the adapter");
+    }
+}
