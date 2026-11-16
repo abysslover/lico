@@ -17,14 +17,19 @@ pub enum Class {
     Reserved,
 }
 
-/// What a connection may reach: only public addresses, and loopback when the person opted a tab into `localhost`. Nothing else is ever allowed.
+/// What a connection may reach: only public addresses; with `allow_loopback` loopback as well; with `only_loopback` (0.2.0) loopback and NOTHING else, not even public (the
+/// guard of a tab the person opted into this machine's own services: such a tab must never load a public page). Nothing else is ever allowed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Policy {
     pub allow_loopback: bool,
+    pub only_loopback: bool,
 }
 
 impl Policy {
     pub fn allows(&self, class: Class) -> bool {
+        if self.only_loopback {
+            return class == Class::Loopback;
+        }
         class == Class::Public || (self.allow_loopback && class == Class::Loopback)
     }
 }

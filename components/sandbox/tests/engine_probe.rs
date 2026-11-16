@@ -558,7 +558,7 @@ fn proxy(allow_loopback: bool, token: Option<&str>) -> (lico_proxy::Proxy, Event
     let e2 = events.clone();
     let cfg = lico_proxy::Config {
         token: token.map(str::to_string),
-        policy: lico_proxy::Policy { allow_loopback },
+        policy: lico_proxy::Policy { allow_loopback, only_loopback: false },
         observe: Some(std::sync::Arc::new(move |e: &lico_proxy::Event| e2.lock().unwrap().push(e.clone()))),
         ..lico_proxy::Config::default()
     };

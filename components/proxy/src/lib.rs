@@ -81,11 +81,14 @@ pub struct Config {
     pub limits: Limits,
     pub policy: Policy,
     pub observe: Option<Arc<dyn Fn(&Event) + Send + Sync>>,
+    /// Ports on this machine that no destination may use (0.2.0): the host's own listening ports and the engine's, so that a page can never reach them through the guard. Asked
+    /// for a loopback destination only (a public site on the same number is a public site), in every mode.
+    pub deny_port: Option<Arc<dyn Fn(u16) -> bool + Send + Sync>>,
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config { token: None, max_connections: DEFAULT_MAX_CONNECTIONS, limits: Limits::default(), policy: Policy::default(), observe: None }
+        Config { token: None, max_connections: DEFAULT_MAX_CONNECTIONS, limits: Limits::default(), policy: Policy::default(), observe: None, deny_port: None }
     }
 }
 
@@ -457,6 +460,9 @@ fn serve(mut client: TcpStream, sh: &Arc<Shared>) {
         return refuse(sh, &mut client, 403, &req.host, req.port, authenticated); // ANY answer that is not allowed refuses the name
     }
     let all_loopback = ips.iter().all(|ip| classify(*ip) == Class::Loopback);
+    if all_loopback && sh.cfg.deny_port.as_ref().is_some_and(|deny| deny(req.port)) {
+        return refuse(sh, &mut client, 403, &req.host, req.port, authenticated); // a port of this machine's own that no page may reach
+    }
     if !all_loopback && !PUBLIC_PORTS.contains(&req.port) {
         return refuse(sh, &mut client, 403, &req.host, req.port, authenticated);
     }

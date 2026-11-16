@@ -46,7 +46,7 @@ pub struct Entry {
     pub engine: usize,
     pub target: Option<String>,
     pub session: Option<String>,
-    pub localhost: bool,
+    pub local: bool,
 }
 
 pub struct Hub {
@@ -96,7 +96,7 @@ pub struct StartError(pub &'static str);
 
 pub struct Setup {
     pub index: usize,
-    pub localhost: bool,
+    pub local: bool,
     pub located: Located,
     pub font_dir: Option<PathBuf>,
     pub state_dir: PathBuf,
@@ -202,6 +202,14 @@ struct Running {
     child: Child,
     guard: Option<Proxy>,
     scratch: PathBuf,
+    /// The ports this engine reserved (its guard's and its CDP port): given back when it ends.
+    ports: Vec<u16>,
+}
+
+fn release(ports: &[u16]) {
+    for p in ports {
+        super::reserved::remove(*p);
+    }
 }
 
 fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>, counts: &Arc<Mutex<(u64, u64)>>) {
@@ -243,7 +251,7 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
             let _ = gtx.send((status, e.host.clone()));
         }
     });
-    let cfg = ProxyConfig { token: Some(guard_token.clone()), policy: Policy { allow_loopback: setup.localhost }, observe: Some(observe), ..ProxyConfig::default() };
+    let cfg = ProxyConfig { token: Some(guard_token.clone()), policy: if setup.local { Policy { allow_loopback: true, only_loopback: true } } else { Policy::default() }, observe: Some(observe), deny_port: Some(Arc::new(super::reserved::denied)), ..ProxyConfig::default() };
     let guard = match Proxy::start(cfg, Arc::new(Named(StdResolver)), Arc::new(StdConnector)) {
         Ok(g) => g,
         Err(_) => {
@@ -252,6 +260,8 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
         }
     };
     let guard_port = guard.addr().port();
+    super::reserved::add(guard_port);
+    let mut mine = vec![guard_port];
     let proxy_url = format!("http://lico:{guard_token}@127.0.0.1:{guard_port}");
     let system = profile::existing_system_dirs();
     let mut last = "engine_failed";
@@ -260,7 +270,9 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
             log("the engine could not bind its port, trying again");
         }
         let Ok(cdp_port) = free_port() else { break };
-        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, cdp_token: &cdp_token, proxy_url: &proxy_url };
+        super::reserved::add(cdp_port);
+        mine.push(cdp_port);
+        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, cdp_token: &cdp_token, proxy_url: &proxy_url, local: setup.local };
         let conf = profile::confinement(&params, &system);
         let mut cmd = match lico_sandbox::confine_fd(&setup.located.file, &conf) {
             Ok(c) => c,
@@ -281,7 +293,7 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
         let end = Instant::now() + CONNECT_WAIT;
         loop {
             match Client::connect(addr, "/devtools/browser", Some(&cdp_token), &Limits::default()) {
-                Ok(client) => return Ok(Running { client, child, guard: Some(guard), scratch }),
+                Ok(client) => return Ok(Running { client, child, guard: Some(guard), scratch, ports: mine }),
                 Err(_) if child.try_wait().ok().flatten().is_some() || Instant::now() >= end => break,
                 Err(_) => thread::sleep(Duration::from_millis(50)),
             }
@@ -289,6 +301,7 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
         kill_group(&mut child);
     }
     guard.stop();
+    release(&mine);
     let _ = std::fs::remove_dir_all(&scratch);
     Err(last)
 }
@@ -345,6 +358,7 @@ fn tear_down(mut r: Running) -> Option<i32> {
     if let Some(g) = r.guard.take() {
         g.stop();
     }
+    release(&r.ports);
     let _ = std::fs::remove_dir_all(&r.scratch);
     status.code()
 }

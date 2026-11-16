@@ -27,6 +27,9 @@ pub struct Params<'a> {
     pub cdp_token: &'a str,
     /// `http://lico:TOKEN@127.0.0.1:PORT`, the guard with the per-start credentials.
     pub proxy_url: &'a str,
+    /// The engine is the one for tabs the person opened for this machine's own services: it alone gets the engine's private-network variable (its own check would refuse the
+    /// loopback addresses before they reach the guard; the guard, which then allows loopback ONLY, and the fence are the enforcement).
+    pub local: bool,
 }
 
 pub fn existing_system_dirs() -> Vec<PathBuf> {
@@ -43,13 +46,17 @@ pub fn confinement(p: &Params<'_>, system_dirs: &[PathBuf]) -> Confinement {
     if let Some(f) = p.font_dir {
         read.push(f.to_path_buf());
     }
+    let mut env: Vec<(String, String)> = vec![("OBSCURA_CDP_TOKEN".into(), p.cdp_token.into()), ("HOME".into(), p.scratch.to_string_lossy().into_owned()), ("OBSCURA_PROXY".into(), p.proxy_url.into())];
+    if p.local {
+        env.push(("OBSCURA_ALLOW_PRIVATE_NETWORK".into(), "1".into()));
+    }
     Confinement {
         read_exec,
         read,
         read_write: vec![p.scratch.to_path_buf(), PathBuf::from(NULL_DEVICE)],
         connect_ports: vec![p.guard_port],
         bind_ports: vec![p.cdp_port],
-        env: vec![("OBSCURA_CDP_TOKEN".into(), p.cdp_token.into()), ("HOME".into(), p.scratch.to_string_lossy().into_owned()), ("OBSCURA_PROXY".into(), p.proxy_url.into())],
+        env,
         cwd: p.scratch.to_path_buf(),
         limits: Limits { address_space: None, data: Some(DATA_LIMIT), cpu_seconds: None, open_files: Some(OPEN_FILES) },
         ..Confinement::default()
@@ -71,7 +78,7 @@ mod tests {
     use super::*;
 
     fn params<'a>(font: Option<&'a Path>) -> Params<'a> {
-        Params { engine_dir: Path::new("/home/u/.local/share/lico/browser/v0.2.6"), font_dir: font, scratch: Path::new("/state/browser/scratch-1"), cdp_port: 41000, guard_port: 42000, cdp_token: "CDPTOKEN", proxy_url: "http://lico:GUARDTOKEN@127.0.0.1:42000" }
+        Params { engine_dir: Path::new("/home/u/.local/share/lico/browser/v0.2.6"), font_dir: font, scratch: Path::new("/state/browser/scratch-1"), cdp_port: 41000, guard_port: 42000, cdp_token: "CDPTOKEN", proxy_url: "http://lico:GUARDTOKEN@127.0.0.1:42000", local: false }
     }
 
     fn system() -> Vec<PathBuf> {
@@ -93,6 +100,18 @@ mod tests {
         assert!(!c.env.iter().any(|(k, _)| k.contains("PRIVATE") || k == "PATH" || k == "DISPLAY"), "no private-network variable and nothing from the host");
         assert_eq!(c.env[1].1, "/state/browser/scratch-1", "HOME is the empty scratch directory");
         assert_eq!(c.limits, Limits { address_space: None, data: Some(4 << 30), cpu_seconds: None, open_files: Some(1024) });
+    }
+
+    #[test]
+    fn only_the_engine_for_this_machines_services_gets_the_private_network_variable() {
+        let ordinary = confinement(&params(None), &system());
+        assert!(!ordinary.env.iter().any(|(k, _)| k.contains("PRIVATE")), "the ordinary engine never has it");
+        let local = confinement(&Params { local: true, ..params(None) }, &system());
+        let names: Vec<&str> = local.env.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, ["OBSCURA_CDP_TOKEN", "HOME", "OBSCURA_PROXY", "OBSCURA_ALLOW_PRIVATE_NETWORK"]);
+        assert_eq!(local.env[3].1, "1");
+        // nothing else about the fence differs: the same files, the same two ports
+        assert_eq!((local.read_exec, local.read, local.read_write, local.connect_ports, local.bind_ports), (ordinary.read_exec, ordinary.read, ordinary.read_write, ordinary.connect_ports, ordinary.bind_ports));
     }
 
     #[test]

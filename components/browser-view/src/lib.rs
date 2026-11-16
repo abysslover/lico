@@ -26,6 +26,8 @@ pub const MAX_NOTICE: usize = 300;
 /// The longest host name shown in a notice (a DNS name is at most 253 characters).
 const MAX_NOTICE_HOST: usize = 253;
 /// What every tab of an engine that is not the pinned release shows.
+/// The line a tab shows when the person opened it for this machine's own services (it can reach those and no other site).
+pub const LOCAL_NOTE: &str = "this tab can reach services on this machine and no other site";
 pub const UNPINNED_NOTICE: &str = "running an engine that is not the pinned release";
 
 // ---- text from outside -----------------------------------------------------------------------------------------------------------------------------
@@ -291,6 +293,8 @@ pub enum EngineEvent {
     LocalAddressRefused,
     /// The engine is not the pinned release (the owner's setting says so).
     UnpinnedEngine,
+    /// The person opened this tab for this machine's own services (an explicit act; never from a page or a link).
+    LocalTab,
 }
 
 pub struct Tab {
@@ -320,6 +324,7 @@ pub struct Tab {
     fallback_sent: bool,
     notice: Option<String>,
     unpinned: bool,
+    local: bool,
 }
 
 fn clamp_viewport(area: (u32, u32)) -> ((u32, u32), bool) {
@@ -362,6 +367,7 @@ impl Tab {
             fallback_sent: false,
             notice: None,
             unpinned: false,
+            local: false,
         }
     }
 
@@ -375,6 +381,10 @@ impl Tab {
     }
     pub fn unpinned(&self) -> bool {
         self.unpinned
+    }
+    /// Whether the person opened this tab for this machine's own services (`LOCAL_NOTE` is what the tab shows).
+    pub fn local(&self) -> bool {
+        self.local
     }
     pub fn loading(&self) -> bool {
         self.phase == Phase::Loading
@@ -657,6 +667,10 @@ impl Tab {
             }
             EngineEvent::UnpinnedEngine => {
                 self.unpinned = true;
+                Vec::new()
+            }
+            EngineEvent::LocalTab => {
+                self.local = true;
                 Vec::new()
             }
         }

@@ -184,7 +184,7 @@ fn basic_as(user: &str, token: &str) -> String {
 }
 
 fn loopback_ok() -> Config {
-    Config { policy: Policy { allow_loopback: true }, ..config() }
+    Config { policy: Policy { allow_loopback: true, only_loopback: false }, ..config() }
 }
 
 // ---- constants, the table, the host rules --------------------------------------------------------------------------------------------------------
@@ -219,7 +219,9 @@ fn every_range_of_the_address_table_has_its_class_and_only_public_is_allowed() {
     for (ip, want) in rows {
         assert_eq!(classify(ip), want, "{ip}");
         let default = Policy::default();
-        let opted = Policy { allow_loopback: true };
+        let opted = Policy { allow_loopback: true, only_loopback: false };
+        let only = Policy { allow_loopback: true, only_loopback: true };
+        assert_eq!(only.allows(want), want == Loopback, "{ip}: the loopback-only mode allows loopback and NOTHING else, not even public");
         assert_eq!(default.allows(want), want == Public, "{ip}: by default only public is allowed");
         assert_eq!(opted.allows(want), want == Public || want == Loopback, "{ip}: the opt-in adds loopback and nothing else");
     }
@@ -778,4 +780,62 @@ fn a_response_is_cut_at_the_byte_cap_and_a_busy_tunnel_ends_at_the_total_time() 
     assert!(got > 39, "data did flow");
     let ended = ended.expect("the total time ended a tunnel that was never idle");
     assert!(ended < Duration::from_millis(1500), "{ended:?}");
+}
+
+fn loopback_only() -> Config {
+    Config { policy: Policy { allow_loopback: true, only_loopback: true }, ..config() }
+}
+
+fn connect_status(r: &Rig, host: &str) -> u16 {
+    let mut s = TcpStream::connect(r.proxy.addr()).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+    s.write_all(format!("CONNECT {host} HTTP/1.1\r\n\r\n").as_bytes()).unwrap();
+    let mut buf = [0u8; 64];
+    let n = s.read(&mut buf).unwrap();
+    status(&buf[..n])
+}
+
+#[test]
+fn the_loopback_only_mode_opens_loopback_on_any_port_and_nothing_else_and_connects_to_nothing_that_it_refuses() {
+    let r = rig(loopback_only(), Some(ok_reply()));
+    for (host, want) in [("local.test:3000", 200), ("127.0.0.1:3000", 200), ("[::1]:3000", 200), ("mapped.test:25", 200), ("public.test:80", 403), ("public.test:443", 403), ("93.184.216.34:80", 403), ("private.test:3000", 403),
+        ("192.168.1.1:3000", 403), ("10.0.0.1:80", 403), ("metadata.test:80", 403), ("mixed.test:443", 403), ("[fe80::1]:3000", 403), ("mapped10.test:3000", 403)] {
+        let before = r.connector.seen.lock().unwrap().len();
+        assert_eq!(connect_status(&r, host), want, "{host}");
+        if want == 403 {
+            assert_eq!(r.connector.seen.lock().unwrap().len(), before, "{host}: refused, so not even a connect was tried");
+        }
+    }
+    // plain http: a developer page's redirect to a public host is a request for a public host, and it is refused
+    let resp = talk(r.proxy.addr(), &get("public.test", ""));
+    assert_eq!(status(&resp), 403);
+    assert_eq!(r.origin.conns.load(Ordering::SeqCst), 4, "the origin was reached by the four allowed tunnels above and by nothing else: the refused request added none");
+    let resp = talk(r.proxy.addr(), &get("local.test:3000", ""));
+    assert_eq!(status(&resp), 200, "a loopback page loads");
+    assert_eq!(r.proxy.stats().refused, 11, "every refusal is counted: ten tunnels and the plain request");
+}
+
+#[test]
+fn a_denied_port_is_refused_for_loopback_in_every_mode_and_a_public_destination_on_that_port_is_not_touched() {
+    let deny: Arc<dyn Fn(u16) -> bool + Send + Sync> = Arc::new(|p| p == 3000 || p == 443);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    for (name, base) in [("ordinary", config()), ("loopback allowed", loopback_ok()), ("loopback only", loopback_only())] {
+        let e2 = events.clone();
+        let cfg = Config { deny_port: Some(deny.clone()), observe: Some(Arc::new(move |e: &Event| e2.lock().unwrap().push((e.kind.clone(), e.host.clone(), e.port)))), ..base.clone() };
+        let r = rig(cfg, Some(ok_reply()));
+        let loop_ok = name != "ordinary";
+        assert_eq!(connect_status(&r, "local.test:3000"), 403, "{name}: the host's own port, by name");
+        assert_eq!(connect_status(&r, "127.0.0.1:3000"), 403, "{name}: by number");
+        assert_eq!(connect_status(&r, "[::1]:443"), 403, "{name}: another denied port, by number");
+        assert_eq!(connect_status(&r, "mapped.test:3000"), 403, "{name}: a mapped loopback address");
+        assert_eq!(connect_status(&r, "local.test:3001"), if loop_ok { 200 } else { 403 }, "{name}: a loopback port that is not denied");
+        if name != "loopback only" {
+            assert_eq!(connect_status(&r, "public.test:443"), 200, "{name}: a public site on a denied number is a public site: the deny set is for this machine's own ports");
+        }
+        let plain = talk(r.proxy.addr(), &get("local.test:3000", ""));
+        assert_eq!(status(&plain), 403, "{name}: plain http obeys it too");
+        assert_eq!(r.origin.conns.load(Ordering::SeqCst), if name == "loopback allowed" { 2 } else if name == "loopback only" { 1 } else { 1 }, "{name}: the origin was reached only by the allowed ones");
+    }
+    assert!(events.lock().unwrap().iter().any(|(k, h, p)| *k == EventKind::Refused(403) && h == "local.test" && *p == 3000), "a denied port is a refusal the observer is told about");
+    assert!(Config::default().deny_port.is_none(), "no deny set by default");
 }

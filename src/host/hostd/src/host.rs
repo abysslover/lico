@@ -203,6 +203,7 @@ pub fn run(args: Vec<String>) {
         let mut file = std::fs::OpenOptions::new().create_new(true).write(true).mode(0o600).open(&token_file).expect("token file");
         file.write_all(token.as_bytes()).expect("token file");
         ready["http_port"] = json!(listener.local_addr().expect("loopback address").port());
+        crate::driver::note_listening(listener.local_addr().expect("loopback address").port()); // no page may reach this door through an adapter
         let shared = shared.clone();
         thread::spawn(move || http::serve(listener, shared, token));
     }

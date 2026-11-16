@@ -122,6 +122,21 @@ pub fn ops_call(shared: &Opaque, op: &str, request: &Map<String, Value>) -> Opti
     serving(op).map(|o| o.call(shared, op, request))
 }
 
+static LISTENING: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+
+/// The host tells the port which TCP port it listens on (its loopback HTTP door): an adapter that lets a page reach loopback must never let it reach these.
+pub fn note_listening(port: u16) {
+    let mut all = LISTENING.lock().unwrap();
+    if !all.contains(&port) {
+        all.push(port);
+    }
+}
+
+/// The TCP ports this host listens on.
+pub fn listening() -> Vec<u16> {
+    LISTENING.lock().unwrap().clone()
+}
+
 /// The host is stopping: every adapter is told (the list is copied first, so that an adapter may register or take its time without holding the port's lock).
 pub fn stop_all() {
     let all: Vec<Arc<dyn Ops>> = OPS.lock().unwrap().clone();

@@ -7,6 +7,7 @@ mod fonts;
 mod map;
 mod ops;
 mod profile;
+mod reserved;
 mod sha256;
 mod supervisor;
 #[cfg(test)]

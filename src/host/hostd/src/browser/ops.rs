@@ -1,5 +1,5 @@
 //! The operations of the browser (`browser.open`, `browser.list`, `browser.close`, `browser.shot`) and the manager behind them: the table of tabs, at most two engines (one for
-//! ordinary tabs, one for tabs that opted into `localhost`), and nothing running when there is no tab. Registered through the driver port; the hubs never name this module.
+//! ordinary tabs, one for tabs that opted into `local`), and nothing running when there is no tab. Registered through the driver port; the hubs never name this module.
 
 use super::engine::{self, Problem, Where, ARCHIVE_SHA256, ARCHIVE_URL, ENGINE_SHA256, PINNED, RELEASE};
 use super::fonts;
@@ -39,7 +39,7 @@ pub fn valid_shot_path(v: &Value) -> bool {
 
 pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
     let allowed: &[&str] = match op {
-        "browser.open" => &["op", "v", "id", "url", "localhost"],
+        "browser.open" => &["op", "v", "id", "url", "local"],
         "browser.list" => &["op", "v", "id"],
         "browser.close" => &["op", "v", "id", "tab"],
         "browser.shot" => &["op", "v", "id", "tab", "path"],
@@ -58,7 +58,7 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
                 "v" => v.as_i64() == Some(1),
                 "id" => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= 64),
                 "url" => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= lico_browser_view::MAX_URL),
-                "localhost" => v.is_boolean(),
+                "local" => v.is_boolean(),
                 "tab" => valid_tab_id(v),
                 "path" => valid_shot_path(v),
                 _ => false,
@@ -102,8 +102,8 @@ impl Browser {
     fn open(&self, shared: &Opaque, request: &Map<String, Value>) -> Reply {
         let typed = request.get("url").and_then(Value::as_str).unwrap_or("");
         let url = lico_browser_view::parse_address(typed).map_err(|_| "bad_request")?;
-        let localhost = request.get("localhost").and_then(Value::as_bool).unwrap_or(false);
-        let index = localhost as usize;
+        let local = request.get("local").and_then(Value::as_bool).unwrap_or(false);
+        let index = local as usize;
         let state_dir = self.state_dir_of(shared).ok_or("engine_failed")?;
         let mut engines = self.engines.lock().unwrap();
         if self.hub.tabs.lock().unwrap().len() >= MAX_TABS {
@@ -133,7 +133,7 @@ impl Browser {
                 Ok(located) => {
                     let font = fonts::find_on_this_machine();
                     font_missing = font.is_none();
-                    let setup = Setup { index, localhost, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release: String::new() };
+                    let setup = Setup { index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release: String::new() };
                     let setup = Setup { release: if setup.located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() }, ..setup };
                     match supervisor::start(setup) {
                         Ok(e) => engines[index] = Some(e),
@@ -159,9 +159,12 @@ impl Browser {
         if font_missing {
             tab.engine_event(EngineEvent::NoFontFound);
         }
+        if local {
+            tab.engine_event(EngineEvent::LocalTab);
+        }
         let _ = tab.submit_address(&url);
-        self.hub.tabs.lock().unwrap().push(Entry { id: id.clone(), tab, engine: index, target: None, session: None, localhost });
-        let mut reply = obj(json!({"tab": id, "phase": if absent.is_some() { "absent" } else { "starting" }, "localhost": localhost, "unpinned": unpinned}));
+        self.hub.tabs.lock().unwrap().push(Entry { id: id.clone(), tab, engine: index, target: None, session: None, local });
+        let mut reply = obj(json!({"tab": id, "phase": if absent.is_some() { "absent" } else { "starting" }, "local": local, "unpinned": unpinned}));
         match absent {
             Some(fields) => reply.extend(obj(fields)),
             None => {
@@ -180,7 +183,7 @@ impl Browser {
     fn row(entry: &Entry) -> Value {
         let (w, h) = entry.tab.viewport();
         let mut row = obj(json!({
-            "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "localhost": entry.localhost,
+            "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "local": entry.local,
             "viewport": [w, h], "viewport_capped": entry.tab.viewport_capped(), "has_frame": entry.tab.kept_bytes() > 0, "dropped_frames": entry.tab.dropped_frames(),
             "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(),
         }));
@@ -211,7 +214,7 @@ impl Browser {
         let status: Vec<Value> = engines
             .iter()
             .enumerate()
-            .map(|(i, e)| json!({"localhost": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
+            .map(|(i, e)| json!({"local": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
             .collect();
         Ok(obj(json!({"tabs": tabs, "engines": status, "max_tabs": MAX_TABS})))
     }
@@ -338,7 +341,7 @@ mod tests {
     #[test]
     fn the_four_operations_accept_exactly_their_fields_and_refuse_unknown_ones() {
         assert!(valid("browser.open", &req(json!({"op": "browser.open", "url": "https://a.test/"}))));
-        assert!(valid("browser.open", &req(json!({"op": "browser.open", "v": 1, "id": "x", "url": "https://a.test/", "localhost": true}))));
+        assert!(valid("browser.open", &req(json!({"op": "browser.open", "v": 1, "id": "x", "url": "https://a.test/", "local": true}))));
         assert!(valid("browser.list", &req(json!({"op": "browser.list"}))));
         assert!(valid("browser.close", &req(json!({"op": "browser.close", "tab": "b12"}))));
         assert!(valid("browser.shot", &req(json!({"op": "browser.shot", "tab": "b1", "path": "/tmp/a.png"}))));
@@ -346,7 +349,7 @@ mod tests {
             ("browser.open", json!({"op": "browser.open"})),
             ("browser.open", json!({"op": "browser.open", "url": ""})),
             ("browser.open", json!({"op": "browser.open", "url": 5})),
-            ("browser.open", json!({"op": "browser.open", "url": "https://a.test/", "localhost": "yes"})),
+            ("browser.open", json!({"op": "browser.open", "url": "https://a.test/", "local": "yes"})),
             ("browser.open", json!({"op": "browser.open", "url": "https://a.test/", "extra": 1})),
             ("browser.open", json!({"op": "browser.open", "url": "x".repeat(2049)})),
             ("browser.list", json!({"op": "browser.list", "tab": "b1"})),

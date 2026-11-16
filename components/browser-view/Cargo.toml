@@ -1,6 +1,6 @@
 [package]
 name = "lico-browser-view"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "The display-free model of one browser tab: address editing and parsing, history, the page viewport and input mapping, the keeper of the newest frame, and the loading and absent states, as data and effects."
 publish = false

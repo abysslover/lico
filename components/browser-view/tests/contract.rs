@@ -30,6 +30,7 @@ fn shown(area: (u32, u32)) -> Tab {
 #[test]
 fn the_constants_are_named_with_the_values_the_spec_gives() {
     assert_eq!((MAX_HISTORY, MAX_URL, MAX_TITLE, MAX_FRAME_BYTES, FALLBACK_AFTER_MS, MAX_INSERT, MAX_NOTICE), (100, 2048, 200, 4 * 1024 * 1024, 500, 4096, 300));
+    assert_eq!(LOCAL_NOTE, "this tab can reach services on this machine and no other site");
     assert_eq!((MAX_VIEWPORT_W, MAX_VIEWPORT_H, MIN_VIEWPORT), (1920, 1200, 64));
     assert!(MAX_VIEWPORT_W as usize * MAX_VIEWPORT_H as usize * 4 <= 10 << 20, "one decoded frame is at most 9.2 MB");
 }
@@ -495,4 +496,17 @@ fn only_an_engine_that_is_not_the_pinned_release_is_marked() {
     assert_eq!(UNPINNED_NOTICE, "running an engine that is not the pinned release");
     t.engine_event(EngineEvent::UnpinnedEngine);
     assert!(t.unpinned());
+}
+
+#[test]
+fn a_tab_the_person_opened_for_this_machines_services_says_so_and_no_other_tab_does() {
+    let mut t = Tab::new();
+    assert!(!t.local(), "off by default");
+    assert_eq!(t.notice(), None, "the note is its own line, not a notice about a page");
+    t.engine_event(EngineEvent::LocalTab);
+    assert!(t.local());
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into() });
+    t.submit_address("https://example.org/").unwrap();
+    assert!(t.local(), "leaving a page does not turn it off: it is a property of the tab");
+    assert!(!Tab::new().local());
 }

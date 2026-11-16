@@ -1,4 +1,4 @@
-# lico-proxy 0.1.0 — specification
+# lico-proxy 0.2.0 — specification
 
 Written with the P05 plan (M17-P05); approved by the lead under the owner's delegation (the owner away), mail 148. Marks: **KNOWN FROM DOCUMENTATION** (HTTP/1.1 message syntax and semantics, RFC 9110 and 9112; `CONNECT`, RFC 9110 section 9.3.6; the special-purpose address registries of IANA, RFC 6890 and its updates; Basic authentication, RFC 7617), **PROPOSED** (the limits; whether the engine takes proxy credentials and honours the proxy for every fetch is the second measurement of M17-P05).
 
@@ -11,8 +11,8 @@ The fetch guard of a browser engine. A small HTTP and `CONNECT` proxy on a loopb
 | Name | Meaning |
 |---|---|
 | `Proxy::start(Config, Arc<dyn Resolver>, Arc<dyn Connector>) -> io::Result<Proxy>`, `addr()`, `stats() -> Stats`, `stop(self)` | binds `127.0.0.1:0` (no other address is ever named); `stop` (and drop) shuts down every connection and returns within about 2 s |
-| `Config { token, max_connections, limits, policy, observe }`, `Default`; `Limits { connect, resolve, idle, total, max_bytes, max_body }`, `Default` | `Debug` of a `Config` hides the token |
-| `Policy { allow_loopback }`, `Policy::allows(Class)`, `Class`, `classify(IpAddr) -> Class` | the address table below; only `Public` is allowed, and `Loopback` with the opt-in |
+| `Config { token, max_connections, limits, policy, observe, deny_port }`, `Default`; `Limits { connect, resolve, idle, total, max_bytes, max_body }`, `Default` | `Debug` of a `Config` hides the token |
+| `Policy { allow_loopback, only_loopback }`, `Policy::allows(Class)`, `Class`, `classify(IpAddr) -> Class` | the address table below; only `Public` is allowed, `Loopback` as well with `allow_loopback`, and with `only_loopback` (0.2.0) ONLY `Loopback`: not even public (the guard of a tab that may reach this machine's own services must never load a public page; a redirect to a public host is refused with 403). A name with any answer that is not allowed is refused, in every mode. `Config.deny_port` (0.2.0) is a function of a port: a loopback destination (every answer loopback) whose port it denies is refused with 403 in every mode, so that a page can never reach the host's own listening ports or the engine's; a public destination on the same number is not affected |
 | `Host { Ip, Name }`, `HostError`, `check_host(&str)`, `MAX_HOST` | the host rules below, applied before any lookup |
 | `trait Resolver { resolve(host, timeout) -> io::Result<Vec<IpAddr>> }`, `trait Connector { connect(ip, port, timeout) -> io::Result<TcpStream> }`, `StdResolver`, `StdConnector`, `with_deadline(timeout, f)` | the two doors to the world; the std ones are thin (a lookup behind a deadline, a connect with a timeout) and cannot be tested without a real lookup or connection, which no test may make; every test uses fakes |
 | `Event { kind: Connect \| Http \| Refused(status), host, port, authenticated }`, `Config.observe` | what the observer is told: the destination host and port, never a path, a query or a header |
@@ -60,4 +60,4 @@ If `Config.token` is set, every request needs `Proxy-Authorization: Basic` for t
 
 ## Versioning and budget
 
-`0.1.0` while it has met one client (the engine of M17-P05). Budget: the default 256 MiB and 30 s.
+`0.1.0` while it has met one client (the engine of M17-P05); `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.

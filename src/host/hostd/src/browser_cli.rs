@@ -9,17 +9,17 @@ pub fn request(args: &[&str], cwd: &Path) -> Result<Value, &'static str> {
     match args {
         ["open", rest @ ..] => {
             let mut url = None;
-            let mut localhost = false;
+            let mut local = false;
             for a in rest {
                 match *a {
-                    "--localhost" if !localhost => localhost = true,
+                    "--local" if !local => local = true,
                     other if !other.starts_with("--") && url.is_none() => url = Some(other),
                     _ => return Err("usage"),
                 }
             }
             let mut r = json!({"op": "browser.open", "url": url.ok_or("usage")?});
-            if localhost {
-                r["localhost"] = json!(true);
+            if local {
+                r["local"] = json!(true);
             }
             Ok(r)
         }
@@ -48,8 +48,8 @@ mod tests {
         let cwd = Path::new("/home/u");
         for (args, want) in [
             (vec!["open", "https://a.test/"], json!({"op": "browser.open", "url": "https://a.test/"})),
-            (vec!["open", "http://localhost:8000/", "--localhost"], json!({"op": "browser.open", "url": "http://localhost:8000/", "localhost": true})),
-            (vec!["open", "--localhost", "a.test"], json!({"op": "browser.open", "url": "a.test", "localhost": true})),
+            (vec!["open", "http://localhost:8000/", "--local"], json!({"op": "browser.open", "url": "http://localhost:8000/", "local": true})),
+            (vec!["open", "--local", "a.test"], json!({"op": "browser.open", "url": "a.test", "local": true})),
             (vec!["list"], json!({"op": "browser.list"})),
             (vec!["close", "b3"], json!({"op": "browser.close", "tab": "b3"})),
             (vec!["shot", "b3", "/tmp/a.png"], json!({"op": "browser.shot", "tab": "b3", "path": "/tmp/a.png"})),
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn anything_else_is_a_usage_error() {
         let cwd = Path::new("/home/u");
-        for bad in [vec![], vec!["open"], vec!["open", "a", "b"], vec!["open", "a", "--localhost", "--localhost"], vec!["open", "a", "--other"], vec!["list", "x"], vec!["close"], vec!["close", "b1", "b2"], vec!["shot", "b1"], vec!["shot"], vec!["nothing"]] {
+        for bad in [vec![], vec!["open"], vec!["open", "a", "b"], vec!["open", "a", "--local", "--local"], vec!["open", "a", "--other"], vec!["list", "x"], vec!["close"], vec!["close", "b1", "b2"], vec!["shot", "b1"], vec!["shot"], vec!["nothing"]] {
             assert_eq!(request(&bad, cwd), Err("usage"), "{bad:?}");
         }
     }

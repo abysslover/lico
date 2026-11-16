@@ -1,4 +1,4 @@
-# lico-browser-view 0.2.0 — specification
+# lico-browser-view 0.3.0 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -47,8 +47,12 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
 `EngineEvent::FetchRefused { status, host }` (the fetch guard's own 403, 502, 504; any other status is named), `EngineEvent::LocalAddressRefused` (the engine's own refusal of an address on this computer or a private network, a number or the name `localhost`: P06 measured that it refuses both before it asks the guard; the notice says so and does not tell the person to type localhost) and `EngineEvent::UnpinnedEngine`; `Tab::notice() -> Option<&str>` and `Tab::unpinned() -> bool`; constants `MAX_NOTICE` 300 (a line, not a page) and `UNPINNED_NOTICE`. The notice carries the HOST only (cleaned like any text from outside, cut at 253 characters), never a path, a query or page content; a newer notice replaces the older; leaving the page (a new address, back, forward, reload) clears it; the unpinned mark never clears. Because the guard does not know which tab a fetch was for, the host adapter routes a refusal to the loading tabs with that host, else to every loading tab (said in the adapter's SPEC).
+
+## The local tab (0.3.0)
+
+`EngineEvent::LocalTab`, `Tab::local()` and `LOCAL_NOTE` ("this tab can reach services on this machine and no other site"): the person opened this tab for this machine's own services, by an explicit act (a flag of `browser.open`, later the tab menu), never from a page or a link, off by default. It is a property of the tab and stays across pages; the window shows `LOCAL_NOTE` in the tab's help. Added in M17-P06 by mail 151 (approved by the lead under the owner's delegation).

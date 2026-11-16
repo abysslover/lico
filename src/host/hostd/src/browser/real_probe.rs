@@ -104,7 +104,7 @@ fn real_engine_probe() {
 
     // the pinned engine, hash-checked, opens a page of the fixture through the guard (the opt-in tab: loopback is allowed)
     let started = Instant::now();
-    let reply = rig.call(json!({"op": "browser.open", "url": format!("http://localhost:{port}/"), "localhost": true}));
+    let reply = rig.call(json!({"op": "browser.open", "url": format!("http://localhost:{port}/"), "local": true}));
     note(&mut out, format!("browser.open reply ok={} phase={} unpinned={}", reply["ok"], reply["phase"], reply["unpinned"]));
     let tab = reply["tab"].as_str().unwrap_or("b1").to_string();
     let ready = rig.wait(30, "the first page of the real engine", || Some(rig.tab(&tab)).filter(|t| t["has_frame"] == json!(true) && t["phase"] == json!("ready")));
@@ -138,7 +138,7 @@ fn real_engine_probe() {
     note(&mut out, format!("ordinary tab after 8 s: {t}"));
     note(&mut out, format!("without the opt-in: fixture saw {} new requests; notice {}", seen.lock().unwrap().len() - before, t["notice"]));
     // a numeric loopback address with the opt-in is refused by the engine before the guard
-    let numeric = rig.call(json!({"op": "browser.open", "url": format!("http://127.0.0.1:{port}/num"), "localhost": true}));
+    let numeric = rig.call(json!({"op": "browser.open", "url": format!("http://127.0.0.1:{port}/num"), "local": true}));
     std::thread::sleep(Duration::from_secs(8));
     let n = rig.tab(numeric["tab"].as_str().unwrap());
     note(&mut out, format!("numeric tab after 8 s: {n}"));
@@ -146,7 +146,7 @@ fn real_engine_probe() {
     note(&mut out, format!("engine processes with an ordinary and an opted-in tab: {} (two engines: one per network class)", rig.engines().len()));
 
     // the data limit: a page that allocates far more than it
-    let hog_open = rig.call(json!({"op": "browser.open", "url": format!("http://localhost:{port}/hog"), "localhost": true}));
+    let hog_open = rig.call(json!({"op": "browser.open", "url": format!("http://localhost:{port}/hog"), "local": true}));
     let hog_tab = hog_open["tab"].as_str().unwrap().to_string();
     // in the approved configuration the engine refuses `localhost` before it fetches, so the page never runs: the verdict is what the tab shows after 15 s
     std::thread::sleep(Duration::from_secs(15));
