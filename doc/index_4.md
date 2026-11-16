@@ -122,7 +122,10 @@
 | [M16-P03 plan](plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) | `llm-wire`: the approved interface specification and the steps |
 | [M16-P04 plan](plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | `llm-http` and `llm-fake`: the specification and the steps |
 | [M16-P05 plan](plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) | `convo` and `toolloop`: the approved specifications and the steps |
-| [M16-P06 plan](plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) | The driver port, the adapter and parity (sketch) |
+| [M16-P06 plan](plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) | The driver port, the adapter and parity, with the measured result |
+| [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session, with the measured result, the audit and the screenshots |
+| [M16-P08 plan](plans/202611/20261117/20261117_10_M16-P08_verification_and_release_0_4_0_plan.md) | Verification and release (`lico 0.4.0`) |
+| [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
 | [M14-P03 report](reports/202611/20261114/20261114_10_M14-P03_verification_and_0_3_2_report.md) | Measured budgets, three cold runs, acceptance, `lico 0.3.2`, install |

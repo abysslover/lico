@@ -1,6 +1,6 @@
 # M16 — Retire the Prototypes, and a Found Local LLM Server as Its Own Session Kind (Phase 0)
 
-- Status: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 implemented (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
+- Status: all eight phases P01 to P08 implemented (`lico 0.4.0`), waiting for the lead's close and the owner's G3; before: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 implemented (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
 - Version: 1.0.0
 - Approved: 2026-11-17 (the owner's approval of the short plan for P01 and P02)
 - Project: Lico
@@ -27,8 +27,8 @@ The component rules 1.0.1 (new code is new components with a version, downward-o
 | M16-P04 | `llm-http` and `llm-fake` | [Plan](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | [Result](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) (in the plan note) | implemented |
 | M16-P05 | `convo` and `toolloop` | [Plan](../../../plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) | [Result](../../../plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) (in the plan note) | implemented |
 | M16-P06 | the driver port, the adapter, CLI and HTTP parity, system tests | [Plan](../../../plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) | [Result](../../../plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) (in the plan note) | implemented (spec text accepted by the owner) |
-| M16-P07 | the window for the local session | [Plan](../../../plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | pending | proposed; waits for the lead's answer (the owner away) |
-| M16-P08 | verification and the release `0.4.0` | sketch | | after P07 |
+| M16-P07 | the window for the local session | [Plan](../../../plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | [Result](../../../plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) (in the plan note) | implemented (approved by the lead under the owner's delegation, the owner away) |
+| M16-P08 | verification and the release `0.4.0` | [Plan](../../../plans/202611/20261117/20261117_10_M16-P08_verification_and_release_0_4_0_plan.md) | [Report](../../../reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | implemented; waits for the lead's close |
 
 ## Cost
 

@@ -11,13 +11,13 @@ Release acceptance once and whole, as M15-P04 did it, with numbers only as measu
 
 ## Steps
 
-- [ ] 1. The question file about the `test_adapter_contract` pin (report 123), written BEFORE the three runs. The test and the pin are not touched here unless the lead answers A.
-- [ ] 2. The version: the two tests that name `0.3.3` change to `0.4.0` first (red), then `Cargo.toml` and `Cargo.lock` in the same commit.
-- [ ] 3. On the clean committed tree, one after the other, each waiting for the load average to fall under 12: Rust units under `umask 022` and `077`; `cargo xtask check`, `verify` and `system`; the tool-list bytes; the binary free of the test support.
-- [ ] 4. Three cold full runs (`suite run --cold`): tests, seconds, peak, margins; `test_adapter_contract` is named as the known red; a failure in a load-sensitive test on a loaded host is not counted and is said.
-- [ ] 5. Idle window RSS at scale 1 and 2 (3 launches each) and hidden growth (3 repetitions), with `lico_measure run --candidates a2 --ui --menu --accounts 10 --realistic-text`.
-- [ ] 6. `suite acceptance` (Python) and `cargo xtask accept` (Rust) on the final commit: the byte-identical two-clone build.
-- [ ] 7. Documents: CHANGELOG `0.4.0`, PLAN, roadmap, README, manual, index, milestone and plan statuses; what is left over for the owner (a masked key entry in the window; the two notes without a picture; the pin).
+- [x] 1. The question file about the `test_adapter_contract` pin (report 123), written BEFORE the three runs. The test and the pin are not touched here unless the lead answers A.
+- [x] 2. The version: the two tests that name `0.3.3` change to `0.4.0` first (red), then `Cargo.toml` and `Cargo.lock` in the same commit.
+- [x] 3. On the clean committed tree, one after the other, each waiting for the load average to fall under 12: Rust units under `umask 022` and `077`; `cargo xtask check`, `verify` and `system`; the tool-list bytes; the binary free of the test support.
+- [x] 4. Three cold full runs (`suite run --cold`): tests, seconds, peak, margins; `test_adapter_contract` is named as the known red; a failure in a load-sensitive test on a loaded host is not counted and is said.
+- [x] 5. Idle window RSS at scale 1 and 2 (3 launches each) and hidden growth (3 repetitions), with `lico_measure run --candidates a2 --ui --menu --accounts 10 --realistic-text`.
+- [x] 6. `suite acceptance` (Python) and `cargo xtask accept` (Rust) on the final commit: the byte-identical two-clone build.
+- [x] 7. Documents: CHANGELOG `0.4.0`, PLAN, roadmap, README, manual, index, milestone and plan statuses; what is left over for the owner (a masked key entry in the window; the two notes without a picture; the pin).
 - [ ] 8. Build with `build-release.sh` from the clean commit, hash, keep the `0.3.3` binary at `private/release_0_3_3_backup/lico`, install to `~/bin/lico` (copy beside, then rename), run `lico --version` and a smoke capture on a private display.
 - [ ] 9. Report and the `done` mail, and a STOP: the milestone is closed by the lead; push, pull request and merge stay with the owner.
 

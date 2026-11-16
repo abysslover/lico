@@ -9,6 +9,16 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.4.0 — 2026-11-17 (`M16`)
+
+- **Milestone**: [M16 Retire the prototypes, and a found Local LLM server as its own session kind](doc/milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md) ([M16-P08 report](doc/reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md)); on phase branches `phase/M16-P01-...` to `phase/M16-P08-...`, not yet merged
+- **Measured resources**: idle window `25.25` / `36.29 MiB`, `10 -> 100` hidden growth `+0.19 MiB`, cold 557-test suite `128.0..133.9 s` (one known failure per run: `test_adapter_contract`, the installed Codex command is newer than the pinned version), tree peak `1,570.4..1,842.2 MiB`, tool list `5,103` of `5,120` bytes
+- **Highlights**:
+  - **A Local LLM session.** A model server on this machine (OpenAI-compatible or Ollama, loopback only) is a session of its own kind `local`, chosen next to Claude and Codex in New session and `+ New chat`, or made with `lico session create --kind local --endpoint ADDRESS:PORT --api openai|ollama --model NAME`. The host asks the server itself, runs the host's tools with the approvals every session has, keeps the conversation in an owner-only record, and gives the model no files or shell. A server key lives only in the OS keyring (`lico local-key set ADDRESS:PORT`, on standard input). Claude and Codex are never routed to a local model.
+  - **Six components**: `lico-llm-wire`, `lico-llm-http`, `lico-llm-fake`, `lico-convo`, `lico-toolloop` and the earlier `lico-png`; a driver port keeps the new kind out of the 48-module cycle; four named system tests (`cargo xtask system`).
+  - **The window**: a Local provider row, a server and model choice from a look that only runs when asked, the last choice remembered, a `Local` header, list heading and tab, and the waiting card of a tool that needs approval.
+  - **The retired prototype clients and hosts are deleted.**
+
 ## 0.3.3 — 2026-11-14 (`M15`)
 
 - **Milestone**: [M15 The component foundation](doc/milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md) (`milestone/M15-component-foundation`, [M15-P04 report](doc/reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md)); no behaviour a person can see changes

@@ -1,4 +1,4 @@
-# Owner end-to-end guide (`lico 0.3.3`)
+# Owner end-to-end guide (`lico 0.4.0`)
 
 Version: 1.9.1
 
@@ -38,6 +38,15 @@ State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`), and the local 
    - **Ctrl+F** searches within the open conversation; **Ctrl+Shift+F** searches across all sessions on demand with zero resident index overhead.
    - `View` toggles **Agent clipboard write** (default off; each write still asks) and **Desktop notifications** (`notify-send` when no window is attached; unread background turns show `•` and approvals show `!` in the list and window title).
    - Each session row shows private process-tree memory (`RssAnon + RssShmem` in M/G; amber from 1 GiB, red from 2 GiB), and the bottom-left summary reports total session, host, and window memory.
+
+## Local model sessions (`lico gui`, `lico session create --kind local`)
+
+A model server on this machine (an OpenAI-compatible one or Ollama, on a loopback address) can be a session of its own kind, next to Claude and Codex. Claude and Codex keep their own sign-in and are never sent to a local model.
+
+1. **Make one in the window.** `Ctrl+N`, choose `local` on the Provider row (Left or Right). Nothing is looked for by itself. Press Enter (or Space, or click) on the Server row: Lico looks once, read-only, for model servers on this machine and lists them; Left and Right choose a server, then a model; Enter on the Name row or on Start makes the session. The server of the last local session is offered again when the form opens. `+ New chat` offers the same server as one more row (`Local: MODEL at ADDRESS`); it always starts a fresh conversation (a local session is resumed from its tab).
+2. **Make one from the command line.** `lico session create --kind local --endpoint 127.0.0.1:11434 --api ollama --model NAME [--context N] [--name NAME]`. The address must be a loopback address; `--api` is `openai` or `ollama`.
+3. **A key, if the server wants one.** The window says so when it lists such a server. Store it with `lico local-key set ADDRESS:PORT` (the key on standard input, never as an argument) and scan again; `lico local-key clear ADDRESS:PORT` removes it. The key lives only in the OS keyring. There is no masked key entry in the window.
+4. **What the session does.** The host itself asks the model server and keeps the conversation in an owner-only record; it runs Lico's tools for the model with the approvals every session has (a tool that needs one leaves its card and the turn waits for you). It has no access to files or a shell. The tab letter is `L`, the header reads `Local | MODEL | state`, and a notice says when the server takes no tools ("text only") or when the oldest turns are no longer sent to the model. Close ends the work and keeps the record, resume reads it again, purge deletes it.
 
 ## Agent, script CLI, and loopback HTTP (`lico ...` and `127.0.0.1`)
 
