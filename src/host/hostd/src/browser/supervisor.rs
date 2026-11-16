@@ -6,9 +6,9 @@
 use super::engine::Located;
 use super::map;
 use super::profile::{self, Params};
-use lico_browser_view::{Effect, EngineEvent, Tab};
+use lico_browser_view::{Effect, EngineEvent, Refusal, Tab};
 use lico_cdp::{Client, Error as CdpError, Limits};
-use lico_proxy::{Config as ProxyConfig, EventKind, Policy, Proxy, Resolver, StdConnector, StdResolver};
+use lico_proxy::{Config as ProxyConfig, EventKind, Policy, Proxy, Resolver, StdConnector, StdResolver, Why};
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
@@ -89,6 +89,24 @@ impl Engine {
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
+    }
+}
+
+/// What the fetch guard told the worker: a refusal, with its destination and its reason.
+pub struct Refused {
+    pub status: u16,
+    pub host: String,
+    pub port: u16,
+    pub why: Refusal,
+}
+
+fn why_of(w: Why) -> Refusal {
+    match w {
+        Why::NotPublic => Refusal::NotPublic,
+        Why::LoopbackOnly => Refusal::LoopbackOnly,
+        Why::Port => Refusal::Port,
+        Why::Denied => Refusal::Denied,
+        Why::Other | Why::None => Refusal::Other,
     }
 }
 
@@ -213,7 +231,7 @@ fn release(ports: &[u16]) {
 }
 
 fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>, counts: &Arc<Mutex<(u64, u64)>>) {
-    let (gtx, grx) = mpsc::channel::<(u16, String)>();
+    let (gtx, grx) = mpsc::channel::<Refused>();
     let mut running = match bring_up(&setup, gtx) {
         Ok(r) => r,
         Err(why) => {
@@ -242,13 +260,13 @@ fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>,
     }
 }
 
-fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'static str> {
+fn bring_up(setup: &Setup, gtx: Sender<Refused>) -> Result<Running, &'static str> {
     let scratch = scratch_dir(&setup.state_dir).map_err(|_| "engine_failed")?;
     let guard_token = crate::core::random_hex(16);
     let cdp_token = crate::core::random_hex(16);
     let observe: Arc<dyn Fn(&lico_proxy::Event) + Send + Sync> = Arc::new(move |e| {
         if let EventKind::Refused(status) = e.kind {
-            let _ = gtx.send((status, e.host.clone()));
+            let _ = gtx.send(Refused { status, host: e.host.clone(), port: e.port, why: why_of(e.why) });
         }
     });
     let cfg = ProxyConfig { token: Some(guard_token.clone()), policy: if setup.local { Policy { allow_loopback: true, only_loopback: true } } else { Policy::default() }, observe: Some(observe), deny_port: Some(Arc::new(super::reserved::denied)), ..ProxyConfig::default() };
@@ -307,7 +325,7 @@ fn bring_up(setup: &Setup, gtx: Sender<(u16, String)>) -> Result<Running, &'stat
 }
 
 /// The loop. True when the engine died on its own (the socket closed or the process ended), false when it was asked to end.
-fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<(u16, String)>, counts: &Arc<Mutex<(u64, u64)>>) -> bool {
+fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<Refused>, counts: &Arc<Mutex<(u64, u64)>>) -> bool {
     let began = Instant::now();
     loop {
         // commands first: a command waits at most one poll (see the top of this file)
@@ -319,8 +337,8 @@ fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<(u16
                 Err(mpsc::TryRecvError::Empty) => break,
             }
         }
-        while let Ok((status, host)) = grx.try_recv() {
-            refusal(setup, &mut r.client, status, &host);
+        while let Ok(refused) = grx.try_recv() {
+            refusal(setup, &mut r.client, refused);
         }
         match r.client.next_event(POLL) {
             Ok(Some(event)) => on_event(setup, &mut r.client, &event),
@@ -389,14 +407,16 @@ fn close_target(client: &mut Client, target: &str) {
     let _ = client.call("Target.closeTarget", json!({"targetId": target}), None, CALL);
 }
 
-fn refusal(setup: &Setup, client: &mut Client, status: u16, host: &str) {
+fn refusal(setup: &Setup, client: &mut Client, refused: Refused) {
+    let Refused { status, host, port, why } = refused;
+    let host = host.as_str();
     let targets = {
         let tabs = setup.hub.tabs.lock().unwrap();
         let views: Vec<map::TabView<'_>> = tabs.iter().filter(|e| e.engine == setup.index).map(|e| map::TabView { id: &e.id, loading: e.tab.loading(), url: e.tab.url() }).collect();
         map::refusal_targets(&views, host)
     };
     for id in targets {
-        deliver(setup, client, &id, EngineEvent::FetchRefused { status, host: host.to_string() });
+        deliver(setup, client, &id, EngineEvent::FetchRefused { status, host: host.to_string(), port, why });
     }
 }
 

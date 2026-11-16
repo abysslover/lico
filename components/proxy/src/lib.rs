@@ -7,6 +7,22 @@ mod policy;
 
 pub use policy::{check_host, classify, Class, Host, HostError, Policy, MAX_HOST};
 
+/// Why a destination was refused with a 403 (0.3.0): so that the person is told the truth and not a guess. `Other` is every other refusal (a malformed request, a name that was not found, ...);
+/// `None` is for an event that is not a refusal.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    None,
+    Other,
+    /// The address is on this computer or a private network (or any other address that is not public).
+    NotPublic,
+    /// The guard of a tab for this machine's own services allows loopback only.
+    LoopbackOnly,
+    /// A public destination on a port that is not 80, 443, 8080 or 8443.
+    Port,
+    /// A port of this machine that no page may reach (the host's own door, an engine).
+    Denied,
+}
+
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{ErrorKind, Read, Write};
@@ -71,6 +87,7 @@ pub struct Event {
     pub host: String,
     pub port: u16,
     pub authenticated: bool,
+    pub why: Why,
 }
 
 #[derive(Clone)]
@@ -224,9 +241,9 @@ impl Drop for Proxy {
     }
 }
 
-fn notify(sh: &Shared, kind: EventKind, host: &str, port: u16, authenticated: bool) {
+fn notify(sh: &Shared, kind: EventKind, host: &str, port: u16, authenticated: bool, why: Why) {
     if let Some(f) = &sh.cfg.observe {
-        f(&Event { kind, host: host.to_string(), port, authenticated });
+        f(&Event { kind, host: host.to_string(), port, authenticated, why });
     }
 }
 
@@ -248,11 +265,15 @@ fn reason(code: u16) -> &'static str {
 
 /// Answers with a status and closes: no body, so nothing of the proxy's insides reaches the page.
 fn refuse(sh: &Shared, client: &mut TcpStream, code: u16, host: &str, port: u16, authenticated: bool) {
+    refuse_why(sh, client, code, host, port, authenticated, Why::Other)
+}
+
+fn refuse_why(sh: &Shared, client: &mut TcpStream, code: u16, host: &str, port: u16, authenticated: bool, why: Why) {
     let challenge = if code == 407 { "Proxy-Authenticate: Basic realm=\"lico\"\r\n" } else { "" };
     let _ = client.write_all(format!("HTTP/1.1 {code} {}\r\nConnection: close\r\nContent-Length: 0\r\n{challenge}\r\n", reason(code)).as_bytes());
     let _ = client.shutdown(Shutdown::Both);
     sh.refused.fetch_add(1, Ordering::SeqCst);
-    notify(sh, EventKind::Refused(code), host, port, authenticated);
+    notify(sh, EventKind::Refused(code), host, port, authenticated, why);
 }
 
 fn accept_loop(listener: TcpListener, sh: Arc<Shared>) {
@@ -457,14 +478,14 @@ fn serve(mut client: TcpStream, sh: &Arc<Shared>) {
         }
     };
     if ips.iter().any(|ip| !sh.cfg.policy.allows(classify(*ip))) {
-        return refuse(sh, &mut client, 403, &req.host, req.port, authenticated); // ANY answer that is not allowed refuses the name
+        return refuse_why(sh, &mut client, 403, &req.host, req.port, authenticated, if sh.cfg.policy.only_loopback { Why::LoopbackOnly } else { Why::NotPublic }); // ANY answer that is not allowed refuses the name
     }
     let all_loopback = ips.iter().all(|ip| classify(*ip) == Class::Loopback);
     if all_loopback && sh.cfg.deny_port.as_ref().is_some_and(|deny| deny(req.port)) {
-        return refuse(sh, &mut client, 403, &req.host, req.port, authenticated); // a port of this machine's own that no page may reach
+        return refuse_why(sh, &mut client, 403, &req.host, req.port, authenticated, Why::Denied); // a port of this machine's own that no page may reach
     }
     if !all_loopback && !PUBLIC_PORTS.contains(&req.port) {
-        return refuse(sh, &mut client, 403, &req.host, req.port, authenticated);
+        return refuse_why(sh, &mut client, 403, &req.host, req.port, authenticated, Why::Port);
     }
     let upstream = match sh.connector.connect(ips[0], req.port, limits.connect) {
         Ok(s) => s,
@@ -476,13 +497,13 @@ fn serve(mut client: TcpStream, sh: &Arc<Shared>) {
         sh.streams.lock().unwrap().insert(id, copy);
     }
     if req.connect {
-        notify(sh, EventKind::Connect, &req.host, req.port, authenticated);
+        notify(sh, EventKind::Connect, &req.host, req.port, authenticated, Why::None);
         if client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").is_err() {
             return;
         }
         return tunnel(client, upstream, sh, deadline);
     }
-    notify(sh, EventKind::Http, &req.host, req.port, authenticated);
+    notify(sh, EventKind::Http, &req.host, req.port, authenticated, Why::None);
     forward(client, upstream, &req, rest, sh, deadline);
 }
 

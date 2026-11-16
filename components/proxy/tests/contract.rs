@@ -839,3 +839,38 @@ fn a_denied_port_is_refused_for_loopback_in_every_mode_and_a_public_destination_
     assert!(events.lock().unwrap().iter().any(|(k, h, p)| *k == EventKind::Refused(403) && h == "local.test" && *p == 3000), "a denied port is a refusal the observer is told about");
     assert!(Config::default().deny_port.is_none(), "no deny set by default");
 }
+
+#[test]
+fn a_refusal_says_why_so_that_the_person_is_told_the_truth() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let mk = |base: Config, deny: bool| {
+        let s2 = seen.clone();
+        let deny_port: Option<Arc<dyn Fn(u16) -> bool + Send + Sync>> = if deny { Some(Arc::new(|p| p == 3000)) } else { None };
+        rig(Config { observe: Some(Arc::new(move |e: &Event| s2.lock().unwrap().push((e.host.clone(), e.port, e.kind.clone(), e.why)))), deny_port, ..base }, Some(ok_reply()))
+    };
+    // the event is told just after the answer is written: wait for it
+    let take = || {
+        let end = Instant::now() + Duration::from_secs(2);
+        while seen.lock().unwrap().is_empty() && Instant::now() < end {
+            thread::sleep(Duration::from_millis(10));
+        }
+        std::mem::take(&mut *seen.lock().unwrap())
+    };
+    let ordinary = mk(config(), false);
+    for (host, why) in [("public.test:25", Why::Port), ("private.test:80", Why::NotPublic), ("local.test:3000", Why::NotPublic), ("mixed.test:443", Why::NotPublic), ("nosuch.test:80", Why::Other)] {
+        connect_status(&ordinary, host);
+        let got = take();
+        assert_eq!(got.len(), 1, "{host}: one event");
+        assert_eq!(got[0].3, why, "{host}");
+    }
+    let only = mk(loopback_only(), true);
+    for (host, why) in [("public.test:80", Why::LoopbackOnly), ("private.test:80", Why::LoopbackOnly), ("local.test:3000", Why::Denied), ("127.0.0.1:3000", Why::Denied)] {
+        connect_status(&only, host);
+        assert_eq!(take()[0].3, why, "{host}");
+    }
+    connect_status(&only, "local.test:3001");
+    let allowed = take();
+    assert_eq!(allowed[0].2, EventKind::Connect);
+    assert_eq!(allowed[0].3, Why::None, "an allowed connection has no reason");
+    let _ = (ordinary, only);
+}

@@ -272,6 +272,16 @@ pub enum Effect {
     InsertText(String),
 }
 
+/// Why the fetch guard refused a destination (0.4.0), as the guard says it (the adapter maps its own reason to this one).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    Other,
+    NotPublic,
+    LoopbackOnly,
+    Port,
+    Denied,
+}
+
 /// What the host adapter tells the model.
 #[derive(Clone, Debug, PartialEq)]
 pub enum EngineEvent {
@@ -288,7 +298,7 @@ pub enum EngineEvent {
     Missing { expected_sha256: String, release: String },
     NoFontFound,
     /// The fetch guard refused or could not complete a fetch for this page (a status of its own: 403, 502, 504) of `host`. The engine shows a blank page and no error.
-    FetchRefused { status: u16, host: String },
+    FetchRefused { status: u16, host: String, port: u16, why: Refusal },
     /// The engine refused the address before any fetch because it is on this computer or a private network (a number, or the name `localhost`: MEASURED, P06).
     LocalAddressRefused,
     /// The engine is not the pinned release (the owner's setting says so).
@@ -382,6 +392,29 @@ impl Tab {
     pub fn unpinned(&self) -> bool {
         self.unpinned
     }
+    /// The lines the tab shows as its help (a new tab, and F1): the identity, the ports that load, what is refused, how tabs opened elsewhere appear, Korean input and the command
+    /// for a first look at a real site. A tab for this machine's own services says so first.
+    pub fn help_lines(&self) -> Vec<String> {
+        let mut v = Vec::new();
+        if self.local {
+            v.push(LOCAL_NOTE.to_string());
+        }
+        for line in [
+            "Pages are told this is Lico with the Obscura engine.",
+            "A page may still see a Windows platform and vendor: the engine decides those.",
+            "Only http and https load, on ports 80, 443, 8080 and 8443.",
+            "Addresses on this computer or a private network are refused, by number and as localhost.",
+            "To reach this machine's own services, open a tab for them from the + menu.",
+            "A tab opened with the command line appears here at the next list (the + menu, or window focus).",
+            "Korean is typed with the input method: the address row shows the composition.",
+            "The page gets the finished text only.",
+            "To look at a real site yourself: lico browser open https://SITE",
+        ] {
+            v.push(line.to_string());
+        }
+        v
+    }
+
     /// Whether the person opened this tab for this machine's own services (`LOCAL_NOTE` is what the tab shows).
     pub fn local(&self) -> bool {
         self.local
@@ -650,13 +683,16 @@ impl Tab {
                 self.no_font = true;
                 Vec::new()
             }
-            EngineEvent::FetchRefused { status, host } => {
+            EngineEvent::FetchRefused { status, host, port, why } => {
                 let host = clean(&host, MAX_NOTICE_HOST);
-                let line = match status {
-                    403 => format!("{host}: this address is on this computer or a private network, which this tab does not open"),
-                    502 => format!("{host}: the address could not be found or reached"),
-                    504 => format!("{host}: the address took too long"),
-                    other => format!("{host}: the page could not be fetched (status {other})"),
+                let line = match (status, why) {
+                    (403, Refusal::Port) => format!("{host}: the port {port} is not one of 80, 443, 8080 and 8443"),
+                    (403, Refusal::NotPublic) => format!("{host}: this address is on this computer or a private network, which this tab does not open"),
+                    (403, Refusal::LoopbackOnly) => format!("{host}: this tab opens only this machine's own services"),
+                    (403, Refusal::Denied) => format!("{host}: this port belongs to Lico and no page may reach it"),
+                    (502, _) => format!("{host}: the address could not be found or reached"),
+                    (504, _) => format!("{host}: the address took too long"),
+                    (other, _) => format!("{host}: the page could not be fetched (status {other})"),
                 };
                 self.notice = Some(clean(&line, MAX_NOTICE));
                 Vec::new()

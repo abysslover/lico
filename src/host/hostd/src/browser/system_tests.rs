@@ -247,11 +247,15 @@ fn browser_tab_opens_and_paints_a_fake_frame() {
     let t = rig.wait(15, "the loopback page in the local tab", || Some(rig.tab(&local)).filter(|t| t["has_frame"] == json!(true) && t["phase"] == json!("ready")));
     assert!(t["notice"].is_null() && t["local"] == json!(true), "{t}");
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "the loopback fixture loads in the local tab, through the guard");
-    for (what, url) in [("a LAN-range address", "http://192.168.1.5/".to_string()), ("this host's own HTTP door", format!("http://127.0.0.1:{}/", rig.http_port))] {
+    for (what, url, said) in [("a LAN-range address", "http://192.168.1.5/".to_string(), "only this machine's own services"), ("this host's own HTTP door", format!("http://127.0.0.1:{}/", rig.http_port), "belongs to Lico")] {
         let id = open_local(&url);
         let t = rig.wait(15, what, || Some(rig.tab(&id)).filter(|t| t["notice"].is_string()));
-        assert!(t["notice"].as_str().unwrap().contains("private network"), "{what}: {t}");
+        assert!(t["notice"].as_str().unwrap().contains(said), "{what}: {t}");
     }
+    // a PUBLIC address on a port that is not one of the four is refused for its port before anything is connected (a literal: no lookup, no connection)
+    let port_tab = rig.open("http://93.184.216.34:25/");
+    let t = rig.wait(15, "the port refusal in an ordinary tab", || Some(rig.tab(&port_tab)).filter(|t| t["notice"].is_string()));
+    assert!(t["notice"].as_str().unwrap().contains("the port 25 is not one of 80, 443, 8080 and 8443") && !t["notice"].as_str().unwrap().contains("private"), "{t}");
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 1, "nothing else reached the fixture");
     assert_eq!(rig.engines().len(), 2, "one engine for each network class");
     let list = rig.call(json!({"op": "browser.list"}));

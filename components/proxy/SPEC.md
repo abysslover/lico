@@ -1,4 +1,4 @@
-# lico-proxy 0.2.0 — specification
+# lico-proxy 0.3.0 — specification
 
 Written with the P05 plan (M17-P05); approved by the lead under the owner's delegation (the owner away), mail 148. Marks: **KNOWN FROM DOCUMENTATION** (HTTP/1.1 message syntax and semantics, RFC 9110 and 9112; `CONNECT`, RFC 9110 section 9.3.6; the special-purpose address registries of IANA, RFC 6890 and its updates; Basic authentication, RFC 7617), **PROPOSED** (the limits; whether the engine takes proxy credentials and honours the proxy for every fetch is the second measurement of M17-P05).
 
@@ -15,7 +15,7 @@ The fetch guard of a browser engine. A small HTTP and `CONNECT` proxy on a loopb
 | `Policy { allow_loopback, only_loopback }`, `Policy::allows(Class)`, `Class`, `classify(IpAddr) -> Class` | the address table below; only `Public` is allowed, `Loopback` as well with `allow_loopback`, and with `only_loopback` (0.2.0) ONLY `Loopback`: not even public (the guard of a tab that may reach this machine's own services must never load a public page; a redirect to a public host is refused with 403). A name with any answer that is not allowed is refused, in every mode. `Config.deny_port` (0.2.0) is a function of a port: a loopback destination (every answer loopback) whose port it denies is refused with 403 in every mode, so that a page can never reach the host's own listening ports or the engine's; a public destination on the same number is not affected |
 | `Host { Ip, Name }`, `HostError`, `check_host(&str)`, `MAX_HOST` | the host rules below, applied before any lookup |
 | `trait Resolver { resolve(host, timeout) -> io::Result<Vec<IpAddr>> }`, `trait Connector { connect(ip, port, timeout) -> io::Result<TcpStream> }`, `StdResolver`, `StdConnector`, `with_deadline(timeout, f)` | the two doors to the world; the std ones are thin (a lookup behind a deadline, a connect with a timeout) and cannot be tested without a real lookup or connection, which no test may make; every test uses fakes |
-| `Event { kind: Connect \| Http \| Refused(status), host, port, authenticated }`, `Config.observe` | what the observer is told: the destination host and port, never a path, a query or a header |
+| `Event { kind: Connect \| Http \| Refused(status), host, port, authenticated, why }`, `Why { None, Other, NotPublic, LoopbackOnly, Port, Denied }`, `Config.observe` | (0.3.0: `why` says the reason of a 403 so that the person is told the truth: `NotPublic` an address that is not public, `LoopbackOnly` a public or private address at a loopback-only guard, `Port` a public destination on a port that is not 80, 443, 8080 or 8443, `Denied` a port of this machine that no page may reach; `Other` any other refusal; `None` for a connection that was let through) | what the observer is told: the destination host and port, never a path, a query or a header |
 | `Stats { accepted, refused, active, bytes }` | counters |
 
 ## What it does with a request
@@ -60,4 +60,4 @@ If `Config.token` is set, every request needs `Proxy-Authorization: Basic` for t
 
 ## Versioning and budget
 
-`0.1.0` while it has met one client (the engine of M17-P05); `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.
+`0.1.0` while it has met one client (the engine of M17-P05); `0.3.0` (M17-P07, mail 152) adds `Event.why`; `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.

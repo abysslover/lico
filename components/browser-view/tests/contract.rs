@@ -442,25 +442,25 @@ fn history_cannot_be_walked_while_the_engine_is_not_running_and_the_fallback_wai
 fn a_refused_fetch_becomes_a_notice_with_the_host_and_the_reason() {
     let mut t = ready();
     assert_eq!(t.notice(), None);
-    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "intranet.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "intranet.example".into(), port: 80, why: Refusal::NotPublic });
     let n = t.notice().unwrap().to_string();
     assert!(n.contains("intranet.example") && n.contains("private network"), "{n}");
-    t.engine_event(EngineEvent::FetchRefused { status: 502, host: "gone.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 502, host: "gone.example".into(), port: 80, why: Refusal::NotPublic });
     let n = t.notice().unwrap().to_string();
     assert!(n.contains("gone.example") && n.contains("could not be found or reached"), "the newest notice replaces the older: {n}");
-    t.engine_event(EngineEvent::FetchRefused { status: 504, host: "slow.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 504, host: "slow.example".into(), port: 80, why: Refusal::NotPublic });
     assert!(t.notice().unwrap().contains("too long"));
-    t.engine_event(EngineEvent::FetchRefused { status: 418, host: "odd.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 418, host: "odd.example".into(), port: 80, why: Refusal::Other });
     assert!(t.notice().unwrap().contains("418"), "an unknown status is named, not guessed");
 }
 
 #[test]
 fn the_host_in_a_notice_is_cleaned_and_the_notice_is_short() {
     let mut t = ready();
-    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "a\u{202E}b\nc.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "a\u{202E}b\nc.example".into(), port: 80, why: Refusal::NotPublic });
     let n = t.notice().unwrap();
     assert!(!n.contains('\u{202E}') && !n.contains('\n'), "{n:?}");
-    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "h".repeat(5000) });
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "h".repeat(5000), port: 80, why: Refusal::NotPublic });
     assert!(t.notice().unwrap().chars().count() <= MAX_NOTICE, "{}", t.notice().unwrap().chars().count());
 }
 
@@ -469,7 +469,7 @@ fn a_new_navigation_clears_the_notice_and_the_unpinned_mark_stays() {
     let mut t = ready();
     t.engine_event(EngineEvent::UnpinnedEngine);
     for step in 0..4 {
-        t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into() });
+        t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into(), port: 80, why: Refusal::NotPublic });
         assert!(t.notice().is_some());
         match step {
             0 => drop(t.submit_address("https://example.org/").unwrap()),
@@ -505,8 +505,44 @@ fn a_tab_the_person_opened_for_this_machines_services_says_so_and_no_other_tab_d
     assert_eq!(t.notice(), None, "the note is its own line, not a notice about a page");
     t.engine_event(EngineEvent::LocalTab);
     assert!(t.local());
-    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into() });
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into(), port: 80, why: Refusal::NotPublic });
     t.submit_address("https://example.org/").unwrap();
     assert!(t.local(), "leaving a page does not turn it off: it is a property of the tab");
     assert!(!Tab::new().local());
+}
+
+#[test]
+fn a_refusal_of_a_403_is_worded_by_its_real_reason_and_never_guessed() {
+    let mut t = ready();
+    let say = |t: &mut Tab, why: Refusal, port: u16| {
+        t.engine_event(EngineEvent::FetchRefused { status: 403, host: "h.example".into(), port, why });
+        t.notice().unwrap().to_string()
+    };
+    let n = say(&mut t, Refusal::Port, 25);
+    assert!(n.contains("h.example") && n.contains("25") && n.contains("80, 443, 8080 and 8443") && !n.contains("private"), "{n}");
+    let n = say(&mut t, Refusal::NotPublic, 80);
+    assert!(n.contains("private network") && !n.contains("port"), "{n}");
+    let n = say(&mut t, Refusal::LoopbackOnly, 80);
+    assert!(n.contains("only this machine's own services"), "{n}");
+    let n = say(&mut t, Refusal::Denied, 3000);
+    assert!(n.contains("belongs to Lico"), "{n}");
+    let n = say(&mut t, Refusal::Other, 80);
+    assert!(n.contains("403"), "a reason that is not known is a status, not a story: {n}");
+}
+
+#[test]
+fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_command_for_the_first_check() {
+    let t = Tab::new();
+    let help = t.help_lines();
+    let all = help.join("\n");
+    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu"] {
+        assert!(all.contains(needle), "the help says {needle:?}: {all}");
+    }
+    assert!(!all.contains(LOCAL_NOTE), "an ordinary tab does not carry the local sentence");
+    assert!(help.iter().all(|l| l.chars().count() <= 120 && !l.is_empty()), "short lines: {help:?}");
+    let mut local = Tab::new();
+    local.engine_event(EngineEvent::LocalTab);
+    assert!(local.help_lines().iter().any(|l| l == LOCAL_NOTE), "a local tab says so first");
+    assert_eq!(local.help_lines()[0], LOCAL_NOTE);
+    assert_eq!(&local.help_lines()[1..], &help[..], "the rest is the same");
 }
