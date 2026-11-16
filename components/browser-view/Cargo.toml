@@ -1,0 +1,23 @@
+[package]
+name = "lico-browser-view"
+version = "0.1.0"
+edition = "2021"
+description = "The display-free model of one browser tab: address editing and parsing, history, the page viewport and input mapping, the keeper of the newest frame, and the loading and absent states, as data and effects."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lico-frame = { path = "../frame" }
+
+[dev-dependencies]
+# The tests make PNG frames with the program's PNG writer: an input of the tests, not a dependency.
+lico-png = { path = "../png" }
+
+[package.metadata.lico]
+purpose = "The display-free model of one browser tab: address editing and parsing (http and https only), history, the page viewport and the mapping of the person's input to the page, the keeper of the newest frame that decodes only what is shown, and the loading, absent and failed states, all as data and effects with no socket, no window and no clock."
+spec = "SPEC.md"
+depends = ["lico-frame"]
+external = []
+budget = { mib = 256, seconds = 30 }
