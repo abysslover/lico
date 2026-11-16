@@ -1,6 +1,6 @@
 # M16-P05 Plan — `convo` and `toolloop`
 
-- Status: approved by the owner on 2026-11-17 (the two interface specifications below, shown on the screen, are G2 of this phase; the four decisions Q1 to Q4 were answered yes, as recommended); in progress
+- Status: approved by the owner on 2026-11-17 (the two interface specifications below, shown on the screen, are G2 of this phase; the four decisions Q1 to Q4 were answered yes, as recommended); implemented
 - Version: 1.0.0
 - Branch: `phase/M16-P05-convo-and-toolloop` (stacked on the P04 tip `0e6f024`)
 - Milestone: [M16](../../../milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md)
@@ -59,3 +59,15 @@ Decisions of the owner: Q1 the record refuses a file readable by group or others
 ## Acceptance Criteria
 
 `cargo xtask check` and `verify` pass; both components inside 256 MiB and 30 s with receipts; the contract tests pass; the mutation check shown; no version bump, no real server or home, no spec edit.
+
+## Result (2026-11-17, as measured)
+
+| Component | Source lines | Test lines | Tests | Own run (`cargo xtask test NAME`) | Mutations caught |
+|---|---:|---:|---:|---|---|
+| `lico-convo 0.1.0` | 236 | 366 | 15 | 1.63 s, peak 22.9 MiB | 22 of 24 (the sync after a write and the check that the opened file is the checked one cannot be seen by a test) |
+| `lico-toolloop 0.1.0` | 281 | 771 | 24 (21 on scripted ports, 3 end to end through the real client, the fake and the record) | 0.22 s, peak 3.2 MiB | 26 of 26 |
+
+Both inside 256 MiB and 30 s with receipts (the receipt of `toolloop` lists `lico-llm-http (dev)`, `lico-llm-fake (dev)` and `lico-convo (dev)` as inputs); `cargo xtask check` and `verify` pass; the program does not depend on them yet. About 1,650 lines against the estimate of 2,150 (the tests are the larger part). The `convo` tests run green under `umask 022` and `umask 077`; the two permission mutations are caught only under `umask 000` (a mutated mode of `0o644` is hidden by `umask 077`), which is why the verification of the host runs the Rust tests under both.
+
+Notes: (1) `convo` keeps a whole message that only lacks its newline (the torn-line test found that cutting only the newline is a whole message) instead of dropping it. (2) A call's id is kept as the model gave it; Ollama ids (`call_1`) repeat from one answer to the next, which is harmless because a result is matched by order inside its answer; the host adapter may rename them if a server needs unique ids. (3) A cancel or the time limit between the calls of an answer records "not run" results for the calls not yet run, so that the record can always be sent to a model again.
+

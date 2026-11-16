@@ -25,7 +25,7 @@ The component rules 1.0.1 (new code is new components with a version, downward-o
 | M16-P02 | Phase 0 for the Local LLM session (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | [Report](../../../reports/202611/20261117/20261117_04_M16-P02_local_llm_session_phase0_report.md) | implemented; waits for the owner's pick |
 | M16-P03 | `llm-wire` (the pure formats) | [Plan](../../../plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) | [Report](../../../plans/202611/20261117/20261117_05_M16-P03_llm_wire_plan.md) (the result is in the plan note) | implemented |
 | M16-P04 | `llm-http` and `llm-fake` | [Plan](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) | [Result](../../../plans/202611/20261117/20261117_06_M16-P04_llm_http_and_fake_plan.md) (in the plan note) | implemented |
-| M16-P05 | `convo` and `toolloop` | [Plan](../../../plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) | pending | approved, in progress |
+| M16-P05 | `convo` and `toolloop` | [Plan](../../../plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) | [Result](../../../plans/202611/20261117/20261117_07_M16-P05_convo_and_toolloop_plan.md) (in the plan note) | implemented |
 | M16-P06 | the driver port, the adapter, CLI and HTTP parity, system tests | [Plan](../../../plans/202611/20261117/20261117_08_M16-P06_driver_port_and_adapter_plan.md) (sketch) | pending | after P05; plan and spec proposal shown first |
 | M16-P07.. | the GUI, the release `0.4.0` | sketch in the P02 report | | the lead's next pointer |
 
