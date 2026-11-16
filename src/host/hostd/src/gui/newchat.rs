@@ -10,6 +10,7 @@ use winit::event::KeyEvent;
 use winit::keyboard::{Key, NamedKey};
 
 use super::controls::{Action, Rect};
+use super::local_rows::{self, Server};
 use super::panel::AsyncJob;
 use super::sidebar_chats::chats_error_text;
 use super::App;
@@ -68,6 +69,8 @@ pub(crate) struct NewChat {
     pub req: u64,
     pub busy: bool,
     pub geom: Geom,
+    /// The server of the last local session, when the account list ends with its row.
+    pub(super) local: Option<Server>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -116,10 +119,18 @@ impl NewChat {
         }
     }
 
+    /// The server of the chosen row when it is the local one.
+    fn local_chosen(&self) -> Option<&Server> {
+        self.accounts.get(self.sel).filter(|a| a.provider == "local").and(self.local.as_ref())
+    }
+
     /// The line under the choice: the last session, or why there is none.
     pub(super) fn info_line(&self) -> String {
         if let Some(error) = &self.error {
             return error.clone();
+        }
+        if self.local_chosen().is_some() {
+            return "Local starts a fresh conversation with the model server on this machine (no files or shell). It is resumed from its tab.".into();
         }
         if self.accounts.is_empty() {
             return "No account for this location. Use Options... to add one.".into();
@@ -182,6 +193,28 @@ pub(super) fn accounts_for(list: &Value, host: Option<&str>) -> Vec<Acct> {
         .collect()
 }
 
+/// The accounts with the last local choice as one more row, on this machine only and only when the host remembers a loopback server and a model.
+pub(super) fn with_local(mut accounts: Vec<Acct>, last: &Value, host: Option<&str>) -> (Vec<Acct>, Option<Server>) {
+    let kept = if host.is_none() { local_rows::remembered(last) } else { None };
+    if let Some(s) = &kept {
+        accounts.push(Acct { id: String::new(), provider: "local".into(), label: super::clean(&format!("Local: {} at {}", s.models[0], s.addr)), default: false });
+    }
+    (accounts, kept)
+}
+
+/// The `session.create` request of the chosen row: a fresh local session, or the account's session in the folder (`resume_latest` while Resume is chosen); none without a row.
+pub(super) fn confirm_request(nc: &NewChat) -> Option<Value> {
+    if let Some(s) = nc.local_chosen() {
+        return Some(local_rows::request(s, &s.models[0], "", 0));
+    }
+    let account = nc.accounts.get(nc.sel)?;
+    let mut request = json!({"op": "session.create", "kind": account.provider, "account": account.id, "mode": "auto", "cwd": nc.folder});
+    if nc.resume {
+        request["resume_latest"] = json!(true);
+    }
+    Some(request)
+}
+
 /// The account the modal starts on: the first one marked default, else the first.
 pub(super) fn default_index(accounts: &[Acct]) -> usize {
     accounts.iter().position(|a| a.default).unwrap_or(0)
@@ -218,7 +251,9 @@ impl App {
         let (folder, host) = (self.ui.sidebar.cwd.clone(), self.ui.sidebar.ssh_host.clone());
         let accounts = accounts_for(&reply, host.as_deref());
         let sel = default_index(&accounts);
-        self.ui.sidebar.newchat = Some(NewChat { folder, ssh_host: host, accounts, sel, resume: true, preview: Preview::Idle, error: None, req: 0, busy: false, geom: Geom::default() });
+        let last = if host.is_none() { self.host_call_within(json!({"op": "session.options"}), 5)["last"].clone() } else { Value::Null };
+        let (accounts, local) = with_local(accounts, &last, host.as_deref());
+        self.ui.sidebar.newchat = Some(NewChat { folder, ssh_host: host, accounts, sel, resume: true, preview: Preview::Idle, error: None, req: 0, busy: false, geom: Geom::default(), local });
         self.newchat_preview();
         self.dirty = true;
     }
@@ -227,7 +262,7 @@ impl App {
     fn newchat_preview(&mut self) {
         let Some(nc) = self.ui.sidebar.newchat.as_mut() else { return };
         nc.error = None;
-        if !nc.resume || nc.accounts.is_empty() {
+        if !nc.resume || nc.accounts.is_empty() || nc.local_chosen().is_some() {
             nc.preview = Preview::Idle;
             return;
         }
@@ -255,13 +290,10 @@ impl App {
             self.dirty = true;
             return;
         }
-        let account = nc.accounts[nc.sel].clone();
-        let mut request = json!({"op": "session.create", "kind": account.provider, "account": account.id, "mode": "auto", "cwd": nc.folder});
-        if nc.resume {
-            request["resume_latest"] = json!(true);
-        }
-        let created_cwd = if nc.ssh_host.is_some() { None } else { Some(nc.folder.clone()) };
-        let resume = nc.resume;
+        let Some(request) = confirm_request(nc) else { return };
+        let local = nc.local_chosen().is_some();
+        let created_cwd = if nc.ssh_host.is_some() || local { None } else { Some(nc.folder.clone()) };
+        let resume = nc.resume && !local;
         nc.busy = true;
         nc.error = None;
         let req_id = self.spawn_host_call(request, 8, move |req_id| AsyncJob::NewChatStart { req_id, created_cwd, resume });
@@ -276,7 +308,13 @@ impl App {
         let Some(nc) = self.ui.sidebar.newchat.take() else { return };
         self.newchat_gone();
         let chosen = nc.accounts.get(nc.sel).cloned();
+        let local = nc.local.clone().filter(|_| chosen.as_ref().is_some_and(|a| a.provider == "local"));
         self.form_open_at_host(nc.folder, nc.ssh_host);
+        if let Some(s) = local {
+            self.form_choose_local(&s.addr, &s.api, &s.models[0]);
+            self.dirty = true;
+            return;
+        }
         if let (Some(account), Some(p)) = (chosen, self.ui.panel.as_mut()) {
             if p.accounts.iter().any(|a| a.0 == account.id) {
                 p.provider = account.provider;
@@ -446,7 +484,17 @@ mod tests {
     }
 
     fn modal(n: usize) -> NewChat {
-        NewChat { folder: "/w".into(), ssh_host: None, accounts: accounts(n), sel: 0, resume: true, preview: Preview::Idle, error: None, req: 0, busy: false, geom: Geom::default() }
+        NewChat { folder: "/w".into(), ssh_host: None, accounts: accounts(n), sel: 0, resume: true, preview: Preview::Idle, error: None, req: 0, busy: false, geom: Geom::default(), local: None }
+    }
+
+    fn last_local() -> Value {
+        json!({"kind": "local", "mode": "auto", "model": "llama3", "endpoint": "127.0.0.1:11434", "api": "ollama"})
+    }
+
+    /// A modal of two accounts and the last local choice as the third row, the local one chosen.
+    fn with_local_row() -> NewChat {
+        let (accounts, local) = with_local(accounts(2), &last_local(), None);
+        NewChat { accounts, local, sel: 2, ..modal(0) }
     }
 
     #[test]
@@ -513,5 +561,53 @@ mod tests {
         m.error = Some("Could not open the chat: busy".into());
         assert_eq!(m.info_line(), "Could not open the chat: busy");
         assert!(modal(0).info_line().contains("No account"));
+    }
+
+    #[test]
+    fn the_last_local_choice_is_one_more_row_for_this_machine_only_and_only_when_there_is_one() {
+        let (rows, local) = with_local(accounts(2), &last_local(), None);
+        assert_eq!(rows.len(), 3);
+        assert_eq!((rows[2].provider.as_str(), rows[2].id.as_str(), rows[2].label.as_str(), rows[2].default), ("local", "", "Local: llama3 at 127.0.0.1:11434", false));
+        assert_eq!(local.unwrap().addr, "127.0.0.1:11434");
+        for (last, host) in [(last_local(), Some("gpu")), (json!({"kind": "claude", "mode": "auto"}), None), (json!({"kind": "local", "model": "m", "endpoint": "10.0.0.5:80", "api": "openai"}), None), (Value::Null, None)] {
+            let (rows, local) = with_local(accounts(2), &last, host);
+            assert!(rows.len() == 2 && local.is_none(), "{last} {host:?}");
+        }
+        assert_eq!(default_index(&with_local(accounts(2), &last_local(), None).0), 1, "the default account stays the first choice");
+    }
+
+    #[test]
+    fn a_local_row_makes_a_fresh_local_session_with_no_account_folder_or_resume_and_says_so() {
+        let m = with_local_row();
+        assert_eq!(confirm_request(&m), Some(json!({"op": "session.create", "kind": "local", "endpoint": "127.0.0.1:11434", "api": "ollama", "model": "llama3"})));
+        assert!(m.info_line().contains("fresh conversation") && m.info_line().contains("no files or shell"), "{}", m.info_line());
+        let mut other = NewChat { sel: 0, ..with_local_row() };
+        assert_eq!(confirm_request(&other).unwrap()["cwd"], "/w");
+        other.resume = true;
+        assert_eq!(confirm_request(&other).unwrap()["resume_latest"], true);
+        assert_eq!(confirm_request(&modal(0)), None);
+    }
+
+    #[test]
+    fn choosing_the_local_row_looks_for_no_earlier_chat_and_the_other_rows_still_do() {
+        let mut app = super::super::scroll_oracle::app(1.0, false);
+        app.ui.sidebar.newchat = Some(with_local_row());
+        app.newchat_preview();
+        assert_eq!(app.ui.sidebar.newchat.as_ref().unwrap().preview, Preview::Idle, "a local session is not resumed: nothing is asked");
+        app.ui.sidebar.newchat.as_mut().unwrap().sel = 0;
+        app.newchat_preview();
+        assert_ne!(app.ui.sidebar.newchat.as_ref().unwrap().preview, Preview::Idle);
+    }
+
+    #[test]
+    fn options_on_the_local_row_opens_the_full_form_on_local_with_that_server_and_model() {
+        let mut app = super::super::scroll_oracle::app(1.0, false);
+        app.ui.sidebar.newchat = Some(with_local_row());
+        app.newchat_options();
+        let f = app.form_json();
+        assert_eq!((f["provider"].clone(), f["local"].clone(), f["local_model"].clone()), (json!("local"), json!(true), json!("llama3")));
+        assert_eq!(f["rows"], json!(["Provider", "Server", "Model", "Name", "Start"]));
+        assert_eq!(f["problem"], json!(null));
+        assert!(app.ui.sidebar.newchat.is_none());
     }
 }

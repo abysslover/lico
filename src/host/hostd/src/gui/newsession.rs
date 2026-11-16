@@ -305,6 +305,17 @@ impl App {
         self.form_resume();
     }
 
+    /// The form on Local with the given server and model (from + New chat's Options...): the one server is offered at once, no look is made.
+    pub(crate) fn form_choose_local(&mut self, addr: &str, api: &str, model: &str) {
+        let server = Server { addr: addr.into(), api: api.into(), models: vec![model.into()], wants_key: false, remembered: true };
+        self.with_form(|p, f| {
+            (p.provider, f.local, f.focus) = ("local".into(), true, Field::Server);
+            p.account.clear();
+            (f.servers, f.kept, f.server, f.local_model) = (vec![server.clone()], Some(server), 0, model.into());
+        });
+        self.form_resume();
+    }
+
     /// The forms that name a folder or a host are for the other providers: a form that opened on Local (the last choice) goes to the first provider with an account.
     pub(super) fn form_leave_local(&mut self) {
         self.with_form(|p, f| {
