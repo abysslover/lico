@@ -22,6 +22,7 @@ mod newchat;
 mod jobs;
 mod llm_find;
 mod llm_rows;
+mod local_rows;
 mod pathbar;
 mod windowstate;
 mod native_prompt;
