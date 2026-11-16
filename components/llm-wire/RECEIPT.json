@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 2.4,
-    "peak_mib": 14.8,
-    "wall_s": 0.49
+    "compile_s": 0.7,
+    "peak_mib": 15.5,
+    "wall_s": 1.12
   },
   "date": "2026-11-16",
-  "hash": "5a212cff6b392fadeff0bc21f66d63ba92772bc38a4024f8aada75781c1907e6",
+  "hash": "23a8b8ce29276f8d60063ed5f241949425b2b242ff2a9417841e298f3c0e1862",
   "inputs": {
     "dependencies": [],
     "externals": [],
@@ -21,33 +21,93 @@
       ],
       [
         "SPEC.md",
-        "7ffebbcb8e8d575d68b27c40f0d4502ad2437dddbc6c9c0dc3bbc8db42650344"
+        "faac59d51963b057fec5820d91061b7739fa41f2bd493ffa111918273efb313f"
+      ],
+      [
+        "src/decode.rs",
+        "7e836b13d3a77a986ad6d7bbf8f1a91d67a1f176e458f0011005599219736861"
       ],
       [
         "src/encode.rs",
         "dcd50bd2cbeaafcddf268be537873d82f696268c13c43a2337ed694a3d8a81f2"
       ],
       [
+        "src/failure.rs",
+        "7f6023755e833856d98bfa326f2a144d2c2f2cda5a6f5f9006198ea8cc749b56"
+      ],
+      [
         "src/lib.rs",
-        "d8fa98fca692cf06fa4c81bbe99b6d2c28212cc783ef8963a923b135ef6bbc09"
+        "bc8b552f0ea7f36fb72fd541723d911999d9fc87269206c0ce649531a5cf84a1"
       ],
       [
         "src/types.rs",
-        "a23df516a933c76bdd584eb4e30d29626224eb8125d58fc7e1a098c5dc3a6458"
+        "d0f5fa1ead0ea48c421e2603a9778002a1a083665e3c4c6fd2e4414b20466ffd"
       ],
       [
         "tests/contract.rs",
-        "459bafda15f29a34ce3fe16cf347a7b5fce62bcfe97bd31ff4978f65c6131f68"
+        "c699cf2c83570a88eda94c44a3beb3273788e91257d13f2ae31a9e2cac427c84"
+      ],
+      [
+        "tests/reply.rs",
+        "64593d22efa4aca72884200fe32d95851a37aed4d831a46ad4ddc421a9086b92"
+      ],
+      [
+        "tests/samples/ollama_error.ndjson",
+        "b2b1ac218d3729d5b00460e0da2032da3efccff8f19f7152153721682b70e128"
+      ],
+      [
+        "tests/samples/ollama_text.ndjson",
+        "f6c1d24cec20bb637b6b601c636bd88532849b77b3d81c1570d2990264d1c40a"
+      ],
+      [
+        "tests/samples/ollama_thinking.ndjson",
+        "765d820d568502b4cc65c42605f02dab9ded3ec4f4ab2b4b3ca2daa89a64579b"
+      ],
+      [
+        "tests/samples/ollama_tools.ndjson",
+        "350a5ea7d9a7583535a8ccc77ec77708903fb84aef50459ee3a85e271f7ebdb4"
+      ],
+      [
+        "tests/samples/ollama_whole.json",
+        "c75c856830b8b4e9cbce4f8ee63a9ae2f39f27826de1f66532881f4ca85946db"
+      ],
+      [
+        "tests/samples/openai_bad_args.sse",
+        "b5b5128245d33a03bab35484d23393a38cc4b70b3047b59e167a82182307ba51"
+      ],
+      [
+        "tests/samples/openai_comments.sse",
+        "61c6afc52996f4a264c05ec4a5395390d9a676a44f5af45e30d7dcd0fe4ab598"
+      ],
+      [
+        "tests/samples/openai_error_stream.sse",
+        "ceb440d15ac6662ed786ea3e019e3edde8643c2aabbcbd7704d25ef04b5a1f0f"
+      ],
+      [
+        "tests/samples/openai_reasoning.sse",
+        "8764810f1570d9cac96851581701e28127371f8e61a55de682510a8b497f369e"
+      ],
+      [
+        "tests/samples/openai_text.sse",
+        "4dde3ac9c8006f7818a35387b681a276657efc970c0198568eb53f4315106991"
+      ],
+      [
+        "tests/samples/openai_tools.sse",
+        "b7820091260efdac9b276b363b7558f995e0e1e08dd1b5943fdaf4c72073b56b"
+      ],
+      [
+        "tests/samples/openai_whole.json",
+        "0a49d2372e5842f736108400ca43c7dbe297d65c54db57fe5eb147ade0638d5a"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 10,
+    "count": 29,
     "failed": 0,
     "ignored": 0,
-    "passed": 10
+    "passed": 29
   },
   "tool": "lico-xtask 0.1.0",
   "version": "0.1.0"

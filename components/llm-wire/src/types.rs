@@ -68,3 +68,79 @@ pub enum EncodeError {
     DuplicateTool(String),
     TooLarge,
 }
+
+// ---- reading a reply -------------------------------------------------------------------------------------------------------
+
+/// How a reply arrives: as a stream (server-sent events for OpenAI, one JSON object per line for Ollama), or as one whole JSON body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Framing {
+    Stream,
+    Whole,
+}
+
+/// Why the answer ended.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopReason {
+    Stop,
+    ToolCalls,
+    Length,
+    Other,
+}
+
+/// What the server counted, when it says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Usage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+}
+
+/// The end of a good answer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Done {
+    pub reason: StopReason,
+    pub usage: Option<Usage>,
+}
+
+/// What a failure of the server is about, as far as its words say.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailureKind {
+    KeyNeeded,
+    ModelMissing,
+    ToolsUnsupported,
+    ContextTooLong,
+    Busy,
+    BadRequest,
+    ServerError,
+    Unknown,
+}
+
+/// A failure the server reported: its kind and its text (control characters removed, cut to 300 characters).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Failure {
+    pub kind: FailureKind,
+    pub message: String,
+}
+
+/// A problem inside a reply; after it nothing more is given.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StreamError {
+    Malformed(String),
+    Truncated,
+    TooLarge,
+    Server(Failure),
+}
+
+/// What the decoder gives. Calls are given only together with the end: just before `Done`, never before an `Error`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Event {
+    /// A piece of the answer text, raw as the server sent it.
+    Text(String),
+    /// The model is reasoning (its text is dropped); at most once per answer.
+    Thinking,
+    /// A complete call whose arguments are a JSON object.
+    ToolCall(ToolCall),
+    /// A call that cannot be run: its arguments are not a JSON object, or it has no name. `raw` is the arguments as received, cut to 2 KiB.
+    BadCall { id: String, name: String, raw: String, reason: String },
+    Done(Done),
+    Error(StreamError),
+}

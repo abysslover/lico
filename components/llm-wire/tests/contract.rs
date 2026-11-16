@@ -155,14 +155,14 @@ fn the_public_names_are_exactly_these() {
     let mut found: Vec<String> = Vec::new();
     for line in source.lines().map(str::trim) {
         if let Some(rest) = line.strip_prefix("pub use ") {
-            let names = rest.split_once('{').map(|(_, n)| n.trim_end_matches(';').trim_end_matches('}')).unwrap_or(rest);
+            let names = rest.split_once('{').map(|(_, n)| n.trim_end_matches(';').trim_end_matches('}')).unwrap_or(rest).trim_end_matches(';');
             found.extend(names.split(',').map(|n| n.trim().rsplit("::").next().unwrap().to_string()).filter(|n| !n.is_empty()));
         } else if line.starts_with("pub ") {
             panic!("an item is public outside the re-export list: {line}");
         }
     }
     found.sort();
-    let mut expected: Vec<String> = ["encode", "CONTENT_TYPE", "MAX_REQUEST_BYTES", "Api", "EncodeError", "Encoded", "Message", "Request", "ToolCall", "ToolDef"].iter().map(|s| s.to_string()).collect();
+    let mut expected: Vec<String> = ["encode", "classify", "Decoder", "CONTENT_TYPE", "MAX_REQUEST_BYTES", "MAX_CALLS", "MAX_CALL_ARGUMENT_BYTES", "MAX_LINE_BYTES", "MAX_WHOLE_BYTES", "Api", "Done", "EncodeError", "Encoded", "Event", "Failure", "FailureKind", "Framing", "Message", "Request", "StopReason", "StreamError", "ToolCall", "ToolDef", "Usage"].iter().map(|s| s.to_string()).collect();
     expected.sort();
     assert_eq!(found, expected);
 }
@@ -170,4 +170,8 @@ fn the_public_names_are_exactly_these() {
 #[test]
 fn the_limits_have_the_values_of_the_specification() {
     assert_eq!(MAX_REQUEST_BYTES, 4 * 1024 * 1024);
+    assert_eq!(MAX_LINE_BYTES, 1024 * 1024);
+    assert_eq!(MAX_WHOLE_BYTES, 4 * 1024 * 1024);
+    assert_eq!(MAX_CALL_ARGUMENT_BYTES, 64 * 1024);
+    assert_eq!(MAX_CALLS, 16);
 }

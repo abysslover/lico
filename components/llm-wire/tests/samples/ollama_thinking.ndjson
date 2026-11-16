@@ -1,0 +1,4 @@
+{"model": "m", "created_at": "2026-11-17T00:00:00Z", "message": {"role": "assistant", "content": "", "thinking": "hmm"}, "done": false}
+{"model": "m", "created_at": "2026-11-17T00:00:00Z", "message": {"role": "assistant", "content": "", "thinking": " ok"}, "done": false}
+{"model": "m", "created_at": "2026-11-17T00:00:00Z", "message": {"role": "assistant", "content": "Answer"}, "done": false}
+{"model": "m", "created_at": "2026-11-17T00:00:00Z", "message": {"role": "assistant", "content": ""}, "done": true, "done_reason": "stop"}

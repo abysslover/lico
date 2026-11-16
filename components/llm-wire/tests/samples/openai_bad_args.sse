@@ -1,0 +1,10 @@
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "call_1", "type": "function", "function": {"name": "sessions", "arguments": "not json"}}]}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "id": "call_2", "type": "function", "function": {"name": "send", "arguments": "[1, 2]"}}]}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 2, "id": "call_3", "type": "function", "function": {"name": "rename", "arguments": ""}}]}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+

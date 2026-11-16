@@ -1,0 +1,1 @@
+{"model": "m", "message": {"role": "assistant", "content": "Hi", "tool_calls": [{"function": {"name": "sessions", "arguments": {"q": "x"}}}]}, "done": true, "done_reason": "stop", "prompt_eval_count": 4, "eval_count": 2}

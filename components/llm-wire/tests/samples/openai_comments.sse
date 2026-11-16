@@ -1,0 +1,15 @@
+: ping
+
+event: message
+id: 7
+retry: 100
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"content": "A"}, "finish_reason": null}]}
+
+: another
+
+data:{"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {"content": "B"}, "finish_reason": null}]}
+
+data: {"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 1, "model": "m", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
