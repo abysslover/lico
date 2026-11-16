@@ -404,6 +404,27 @@ fn the_files_that_are_open_are_limited_when_asked() {
     assert!(matches!(&p, Probe::Err(e) if e.contains("Too many") || e.contains("os error 24")), "{p:?}");
 }
 
+#[test]
+fn strace_itself_works_under_the_confinement_and_sees_what_its_tracee_tries_to_open() {
+    landlock();
+    if !Path::new("/usr/bin/strace").exists() {
+        println!("strace is not installed: this check is skipped (the engine probe then runs without it)");
+        return;
+    }
+    let scratch = fresh("strace");
+    let outside = fresh("strace_outside");
+    let log = scratch.join("t.txt");
+    let mut cmd = Command::new("/usr/bin/strace");
+    cmd.args(["-f", "-qq", "-e", "trace=execve,openat", "-o"]).arg(&log).args(["--", "/usr/bin/cat"]).arg(outside.join("secret.txt")).stdout(Stdio::null()).stderr(Stdio::null());
+    std::fs::write(outside.join("secret.txt"), "x").unwrap();
+    confine(&mut cmd, &base(&scratch)).unwrap();
+    let status = cmd.status().unwrap();
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains("execve(\"/usr/bin/cat\""), "{text}");
+    assert!(text.lines().any(|l| l.contains("secret.txt") && l.contains("EACCES")), "the denied open is in the trace: {text}");
+    assert!(!status.success(), "cat could not read the file");
+}
+
 // ---- what the fence does NOT close: each is pinned, so that a kernel that begins to cover it makes the test fail and SPEC.md is revisited -----------------
 
 #[test]

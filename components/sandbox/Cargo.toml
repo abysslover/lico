@@ -13,6 +13,8 @@ path = "src/lib.rs"
 [dev-dependencies]
 # The ignored measurement test of the engine drives the confined engine with the CDP client; a normal run does not use it.
 lico-cdp = { path = "../cdp" }
+lico-png = { path = "../png" }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 
 [package.metadata.lico]
 purpose = "Starts a program as a child under a Landlock confinement (files by path, TCP connect and bind by port), a cleared environment, resource limits, its own session and death with its parent, and fails closed when the kernel cannot give what was asked."
