@@ -492,8 +492,7 @@ impl Session {
             purged: false,
             generation: 1,
             codex: None,
-            claude: None,
-            driver: None,
+            claude: None, driver: None,
             provider: "",
             settings: crate::folders::Settings::default(),
             mode: "auto",
@@ -506,8 +505,7 @@ impl Session {
             window: VecDeque::new(),
             window_cap,
             next_seq: 0,
-            bytes_total: 0,
-            log,
+            bytes_total: 0, log,
             subs: Vec::new(),
             hasher: RandomState::new(),
             inputs: HashMap::new(),
@@ -586,11 +584,7 @@ impl Session {
         s.bytes_total = s.log.disk_bytes() as i64;
         s.text_mode = true;
         s.generation = entry.generation;
-        s.provider = match (entry.provider.as_str(), crate::driver::get(&entry.provider)) {
-            ("claude", _) => "claude",
-            (_, Some(driver)) => driver.kind(),
-            _ => "codex",
-        };
+        s.provider = if entry.provider == "claude" { "claude" } else { crate::driver::get(&entry.provider).map_or("codex", |d| d.kind()) };
         s.codex_thread = entry.provider_session.clone();
         s.account = entry.account.clone();
         s.mode = entry.mode;

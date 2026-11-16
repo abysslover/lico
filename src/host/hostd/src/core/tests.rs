@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Child;
 
 fn provider() -> Child {
     let mut command = Command::new("sleep");

@@ -133,9 +133,7 @@ impl Settings {
             }
         }
         if let Some(t) = &self.target {
-            fields.insert("local_endpoint".into(), json!(t.addr.to_string()));
-            fields.insert("local_api".into(), json!(t.api.word()));
-            fields.insert("local_context".into(), json!(t.context_tokens));
+            fields.extend([("local_endpoint", json!(t.addr.to_string())), ("local_api", json!(t.api.word())), ("local_context", json!(t.context_tokens))].map(|(k, v)| (k.to_string(), v)));
         }
         fields
     }
@@ -320,31 +318,6 @@ fn target_of_request(request: &Map<String, Value>) -> Option<crate::driver::Targ
     Some(crate::driver::Target { addr, api, model, context_tokens })
 }
 
-/// A session of a driver kind (`local`): no program, no folder and no account; the driver does the work. Nothing of one that never became ready remains.
-pub fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
-    let driver = crate::driver::get(kind).ok_or("bad_request")?;
-    let id = format!("s{}", crate::core::random_hex(8));
-    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
-    {
-        let mut s = session.lock().unwrap();
-        s.text_mode = true;
-        s.mode = "auto";
-        s.provider = driver.kind();
-        s.settings = chosen;
-    }
-    if let Err(code) = crate::core::start_driver(&driver, shared, &session) {
-        let mut s = session.lock().unwrap();
-        s.purged = true;
-        s.purge_log();
-        return Err(code);
-    }
-    shared.sessions.write().unwrap().push(session.clone());
-    crate::registry::save(shared);
-    let last = last_of(kind, None, "auto", &session.lock().unwrap().settings);
-    remember(shared, last); // what the new-session form offers again
-    Ok(session)
-}
-
 /// A session backed by a provider program (or its simulator): one process, one provider session, running in the chosen
 /// folder or in a scratch workspace of its own. Nothing of one that never became ready remains: no process, no log, and
 /// no workspace the host made.
@@ -437,7 +410,7 @@ fn recent_path(shared: &Shared) -> PathBuf {
 }
 
 /// What the last session was started with, for the new-session screen to offer again: only what was chosen.
-fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> Map<String, Value> {
+pub(crate) fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> Map<String, Value> {
     let mut last = obj(json!({"kind": kind, "mode": mode}));
     let remembered_cwd = chosen.worktree_repo.as_deref().or(chosen.cwd.as_deref());
     for (key, value) in [("account", account), ("cwd", remembered_cwd), ("model", chosen.model.as_deref()), ("effort", chosen.effort.as_deref())] {
@@ -447,11 +420,8 @@ fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> 
     }
     if let Some(t) = &chosen.target {
         // a local session: where its model is (an address, a format and the window the person chose), never a key or anything a server said
-        last.insert("endpoint".into(), json!(t.addr.to_string()));
-        last.insert("api".into(), json!(t.api.word()));
-        if t.context_tokens > 0 {
-            last.insert("context_tokens".into(), json!(t.context_tokens));
-        }
+        last.extend([("endpoint", json!(t.addr.to_string())), ("api", json!(t.api.word()))].map(|(k, v)| (k.to_string(), v)));
+        if t.context_tokens > 0 { last.insert("context_tokens".into(), json!(t.context_tokens)); }
     }
     last
 }

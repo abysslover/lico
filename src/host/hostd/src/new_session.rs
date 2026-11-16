@@ -2,12 +2,13 @@
 //! it continues the latest chat of the folder and account instead (reusing the tab that holds it) and the answer says which it did.
 
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 
 use crate::core::{find, session_resume, start_session, Reply, Shared};
-use crate::session::obj;
+use crate::folders::Settings;
+use crate::session::{obj, Session};
 
 pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str, chosen: crate::folders::Settings) -> Reply {
     let mode: &'static str = if mode == "default" { "default" } else { "auto" };
@@ -73,7 +74,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     } else if kind == "codex" || kind == "claude" {
         crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
     } else if crate::driver::get(kind).is_some() {
-        crate::folders::start_driver_session(shared, kind, chosen)
+        start_driver_session(shared, kind, chosen)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -156,4 +157,29 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
         (_, Some(_)) => Err("bad_request"),
         (_, None) => Ok(None),
     }
+}
+
+/// A session of a driver kind (`local`): no program, no folder and no account; the driver does the work. Nothing of one that never became ready remains.
+fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
+    let driver = crate::driver::get(kind).ok_or("bad_request")?;
+    let id = format!("s{}", crate::core::random_hex(8));
+    let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
+    {
+        let mut s = session.lock().unwrap();
+        s.text_mode = true;
+        s.mode = "auto";
+        s.provider = driver.kind();
+        s.settings = chosen;
+    }
+    if let Err(code) = crate::core::start_driver(&driver, shared, &session) {
+        let mut s = session.lock().unwrap();
+        s.purged = true;
+        s.purge_log();
+        return Err(code);
+    }
+    shared.sessions.write().unwrap().push(session.clone());
+    crate::registry::save(shared);
+    let last = crate::folders::last_of(kind, None, "auto", &session.lock().unwrap().settings);
+    crate::folders::remember(shared, last); // what the new-session form offers again
+    Ok(session)
 }
