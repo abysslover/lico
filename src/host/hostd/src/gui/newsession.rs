@@ -225,7 +225,7 @@ impl App {
             _ => String::new(),
         };
         p.form = Some(Form {
-            focus: Field::Folder,
+            focus: if kind == "local" { Field::Server } else { Field::Folder },
             folder: default_folder,
             is_git: false,
             git_repo: String::new(),

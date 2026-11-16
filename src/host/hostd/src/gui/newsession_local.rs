@@ -19,7 +19,7 @@ impl App {
     pub(super) fn form_leave_local(&mut self) {
         self.with_form(|p, f| {
             if f.local {
-                f.local = false;
+                (f.local, f.focus) = (false, Field::Folder);
                 p.provider = PROVIDERS.iter().copied().filter(|k| *k != "local").find(|k| p.accounts.iter().any(|a| a.1 == *k)).unwrap_or(PROVIDERS[0]).to_string();
                 p.account = p.first_account();
             }

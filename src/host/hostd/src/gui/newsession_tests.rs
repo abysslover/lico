@@ -381,6 +381,7 @@ fn the_server_of_the_last_local_session_is_offered_when_the_form_opens_without_a
     assert_eq!(f["servers"].as_array().unwrap().len(), 1);
     assert!(f["servers"][0].as_str().unwrap().contains("127.0.0.1:11434") && f["servers"][0].as_str().unwrap().contains("used last"), "{f}");
     assert_eq!(f["problem"], json!(null), "the remembered choice can be started at once");
+    assert!(f["focus"] == "Server" && !app.text_mode(), "the focus is on a row the form shows, and no hidden text row has the input line: {f}");
     // a scan that finds the same server marks it and keeps it first with the remembered model
     app.on_local_scan(0, json!({"ok": 1, "endpoints": [{"address": "127.0.0.1", "port": 8080, "kind": "openai", "auth": "none_needed", "models": ["gpt-x"]}, {"address": "127.0.0.1", "port": 11434, "kind": "ollama", "auth": "none_needed", "models": ["qwen2"]}]}));
     let f = form(&app);
@@ -398,6 +399,6 @@ fn the_forms_that_ask_for_a_folder_never_open_on_local() {
     app.form_open_from(json!({"ok": 1, "last": {"kind": "local", "mode": "auto", "model": "llama3", "endpoint": "127.0.0.1:11434", "api": "ollama"}}));
     app.form_leave_local();
     let f = form(&app);
-    assert_eq!(f["provider"], "claude");
+    assert_eq!((f["provider"].clone(), f["focus"].clone()), (json!("claude"), json!("Folder")));
     assert!(rows(&app).contains(&"Folder".to_string()));
 }
