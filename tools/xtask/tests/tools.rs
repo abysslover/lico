@@ -233,3 +233,25 @@ fn the_command_line_refuses_a_workspace_with_a_cycle_and_accepts_a_good_one() {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_xtask")).args(["check", "--root"]).arg(&good).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
 }
+
+#[test]
+fn a_changed_dev_dependency_invalidates_the_receipt_of_the_component_that_tests_with_it_and_needs_no_listing() {
+    let root = workspace("devdep");
+    component(&root, "a", &[], &[], "pub fn f() {}\n");
+    component(&root, "b", &[], &[], "pub fn g() {}\n");
+    let manifest = root.join("components/b/Cargo.toml");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(&manifest, text.replace("[dependencies]\n", "[dependencies]\n\n[dev-dependencies]\na = { path = \"../a\" }\nserde_json = \"=1.0.154\"\n")).unwrap();
+    assert_eq!(problems_text(&root), "", "a dev-dependency is not a dependency of the component: it is not listed and not checked against `depends`");
+    let run = runner::Run { passed: 3, failed: 0, ignored: 0, wall_s: 0.5, peak_mib: 12.0, compile_s: 1.0 };
+    components::record(&root, "a", "rustc 1", &run).unwrap();
+    components::record(&root, "b", "rustc 1", &run).unwrap();
+    assert_eq!(components::verify(&root, "rustc 1"), Vec::<String>::new());
+    fs::write(root.join("components/a/src/lib.rs"), "pub fn f() { /* changed */ }\n").unwrap();
+    let text = components::verify(&root, "rustc 1").join("\n");
+    assert!(text.contains("a: src/lib.rs changed"), "{text}");
+    assert!(text.contains("b: a dev-dependency changed"), "the tests of b run against a: {text}");
+    // a component without dev-dependencies keeps the hash it had (the receipts already recorded stay valid)
+    let before = components::hash(&root, "a", "rustc 1").unwrap().hash;
+    assert_eq!(components::hash(&root, "a", "rustc 1").unwrap().hash, before);
+}

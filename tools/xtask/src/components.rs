@@ -22,6 +22,8 @@ pub struct Component {
     pub budget_s: u64,
     /// The path dependencies of `Cargo.toml` that point at other components.
     pub path_deps: Vec<String>,
+    /// The path dependencies of `[dev-dependencies]` on other components: not dependencies, but inputs of the tests, so they are in the hash.
+    pub dev_deps: Vec<String>,
     /// The other dependencies (crates from the registry), by name.
     pub crates: Vec<String>,
 }
@@ -52,11 +54,21 @@ pub fn discover(root: &Path) -> Result<Vec<Component>, String> {
         let name = v["package"]["name"].as_str().ok_or_else(|| format!("{}: Cargo.toml has no package name", path.display()))?.to_string();
         let lico = &v["package"]["metadata"]["lico"];
         let mut path_deps = Vec::new();
+        let mut dev_deps = Vec::new();
         let mut crates = Vec::new();
         if let Some(deps) = v["dependencies"].as_object() {
             for (dep, spec) in deps {
                 match spec.get("path").and_then(Value::as_str) {
                     Some(p) if p.starts_with("../") => path_deps.push(dep.clone()),
+                    Some(_) => {}
+                    None => crates.push(dep.clone()),
+                }
+            }
+        }
+        if let Some(deps) = v["dev-dependencies"].as_object() {
+            for (dep, spec) in deps {
+                match spec.get("path").and_then(Value::as_str) {
+                    Some(p) if p.starts_with("../") => dev_deps.push(dep.clone()),
                     Some(_) => {}
                     None => crates.push(dep.clone()),
                 }
@@ -73,6 +85,7 @@ pub fn discover(root: &Path) -> Result<Vec<Component>, String> {
             budget_mib: lico["budget"]["mib"].as_u64().unwrap_or(256),
             budget_s: lico["budget"]["seconds"].as_u64().unwrap_or(30),
             path_deps,
+            dev_deps,
             crates,
         });
     }
@@ -222,6 +235,11 @@ fn hash_in(root: &Path, all: &[Component], name: &str, toolchain: &str, stack: &
     for d in &listed {
         deps.push((d.clone(), hash_in(root, all, d, toolchain, stack)?.hash));
     }
+    let mut dev: Vec<&String> = c.dev_deps.iter().filter(|d| !c.depends.contains(d) && all.iter().any(|a| &a.name == *d)).collect();
+    dev.sort();
+    for d in dev {
+        deps.push((format!("{d} (dev)"), hash_in(root, all, d, toolchain, stack)?.hash));
+    }
     stack.pop();
     let lock = lock_digest(root, &c.crates);
     let mut text = String::from("files\n");
@@ -317,8 +335,10 @@ pub fn verify(root: &Path, toolchain: &str) -> Vec<String> {
                 }
             }
             let dep_before: BTreeMap<String, String> = r["inputs"]["dependencies"].as_array().map(|a| a.iter().filter_map(|d| Some((d["name"].as_str()?.to_string(), d["hash"].as_str()?.to_string()))).collect()).unwrap_or_default();
-            if dep_before != now.deps.iter().cloned().collect::<BTreeMap<_, _>>() {
-                problems.push(format!("{}: a dependency changed", c.name));
+            let dep_now: BTreeMap<String, String> = now.deps.iter().cloned().collect();
+            if dep_before != dep_now {
+                let dev = dep_now.iter().any(|(n, h)| n.ends_with(" (dev)") && dep_before.get(n) != Some(h));
+                problems.push(format!("{}: a {}dependency changed", c.name, if dev { "dev-" } else { "" }));
                 why += 1;
             }
             if r["inputs"]["lock"].as_str().unwrap_or("") != now.lock {
