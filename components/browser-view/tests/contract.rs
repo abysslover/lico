@@ -69,6 +69,11 @@ fn everything_else_is_refused_with_its_reason() {
     }
     assert_eq!(parse_address(&format!("https://e.com/{}", "a".repeat(MAX_URL))), Err(UrlError::TooLong));
     assert!(parse_address(&format!("https://e.com/{}", "a".repeat(MAX_URL - 14))).is_ok(), "exactly the cap");
+    assert_eq!(parse_address(&format!("https://e.com/{}", "a".repeat(MAX_URL - 13))), Err(UrlError::TooLong), "one over the cap");
+    assert!(parse_address("http://host:65535/").is_ok());
+    assert_eq!(parse_address("http://host:65536/"), Err(UrlError::Invalid), "one over the largest port");
+    assert_eq!(parse_address("http://host:+80/"), Err(UrlError::Invalid), "a port is digits only");
+    assert_eq!(parse_address("http://host:/"), Err(UrlError::Invalid));
 }
 
 #[test]
@@ -108,6 +113,8 @@ fn the_address_field_edits_by_characters_and_keeps_its_cursor_inside() {
     assert_eq!(f.text(), "안녕bab" .to_string() + "c", "control characters and line breaks are dropped");
     f.set_text("new\u{0}text");
     assert_eq!((f.text(), f.cursor()), ("newtext", 7));
+    f.set_text(&"y".repeat(MAX_URL + 50));
+    assert_eq!(f.text().chars().count(), MAX_URL, "set_text holds at most the cap too");
     f.set_text("");
     f.insert(&"x".repeat(MAX_URL + 50));
     assert_eq!(f.text().chars().count(), MAX_URL, "the field holds at most the cap");
@@ -154,6 +161,8 @@ fn back_and_forward_walk_the_history_and_a_new_address_drops_what_was_forward() 
     }
     assert!(t.can_back() && !t.can_forward());
     assert_eq!(t.back(), vec![Effect::Navigate("https://b.example".into())]);
+    assert!(t.loading(), "going back is a load");
+    t.engine_event(EngineEvent::LoadFinished);
     t.engine_event(EngineEvent::Navigated("https://b.example".into()));
     assert_eq!(t.history().len(), 3, "going back adds nothing");
     assert_eq!(t.back(), vec![Effect::Navigate("https://a.example".into())]);
@@ -161,6 +170,7 @@ fn back_and_forward_walk_the_history_and_a_new_address_drops_what_was_forward() 
     assert!(!t.can_back() && t.can_forward());
     assert_eq!(t.back(), vec![], "nothing before the first");
     assert_eq!(t.forward(), vec![Effect::Navigate("https://b.example".into())]);
+    assert!(t.loading());
     t.engine_event(EngineEvent::Navigated("https://b.example".into()));
     t.submit_address("https://d.example").unwrap();
     t.engine_event(EngineEvent::Navigated("https://d.example".into()));
@@ -404,4 +414,23 @@ fn keys_and_text_go_to_the_page_only_while_the_page_has_the_focus() {
     let mut away = Tab::new();
     away.engine_event(EngineEvent::Missing { expected_sha256: "a".into(), release: "r".into() });
     assert_eq!(away.text("x"), None, "an absent engine takes nothing");
+}
+
+#[test]
+fn history_cannot_be_walked_while_the_engine_is_not_running_and_the_fallback_wait_restarts_with_each_show() {
+    let mut t = shown((800, 600));
+    for u in ["https://a.example", "https://b.example"] {
+        t.submit_address(u).unwrap();
+    }
+    t.engine_event(EngineEvent::Crashed);
+    assert_eq!(t.back(), vec![], "a tab whose engine stopped asks for nothing");
+    assert_eq!(t.forward(), vec![]);
+    assert_eq!(t.reload(), vec![]);
+    let mut t = ready();
+    t.show((200, 100), 0);
+    assert_eq!(t.tick(500), vec![Effect::CaptureScreenshot]);
+    t.hide();
+    t.show((200, 100), 3000);
+    assert_eq!(t.tick(3499), vec![]);
+    assert_eq!(t.tick(3500), vec![Effect::CaptureScreenshot], "asked again after the next show");
 }
