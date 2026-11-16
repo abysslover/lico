@@ -623,7 +623,12 @@ name = "lico"
 version = "0.3.3"
 dependencies = [
  "cosmic-text",
+ "lico-convo",
+ "lico-llm-fake",
+ "lico-llm-http",
+ "lico-llm-wire",
  "lico-png",
+ "lico-toolloop",
  "serde_json",
  "softbuffer",
  "unicode-linebreak",
@@ -648,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "lico-llm-http"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lico-llm-fake",
  "lico-llm-wire",
