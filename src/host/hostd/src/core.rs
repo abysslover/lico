@@ -103,7 +103,6 @@ pub fn end_providers(sessions: &[Arc<Mutex<Session>>], wait: Duration) {
 
 extern "C" {
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
-    fn setsid() -> i32;
 }
 
 pub fn random_hex(bytes: usize) -> String {

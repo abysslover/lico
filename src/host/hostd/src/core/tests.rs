@@ -1,6 +1,10 @@
 use super::*;
 use std::process::Child;
 
+extern "C" {
+    fn setsid() -> i32;
+}
+
 fn provider() -> Child {
     let mut command = Command::new("sleep");
     command.arg("60");
