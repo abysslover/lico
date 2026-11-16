@@ -230,3 +230,174 @@ fn git_worktree_rows_appear_only_for_git_folders_validate_branch_and_still_fit_6
     let total_rows = 1 + 1 + body.len() + 1;
     assert!(total_rows * 18 + 22 + 24 <= 600, "{total_rows} rows: {body:?}");
 }
+
+// ---- the local provider (M16-P07) ----
+
+fn scan_reply() -> serde_json::Value {
+    json!({"ok": 1, "endpoints": [
+        {"address": "127.0.0.1", "port": 11434, "kind": "ollama", "auth": "none_needed", "models": ["llama3", "qwen2"], "process": "ollama"},
+        {"address": "127.0.0.1", "port": 1234, "kind": "openai", "auth": "key_needed", "models": [], "process": "x"},
+    ]})
+}
+
+/// The form with the Local provider chosen the way a person chooses it: Provider row, Right twice (claude, codex, local).
+fn local() -> App {
+    let mut app = opened();
+    app.form_focus(Field::Provider);
+    app.form_cycle(1);
+    app.form_cycle(1);
+    app
+}
+
+fn rows(app: &App) -> Vec<String> {
+    form(app)["rows"].as_array().unwrap().iter().map(|r| r.as_str().unwrap().to_string()).collect()
+}
+
+#[test]
+fn local_is_the_third_provider_and_asks_for_a_server_and_a_model_but_not_for_an_account_a_folder_or_an_effort() {
+    let mut app = local();
+    assert_eq!(form(&app)["provider"], "local");
+    assert_eq!(rows(&app), ["Provider", "Server", "Model", "Name", "Start"]);
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body[0].contains("< local >") && body[1].starts_with("  Server"), "{body:?}");
+    assert!(!body.iter().any(|l| l.contains("Account") || l.contains("Folder") || l.contains("Effort") || l.contains("Permission") || l.contains("Sign in")), "{body:?}");
+    app.form_focus(Field::Provider);
+    app.form_cycle(1); // wraps round to claude, with its account and its rows again
+    assert_eq!((form(&app)["provider"].as_str().unwrap(), form(&app)["account"].as_str().unwrap()), ("claude", "a1"));
+    assert!(rows(&app).contains(&"Account".to_string()) && rows(&app).contains(&"Folder".to_string()));
+}
+
+#[test]
+fn opening_the_form_never_looks_for_servers_and_says_how_to_look() {
+    let app = local();
+    let f = form(&app);
+    assert_eq!((f["servers"].as_array().unwrap().len(), f["scanned"].clone()), (0, json!(false)));
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body.iter().any(|l| l.contains("press Enter on the Server row to look for model servers on this machine")), "{body:?}");
+    assert!(form(&app)["problem"].as_str().unwrap().contains("Server row"), "{}", form(&app));
+}
+
+#[test]
+fn only_enter_space_or_a_click_on_the_server_row_looks_for_servers() {
+    let looked = |app: &App| app.ui.panel.as_ref().unwrap().notice.contains("Could not look for servers"); // no host answers in this window: the look was made and failed
+    let mut app = local();
+    app.form_focus(Field::Name);
+    app.form_move(-1); // Model
+    app.form_cycle(1);
+    app.form_move(-1); // Server: moving onto it and changing nothing asks nothing
+    assert_eq!(form(&app)["focus"], "Server");
+    app.form_cycle(1);
+    app.form_cycle(-1);
+    assert!(!looked(&app) && form(&app)["scanned"] == json!(false));
+    app.form_enter();
+    assert!(looked(&app), "Enter on the Server row");
+    app.ui.panel.as_mut().unwrap().notice.clear();
+    app.form_act();
+    assert!(looked(&app), "Space on the Server row");
+    app.ui.panel.as_mut().unwrap().notice.clear();
+    assert!(app.form_click(3) && !looked(&app), "a click on the Name row looks at nothing");
+    assert!(app.form_click(1) && looked(&app), "a click on the Server row");
+}
+
+#[test]
+fn what_the_look_finds_is_kept_in_the_form_the_first_server_and_its_first_model_are_chosen_and_a_failed_look_keeps_what_was_there() {
+    let mut app = local();
+    app.on_local_scan(0, scan_reply());
+    let f = form(&app);
+    assert_eq!((f["scanned"].clone(), f["servers"].as_array().unwrap().len(), f["server"].clone(), f["local_model"].clone()), (json!(true), 2, json!(0), json!("llama3")));
+    assert_eq!(f["problem"], json!(null));
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body.iter().any(|l| l.contains("127.0.0.1:11434  ollama, 2 models")), "{body:?}");
+    assert!(app.ui.panel.as_ref().unwrap().notice.contains("2 servers"), "{}", app.ui.panel.as_ref().unwrap().notice);
+    app.on_local_scan(0, json!({"ok": 0, "error": "busy"}));
+    assert_eq!(form(&app)["servers"].as_array().unwrap().len(), 2);
+    assert!(app.ui.panel.as_ref().unwrap().notice.contains("Could not look for servers: busy"));
+    app.on_local_scan(0, json!({"ok": 1, "endpoints": []}));
+    assert_eq!(form(&app)["servers"].as_array().unwrap().len(), 0);
+    assert!(app.ui.panel.as_ref().unwrap().notice.contains("No model server was found"));
+}
+
+#[test]
+fn left_and_right_choose_the_server_and_the_model_and_a_new_server_brings_its_own_first_model() {
+    let mut app = local();
+    app.on_local_scan(0, json!({"ok": 1, "endpoints": [
+        {"address": "127.0.0.1", "port": 11434, "kind": "ollama", "auth": "none_needed", "models": ["llama3", "qwen2"]},
+        {"address": "127.0.0.1", "port": 8080, "kind": "openai", "auth": "none_needed", "models": ["gpt-x"]},
+    ]}));
+    app.form_focus(Field::Model);
+    app.form_cycle(1);
+    assert_eq!(form(&app)["local_model"], "qwen2");
+    app.form_cycle(1);
+    assert_eq!(form(&app)["local_model"], "llama3", "the models wrap round");
+    app.form_cycle(-1);
+    app.form_focus(Field::Server);
+    app.form_cycle(1);
+    assert_eq!((form(&app)["server"].clone(), form(&app)["local_model"].clone()), (json!(1), json!("gpt-x")));
+    app.form_cycle(1);
+    assert_eq!((form(&app)["server"].clone(), form(&app)["local_model"].clone()), (json!(0), json!("llama3")));
+}
+
+#[test]
+fn a_server_that_wants_a_key_says_how_to_store_it_and_cannot_start_without_models() {
+    let mut app = local();
+    app.on_local_scan(0, json!({"ok": 1, "endpoints": [{"address": "127.0.0.1", "port": 1234, "kind": "openai", "auth": "key_needed", "models": []}]}));
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body.iter().any(|l| l.contains("lico local-key set 127.0.0.1:1234")), "{body:?}");
+    assert!(form(&app)["problem"].as_str().unwrap().contains("wants a key"), "{}", form(&app));
+}
+
+#[test]
+fn a_local_session_is_told_it_has_no_files_or_shell_and_not_about_a_folders_settings() {
+    let app = local();
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body.iter().any(|l| l.contains("no access to files or a shell")), "{body:?}");
+    assert!(!body.iter().any(|l| l.contains("Claude") || l.contains("Codex") || l.contains("CLAUDE.md")), "{body:?}");
+}
+
+#[test]
+fn the_local_request_has_the_endpoint_the_format_the_model_and_a_name_but_no_account_folder_or_effort() {
+    let mut app = local();
+    app.on_local_scan(0, scan_reply());
+    app.form_focus(Field::Name);
+    app.ed.put(" notes ");
+    app.form_focus(Field::Start);
+    let p = app.ui.panel.as_ref().unwrap();
+    let request = request_of(p, p.form.as_ref().unwrap());
+    assert_eq!(request, json!({"op": "session.create", "kind": "local", "endpoint": "127.0.0.1:11434", "api": "ollama", "model": "llama3", "name": "notes"}));
+    // the name's own rules still hold
+    app.form_focus(Field::Name);
+    app.ed.clear();
+    app.ed.put(&"n".repeat(61));
+    assert!(form(&app)["problem"].as_str().unwrap().contains("60"), "{}", form(&app));
+}
+
+#[test]
+fn the_server_of_the_last_local_session_is_offered_when_the_form_opens_without_any_look() {
+    let mut app = app(1.0, false);
+    app.panel_open(Step::NewSession);
+    app.form_open_from(json!({"ok": 1, "last": {"kind": "local", "mode": "auto", "model": "llama3", "endpoint": "127.0.0.1:11434", "api": "ollama"}}));
+    let f = form(&app);
+    assert_eq!((f["provider"].clone(), f["scanned"].clone(), f["local_model"].clone()), (json!("local"), json!(false), json!("llama3")));
+    assert_eq!(f["servers"].as_array().unwrap().len(), 1);
+    assert!(f["servers"][0].as_str().unwrap().contains("127.0.0.1:11434") && f["servers"][0].as_str().unwrap().contains("used last"), "{f}");
+    assert_eq!(f["problem"], json!(null), "the remembered choice can be started at once");
+    // a scan that finds the same server marks it and keeps it first with the remembered model
+    app.on_local_scan(0, json!({"ok": 1, "endpoints": [{"address": "127.0.0.1", "port": 8080, "kind": "openai", "auth": "none_needed", "models": ["gpt-x"]}, {"address": "127.0.0.1", "port": 11434, "kind": "ollama", "auth": "none_needed", "models": ["qwen2"]}]}));
+    let f = form(&app);
+    assert_eq!(f["servers"].as_array().unwrap().len(), 2);
+    assert!(f["servers"][0].as_str().unwrap().contains("11434") && f["local_model"] == json!("llama3"), "{f}");
+    // a last session of claude does not bring a local server
+    app.form_open_from(json!({"ok": 1, "last": {"kind": "claude", "mode": "auto"}}));
+    assert_eq!((form(&app)["provider"].clone(), form(&app)["servers"].as_array().unwrap().len()), (json!("claude"), 0));
+}
+
+#[test]
+fn the_forms_that_ask_for_a_folder_never_open_on_local() {
+    let mut app = app(1.0, false);
+    app.panel_open(Step::NewSession);
+    app.form_open_from(json!({"ok": 1, "last": {"kind": "local", "mode": "auto", "model": "llama3", "endpoint": "127.0.0.1:11434", "api": "ollama"}}));
+    app.form_leave_local();
+    let f = form(&app);
+    assert_eq!(f["provider"], "claude");
+    assert!(rows(&app).contains(&"Folder".to_string()));
+}

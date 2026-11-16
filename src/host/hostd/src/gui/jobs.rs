@@ -15,6 +15,7 @@ pub(crate) enum AsyncJob {
     CallGet { call_id: String }, CallSay { call_id: String, text: String },
     CallStart, CallAction,
     LlmFind { req_id: u64 },
+    LocalScan { req_id: u64 },
 }
 
 pub(crate) struct AsyncDone {

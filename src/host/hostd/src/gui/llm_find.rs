@@ -191,7 +191,11 @@ impl App {
 
     pub(crate) fn on_llm_async(&mut self, job: AsyncJob, reply: Value) {
         let has_proxy = self.ui.proxy.is_some();
-        let AsyncJob::LlmFind { req_id } = job else { return };
+        let req_id = match job {
+            AsyncJob::LlmFind { req_id } => req_id,
+            AsyncJob::LocalScan { req_id } => return self.on_local_scan(req_id, reply),
+            _ => return,
+        };
         let now = self.clock_now();
         let Some(f) = self.ui.sidebar.llm.as_mut() else { return };
         if has_proxy && f.req != req_id {

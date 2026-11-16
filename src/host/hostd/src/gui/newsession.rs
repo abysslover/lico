@@ -9,15 +9,17 @@ use winit::keyboard::{Key, NamedKey};
 
 use super::super::editor::Parked;
 use super::super::App;
+use super::super::local_rows::{self, Server};
 use super::{Panel, Step};
 
 const RECENT_SHOWN: usize = 5; // of the ten folders the host keeps
 const DEFAULT: &str = "default";
-const PROVIDERS: [&str; 2] = ["claude", "codex"];
+const PROVIDERS: [&str; 3] = ["claude", "codex", "local"];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Field {
     Provider,
+    Server,
     Account,
     Folder,
     Recent(usize),
@@ -35,6 +37,7 @@ impl Field {
     fn label(self) -> &'static str {
         match self {
             Field::Provider => "Provider",
+            Field::Server => "Server",
             Field::Account => "Account",
             Field::Folder => "Folder",
             Field::Recent(0) => "recent",
@@ -68,10 +71,21 @@ pub struct Form {
     pub efforts: Vec<String>,
     pub recent: Vec<String>,
     pub pending_start_req: u64, // non-zero while starting an SSH remote session asynchronously
+    /// The Local provider (M16-P07): the servers a look found (and the one used last), the choice among them, and the look that is running. Kept in the window only.
+    pub(super) local: bool,
+    pub(super) servers: Vec<Server>,
+    pub(super) server: usize,
+    pub(super) local_model: String,
+    pub(super) kept: Option<Server>,
+    pub(super) scanned: bool,
+    pub(super) scan_req: u64,
 }
 
 impl Form {
     fn fields(&self) -> Vec<Field> {
+        if self.local {
+            return vec![Field::Provider, Field::Server, Field::Model, Field::Name, Field::Start];
+        }
         let mut rows = vec![Field::Provider, Field::Account, Field::Folder];
         let shown = if self.is_git && self.worktree { 3 } else if self.is_git { 4 } else { RECENT_SHOWN };
         rows.extend((0..self.recent.len().min(shown)).map(Field::Recent));
@@ -117,6 +131,9 @@ impl Panel {
 
 /// The request the form makes: a folder and a name only when given (a name may be any text, `default` too), a model and an effort only when not the default.
 fn request_of(p: &Panel, f: &Form) -> Value {
+    if f.local {
+        return f.servers.get(f.server).map_or_else(|| json!({"op": "session.create", "kind": "local"}), |s| local_rows::request(s, &f.local_model, &f.name, 0));
+    }
     let mut request = json!({"op": "session.create", "kind": p.provider, "account": p.account, "mode": p.mode});
     for (key, value) in [("cwd", f.folder.trim()), ("name", f.name.trim()), ("model", f.model.as_str()), ("effort", f.effort.as_str())] {
         if !value.is_empty() && (value != DEFAULT || matches!(key, "cwd" | "name")) {
@@ -149,12 +166,39 @@ fn refusal(code: &str) -> String {
     }
 }
 
+/// After the server changed: the model stays when the new server lists it, else the server's first.
+fn keep_model(f: &mut Form) {
+    if let Some(s) = f.servers.get(f.server) {
+        if !s.models.contains(&f.local_model) {
+            f.local_model = s.models.first().cloned().unwrap_or_default();
+        }
+    }
+}
+
+/// Why a session name cannot be used (the host refuses the same ones).
+fn name_problem(name: &str) -> Option<String> {
+    if name.chars().any(char::is_control) {
+        Some("the name has a line break or another control character".into())
+    } else if crate::folders::shows_nothing(name) {
+        Some("the name shows nothing (only characters that are not drawn)".into())
+    } else if !crate::folders::valid_name(name) {
+        Some("the name has more than 60 characters".into())
+    } else {
+        None
+    }
+}
+
 impl App {
     /// File > New session, Ctrl+N: the form, filled in from the host's last-used values and its recent folders.
     pub(crate) fn form_open(&mut self) {
         self.panel_open(Step::NewSession);
         self.load_accounts();
         let options = self.host_call_within(json!({"op": "session.options"}), 5);
+        self.form_open_from(options);
+    }
+
+    /// The form from the host's answer to `session.options`. Nothing is looked for here: the servers are the one used last, until the person asks for a look.
+    pub(super) fn form_open_from(&mut self, options: Value) {
         let list = |key: &str| -> Vec<String> { options[key].as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect() };
         let last = &options["last"];
         let default_folder = if !self.ui.saved_cwd.is_empty() {
@@ -169,6 +213,7 @@ impl App {
         };
         p.provider = kind.to_string();
         p.account = last["account"].as_str().filter(|id| p.accounts.iter().any(|a| a.0 == *id && a.1 == p.provider)).map_or_else(|| p.first_account(), str::to_string);
+        let kept = local_rows::remembered(last);
         p.mode = if last["mode"] == json!("default") { "default" } else { "auto" };
         let again = p.provider == "claude" && last["kind"] == json!("claude"); // the program's own choices exist for claude only
         let (mut models, mut efforts) = (list("models"), list("efforts"));
@@ -203,6 +248,13 @@ impl App {
             efforts,
             recent: list("recent"),
             pending_start_req: 0,
+            local: kind == "local",
+            local_model: kept.as_ref().map_or_else(String::new, |s| s.models[0].clone()),
+            servers: kept.iter().cloned().collect(),
+            server: 0,
+            kept,
+            scanned: false,
+            scan_req: 0,
         });
         self.form_check_git();
         self.form_resume();
@@ -212,6 +264,7 @@ impl App {
     /// focusing `Field::Model` directly so lightweight general Q&A sessions can be started in one keystroke.
     pub(crate) fn form_open_global(&mut self) {
         self.form_open();
+        self.form_leave_local();
         self.with_form(|_, f| {
             f.folder.clear();
             f.checked_folder = "\x00".to_string();
@@ -224,6 +277,7 @@ impl App {
     /// Opens the new-session form pre-populated with a specific working directory and optional SSH remote host target.
     pub(crate) fn form_open_at_host(&mut self, folder: String, ssh_host: Option<String>) {
         self.form_open();
+        self.form_leave_local();
         if let Some(host) = ssh_host {
             let ssh_map = self.ui.ssh_hosts.clone();
             self.with_form(|p, _| {
@@ -249,6 +303,17 @@ impl App {
         });
         self.form_check_git();
         self.form_resume();
+    }
+
+    /// The forms that name a folder or a host are for the other providers: a form that opened on Local (the last choice) goes to the first provider with an account.
+    pub(super) fn form_leave_local(&mut self) {
+        self.with_form(|p, f| {
+            if f.local {
+                f.local = false;
+                p.provider = PROVIDERS.iter().copied().filter(|k| *k != "local").find(|k| p.accounts.iter().any(|a| a.1 == *k)).unwrap_or(PROVIDERS[0]).to_string();
+                p.account = p.first_account();
+            }
+        });
     }
 
     /// Refreshes whether `f.folder` is inside a local git repository when `f.folder` or account target changed.
@@ -304,6 +369,9 @@ impl App {
 
     /// Why the session cannot be started yet, from what the form can see.
     fn form_problem(&self, p: &Panel, f: &Form) -> Option<String> {
+        if f.local {
+            return local_rows::problem(&f.servers, f.server, &f.local_model).or_else(|| name_problem(self.live(p, f, Field::Name).trim()));
+        }
         let folder = self.live(p, f, Field::Folder);
         let trimmed_folder = folder.trim();
         let is_ssh = self.ui.ssh_hosts.contains_key(&p.account);
@@ -318,14 +386,8 @@ impl App {
             Some("enter a new branch name on the Branch row".into())
         } else if f.is_git && f.worktree && !crate::worktree::valid_branch_shape(branch.trim()) {
             Some("that branch name is not valid for git".into())
-        } else if self.live(p, f, Field::Name).trim().chars().any(char::is_control) {
-            Some("the name has a line break or another control character".into())
-        } else if crate::folders::shows_nothing(self.live(p, f, Field::Name).trim()) {
-            Some("the name shows nothing (only characters that are not drawn)".into())
-        } else if !crate::folders::valid_name(self.live(p, f, Field::Name).trim()) {
-            Some("the name has more than 60 characters".into())
         } else {
-            None
+            name_problem(self.live(p, f, Field::Name).trim())
         }
     }
 
@@ -338,6 +400,7 @@ impl App {
             .map(|field| {
                 let value = match field {
                     Field::Provider => format!("< {} >", p.provider),
+                    Field::Server => f.servers.get(f.server).map_or("(none yet: Enter looks for servers)".to_string(), |s| format!("< {} >", local_rows::line(s))),
                     Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
                         t if t.is_empty() && field == Field::Folder => "(Global general session: gets a scratch workspace of its own)".into(),
@@ -350,6 +413,7 @@ impl App {
                         t if t.is_empty() => "(required: new git branch name)".into(),
                         t => t,
                     },
+                    Field::Model if f.local => if f.local_model.is_empty() { "(none)".into() } else { format!("< {} >", f.local_model) },
                     Field::Model => format!("< {} >", f.model),
                     Field::Effort => format!("< {} >", f.effort),
                     Field::Permission => format!("< {} >", if p.mode == "auto" { "Skip agent prompts" } else { "Ask for approval" }),
@@ -361,6 +425,14 @@ impl App {
             .collect();
         lines.push(String::new());
         lines.push("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: start".into());
+        if f.local {
+            lines.extend(f.servers.get(f.server).and_then(local_rows::key_note));
+            if f.servers.is_empty() {
+                lines.push(local_rows::empty_hint().into());
+            }
+            lines.push("A local session asks the model server on this machine only; it has no access to files or a shell.".into());
+            return lines;
+        }
         lines.push(if p.provider == "codex" {
             "A folder's own Codex settings (.codex: config, hooks, rules) are not used.".into() // the thread is read-only, so Codex does not trust the folder
         } else {
@@ -377,6 +449,7 @@ impl App {
             "folder": self.live(p, f, Field::Folder), "is_git": f.is_git, "git_repo": f.git_repo, "worktree": f.worktree, "branch": self.live(p, f, Field::Branch),
             "name": self.live(p, f, Field::Name), "model": f.model, "effort": f.effort, "mode": p.mode,
             "models": f.models, "efforts": f.efforts, "recent": f.recent, "problem": self.form_problem(p, f),
+            "local": f.local, "servers": f.servers.iter().map(local_rows::line).collect::<Vec<_>>(), "server": f.server, "local_model": f.local_model, "scanned": f.scanned,
         })
     }
 
@@ -436,8 +509,18 @@ impl App {
                 let to = next(&PROVIDERS.map(String::from), &p.provider, by);
                 if to != p.provider {
                     p.provider = to;
-                    p.account = p.first_account();
+                    p.account = p.first_account(); // none for Local
                     (f.model, f.effort) = (DEFAULT.into(), DEFAULT.into()); // the program's choices are claude's
+                    f.local = p.provider == "local";
+                }
+            }
+            Field::Server if f.local => {
+                f.server = local_rows::step(f.servers.len(), f.server, by);
+                keep_model(f);
+            }
+            Field::Model if f.local => {
+                if let Some(s) = f.servers.get(f.server) {
+                    f.local_model = local_rows::model_after(s, &f.local_model, by);
                 }
             }
             Field::Account => {
@@ -465,6 +548,7 @@ impl App {
             Some(Field::Recent(_)) => self.form_pick(),
             Some(Field::SignIn) => self.form_sign_in(),
             Some(Field::Start) => self.form_start(),
+            Some(Field::Server) => self.form_scan(),
             Some(Field::Provider | Field::Account | Field::Worktree | Field::Model | Field::Effort | Field::Permission) => self.form_cycle(1),
             _ => {}
         }
@@ -476,6 +560,7 @@ impl App {
         match self.focused() {
             Some(Field::Recent(_)) => self.form_pick(),
             Some(Field::SignIn) => self.form_sign_in(),
+            Some(Field::Server) => self.form_scan(),
             Some(Field::Account) if adding => self.form_new_account(),
             _ => self.form_start(),
         }
@@ -527,7 +612,57 @@ impl App {
         self.form_resume();
     }
 
+    /// The one look for model servers (`llm.discover`: on this machine, read-only), only when the person asks on the Server row. It runs off the window's thread; its answer is
+    /// `on_local_scan`. What it finds stays in the form.
+    fn form_scan(&mut self) {
+        if self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).map_or(true, |f| f.scan_req != 0) {
+            return;
+        }
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.notice = "Looking for model servers on this machine...".into();
+        }
+        self.dirty = true;
+        let has_proxy = self.ui.proxy.is_some();
+        let req_id = self.spawn_host_call(json!({"op": "llm.discover", "all_users": false}), 14, |req_id| super::AsyncJob::LocalScan { req_id });
+        if has_proxy {
+            self.with_form(|_, f| f.scan_req = req_id); // (without an event loop the answer has already come)
+        }
+    }
+
+    pub(crate) fn on_local_scan(&mut self, req_id: u64, reply: Value) {
+        let has_proxy = self.ui.proxy.is_some();
+        self.with_form(|p, f| {
+            if has_proxy && f.scan_req != req_id {
+                return;
+            }
+            f.scan_req = 0;
+            if reply["ok"] != json!(1) {
+                p.notice = format!("Could not look for servers: {}", reply["error"].as_str().unwrap_or("unknown"));
+                return;
+            }
+            let found = local_rows::merge(local_rows::servers(&reply), f.kept.as_ref());
+            let (chosen, model) = (f.servers.get(f.server).map(|s| s.addr.clone()), f.local_model.clone());
+            f.server = chosen.and_then(|a| found.iter().position(|s| s.addr == a)).unwrap_or(0);
+            f.servers = found;
+            f.local_model = model;
+            keep_model(f);
+            if f.servers.is_empty() {
+                f.local_model.clear();
+            }
+            f.scanned = true;
+            let n = f.servers.len();
+            p.notice = if n == 0 { "No model server was found on this machine.".into() } else { format!("Found {n} server{}.", if n == 1 { "" } else { "s" }) };
+        });
+        self.dirty = true;
+    }
+
     fn form_sign_in(&mut self) {
+        if self.focused().is_some() && self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).is_some_and(|f| f.local) {
+            if let Some(p) = self.ui.panel.as_mut() {
+                p.notice = "A local session needs no sign-in.".into();
+            }
+            return;
+        }
         if self.ui.panel.as_ref().map_or(true, |p| p.chosen_account().is_none()) {
             if let Some(p) = self.ui.panel.as_mut() {
                 p.notice = "Choose an account, or add one, before signing in.".into();
