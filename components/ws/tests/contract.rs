@@ -123,6 +123,8 @@ fn a_frame_or_a_message_over_the_cap_is_too_big_before_it_is_buffered() {
     assert_eq!(d.feed(&bytes), vec![Err(Error::TooBig)], "two fragments of 600 are over 1000");
     let mut d = Decoder::new(Role::Client, 1000);
     assert_eq!(d.feed(&encode_frame(true, Op::Binary, &[1; 1000], None)).len(), 1, "exactly the cap is allowed");
+    let mut d = Decoder::new(Role::Client, 1000);
+    assert_eq!(d.feed(&encode_frame(true, Op::Binary, &[1; 1001], None)), vec![Err(Error::TooBig)], "one byte over the cap");
 }
 
 #[test]
@@ -497,5 +499,54 @@ fn what_a_client_sends_is_masked_with_a_fresh_mask_each_time() {
     for _ in 0..8 {
         c.send_text("same").unwrap();
     }
+    h.join().unwrap();
+}
+
+#[test]
+fn a_head_that_never_ends_is_stopped_at_the_cap_and_not_at_the_deadline() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let h = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let t = Instant::now();
+        let r = read_request(&mut s, &Limits { handshake: Duration::from_secs(5), ..fast() });
+        (r, t.elapsed())
+    });
+    let mut s = TcpStream::connect(addr).unwrap();
+    s.write_all(b"GET / HTTP/1.1\r\nX: ").unwrap();
+    s.write_all(&vec![b'a'; MAX_HEAD + 4096]).unwrap();
+    let (r, took) = h.join().unwrap();
+    assert!(matches!(r, Err(Error::Handshake(_))), "{r:?}");
+    assert!(took < Duration::from_secs(2), "refused when the cap was passed: {took:?}");
+}
+
+#[test]
+fn a_ping_from_the_server_is_answered_with_a_pong_of_the_same_bytes_while_the_client_waits_in_recv() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let h = thread::spawn(move || {
+        let (mut s, _) = listener.accept().unwrap();
+        let mut head = Vec::new();
+        let mut b = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            s.read_exact(&mut b).unwrap();
+            head.push(b[0]);
+        }
+        let key = String::from_utf8_lossy(&head).lines().find_map(|l| l.strip_prefix("Sec-WebSocket-Key: ").map(str::to_string)).unwrap();
+        s.write_all(good(&key, "").as_bytes()).unwrap();
+        s.write_all(&encode_frame(true, Op::Ping, b"are you there", None)).unwrap();
+        let mut frame = [0u8; 2 + 4 + 13];
+        s.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        s.read_exact(&mut frame).unwrap();
+        assert_eq!(frame[0], 0x8a, "a pong");
+        assert_eq!(frame[1], 0x80 | 13);
+        let mask = [frame[2], frame[3], frame[4], frame[5]];
+        let text: Vec<u8> = frame[6..].iter().enumerate().map(|(i, b)| b ^ mask[i % 4]).collect();
+        assert_eq!(text, b"are you there");
+        thread::sleep(Duration::from_millis(800)); // keep the socket open while the client's recv waits
+    });
+    let mut c = open(addr);
+    c.set_read_timeout(Some(Duration::from_millis(500)));
+    assert_eq!(c.recv(), Err(Error::Timeout), "the ping is no message");
     h.join().unwrap();
 }
