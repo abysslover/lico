@@ -41,4 +41,6 @@ A model server on this machine (OpenAI-compatible or Ollama, loopback only) is a
 
 ## 5. Release
 
-See section 6 (filled in when the artifact was built).
+Built by `build-release.sh` from the clean commit `824502c`: `lico 0.4.0 (commit 824502c, build 6f73bae535ec8aa1)`, sha256 `988be12b36d5f5b4c5d20a9aa2fa3939420aa791d31feddba3ea1fec996ab889`, `9,942,008` bytes: `+160,776` (`+1.64 %`) over `0.3.3` (`9,781,232`): the adapter, the port, the five new crates and the window code. (The acceptance hash above is of the tree at `de406a7`; the commit id is inside the binary, so the two differ.)
+
+The `0.3.3` binary (commit `ef44556`, sha256 `c40b5d9e...2ead`) is kept at `private/release_0_3_3_backup/lico`; the new one was copied beside and renamed to `~/bin/lico` (to go back: copy the backup over it); `lico --version` prints the line above. A capture with the installed binary on a private virtual display gave a valid 800x600 PNG. The artifact is at `private/release_0_4_0/lico`. Link scan of the changed documents: 0 dead links. This install is the one the plan names; nothing else outside the repository was touched.
