@@ -29,7 +29,7 @@ fn shown(area: (u32, u32)) -> Tab {
 
 #[test]
 fn the_constants_are_named_with_the_values_the_spec_gives() {
-    assert_eq!((MAX_HISTORY, MAX_URL, MAX_TITLE, MAX_FRAME_BYTES, FALLBACK_AFTER_MS, MAX_INSERT), (100, 2048, 200, 4 * 1024 * 1024, 500, 4096));
+    assert_eq!((MAX_HISTORY, MAX_URL, MAX_TITLE, MAX_FRAME_BYTES, FALLBACK_AFTER_MS, MAX_INSERT, MAX_NOTICE), (100, 2048, 200, 4 * 1024 * 1024, 500, 4096, 300));
     assert_eq!((MAX_VIEWPORT_W, MAX_VIEWPORT_H, MIN_VIEWPORT), (1920, 1200, 64));
     assert!(MAX_VIEWPORT_W as usize * MAX_VIEWPORT_H as usize * 4 <= 10 << 20, "one decoded frame is at most 9.2 MB");
 }
@@ -433,4 +433,66 @@ fn history_cannot_be_walked_while_the_engine_is_not_running_and_the_fallback_wai
     t.show((200, 100), 3000);
     assert_eq!(t.tick(3499), vec![]);
     assert_eq!(t.tick(3500), vec![Effect::CaptureScreenshot], "asked again after the next show");
+}
+
+// ---- notices (0.2.0): what the guard saw and what the host knows ------------------------------------------------------------------------------------
+
+#[test]
+fn a_refused_fetch_becomes_a_notice_with_the_host_and_the_reason() {
+    let mut t = ready();
+    assert_eq!(t.notice(), None);
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "intranet.example".into() });
+    let n = t.notice().unwrap().to_string();
+    assert!(n.contains("intranet.example") && n.contains("private network"), "{n}");
+    t.engine_event(EngineEvent::FetchRefused { status: 502, host: "gone.example".into() });
+    let n = t.notice().unwrap().to_string();
+    assert!(n.contains("gone.example") && n.contains("could not be found or reached"), "the newest notice replaces the older: {n}");
+    t.engine_event(EngineEvent::FetchRefused { status: 504, host: "slow.example".into() });
+    assert!(t.notice().unwrap().contains("too long"));
+    t.engine_event(EngineEvent::FetchRefused { status: 418, host: "odd.example".into() });
+    assert!(t.notice().unwrap().contains("418"), "an unknown status is named, not guessed");
+}
+
+#[test]
+fn the_host_in_a_notice_is_cleaned_and_the_notice_is_short() {
+    let mut t = ready();
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "a\u{202E}b\nc.example".into() });
+    let n = t.notice().unwrap();
+    assert!(!n.contains('\u{202E}') && !n.contains('\n'), "{n:?}");
+    t.engine_event(EngineEvent::FetchRefused { status: 403, host: "h".repeat(5000) });
+    assert!(t.notice().unwrap().chars().count() <= MAX_NOTICE, "{}", t.notice().unwrap().chars().count());
+}
+
+#[test]
+fn a_new_navigation_clears_the_notice_and_the_unpinned_mark_stays() {
+    let mut t = ready();
+    t.engine_event(EngineEvent::UnpinnedEngine);
+    for step in 0..4 {
+        t.engine_event(EngineEvent::FetchRefused { status: 403, host: "x.example".into() });
+        assert!(t.notice().is_some());
+        match step {
+            0 => drop(t.submit_address("https://example.org/").unwrap()),
+            1 => drop(t.submit_address("https://example.org/two").unwrap()),
+            2 => drop(t.back()),
+            _ => drop(t.reload()),
+        }
+        assert_eq!(t.notice(), None, "step {step}: leaving the page clears what was said about it");
+        assert!(t.unpinned(), "step {step}: the engine does not change");
+    }
+}
+
+#[test]
+fn a_numeric_local_address_has_its_own_plain_notice() {
+    let mut t = ready();
+    t.engine_event(EngineEvent::NumericLocalAddress);
+    assert_eq!(t.notice(), Some("the engine refuses numeric local addresses; type localhost"));
+}
+
+#[test]
+fn only_an_engine_that_is_not_the_pinned_release_is_marked() {
+    let mut t = Tab::new();
+    assert!(!t.unpinned());
+    assert_eq!(UNPINNED_NOTICE, "running an engine that is not the pinned release");
+    t.engine_event(EngineEvent::UnpinnedEngine);
+    assert!(t.unpinned());
 }

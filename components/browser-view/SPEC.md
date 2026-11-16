@@ -1,4 +1,4 @@
-# lico-browser-view 0.1.0 — specification
+# lico-browser-view 0.2.0 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -47,4 +47,8 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+
+## Notices (0.2.0)
+
+`EngineEvent::FetchRefused { status, host }` (the fetch guard's own 403, 502, 504; any other status is named), `EngineEvent::NumericLocalAddress` and `EngineEvent::UnpinnedEngine`; `Tab::notice() -> Option<&str>` and `Tab::unpinned() -> bool`; constants `MAX_NOTICE` 300 (a line, not a page) and `UNPINNED_NOTICE`. The notice carries the HOST only (cleaned like any text from outside, cut at 253 characters), never a path, a query or page content; a newer notice replaces the older; leaving the page (a new address, back, forward, reload) clears it; the unpinned mark never clears. Because the guard does not know which tab a fetch was for, the host adapter routes a refusal to the loading tabs with that host, else to every loading tab (said in the adapter's SPEC).

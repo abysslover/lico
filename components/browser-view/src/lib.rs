@@ -21,6 +21,12 @@ pub const MIN_VIEWPORT: u32 = 64;
 pub const FALLBACK_AFTER_MS: u64 = 500;
 /// The most characters of committed text sent to the page at once.
 pub const MAX_INSERT: usize = 4096;
+/// The longest notice of a tab, in characters: a line of text, not a page (the host in it is cleaned and cut first).
+pub const MAX_NOTICE: usize = 300;
+/// The longest host name shown in a notice (a DNS name is at most 253 characters).
+const MAX_NOTICE_HOST: usize = 253;
+/// What every tab of an engine that is not the pinned release shows.
+pub const UNPINNED_NOTICE: &str = "running an engine that is not the pinned release";
 
 // ---- text from outside -----------------------------------------------------------------------------------------------------------------------------
 
@@ -279,6 +285,12 @@ pub enum EngineEvent {
     Crashed,
     Missing { expected_sha256: String, release: String },
     NoFontFound,
+    /// The fetch guard refused or could not complete a fetch for this page (a status of its own: 403, 502, 504) of `host`. The engine shows a blank page and no error.
+    FetchRefused { status: u16, host: String },
+    /// The person typed a numeric loopback or private address and the engine refused it before any fetch.
+    NumericLocalAddress,
+    /// The engine is not the pinned release (the owner's setting says so).
+    UnpinnedEngine,
 }
 
 pub struct Tab {
@@ -306,6 +318,8 @@ pub struct Tab {
     shown_at_ms: u64,
     frame_since_show: bool,
     fallback_sent: bool,
+    notice: Option<String>,
+    unpinned: bool,
 }
 
 fn clamp_viewport(area: (u32, u32)) -> ((u32, u32), bool) {
@@ -346,12 +360,21 @@ impl Tab {
             shown_at_ms: 0,
             frame_since_show: false,
             fallback_sent: false,
+            notice: None,
+            unpinned: false,
         }
     }
 
     // ---- what the painter and the host read ----
     pub fn phase(&self) -> &Phase {
         &self.phase
+    }
+    /// A line the person should read about the page that is loading or loaded (cleared when the tab leaves it); never page content.
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+    pub fn unpinned(&self) -> bool {
+        self.unpinned
     }
     pub fn loading(&self) -> bool {
         self.phase == Phase::Loading
@@ -494,6 +517,7 @@ impl Tab {
         if matches!(self.phase, Phase::Absent { .. } | Phase::Failed(_)) {
             return Ok(Vec::new());
         }
+        self.notice = None;
         self.push_history(&url);
         self.url = url.clone();
         self.address.set_text(&url);
@@ -523,6 +547,7 @@ impl Tab {
 
     fn go_to_index(&mut self) -> Vec<Effect> {
         let url = self.history[self.index].clone();
+        self.notice = None;
         self.url = url.clone();
         self.phase = Phase::Loading;
         vec![Effect::Navigate(url)]
@@ -530,6 +555,7 @@ impl Tab {
 
     pub fn reload(&mut self) -> Vec<Effect> {
         if self.active() {
+            self.notice = None;
             self.phase = Phase::Loading;
             vec![Effect::Reload]
         } else {
@@ -612,6 +638,25 @@ impl Tab {
             }
             EngineEvent::NoFontFound => {
                 self.no_font = true;
+                Vec::new()
+            }
+            EngineEvent::FetchRefused { status, host } => {
+                let host = clean(&host, MAX_NOTICE_HOST);
+                let line = match status {
+                    403 => format!("{host}: this address is on this computer or a private network, which this tab does not open"),
+                    502 => format!("{host}: the address could not be found or reached"),
+                    504 => format!("{host}: the address took too long"),
+                    other => format!("{host}: the page could not be fetched (status {other})"),
+                };
+                self.notice = Some(clean(&line, MAX_NOTICE));
+                Vec::new()
+            }
+            EngineEvent::NumericLocalAddress => {
+                self.notice = Some("the engine refuses numeric local addresses; type localhost".into());
+                Vec::new()
+            }
+            EngineEvent::UnpinnedEngine => {
+                self.unpinned = true;
                 Vec::new()
             }
         }
