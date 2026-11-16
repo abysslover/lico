@@ -637,6 +637,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-cdp"
+version = "0.1.0"
+dependencies = [
+ "lico-cdp-fake",
+ "lico-ws",
+ "serde_json",
+]
+
+[[package]]
 name = "lico-cdp-fake"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,25 @@
+[package]
+name = "lico-cdp"
+version = "0.1.0"
+edition = "2021"
+description = "A synchronous Chrome DevTools Protocol client over one WebSocket on this machine: numbered calls matched to their replies, events queued, builders of the parameters; no thread."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+lico-ws = { path = "../ws" }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+# The tests run against the fake endpoint and a raw server of the test's own (the server role of the WebSocket crate): inputs of the tests, not dependencies.
+lico-cdp-fake = { path = "../cdp-fake" }
+lico-ws = { path = "../ws", features = ["server"] }
+
+[package.metadata.lico]
+purpose = "A synchronous CDP client over one WebSocket on this machine: ids, replies matched to calls, events kept in a bounded queue, deadlines and cancellation, and pure builders of the parameters of the commands a browser tab needs, with no thread and no async."
+spec = "SPEC.md"
+depends = ["lico-ws"]
+external = []
+budget = { mib = 256, seconds = 30 }

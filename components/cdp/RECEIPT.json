@@ -1,0 +1,55 @@
+{
+  "component": "lico-cdp",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 2.2,
+    "peak_mib": 3.2,
+    "wall_s": 1.81
+  },
+  "date": "2026-11-16",
+  "hash": "634a900cc81baec1eb71c989822ee8bfc528b6711646edee180c4690da3b4544",
+  "inputs": {
+    "dependencies": [
+      {
+        "hash": "2dc7b8544b696f807814bdeb75bdd91c700768a9c4420bc405fbf6d661424a2d",
+        "name": "lico-ws"
+      },
+      {
+        "hash": "26af40495790965856bf1ea945cd6ea6514fd4e69fa2d43a6b53c6dc9b541e54",
+        "name": "lico-cdp-fake (dev)"
+      }
+    ],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "35014cb44d3d460546a426734c2cd0116954cc55c96001524b1c923d6e057ce4"
+      ],
+      [
+        "SPEC.md",
+        "631d7744f5e6fc4041755e0c0a5741477ea7fb62328269e6090f857a0155e833"
+      ],
+      [
+        "src/lib.rs",
+        "480b87d42fcf17554f11ba3d192e639606716ed7a3c602f04a06b2d0d72c1a22"
+      ],
+      [
+        "tests/contract.rs",
+        "51a1628e1c18a0aa1aa69d1ae0ca5926729f873cc5cef8f833e4b424826e6bf3"
+      ]
+    ],
+    "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 18,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 18
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}
