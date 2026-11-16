@@ -262,3 +262,29 @@ fn the_socket_door_and_the_http_door_make_the_same_session_of_a_driver_kind() {
     assert_eq!(answers[0], answers[1], "the same answer, the same session, the same start from either door");
     assert_eq!(answers[0].2.as_deref(), Some("mine"));
 }
+
+#[test]
+fn the_last_local_choice_is_remembered_for_the_form_with_no_key_and_no_response_and_a_scan_never_is() {
+    let dir = std::env::temp_dir().join(format!("lico_driver_hubs_last_{}", crate::core::random_hex(6)));
+    let shared = shared(&dir);
+    let log: Log = Default::default();
+    driver::register(Arc::new(Dummy { kind: "local", log: log.clone() }));
+    let target = Target { addr: "127.0.0.1:11434".parse().unwrap(), api: Api::Ollama, model: "llama3".into(), context_tokens: 4096 };
+    let chosen = Settings { model: Some("llama3".into()), name: Some("my local".into()), target: Some(target), ..Settings::default() };
+    crate::new_session::session_create(&shared, "local", 0, 0, 4096, None, "auto", chosen).unwrap();
+    let options = crate::folders::options(&shared).unwrap();
+    assert_eq!(options["last"], json!({"kind": "local", "mode": "auto", "model": "llama3", "endpoint": "127.0.0.1:11434", "api": "ollama", "context_tokens": 4096}));
+    let file = std::fs::read_to_string(shared.cfg.registry_dir.join("recent_folders.json")).unwrap();
+    assert!(!file.contains("my local"), "the name of a session is not part of what the form is given again: {file}");
+    for forbidden in ["key", "Authorization", "Bearer", "secret", "endpoints", "models_total"] {
+        assert!(!file.contains(forbidden), "{forbidden} in {file}");
+    }
+    // a damaged record gives the form nothing of it
+    let mut damaged: Value = serde_json::from_str(&file).unwrap();
+    damaged["last"]["endpoint"] = json!("192.168.1.5:80");
+    damaged["last"]["api"] = json!("grpc");
+    damaged["last"]["context_tokens"] = json!(5);
+    std::fs::write(shared.cfg.registry_dir.join("recent_folders.json"), damaged.to_string()).unwrap();
+    let last = crate::folders::options(&shared).unwrap()["last"].clone();
+    assert!(last.get("endpoint").is_none() && last.get("api").is_none() && last.get("context_tokens").is_none(), "{last}");
+}

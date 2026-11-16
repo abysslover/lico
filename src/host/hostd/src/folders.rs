@@ -340,6 +340,8 @@ pub fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) 
     }
     shared.sessions.write().unwrap().push(session.clone());
     crate::registry::save(shared);
+    let last = last_of(kind, None, "auto", &session.lock().unwrap().settings);
+    remember(shared, last); // what the new-session form offers again
     Ok(session)
 }
 
@@ -443,6 +445,14 @@ fn last_of(kind: &str, account: Option<&str>, mode: &str, chosen: &Settings) -> 
             last.insert(key.to_string(), json!(value));
         }
     }
+    if let Some(t) = &chosen.target {
+        // a local session: where its model is (an address, a format and the window the person chose), never a key or anything a server said
+        last.insert("endpoint".into(), json!(t.addr.to_string()));
+        last.insert("api".into(), json!(t.api.word()));
+        if t.context_tokens > 0 {
+            last.insert("context_tokens".into(), json!(t.context_tokens));
+        }
+    }
     last
 }
 
@@ -456,15 +466,20 @@ fn parse_record(text: &str) -> (Vec<String>, Map<String, Value>) {
     let parsed: Value = serde_json::from_str(text).unwrap_or_default();
     let list = parsed["folders"].as_array().cloned().unwrap_or_default();
     let folders = list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f) && Path::new(f).is_absolute()).take(RECENT).map(str::to_string).collect();
-    let checks: [(&str, fn(&str) -> bool); 6] = [
-        ("kind", |s| matches!(s, "claude" | "codex")),
+    let checks: [(&str, fn(&str) -> bool); 8] = [
+        ("kind", |s| matches!(s, "claude" | "codex" | "local")),
+        ("endpoint", |s| crate::driver::parse_endpoint(s).is_some()),
+        ("api", |s| crate::driver::parse_api(s).is_some()),
         ("account", |s| !s.is_empty() && s.chars().count() <= 64 && !s.chars().any(char::is_control)),
         ("mode", |s| matches!(s, "auto" | "default")),
         ("cwd", |s| valid_path_shape(s) && Path::new(s).is_absolute()),
         ("model", valid_model),
         ("effort", valid_effort),
     ];
-    let last = checks.iter().filter_map(|(key, ok)| parsed["last"][key].as_str().filter(|s| ok(s)).map(|s| (key.to_string(), json!(s)))).collect();
+    let mut last: Map<String, Value> = checks.iter().filter_map(|(key, ok)| parsed["last"][key].as_str().filter(|s| ok(s)).map(|s| (key.to_string(), json!(s)))).collect();
+    if let Some(n) = parsed["last"]["context_tokens"].as_u64().filter(|n| (512..=1_048_576).contains(n)) {
+        last.insert("context_tokens".into(), json!(n));
+    }
     (folders, last)
 }
 
