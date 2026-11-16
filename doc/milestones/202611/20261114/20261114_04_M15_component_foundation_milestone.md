@@ -1,14 +1,14 @@
 # M15 — The Component Foundation: Phase 0 Analysis, Workspace and Rust Tools, the First Component, Release (`lico 0.3.3`)
 
-- Status: P01 to P04 implemented (`lico 0.3.3`); waits for the owner's acceptance (G3); the retired prototypes wait for the owner's answer (G1 approved on 2026-11-14)
-- Version: 1.1.0
+- Status: done (accepted at G3, merged and published on `main` on 2026-11-17; the retired prototypes are left for the next milestone)
+- Version: 1.1.1
 - Approved: 2026-11-14 (the owner's plan approval in the chat on 2026-11-14 for the milestone and for M15-P01; P02 to P04 are sketches whose plans are shown at their own G2)
 - Project: Lico
 - Updated: 2026-11-14
 - Base: `main` at `38a319c` (M14 accepted, merged and pushed; the component rules 1.0.1 are on `main`); later phases are stacked on the previous phase tip
-- Milestone branch: `milestone/M15-*` is created by the lead at the closing commit, not by the implementing session
+- Milestone branch: `milestone/M15-component-foundation` (created at the closing commit)
 - Implementation: `phase/M15-P01-phase0-component-analysis` .. `phase/M15-P04-*` (`lico 0.3.3`, proposed)
-- Next gate: the owner picks the first component from the P01 report; P02 starts only on the lead's next pointer
+- Next gate: closed (accepted at G3, merged and published on `main` at G4 on 2026-11-17)
 
 ## Goal
 
@@ -40,7 +40,14 @@ A move and a behaviour change never share a commit; every test that exists today
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M15-P01 | Phase 0: measure and decide (read-only) | [Plan](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md) | [Report](../../../reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | implemented; the owner picked `png` |
-| M15-P02 | The workspace and the Rust tools | [Plan](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | [Report](../../../reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | implemented (the prototypes wait for the owner) |
-| M15-P03 | The first component | [Plan](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | [Report](../../../reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md) | implemented |
-| M15-P04 | Verification and release | [Plan](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | [Report](../../../reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md) | implemented |
+| M15-P01 | Phase 0: measure and decide (read-only) | [Plan](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md) | [Report](../../../reports/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_report.md) | accepted & merged |
+| M15-P02 | The workspace and the Rust tools | [Plan](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md) | [Report](../../../reports/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_report.md) | accepted & merged |
+| M15-P03 | The first component | [Plan](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md) | [Report](../../../reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md) | accepted & merged |
+| M15-P04 | Verification and release | [Plan](../../../plans/202611/20261114/20261114_14_M15-P04_verification_and_release_plan.md) | [Report](../../../reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md) | accepted & merged |
+
+## Gate record
+
+- G3, G4 and the push for this milestone were given by the owner in the chat on 2026-11-17: the owner said that, if the question was whether the merge and the rest may be done, they may, and that the work should go on from there to the next milestone and the Lico development that had stood still. The chain moved to `main` by fast-forward to the M15-P04 tip `53dcd1a`, and this closing commit then recorded the acceptance. The owner named no individual tip.
+- What the owner had observed before giving it: nothing is recorded as inspected. The interface specification of `lico-png` was approved by the owner on the implementing session's screen on 2026-11-14 before P03 began (the P03 report). The measurements in the phase reports were not independently reproduced at the gate.
+- Left for the next milestone: the retired prototypes (`src/candidates`, `src/host/rust`, `src/host/c`, `lico_measure.legacy` and the rows that use them). The owner answered A (delete them, every product row stays) on 2026-11-14 and again on 2026-11-17; the answer did not reach the implementing session during P02 to P04 (a line typed while a turn runs is dropped by its front-end), so the deletion was not made; it becomes the first phase of the next milestone. No product behaviour is involved.
+- Notes carried over: the release binary is 9,781,232 bytes, +168,352 (+1.75 %) over `0.3.2`, measured to come from splitting `png` into a crate (the mechanism is not proven; a build-profile decision may be wanted if later components add the same kind of growth); the Python `suite acceptance` stays next to `cargo xtask accept` and is proposed for retirement after one more milestone in which both agree; the maximized first start (M14) stays open and is scheduled after the Local LLM session.

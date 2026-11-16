@@ -11,7 +11,7 @@ binaries (`python3 -m lico_measure.suite acceptance`).
 
 ## 0.3.3 — 2026-11-14 (`M15`)
 
-- **Milestone**: [M15 The component foundation](doc/milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md) ([M15-P04 report](doc/reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md)); no behaviour a person can see changes
+- **Milestone**: [M15 The component foundation](doc/milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md) (`milestone/M15-component-foundation`, [M15-P04 report](doc/reports/202611/20261114/20261114_14_M15-P04_verification_and_0_3_3_report.md)); no behaviour a person can see changes
 - **Measured resources**: idle window `25.33..25.65` / `36.58..36.62 MiB`, `10 -> 100` hidden growth `+0.40 MiB`, cold 557-test suite `130.9..131.9 s`, tree peak `1,586.5..1,633.2 MiB`, tool list `5,103` of `5,120` bytes
 - **Highlights**:
   - **A Cargo workspace and Rust tools.** `cargo xtask` checks the components and their dependencies, hashes them into receipts, runs one component's tests alone against its budget, reads the module graph of the program from its source and checks that two clean clones build the same executable.

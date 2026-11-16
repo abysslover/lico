@@ -1,7 +1,7 @@
 # M15-P02 Plan — The Workspace and the Rust Tools (No Code Moves)
 
-- Status: implemented (see report); one item waits for the owner (the retired prototypes, mail 114)
-- Version: 1.1.0
+- Status: accepted at G3 and merged to `main` (2026-11-17); the retired prototypes were left for the next milestone
+- Version: 1.1.1
 - Approved: 2026-11-14 (the owner approved the M15 plan; the lead's mail 135 settles the decisions after Phase 0)
 - Branch: `phase/M15-P02-workspace-and-rust-tools` (stacked on the P01 tip `5f9a991`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)

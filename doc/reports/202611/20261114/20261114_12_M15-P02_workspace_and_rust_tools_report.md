@@ -1,7 +1,7 @@
 # M15-P02 Report — The Workspace and the Rust Tools
 
-- Status: implemented; one item (the retired prototypes) waits for the owner's answer to mail 114
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-17); the retired prototypes were left for the next milestone
+- Version: 1.0.1
 - Branch: `phase/M15-P02-workspace-and-rust-tools` (stacked on `phase/M15-P01-phase0-component-analysis` at `5f9a991`; commits `fdf5314`, `e401ac3`, `5b69ea2`, `00fcf69`, `0fa34ae`)
 - Plan: [M15-P02](../../../plans/202611/20261114/20261114_12_M15-P02_workspace_and_rust_tools_plan.md)
 

@@ -1,7 +1,7 @@
 # M15-P04 Plan — Verification and Release (`lico 0.3.3`)
 
-- Status: implemented (the lead's instruction of 2026-11-14 said to continue to P04 after the P03 specification was approved; AGENTS.md lets a phase prefix include the installs the plan names, and this plan names one)
-- Version: 1.1.0
+- Status: accepted at G3 and merged to `main` (2026-11-17)
+- Version: 1.1.1
 - Branch: `phase/M15-P04-verification-and-0-3-3` (stacked on the P03 tip `f566ace`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
 

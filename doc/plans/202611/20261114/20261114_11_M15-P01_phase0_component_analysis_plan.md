@@ -1,7 +1,7 @@
 # M15-P01 Plan — Phase 0: Measure and Decide (Read-Only)
 
-- Status: implemented (see report); stopped at the report as planned
-- Version: 1.1.0
+- Status: accepted at G3 and merged to `main` (2026-11-17)
+- Version: 1.1.1
 - Approved: 2026-11-14 (G2 for M15-P01 approved by the owner on 2026-11-14)
 - Branch: `phase/M15-P01-phase0-component-analysis` (from `main` at `38a319c`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)

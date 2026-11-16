@@ -1,7 +1,7 @@
 # M15-P03 Plan — The First Component, `png`
 
-- Status: implemented; report [M15-P03](../../../reports/202611/20261114/20261114_13_M15-P03_first_component_png_report.md); the interface specification below was approved by the owner on 2026-11-14 (G2 of this phase)
-- Version: 1.2.0
+- Status: accepted at G3 and merged to `main` (2026-11-17)
+- Version: 1.2.1
 - Branch: `phase/M15-P03-first-component-png` (stacked on the P02 tip `5a49682`)
 - Milestone: [M15](../../../milestones/202611/20261114/20261114_04_M15_component_foundation_milestone.md)
 

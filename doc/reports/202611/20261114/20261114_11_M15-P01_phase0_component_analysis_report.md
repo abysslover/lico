@@ -1,7 +1,7 @@
 # M15-P01 Report — Phase 0: Measure and Decide (the Component Foundation)
 
-- Status: written, waiting for the owner's choice of the first component (nothing was moved, deleted or built)
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-17)
+- Version: 1.0.1
 - Branch: `phase/M15-P01-phase0-component-analysis` (from `main` at `38a319c`, `lico 0.3.2`)
 - Plan: [M15-P01](../../../plans/202611/20261114/20261114_11_M15-P01_phase0_component_analysis_plan.md)
 - Appendix (the long tables): [M15-P01 appendix](20261114_11_M15-P01_phase0_component_analysis_appendix.md)

@@ -1,7 +1,7 @@
 # M15-P03 Report — The First Component, `png`
 
-- Status: implemented; waits for the owner's acceptance (G3) and the P04 release run
-- Version: 1.0.0
+- Status: accepted at G3 and merged to `main` (2026-11-17)
+- Version: 1.0.1
 - Branch: `phase/M15-P03-first-component-png` (stacked on `phase/M15-P02-workspace-and-rust-tools` at `5a49682`)
 - Plan: [M15-P03](../../../plans/202611/20261114/20261114_13_M15-P03_first_component_plan.md); contract: `components/png/SPEC.md` (the interface specification the owner approved on 2026-11-14)
 
