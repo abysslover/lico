@@ -15,12 +15,12 @@
 
 **What it takes (COMPUTED/ASSUMED).** Five new components (`llm-wire`, `llm-http`, `llm-fake`, `convo`, `toolloop`), one thin host adapter, a small driver port so that the new kind does not enlarge the 48-module cycle, and GUI rows. About **7,500 lines including tests** in five build phases and a release. Order: wire, then client and fake server, then conversation and loop, then the host adapter with CLI/HTTP parity, then the GUI.
 
-**Cost (ASSUMED rate, see section 6).** About **28 to 45 USD** for everything; a headless slice (no GUI) about **24 to 38 USD**; a chat-only slice (no tools) about **15 to 24 USD**. The credit left at your last count was 25.2 USD (150 limit, 124.8 used); P01 (1.9 USD measured) and this report (about 8 USD) come out of it, so **roughly 15 USD is left after this report**. Nothing but the first two phases fits the present limit; the chat-only slice fits only if its low end holds.
+**Cost (ASSUMED rate, see section 6).** About **17 to 42 USD** for everything; a headless slice (no GUI) about **15 to 36 USD**; a chat-only slice (no tools) about **9 to 23 USD**. The range is wide on purpose: it is an estimate of new code, and this milestone's two phases so far cost less than I had planned. The credit left at your last count was 25.2 USD (150 limit, 124.8 used); P01 (1.9 USD) and this report (1.2 USD) cost 3.1 USD by this session's counter (MEASURED), so **about 22 USD is left**. The chat-only slice fits; the headless slice fits only at its low end; the full build needs a higher limit.
 
 **Three things you should decide first.**
 1. **Tools.** Lico's own tools are about sessions, messages, screen and clipboard. They contain **no file read or edit and no shell**; a local session with only these cannot work on a project's files (Claude Code has its own file and shell tools; a local model would have none). I recommend this milestone gives local sessions the existing tools only (three free, eight asking), and that file and shell tools for local sessions become their own later milestone with their own approvals.
 2. **Servers without tool calls.** Chat only, said plainly to the person; no text-protocol fallback (fragile, and a weaker model that obeys text is easier to inject).
-3. **Money.** Raise the limit, or accept the headless slice first and look at it before the GUI.
+3. **Money.** Raise the limit, or begin with the chat-only slice and look at it before the rest.
 
 **Safe default (recommended).** Loopback only; the key (if any) only in the keyring; the model's output is data; only the three no-approval tools run unasked, everything else shows its card as today; hard limits on rounds, time and sizes; no file or shell access.
 
@@ -98,25 +98,25 @@ Rules (component rules 1.0.1): downward-only explicit dependencies, `SPEC.md`, c
 
 ## 6. The estimate
 
-Rate (ASSUMED, from what was measured): M15 cost about 21.7 USD in all (COMPUTED from the session counters), of which P03 (about 1,400 lines moved, about 600 new, selection work) about 3.2 USD, P04 (a release without new code) about 2.2 USD, and M16-P01 about 1.9 USD. New code with tests, hook runs and one or two corrections costs more per line than a move: I take **3 to 5 USD per 1,000 lines** (my reading of the M15-P02 phase, about 2,000 lines, whose cost I cannot separate from P01). The ranges therefore carry the uncertainty; a repeated failing test run costs more than any of this.
+Rate (ASSUMED, from what was measured): M15 cost about 21.7 USD in all (COMPUTED from the session counters), of which P03 (about 1,400 lines moved or split and about 600 new, with the selection work and a mutation check) about 3.2 USD and P04 (a release, no new code) about 2.2 USD; in this milestone P01 (a deletion and a guard test) cost 1.9 USD and this report 1.2 USD (both MEASURED by this session's counter). Those are small figures because they are moves, deletions and reading. New code with tests, the hook's runs and one or two corrections costs more per line, and a test that must be rerun many times costs more than any of this, so I take **2 to 5 USD per 1,000 new lines** (the low end is M15-P03's rate with a margin, the high end is a bad run of failures).
 
 | Phase | Content | New lines with tests (ASSUMED) | Cost (ASSUMED, USD) |
 |---|---|---:|---:|
-| P03 | `llm-wire` | 1,600 | 5 to 8 |
-| P04 | `llm-http`, `llm-fake` | 1,550 | 5 to 8 |
-| P05 | `convo`, `toolloop` | 2,150 | 7 to 11 |
-| P06 | driver port, adapter, CLI and HTTP parity, four system tests | 1,100 | 5 to 8 |
-| P07 | GUI (display-free part and painter) | 1,100 | 4 to 7 |
+| P03 | `llm-wire` | 1,600 | 3 to 8 |
+| P04 | `llm-http`, `llm-fake` | 1,550 | 3 to 8 |
+| P05 | `convo`, `toolloop` | 2,150 | 4 to 11 |
+| P06 | driver port, adapter, CLI and HTTP parity, four system tests | 1,100 | 3 to 6 |
+| P07 | GUI (display-free part and painter) | 1,100 | 2 to 6 |
 | P08 | release `0.4.0` (no new code; M15-P04 measured 2.2) | 0 | 2 to 3 |
-| **Total** | | **7,500** | **28 to 45** |
+| **Total** | | **7,500** | **17 to 42** |
 
-- **Headless slice** (P03 to P06, then P08): about 6,400 lines, **24 to 38 USD**. **Chat-only slice** (no tools: wire, client, fake, `convo`, the port and a small adapter, no loop, no GUI): about 4,650 lines, **15 to 24 USD** (COMPUTED from the table's rates).
-- **Against the limit**: 25.2 USD left at your last count; P01 (1.9, MEASURED) and this report (about 8, ASSUMED) leave **about 15 USD**. P03 and P04 together (5 to 8 plus 5 to 8) already take most of it; the chat-only slice fits only if its low end holds, and nothing larger fits without raising the limit.
+- **Headless slice** (P03 to P06, then P08): about 6,400 lines, **15 to 36 USD**. **Chat-only slice** (no tools: wire, client, fake, `convo`, the port and a small adapter, no loop, no GUI): about 4,650 lines, **9 to 23 USD** (COMPUTED from the rate).
+- **Against the limit**: 25.2 USD left at your last count; P01 (1.9) and this report (1.2), MEASURED, leave **about 22 USD**. The chat-only slice fits; the headless slice fits only if its low end holds; the full build needs a higher limit.
 - If the limit comes near during a phase I stop at a green commit and say so.
 
 ## 7. Open questions for the owner, with recommendations
 
-1. **Money**: raise the 150 USD limit, or begin with the chat-only slice. Recommendation: decide the limit first; if it stays, do P03 and P04 only and look.
+1. **Money**: raise the 150 USD limit, or begin with the chat-only slice. Recommendation: begin with P03 and P04 (about 6 to 16 USD) and look at what they cost before deciding on the rest; the limit decision can wait until then.
 2. **Default tool set / file tools**: Lico's tools have no file or shell access. Recommendation: this milestone offers the existing tools only (three unasked, the others asking); a later milestone designs file and shell tools for local sessions with approvals. Is that what you meant by "the same operations"?
 3. **Servers without tool calls**: chat only, said plainly (recommended), or refuse to start a session on them.
 4. **Model selection and where it is remembered**: chosen in New session and + New chat as server plus model from the last discovery result (kept in memory by the dialog today), remembered as the form's last-used choice (host state, owner-only: address, port, model name; never a raw response); changeable per session.
