@@ -47,14 +47,40 @@ pub struct Entry {
     pub target: Option<String>,
     pub session: Option<String>,
     pub local: bool,
+    /// Grows with every change the person can see (a frame, a phase, a title, an address, a notice): what `browser.watch` waits on.
+    pub change: u64,
+    /// The number of the newest watch of this tab: a newer watch supersedes the older one, so that at most one waits.
+    pub watch_gen: u64,
+}
+
+impl Entry {
+    pub fn new(id: String, tab: Tab, engine: usize, local: bool) -> Entry {
+        Entry { id, tab, engine, target: None, session: None, local, change: 1, watch_gen: 0 }
+    }
 }
 
 pub struct Hub {
     pub tabs: Mutex<Vec<Entry>>,
+    /// Told after every change of a tab, a close, a hide and a stop: the watchers of the tabs wake and look.
+    pub changed: std::sync::Condvar,
+}
+
+impl Hub {
+    pub fn new() -> Hub {
+        Hub { tabs: Mutex::new(Vec::new()), changed: std::sync::Condvar::new() }
+    }
+
+    /// Marks a change of `entry` (the caller holds the lock of the tabs) and wakes the watchers.
+    pub fn touch(&self, entry: &mut Entry) {
+        entry.change += 1;
+        self.changed.notify_all();
+    }
 }
 
 pub enum Cmd {
     Open(String),
+    /// Effects the model asked for after an operation of the person (show, hide, resize, go, nav): the worker runs them for that tab.
+    Effects(String, Vec<Effect>),
     /// Close the page with this target id (the manager has already taken the tab out of the table).
     Close(String),
     Shutdown,
@@ -256,6 +282,7 @@ fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>,
         let mut tabs = setup.hub.tabs.lock().unwrap();
         for e in tabs.iter_mut().filter(|e| e.engine == setup.index) {
             e.tab.engine_event(EngineEvent::Crashed);
+            setup.hub.touch(e);
         }
     }
 }
@@ -332,6 +359,7 @@ fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<Refu
         loop {
             match rx.try_recv() {
                 Ok(Cmd::Open(id)) => open_tab(setup, &mut r.client, &id),
+                Ok(Cmd::Effects(id, fx)) => run_effects(setup, &mut r.client, &id, fx),
                 Ok(Cmd::Close(target)) => close_target(&mut r.client, &target),
                 Ok(Cmd::Shutdown) | Err(mpsc::TryRecvError::Disconnected) => return false,
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -389,7 +417,10 @@ fn open_tab(setup: &Setup, client: &mut Client, id: &str) {
     let made = client.call("Target.createTarget", json!({"url": "about:blank"}), None, CALL).ok().and_then(|v| v.get("targetId").and_then(Value::as_str).map(str::to_string));
     let session = made.as_ref().and_then(|t| client.call("Target.attachToTarget", json!({"targetId": t, "flatten": true}), None, CALL).ok()).and_then(|v| v.get("sessionId").and_then(Value::as_str).map(str::to_string));
     let (Some(target), Some(session)) = (made, session) else {
-        with_entry(setup, id, |e| e.tab.engine_event(EngineEvent::TargetGone));
+        with_entry(setup, id, |e| {
+            e.tab.engine_event(EngineEvent::TargetGone);
+            setup.hub.touch(e);
+        });
         return;
     };
     with_entry(setup, id, |e| {
@@ -447,7 +478,12 @@ fn ask_title(setup: &Setup, client: &mut Client, id: &str, session: &str) {
 
 /// Gives an event to a tab's model and executes what it asks for.
 fn deliver(setup: &Setup, client: &mut Client, id: &str, event: EngineEvent) {
-    let fx = with_entry(setup, id, |e| e.tab.engine_event(event)).unwrap_or_default();
+    let fx = with_entry(setup, id, |e| {
+        let fx = e.tab.engine_event(event);
+        setup.hub.touch(e);
+        fx
+    })
+    .unwrap_or_default();
     run_effects(setup, client, id, fx);
 }
 

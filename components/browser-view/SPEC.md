@@ -1,4 +1,4 @@
-# lico-browser-view 0.4.0 — specification
+# lico-browser-view 0.5.0 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -47,7 +47,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
@@ -60,3 +60,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 ## Reasons and help (0.4.0)
 
 `EngineEvent::FetchRefused { status, host, port, why }` with `Refusal { Other, NotPublic, LoopbackOnly, Port, Denied }` (the fetch guard's reason of a 403, mapped by the adapter): the notice says the true reason (a refused port names the port and the four that load; a private address says so; a loopback-only guard says the tab opens only this machine's own services; a Lico port says it belongs to Lico); a 403 whose reason is not known is a status, not a story. `Tab::help_lines()`: the identity sentence, the ports, what is refused, that a tab opened with the command line appears at the next list, the Korean input note, and the command for a first look at a real site (`lico browser open https://SITE`; the check itself is the owner's); a local tab puts `LOCAL_NOTE` first. Added in M17-P07 (mail 152, approved by the lead under the owner's delegation).
+
+## Reading the newest frame (0.5.0)
+
+`Tab::frame_seq()` (0 until a frame is kept; +1 for each kept frame; a frame over the cap changes nothing) and `Tab::newest_frame()` (the compressed bytes as they came): for a window that decodes the frame itself; neither decodes anything, and a hidden tab keeps both. Added in M17-P07 (mail 152).

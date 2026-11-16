@@ -252,3 +252,32 @@ mod tests {
         assert!(refusal_targets(&[], "a.test").is_empty());
     }
 }
+
+/// Standard base64 with padding (a frame travels to the window as text).
+pub fn base64_encode(bytes: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for c in bytes.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        out.push(T[(n >> 18) as usize & 63] as char);
+        out.push(T[(n >> 12) as usize & 63] as char);
+        out.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+#[cfg(test)]
+mod encode_tests {
+    use super::*;
+
+    #[test]
+    fn base64_encode_meets_the_standard_vectors_and_round_trips() {
+        for (plain, coded) in [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")] {
+            assert_eq!(base64_encode(plain.as_bytes()), coded);
+        }
+        let all: Vec<u8> = (0..=255u8).collect();
+        assert_eq!(base64_decode(&base64_encode(&all)).unwrap(), all, "every byte value survives");
+        assert_eq!(base64_encode(&[0xfb, 0xff, 0xbf]), "+/+/");
+    }
+}

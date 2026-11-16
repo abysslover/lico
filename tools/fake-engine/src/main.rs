@@ -66,7 +66,7 @@ fn main() {
     let token = std::env::var("OBSCURA_CDP_TOKEN").unwrap_or_else(|_| std::process::exit(3));
     let proxy = std::env::var("OBSCURA_PROXY").ok();
     let counter = std::sync::Arc::new(AtomicU64::new(1));
-    let (c1, c2, c3) = (counter.clone(), counter.clone(), counter.clone());
+    let (c1, c2, c3, c4) = (counter.clone(), counter.clone(), counter.clone(), counter.clone());
     let targets = AtomicU64::new(1);
     let script = Script::new()
         .token(&token)
@@ -100,12 +100,22 @@ fn main() {
             if let (Some(p), true) = (proxy.as_deref(), url.starts_with("http://")) {
                 fetch_through_proxy(p, &url);
             }
-            let n = c3.fetch_add(1, Ordering::SeqCst);
             let session = call.session_id.clone().unwrap_or_else(|| "S".into());
-            Answer::result(json!({"frameId": "F1", "loaderId": "L1"}))
+            // an address with /animate paints twenty frames at once, as an animated page does: the host keeps the newest and counts the rest
+            let frames = if url.contains("/animate") { 20 } else { 1 };
+            let mut answer = Answer::result(json!({"frameId": "F1", "loaderId": "L1"}))
                 .event_in(&session, "Page.frameNavigated", json!({"frame": {"id": "F1", "url": url}}))
-                .event_in(&session, "Page.loadEventFired", json!({"timestamp": 1}))
-                .event_in(&session, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
+                .event_in(&session, "Page.loadEventFired", json!({"timestamp": 1}));
+            for _ in 0..frames {
+                let n = c3.fetch_add(1, Ordering::SeqCst);
+                answer = answer.event_in(&session, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8));
+            }
+            answer
+        })
+        .on_fn("Page.reload", move |call: &Call| {
+            let n = c4.fetch_add(1, Ordering::SeqCst);
+            let session = call.session_id.clone().unwrap_or_else(|| "S".into());
+            Answer::result(json!({})).event_in(&session, "Page.loadEventFired", json!({"timestamp": 2})).event_in(&session, "Page.screencastFrame", screencast(n, (n * 40 % 256) as u8))
         })
         .on_fn("Browser.close", |_| {
             std::thread::spawn(|| {

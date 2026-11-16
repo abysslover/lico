@@ -325,3 +325,96 @@ fn browser_engine_ends_with_the_last_tab_and_never_starts_without_one() {
     assert_eq!((rig.engines().len(), rig.scratch_dirs()), (0, 0), "the engine ended with the host and its scratch directory is gone");
     let _: &Path = &rig.dir;
 }
+
+/// A watch the way a window sends it, on a connection of its own: the request is written and the answer is read later (or never).
+fn send_watch(socket: &str, tab: &str, seq: u64, frame_seq: u64) -> std::os::unix::net::UnixStream {
+    let mut c = std::os::unix::net::UnixStream::connect(socket).unwrap();
+    writeln!(c, "{}", json!({"op": "browser.watch", "tab": tab, "seq": seq, "frame_seq": frame_seq, "frame": true})).unwrap();
+    c
+}
+
+fn read_answer(mut c: std::os::unix::net::UnixStream, secs: u64) -> Option<Value> {
+    c.set_read_timeout(Some(Duration::from_secs(secs))).unwrap();
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while c.read(&mut byte).ok()? == 1 {
+        if byte[0] == b'\n' {
+            break;
+        }
+        line.push(byte[0]);
+    }
+    serde_json::from_slice(&line).ok()
+}
+
+#[test]
+#[ignore = "a system test of tests/system_tests.toml: run by `cargo xtask system` with LICO_BIN and LICO_FAKE_ENGINE set"]
+fn browser_watch_hands_the_window_the_newest_frame_and_nothing_polls() {
+    let rig = Rig::start("watch");
+    let tab = rig.open("https://anim.test/animate");
+    // twenty frames came at once: the host acknowledged all, kept the newest compressed one and counted the rest
+    let row = rig.wait(15, "the burst of frames", || Some(rig.tab(&tab)).filter(|t| t["frame_seq"].as_u64().unwrap_or(0) >= 20));
+    assert!(row["dropped_frames"].as_u64().unwrap() >= 15, "the frames nobody painted are dropped in the host and counted: {row}");
+    // a window that asks now gets the newest one only, as text, and it is a PNG that decodes
+    let first = read_answer(send_watch(&rig.socket, &tab, 0, 0), 10).expect("an answer");
+    let newest = row["frame_seq"].as_u64().unwrap();
+    assert_eq!(first["frame_seq"].as_u64(), Some(newest), "{}", first.to_string().chars().take(200).collect::<String>());
+    let png = super::map::base64_decode(first["png"].as_str().unwrap()).expect("base64");
+    let image = lico_frame::decode(&png, &lico_frame::Limits::default()).expect("a PNG");
+    assert_eq!((image.width, image.height), (96, 64));
+    let seq = first["seq"].as_u64().unwrap();
+    // asking again with what it has: the call waits (nothing changed), it does not poll and does not answer
+    let waiting = send_watch(&rig.socket, &tab, seq, newest);
+    let begun = Instant::now();
+    waiting.set_read_timeout(Some(Duration::from_millis(1200))).unwrap();
+    let mut probe = [0u8; 1];
+    assert!(std::io::Read::read(&mut &waiting, &mut probe).is_err(), "no answer while nothing changes");
+    assert!(begun.elapsed() >= Duration::from_millis(1000));
+    // a newer watch of the same tab releases the older one
+    let newer = send_watch(&rig.socket, &tab, seq, newest);
+    let released = read_answer(waiting, 5).expect("the older watch is released");
+    assert_eq!(released["superseded"], json!(true), "{released}");
+    // a change wakes the newer one with the new frame only (a reload paints one frame)
+    let reply = rig.call(json!({"op": "browser.nav", "tab": tab, "action": "reload"}));
+    assert_eq!(reply["ok"], json!(1), "{reply}");
+    // the first change is the reload itself (the tab is loading: a row, no frame); the window asks again and gets the frame
+    let mut woken = read_answer(newer, 10).expect("woken by the change");
+    for _ in 0..5 {
+        if woken["png"].is_string() {
+            break;
+        }
+        assert!(woken["seq"].as_u64().unwrap() > seq, "a change, not an echo: {woken}");
+        woken = read_answer(send_watch(&rig.socket, &tab, woken["seq"].as_u64().unwrap(), newest), 10).expect("the next change");
+    }
+    assert!(woken["frame_seq"].as_u64().unwrap() > newest && woken["png"].is_string(), "{}", woken.to_string().chars().take(200).collect::<String>());
+    // hiding stops the screencast and releases a watch
+    let seq = woken["seq"].as_u64().unwrap();
+    let held = send_watch(&rig.socket, &tab, seq, woken["frame_seq"].as_u64().unwrap());
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(rig.call(json!({"op": "browser.hide", "tab": tab}))["ok"], json!(1));
+    assert_eq!(read_answer(held, 5).expect("released by the hide")["hidden"], json!(true));
+    assert_eq!(rig.call(json!({"op": "browser.show", "tab": tab, "width": 640, "height": 480}))["viewport"], json!([640, 480]));
+    // a window that vanishes and comes back leaves no thread behind
+    let base = rig.threads();
+    let mut last = {
+        let r = rig.tab(&tab);
+        (r["frame_seq"].as_u64().unwrap(), 0u64)
+    };
+    last.1 = read_answer(send_watch(&rig.socket, &tab, 0, 0), 10).unwrap()["seq"].as_u64().unwrap();
+    for _ in 0..4 {
+        drop(send_watch(&rig.socket, &tab, last.1, last.0)); // the window goes away while it waits
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let comes_back = send_watch(&rig.socket, &tab, last.1, last.0); // it comes back: this supersedes the last one, the others ended at once
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(rig.threads() <= base + 2, "threads: {} against {base}: parked watchers do not pile up", rig.threads());
+    assert_eq!(rig.call(json!({"op": "browser.nav", "tab": tab, "action": "reload"}))["ok"], json!(1));
+    assert!(read_answer(comes_back, 10).is_some());
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(rig.threads() <= base + 1, "after the change every thread of a watch has ended: {} against {base}", rig.threads());
+    // closing the tab releases a watch too
+    let seq_now = rig.tab(&tab);
+    let held = send_watch(&rig.socket, &tab, 1000, seq_now["frame_seq"].as_u64().unwrap());
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(rig.call(json!({"op": "browser.close", "tab": tab}))["ok"], json!(1));
+    assert_eq!(read_answer(held, 5).expect("released by the close")["gone"], json!(true));
+}

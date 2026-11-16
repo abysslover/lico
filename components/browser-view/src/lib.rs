@@ -415,6 +415,14 @@ impl Tab {
         v
     }
 
+    /// The number of the newest kept frame (0: none yet); it grows by one with each frame that is kept.
+    pub fn frame_seq(&self) -> u64 {
+        self.newest_seq
+    }
+    /// The newest kept frame as it came (compressed), for a window that decodes it itself; reading it decodes nothing.
+    pub fn newest_frame(&self) -> Option<&[u8]> {
+        self.newest.as_deref()
+    }
     /// Whether the person opened this tab for this machine's own services (`LOCAL_NOTE` is what the tab shows).
     pub fn local(&self) -> bool {
         self.local

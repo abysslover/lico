@@ -20,7 +20,16 @@ pub const DEFAULT_AREA: (u32, u32) = (1024, 768);
 /// How long `browser.shot` waits for a first frame.
 pub const SHOT_WAIT: Duration = Duration::from_secs(3);
 
-pub const NAMES: [&str; 4] = ["browser.open", "browser.list", "browser.close", "browser.shot"];
+pub const NAMES: [&str; 10] = ["browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch"];
+
+/// `op`, `v` and `id` are the fields every request may carry.
+pub fn valid_common(key: &str, v: &Value) -> bool {
+    match key {
+        "op" => true,
+        "v" => v.as_i64() == Some(1),
+        _ => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= 64),
+    }
+}
 
 type Reply = Result<Map<String, Value>, &'static str>;
 
@@ -38,6 +47,9 @@ pub fn valid_shot_path(v: &Value) -> bool {
 }
 
 pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
+    if super::window_ops::WINDOW_NAMES.contains(&op) {
+        return super::window_ops::valid(op, request);
+    }
     let allowed: &[&str] = match op {
         "browser.open" => &["op", "v", "id", "url", "local"],
         "browser.list" => &["op", "v", "id"],
@@ -66,10 +78,19 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
     }) && required.iter().all(|k| request.contains_key(*k))
 }
 
+/// What `ensure_engine` found out for a new tab.
+pub(super) struct Prepared {
+    pub absent: Option<Value>,
+    pub font_missing: bool,
+    pub unpinned: bool,
+}
+
 pub struct Browser {
-    hub: Arc<Hub>,
-    engines: Mutex<[Option<Engine>; 2]>,
+    pub(super) hub: Arc<Hub>,
+    pub(super) engines: Mutex<[Option<Engine>; 2]>,
     next: Mutex<u32>,
+    /// The moment the browser began: the model's clock (milliseconds since it).
+    pub(super) epoch: std::time::Instant,
     /// The state directory of the host (the scratch directories and the owner's setting live in it).
     state_dir: Mutex<Option<PathBuf>>,
     /// Where to look for the engine instead of the process's own home (a test gives its own; the product never does).
@@ -78,7 +99,7 @@ pub struct Browser {
 
 impl Browser {
     pub fn new() -> Browser {
-        Browser { hub: Arc::new(Hub { tabs: Mutex::new(Vec::new()) }), engines: Mutex::new([None, None]), next: Mutex::new(0), state_dir: Mutex::new(None), at: None }
+        Browser { hub: Arc::new(Hub::new()), engines: Mutex::new([None, None]), next: Mutex::new(0), epoch: std::time::Instant::now(), state_dir: Mutex::new(None), at: None }
     }
 
     #[cfg(test)]
@@ -99,12 +120,71 @@ impl Browser {
         json!({"release": RELEASE, "download": ARCHIVE_URL, "archive_sha256": ARCHIVE_SHA256, "engine_sha256": ENGINE_SHA256, "directory": dir.to_string_lossy(), "put": "extract the archive and put the files obscura and obscura-worker in the directory"})
     }
 
+    /// Makes sure the engine of class `index` runs (starting it, or replacing one that ended by itself: the restart), and says what a new tab of it must know. An engine that
+    /// is not installed is not an error: the tab is shown in the `absent` phase.
+    pub(super) fn ensure_engine(&self, engines: &mut [Option<Engine>; 2], shared: &Opaque, index: usize) -> Result<Prepared, &'static str> {
+        let local = index == 1;
+        let state_dir = self.state_dir_of(shared).ok_or("engine_failed")?;
+        if engines[index].as_ref().is_some_and(Engine::finished) {
+            if let Some(old) = engines[index].take() {
+                old.reap();
+            }
+        }
+        let mut prepared = Prepared { absent: None, font_missing: false, unpinned: false };
+        if engines[index].is_none() {
+            let at = match &self.at {
+                Some(at) => Where { state_dir: state_dir.clone(), ..at.clone() },
+                None => Where::of_process(state_dir.clone()).ok_or("engine_failed")?,
+            };
+            match engine::locate(&at, &PINNED) {
+                Ok(located) => {
+                    let font = fonts::find_on_this_machine();
+                    prepared.font_missing = font.is_none();
+                    let release = if located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() };
+                    let setup = Setup { index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
+                    match supervisor::start(setup) {
+                        Ok(e) => engines[index] = Some(e),
+                        Err(e) => return Err(e.0),
+                    }
+                }
+                Err(Problem::Absent { dir }) => prepared.absent = Some(Self::absent_fields(&dir)),
+                Err(Problem::Unsafe(_)) => return Err("engine_unsafe"),
+                Err(Problem::Mismatch) => return Err("engine_not_pinned"),
+                Err(Problem::Setting(_)) => return Err("engine_setting"),
+                Err(Problem::Io(_)) => return Err("engine_unreadable"),
+            }
+        } else if self.font_known_missing() {
+            prepared.font_missing = true;
+        }
+        prepared.unpinned = engines[index].as_ref().is_some_and(|e| e.unpinned);
+        Ok(prepared)
+    }
+
+    /// A new model for a tab of class `index`, shown at `area`, with what the engine's state says about it (absent, unpinned, no font, local) and the address typed.
+    pub(super) fn new_tab(prepared: &Prepared, local: bool, area: (u32, u32), url: &str) -> Tab {
+        let mut tab = Tab::new();
+        tab.show(area, 0);
+        let _ = tab.submit_address(url); // first: an absent engine ends the tab's ability to take an address, but the address typed stays
+        if prepared.absent.is_some() {
+            tab.engine_event(EngineEvent::Missing { expected_sha256: ENGINE_SHA256.to_string(), release: RELEASE.to_string() });
+        }
+        if prepared.unpinned {
+            tab.engine_event(EngineEvent::UnpinnedEngine);
+        }
+        if prepared.font_missing {
+            tab.engine_event(EngineEvent::NoFontFound);
+        }
+        if local {
+            tab.engine_event(EngineEvent::LocalTab);
+        }
+        tab
+    }
+
     fn open(&self, shared: &Opaque, request: &Map<String, Value>) -> Reply {
         let typed = request.get("url").and_then(Value::as_str).unwrap_or("");
         let url = lico_browser_view::parse_address(typed).map_err(|_| "bad_request")?;
         let local = request.get("local").and_then(Value::as_bool).unwrap_or(false);
         let index = local as usize;
-        let state_dir = self.state_dir_of(shared).ok_or("engine_failed")?;
         let mut engines = self.engines.lock().unwrap();
         if self.hub.tabs.lock().unwrap().len() >= MAX_TABS {
             return Err("tab_limit");
@@ -114,58 +194,11 @@ impl Browser {
             *n += 1;
             format!("b{n}")
         };
-        let mut tab = Tab::new();
-        tab.show(DEFAULT_AREA, 0);
-        let mut absent: Option<Value> = None;
-        let mut font_missing = false;
-        // an engine that ended by itself (or never ran) is replaced by the next action: the restart
-        if engines[index].as_ref().is_some_and(Engine::finished) {
-            if let Some(old) = engines[index].take() {
-                old.reap();
-            }
-        }
-        if engines[index].is_none() {
-            let at = match &self.at {
-                Some(at) => Where { state_dir: state_dir.clone(), ..at.clone() },
-                None => Where::of_process(state_dir.clone()).ok_or("engine_failed")?,
-            };
-            match engine::locate(&at, &PINNED) {
-                Ok(located) => {
-                    let font = fonts::find_on_this_machine();
-                    font_missing = font.is_none();
-                    let setup = Setup { index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release: String::new() };
-                    let setup = Setup { release: if setup.located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() }, ..setup };
-                    match supervisor::start(setup) {
-                        Ok(e) => engines[index] = Some(e),
-                        Err(e) => return Err(e.0),
-                    }
-                }
-                Err(Problem::Absent { dir }) => {
-                    tab.engine_event(EngineEvent::Missing { expected_sha256: ENGINE_SHA256.to_string(), release: RELEASE.to_string() });
-                    absent = Some(Self::absent_fields(&dir));
-                }
-                Err(Problem::Unsafe(_)) => return Err("engine_unsafe"),
-                Err(Problem::Mismatch) => return Err("engine_not_pinned"),
-                Err(Problem::Setting(_)) => return Err("engine_setting"),
-                Err(Problem::Io(_)) => return Err("engine_unreadable"),
-            }
-        } else if self.font_known_missing() {
-            font_missing = true;
-        }
-        let unpinned = engines[index].as_ref().is_some_and(|e| e.unpinned);
-        if unpinned {
-            tab.engine_event(EngineEvent::UnpinnedEngine);
-        }
-        if font_missing {
-            tab.engine_event(EngineEvent::NoFontFound);
-        }
-        if local {
-            tab.engine_event(EngineEvent::LocalTab);
-        }
-        let _ = tab.submit_address(&url);
-        self.hub.tabs.lock().unwrap().push(Entry { id: id.clone(), tab, engine: index, target: None, session: None, local });
-        let mut reply = obj(json!({"tab": id, "phase": if absent.is_some() { "absent" } else { "starting" }, "local": local, "unpinned": unpinned}));
-        match absent {
+        let prepared = self.ensure_engine(&mut engines, shared, index)?;
+        let tab = Self::new_tab(&prepared, local, DEFAULT_AREA, &url);
+        self.hub.tabs.lock().unwrap().push(Entry::new(id.clone(), tab, index, local));
+        let mut reply = obj(json!({"tab": id, "phase": if prepared.absent.is_some() { "absent" } else { "starting" }, "local": local, "unpinned": prepared.unpinned}));
+        match prepared.absent {
             Some(fields) => reply.extend(obj(fields)),
             None => {
                 if let Some(e) = &engines[index] {
@@ -180,12 +213,12 @@ impl Browser {
         fonts::find_on_this_machine().is_none()
     }
 
-    fn row(entry: &Entry) -> Value {
+    pub(super) fn row(entry: &Entry) -> Value {
         let (w, h) = entry.tab.viewport();
         let mut row = obj(json!({
             "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "local": entry.local,
             "viewport": [w, h], "viewport_capped": entry.tab.viewport_capped(), "has_frame": entry.tab.kept_bytes() > 0, "dropped_frames": entry.tab.dropped_frames(),
-            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(),
+            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "frame_seq": entry.tab.frame_seq(),
         }));
         match entry.tab.phase() {
             Phase::Starting => row.insert("phase".into(), json!("starting")),
@@ -241,6 +274,7 @@ impl Browser {
                 }
             }
         }
+        self.hub.changed.notify_all(); // a watch of this tab is released
         Ok(obj(json!({"closed": id, "engine_stopped": stopped})))
     }
 
@@ -275,6 +309,7 @@ impl Browser {
             }
         }
         self.hub.tabs.lock().unwrap().clear();
+        self.hub.changed.notify_all(); // every watch is released
     }
 }
 
@@ -320,6 +355,12 @@ impl Ops for Browser {
             "browser.list" => self.list(),
             "browser.close" => self.close(request),
             "browser.shot" => self.shot(request),
+            "browser.show" => self.show(request),
+            "browser.resize" => self.resize(request),
+            "browser.hide" => self.hide(request),
+            "browser.go" => self.go(shared, request),
+            "browser.nav" => self.nav(request),
+            "browser.watch" => self.watch(request),
             _ => Err("unknown_op"),
         }
     }
@@ -447,6 +488,90 @@ mod tests {
         for bad in ["ftp://x.test/", "javascript:alert(1)", "file:///etc/passwd", "http://user:pw@a.test/"] {
             assert_eq!(browser.call(&shared, "browser.open", &req(json!({"op": "browser.open", "url": bad}))), Err("bad_request"), "{bad}");
         }
+    }
+
+    fn open_absent(b: &Browser, shared: &Opaque) -> String {
+        let r = b.call(shared, "browser.open", &req(json!({"op": "browser.open", "url": "https://a.test/"}))).unwrap();
+        r["tab"].as_str().unwrap().to_string()
+    }
+
+    #[test]
+    fn the_window_operations_accept_exactly_their_fields() {
+        let ok = |v: Value| valid(v["op"].as_str().unwrap(), &req(v.clone()));
+        assert!(ok(json!({"op": "browser.show", "tab": "b1", "width": 800, "height": 600})));
+        assert!(ok(json!({"op": "browser.resize", "tab": "b1", "width": 1, "height": 16384})));
+        assert!(ok(json!({"op": "browser.hide", "tab": "b1"})));
+        assert!(ok(json!({"op": "browser.go", "tab": "b1", "address": "a.test"})));
+        assert!(ok(json!({"op": "browser.nav", "tab": "b1", "action": "reload"})));
+        assert!(ok(json!({"op": "browser.watch", "tab": "b1", "seq": 0})));
+        assert!(ok(json!({"op": "browser.watch", "tab": "b1", "seq": 5, "frame_seq": 3, "frame": true, "v": 1, "id": "x"})));
+        for bad in [
+            json!({"op": "browser.show", "tab": "b1", "width": 800}),
+            json!({"op": "browser.show", "tab": "b1", "width": 0, "height": 600}),
+            json!({"op": "browser.show", "tab": "b1", "width": 20000, "height": 600}),
+            json!({"op": "browser.show", "tab": "b1", "width": "8", "height": 6}),
+            json!({"op": "browser.hide"}),
+            json!({"op": "browser.hide", "tab": "b1", "extra": 1}),
+            json!({"op": "browser.go", "tab": "b1"}),
+            json!({"op": "browser.go", "tab": "b1", "address": ""}),
+            json!({"op": "browser.nav", "tab": "b1", "action": "stop"}),
+            json!({"op": "browser.nav", "tab": "bx", "action": "back"}),
+            json!({"op": "browser.watch", "tab": "b1"}),
+            json!({"op": "browser.watch", "tab": "b1", "seq": -1}),
+            json!({"op": "browser.watch", "tab": "b1", "seq": 1, "frame": 1}),
+            json!({"op": "browser.watch", "tab": "b1", "seq": 1, "timeout": 5}),
+        ] {
+            assert!(!ok(bad.clone()), "{bad}");
+        }
+    }
+
+    #[test]
+    fn show_resize_hide_and_nav_are_the_models_intents_and_the_viewport_is_capped_and_said() {
+        let (_home, browser, shared) = world("window");
+        let id = open_absent(&browser, &shared);
+        let call = |op: &str, mut v: Value| {
+            v["op"] = json!(op);
+            v["tab"] = json!(id);
+            browser.call(&shared, op, &req(v))
+        };
+        let r = call("browser.show", json!({"width": 3000, "height": 2000})).unwrap();
+        assert_eq!((r["viewport"].clone(), r["viewport_capped"].clone()), (json!([1920, 1200]), json!(true)), "{r:?}");
+        let r = call("browser.resize", json!({"width": 800, "height": 600})).unwrap();
+        assert_eq!((r["viewport"].clone(), r["viewport_capped"].clone()), (json!([800, 600]), json!(false)));
+        assert!(call("browser.hide", json!({})).is_ok());
+        let row = &browser.call(&shared, "browser.list", &req(json!({"op": "browser.list"}))).unwrap()["tabs"][0];
+        assert_eq!(row["viewport"], json!([800, 600]));
+        assert!(call("browser.nav", json!({"action": "back"})).is_ok() && call("browser.nav", json!({"action": "reload"})).is_ok());
+        assert_eq!(browser.call(&shared, "browser.hide", &req(json!({"op": "browser.hide", "tab": "b99"}))), Err("unknown_tab"));
+        assert_eq!(browser.call(&shared, "browser.show", &req(json!({"op": "browser.show", "tab": "b99", "width": 9, "height": 9}))), Err("unknown_tab"));
+    }
+
+    #[test]
+    fn go_names_the_models_refusal_and_on_a_tab_without_an_engine_it_tries_the_engine_again() {
+        let (_home, browser, shared) = world("go");
+        let id = open_absent(&browser, &shared);
+        let go = |address: &str| browser.call(&shared, "browser.go", &req(json!({"op": "browser.go", "tab": id, "address": address})));
+        assert_eq!(go("   "), Err("address_empty"));
+        assert_eq!(go("ftp://x.test/"), Err("address_scheme"));
+        assert_eq!(go("http://user:pw@x.test/"), Err("address_credentials"));
+        assert_eq!(go("http://a b/"), Err("address_invalid"));
+        let r = go("https://b.test/").unwrap();
+        assert_eq!((r["restarted"].clone(), r["phase"].clone(), r["url"].clone()), (json!(true), json!("absent"), json!("https://b.test/")), "the engine is still not installed: the message again, with the new address");
+        let row = browser.call(&shared, "browser.list", &req(json!({"op": "browser.list"}))).unwrap()["tabs"][0].clone();
+        assert_eq!((row["url"].clone(), row["phase"].clone()), (json!("https://b.test/"), json!("absent")));
+    }
+
+    #[test]
+    fn watch_through_the_operation_answers_hidden_gone_and_what_changed() {
+        let (_home, browser, shared) = world("watchop");
+        let id = open_absent(&browser, &shared);
+        let watch = |seq: u64| browser.call(&shared, "browser.watch", &req(json!({"op": "browser.watch", "tab": id, "seq": seq, "frame": true}))).unwrap();
+        let first = watch(0);
+        assert!(first["seq"].as_u64().unwrap() >= 1 && first["tab"]["tab"] == json!(id) && first.get("png").is_none(), "{first:?}");
+        browser.call(&shared, "browser.hide", &req(json!({"op": "browser.hide", "tab": id}))).unwrap();
+        assert_eq!(watch(99)["hidden"], json!(true));
+        browser.call(&shared, "browser.close", &req(json!({"op": "browser.close", "tab": id}))).unwrap();
+        assert_eq!(watch(0)["gone"], json!(true));
     }
 
     #[test]

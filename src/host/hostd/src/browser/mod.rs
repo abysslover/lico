@@ -10,6 +10,8 @@ mod profile;
 mod reserved;
 mod sha256;
 mod supervisor;
+mod watch;
+mod window_ops;
 #[cfg(test)]
 mod real_probe;
 #[cfg(test)]

@@ -546,3 +546,19 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     assert_eq!(local.help_lines()[0], LOCAL_NOTE);
     assert_eq!(&local.help_lines()[1..], &help[..], "the rest is the same");
 }
+
+#[test]
+fn the_newest_compressed_frame_and_its_number_are_readable_without_decoding_and_survive_a_hide() {
+    let mut t = shown((200, 100));
+    assert_eq!((t.frame_seq(), t.newest_frame().map(<[u8]>::len)), (0, None));
+    let (a, b) = (png(10, 10, 1), png(12, 12, 2));
+    t.engine_event(EngineEvent::Frame { id: 1, png: a.clone() });
+    assert_eq!((t.frame_seq(), t.newest_frame()), (1, Some(&a[..])));
+    t.engine_event(EngineEvent::Frame { id: 2, png: b.clone() });
+    assert_eq!((t.frame_seq(), t.newest_frame()), (2, Some(&b[..])), "the newest replaces the older");
+    assert_eq!(t.decodes(), 0, "reading it decodes nothing");
+    t.hide();
+    assert_eq!((t.frame_seq(), t.newest_frame()), (2, Some(&b[..])), "a hidden tab keeps its newest compressed frame");
+    t.engine_event(EngineEvent::Frame { id: 3, png: vec![0; MAX_FRAME_BYTES + 1] });
+    assert_eq!(t.frame_seq(), 2, "a frame over the cap is not kept and does not change the number");
+}
