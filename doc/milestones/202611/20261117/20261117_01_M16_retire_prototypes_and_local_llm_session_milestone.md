@@ -21,7 +21,7 @@ The component rules 1.0.1 (new code is new components with a version, downward-o
 
 | ID | Phase | Plan | Report | Status |
 |---|---|---|---|---|
-| M16-P01 | Retire the prototypes | [Plan](../../../plans/202611/20261117/20261117_02_M16-P01_retire_prototypes_plan.md) | pending | approved, in progress |
+| M16-P01 | Retire the prototypes | [Plan](../../../plans/202611/20261117/20261117_02_M16-P01_retire_prototypes_plan.md) | pending | implemented (`575f757`) |
 | M16-P02 | Phase 0 for the Local LLM session (read-only; a report, then stop) | [Plan](../../../plans/202611/20261117/20261117_03_M16-P02_local_llm_session_phase0_plan.md) | pending | approved |
 | M16-P03.. | The components and the session kind | sketch in the P02 plan | | after the owner picks the design |
 
