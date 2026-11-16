@@ -175,6 +175,12 @@ fn browser_tab_opens_and_paints_a_fake_frame() {
         let (socket, http) = (strip(rig.call(request.clone())), strip(rig.http(&request)));
         assert_eq!(socket, http, "the same answer from both doors for {request}");
     }
+    // the command line is a door of its own: the real `lico browser list` prints what the socket gives
+    let cli = Command::new(std::env::var("LICO_BIN").unwrap()).args(["browser", "list", "--socket", &rig.socket]).output().unwrap();
+    let printed: Value = serde_json::from_slice(&cli.stdout).unwrap_or(Value::Null);
+    assert!(cli.status.success() && printed["tabs"].as_array().is_some_and(|t| t.len() == 2), "{}", String::from_utf8_lossy(&cli.stdout));
+    let cli = Command::new(std::env::var("LICO_BIN").unwrap()).args(["browser", "close", "b99", "--socket", &rig.socket]).output().unwrap();
+    assert!(!cli.status.success(), "an unknown tab is a failure of the command");
     assert_eq!(rig.call(json!({"op": "browser.close", "tab": "b99"}))["error"], json!("unknown_tab"));
     assert_eq!(rig.call(json!({"op": "browser.open", "url": "ftp://x.test/"}))["error"], json!("bad_request"));
     let capabilities = rig.call(json!({"op": "capabilities"}));

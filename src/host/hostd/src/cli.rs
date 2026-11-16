@@ -27,6 +27,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
   llm discover [--ssh-host HOST] [--all-users]\n\
                  find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
+  browser open URL [--localhost] | list | close ID | shot ID FILE\n\
+                 a browser tab (http or https; the engine is started with the first tab and ended with the last; --localhost lets that tab reach this computer's own addresses; shot writes the newest frame to a new PNG)\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -666,6 +668,11 @@ pub fn run(args: Vec<String>) {
             let approval: i64 = number.parse().unwrap_or_else(|_| die(1, USAGE));
             let offset: i64 = rest.first().map_or(0, |at| at.parse().unwrap_or_else(|_| die(1, USAGE)));
             expect_ok(call(&mut conn, json!({"op": "approval.text", "session": session, "generation": generation, "approval_id": approval, "offset": offset})));
+        }
+        ["browser", rest @ ..] => {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let request = crate::browser_cli::request(rest, &cwd).unwrap_or_else(|_| die(1, USAGE));
+            expect_ok(call(&mut connect(&socket), request));
         }
         ["llm", "discover", rest @ ..] => {
             let mut request = json!({"op": "llm.discover"});

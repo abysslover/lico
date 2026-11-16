@@ -13,6 +13,7 @@ mod claude;
 mod cli;
 mod clipboard;
 mod browser;
+mod browser_cli;
 mod clipwrite;
 mod codex;
 mod computer;
