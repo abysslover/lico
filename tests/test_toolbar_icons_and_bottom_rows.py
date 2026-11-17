@@ -111,3 +111,42 @@ def test_a_home_session_has_the_caption_h_and_a_telemetry_strip_that_says_home_a
             assert bar["rect"][0] == 0 and bar["rect"][2] == width and bar["rect"][3] == hint[1] and bar["rect"][3] - bar["rect"][1] >= 16, (bar["rect"], hint)
             assert bar["telem_rect"] is None or bar["telem_rect"][3] <= bar["rect"][1], bar
             assert "Ctrl+N" in home["hint"], home["hint"]
+
+
+def test_the_sidebar_runs_from_the_top_of_the_window_and_the_menu_the_toolbar_and_the_dropdowns_stay_to_its_right():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        c_args, _rec = claude_args(root)
+
+        def setup(w: ProductWindow) -> None:
+            account(Conn(w.socket), "ClaudeWork", "claude")
+
+        with ProductWindow(host_binary=LICO, host_args=[*c_args, "--log-dir", str(root / "logs")], env_extra={"LANG": "C.UTF-8"}, before_window=setup) as w:
+            w.proc.stdin.write("load\n")
+            w.proc.stdin.flush()
+            u = wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["sidebar"]["shown"] and x["start_screen"] and x)
+            list_w = u["layout"]["list_w"]
+            assert list_w > 100, list_w
+
+            # the sidebar's tabs are the first thing at the top of the window, and its column runs the whole height
+            sb = u["sidebar"]
+            assert sb["dir_tab_rect"][1] <= 4 and sb["chats_tab_rect"][1] <= 4, (sb["dir_tab_rect"], sb["chats_tab_rect"])
+            assert sb["dir_tab_rect"][0] < list_w and sb["chats_tab_rect"][2] <= list_w, "the tabs are inside the column"
+
+            # the menu bar, the toolbar and the window button are all to the right of the column
+            titles = u["menu"]["titles"]
+            assert all(t["rect"][0] >= list_w for t in titles), [t["rect"] for t in titles]
+            assert all(b["rect"][0] >= list_w for b in u["toolbar"]["buttons"]), [b["rect"] for b in u["toolbar"]["buttons"]]
+            assert u["window_btn"]["rect"][0] >= list_w, u["window_btn"]
+
+            # a click on the sidebar's tab at the very top reaches the sidebar, not the menu
+            w.click(*_centre(sb["chats_tab_rect"]))
+            wait_for(lambda: w.ui()["sidebar"]["tab"] == "chats")
+
+            # every dropdown opens to the right of the column, whichever title opened it
+            for index in range(len(titles)):
+                w.click(*_centre(titles[index]["rect"]))
+                items = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == index and m["items"] and m["items"])
+                assert all(i["rect"][0] >= list_w for i in items), (index, [i["rect"] for i in items])
+                w.key("Escape")
+                wait_for(lambda: w.ui()["menu"]["open"] is None)

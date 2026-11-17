@@ -112,3 +112,16 @@ fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_tool
     let _ = peer.read_to_string(&mut stream_sent);
     assert!(!stream_sent.contains("\"op\":\"input\""), "/exit must never be sent to the LLM: {stream_sent}");
 }
+
+#[test]
+fn the_left_column_starts_at_the_top_of_the_window_and_only_without_the_menu_bar_under_what_is_on_top() {
+    let mut app = super::super::scroll_oracle::app(1.0, false);
+    assert!(app.ui.menu);
+    assert_eq!(app.left_column_tops(70.0, 1.0), (0.0, 4.0), "with the menu bar the column still starts at the very top (the bar is to its right)");
+    assert_eq!(app.left_column_tops(70.0, 2.0), (0.0, 8.0));
+    app.ui.markers = true;
+    assert_eq!(app.left_column_tops(70.0, 1.0), (16.0, 20.0), "the measurement client keeps its two squares in the corner");
+    app.ui.markers = false;
+    app.ui.menu = false;
+    assert_eq!(app.left_column_tops(30.0, 1.0), (30.0, 40.0), "no menu bar: under whatever is on top");
+}

@@ -184,6 +184,16 @@ impl App {
         self.ui.workbench && self.ui.menu
     }
 
+    /// Where the left column (the sidebar, or the session list) starts and where its list begins: at the very top of the window, so that the menu bar, the toolbar and the real-screen
+    /// banner (drawn to its right) never cover it (`M22-P04`). Without the menu bar the column starts under whatever is on top (`top`).
+    pub(crate) fn left_column_tops(&self, top: f32, scale: f32) -> (f32, f32) {
+        if !self.ui.menu {
+            return (top, 40.0 * scale);
+        }
+        let start = if self.ui.markers { 16.0 } else { 0.0 }; // the measurement client's two squares are in the corner
+        (start, start + 4.0 * scale)
+    }
+
     pub(crate) fn effective_list_w(&self, scale: f32) -> usize {
         if self.sidebar_shown() && self.ui.sidebar.collapsed {
             0

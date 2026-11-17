@@ -232,9 +232,15 @@ class ProductWindow:
         return rows
 
     def corner_is_background(self) -> bool:
-        data, width, _ = self.gray()
-        bar = data[5 * width + 1100]                  # the menu bar's own colour, far from its titles
-        return all(data[y * width + x] == bar for y, x in ((2, 2), (2, 30), (13, 2), (13, 30), (8, 2), (8, 30)))     # no solid squares of the measurement markers
+        """The product window draws no measurement marker at its corner. The markers are two solid 16-pixel squares there; what the product has in that corner is the first thing of its
+        left column (the sidebar's tabs, with text) or the plain background, so a square is a marker when it is one solid colour that is not the window's background."""
+        data, width, height = self.gray()
+        ground = data[(height // 2) * width + width - 8]  # the right edge of the transcript area: the window's own background
+
+        def marker(x0: int) -> bool:
+            return len({data[y * width + x] for y in range(16) for x in range(x0, x0 + 16)}) == 1 and data[x0] != ground
+
+        return not (marker(0) or marker(16))
 
     def __exit__(self, *exc) -> None:
         host_pid = None

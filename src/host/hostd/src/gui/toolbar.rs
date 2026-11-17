@@ -153,6 +153,7 @@ impl App {
         buf: &mut [u32],
         width: usize,
         height: usize,
+        left: f32,
         menu_h: f32,
         bar_h: f32,
         menu_open: Option<usize>,
@@ -176,7 +177,7 @@ impl App {
         let dim = super::super::panel::sendto::DIM;
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
-        let x0 = if self.ui.markers { 36.0 } else { 0.0 };
+        let x0 = left; // the left column (the sidebar) is not the menu's: everything here is to its right
 
         // 1. Menu bar (y = 0 .. menu_h)
         controls::fill(buf, width, height, [x0, 0.0, width as f32, menu_h], 0xFF1C_2430);
@@ -198,9 +199,9 @@ impl App {
         self.ui.win_btn.rect = Some(icon);
 
         // 2. Action toolbar (y = menu_h .. bar_h)
-        controls::fill(buf, width, height, [0.0, menu_h, width as f32, bar_h], 0xFF16_1D27);
-        controls::fill(buf, width, height, [0.0, bar_h - 1.0, width as f32, bar_h], 0xFF2B_3440);
-        let mut tx = 6.0 * s;
+        controls::fill(buf, width, height, [x0, menu_h, width as f32, bar_h], 0xFF16_1D27);
+        controls::fill(buf, width, height, [x0, bar_h - 1.0, width as f32, bar_h], 0xFF2B_3440);
+        let mut tx = x0 + 6.0 * s;
         let (by0, by1) = (menu_h + 2.0 * s, bar_h - 3.0 * s);
         let side = (by1 - by0).max(1.0);
         let hover = self.ui.toolbar_geom.hover;
@@ -255,7 +256,7 @@ impl App {
                 lefts.push(left);
             }
             let w = inner + 2.0 * pad;
-            let x = self.ui.menu_geom.titles[m][0].min(width as f32 - 4.0 * s - w).max(4.0 * s);
+            let x = self.ui.menu_geom.titles[m][0].min(width as f32 - 4.0 * s - w).max(x0 + 4.0 * s);
             let panel = [x, menu_h, x + w, menu_h + ih * menu_entries.len() as f32 + 4.0 * s];
             controls::fill(buf, width, height, [panel[0] - 1.0, panel[1], panel[2] + 1.0, panel[3] + 1.0], 0xFF3A_4A60);
             controls::fill(buf, width, height, panel, 0xFF1C_2430);
@@ -303,7 +304,7 @@ impl App {
                 ft
             });
             let w = inner + 2.0 * pad;
-            let x = anchor_x.min(width as f32 - 4.0 * s - w).max(4.0 * s);
+            let x = anchor_x.min(width as f32 - 4.0 * s - w).max(x0 + 4.0 * s);
             let total_rows = rows_txt.len() + usize::from(footer.is_some());
             let box_r = [x, bar_h, x + w, bar_h + ih * total_rows as f32 + 4.0 * s];
             controls::fill(buf, width, height, [box_r[0] - 1.0, box_r[1], box_r[2] + 1.0, box_r[3] + 1.0], 0xFF3A_4A60);

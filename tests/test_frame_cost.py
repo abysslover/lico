@@ -165,8 +165,9 @@ def test_a_flowing_stream_drawn_by_scroll_steps_looks_like_a_full_repaint_on_the
             host, _ = start(directory, extra=["--realistic-text", "--payload", "110"], sessions=1, producing=1, history=60)
             client = client_on(host, xvfb.display, "--menu")
             show(client, host.sessions[0], 35)
-            flowing = ui(client, lambda u: u["frame"]["causes"]["shift"] >= 12)["frame"]
-            click(xvfb.display, 50, 10)                      # the first menu title (after the marker squares)
+            seen = ui(client, lambda u: u["frame"]["causes"]["shift"] >= 12)
+            flowing = seen["frame"]
+            click(xvfb.display, seen["layout"]["list_w"] + 20, 10)   # the first menu title (the menu bar is to the right of the left column, M22-P04)
             ui(client, lambda u: u["frame"]["causes"]["menu"] >= 1)
             time.sleep(0.25)                                 # output flows behind the open menu
             xdo(xvfb.display, "key", "Escape")

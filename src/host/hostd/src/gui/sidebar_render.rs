@@ -166,7 +166,6 @@ impl App {
         height: usize,
         list_w: usize,
         top: f32,
-        chat_top: f32,
         hint_y: f32,
         total_mem: &str,
     ) {
@@ -218,8 +217,8 @@ impl App {
         let gold_ink = Color::rgb(0xFA, 0xD2, 0x6E);
         let teal_ink = Color::rgb(0x64, 0xE2, 0xCB);
 
-        // 1. Top 2-Tab Header (`[ Directories ]` | `[ Chats ]`) aligned with chat tab bar (`top..chat_top`).
-        let tab_y1 = if chat_top > top + 8.0 * s { chat_top } else { top + lh + 6.0 * s };
+        // 1. Top 2-Tab Header (`[ Directories ]` | `[ Chats ]`): the first thing at the top of the window (the menu bar and the toolbar are to its right).
+        let tab_y1 = top + lh + 6.0 * s;
         controls::fill(buf, width, height, [0.0, top, x_right, tab_y1], 0xFF13_1A23);
         controls::fill(buf, width, height, [0.0, tab_y1 - 1.0, x_right, tab_y1], 0xFF2B_3646);
         let split = (x_right * 0.5).floor();

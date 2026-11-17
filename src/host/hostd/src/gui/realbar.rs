@@ -70,19 +70,19 @@ pub fn height_px_with(entries: &[RealEntry], scale: f32, line_h: f32) -> f32 {
 /// Draw the crimson warning bar at `[0.0, y0, width, y0 + h]` and register the `[ Stop now ]` button.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(
-    entries: &[RealEntry], controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, y0: f32,
+    entries: &[RealEntry], controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, y0: f32, x0: f32,
 ) {
     let Some(text) = banner_text(entries) else { return };
     let s = controls.scale.max(1.0);
     let line_h = if controls.font_px <= 0.0 { LINE_HEIGHT as f32 } else { controls.font_px + 4.0 };
     let h = height_px_with(entries, s, line_h);
     let lh = line_h * s;
-    controls::fill(buf, width, height, [0.0, y0, width as f32, y0 + h], BAR_BG);
+    controls::fill(buf, width, height, [x0, y0, width as f32, y0 + h], BAR_BG);
     let ink = Color::rgb(0xFF, 0xF0, 0xF0);
     let btn_label = "Stop now (Ctrl+Alt+Esc)";
     let btn_w = controls.width(fs, btn_label) + 16.0 * s;
-    let btn_x0 = (width as f32 - btn_w - 6.0 * s).max(4.0 * s);
-    controls.text(fs, swash, buf, width, height, 8.0 * s, y0 + 2.0 * s, (btn_x0 - 8.0 * s) as i32, &text, ink);
+    let btn_x0 = (width as f32 - btn_w - 6.0 * s).max(x0 + 4.0 * s);
+    controls.text(fs, swash, buf, width, height, x0 + 8.0 * s, y0 + 2.0 * s, (btn_x0 - 8.0 * s) as i32, &text, ink);
     controls.button(
         fs,
         swash,

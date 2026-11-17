@@ -41,7 +41,6 @@ use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
 
 pub const LIST_W: usize = 330; // wide enough for the longest state and the memory figure at the right end of a row
-const LIST_TOP: usize = 40;
 const HISTORY_PAGE: i64 = 100;
 const SCROLLBACK_CAP: usize = 2000; // lines kept while reading older history; beyond it the newest are let go
 pub(crate) const COPY_LIMIT: usize = 60 * 1024; // one X11 property transfer, no INCR
@@ -649,7 +648,7 @@ impl App {
         let top = bar_h + super::realbar::height_px_with(&real_entries, s, line_h);
         let tab_h = tabs::height_px(self.tabs_shown(), s, line_h);
         let chat_top = top + tab_h;
-        let list_top = if self.ui.menu { top + 4.0 * s } else { LIST_TOP as f32 * s };
+        let (side_top, list_top) = self.left_column_tops(top, s);
         let main_w = width.saturating_sub(list_w);
         self.refresh_list();
         // what the main area says: the target beside the input, an approval modal if pending, the transcript window, the draft
@@ -877,7 +876,7 @@ impl App {
             fill_rect(&mut buf, width, 16, 0, 16, view.seq_rgb);
         }
         if list_w > 0 {
-            for y in (top as usize)..height {
+            for y in (side_top as usize)..height {
                 let idx = y * width + list_w - 1;
                 if let Some(px) = buf.get_mut(idx) {
                     *px = 0xFF30_3840;
@@ -955,9 +954,9 @@ impl App {
         if !sb_mode {
             memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
         }
-        super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h);
+        super::realbar::draw(&real_entries, controls, fs, swash, &mut buf, width, height, bar_h, if self.ui.menu { list_w as f32 } else { 0.0 });
         if sb_mode {
-            self.draw_sidebar(&mut buf, width, height, list_w, top, chat_top, hint_y, &total);
+            self.draw_sidebar(&mut buf, width, height, list_w, side_top, hint_y, &total);
         }
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
         self.draw_path_bar(&mut buf, width, height, hint_y, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
@@ -973,7 +972,7 @@ impl App {
         self.draw_approval_modal(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_new_chat(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_llm_find(&mut buf, width, height, top, chat_top, hint_y);
-        self.draw_top_bars(&mut buf, width, height, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
+        self.draw_top_bars(&mut buf, width, height, list_w as f32, menu_h, bar_h, menu_open, menu_sel, &menu_entries, &tool_entries);
         let painted = Instant::now();
         self.ui.composed = Some(frame);
         Some((laid_out, painted))

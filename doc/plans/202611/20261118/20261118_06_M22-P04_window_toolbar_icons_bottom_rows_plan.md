@@ -1,7 +1,7 @@
 # M22-P04 Plan — The Top And The Bottom Of The Window: A Toolbar Of Icon Buttons, No Buttons In The Tab Row, The Path Row Above The Hint Row And Never Empty
 
 - Status: done (`8f9cfb7`, 2026-11-18)
-- Version: 1.2.0
+- Version: 1.3.0
 - Branch: `phase/M22-P04-toolbar-path-row` (stacked on `phase/M22-P03-two-tabs-home`, `7c5f1b3`)
 - Milestone: [M22](../../../milestones/202611/20261118/20261118_01_M22_simple_window_chats_of_all_sessions_milestone.md)
 - The owner's words (the chat, 2026-11-18): the full directory path is still not seen, it belongs at the bottom just above the `Ctrl+N` line; the menu bar simpler; under the menu bar a toolbar that controls almost everything, only what is really needed is a button and the rest is in the menus: New session (the plain icon), New Home session (a house), Open browser (the browser button), Open terminal (a terminal icon, with M23).
@@ -14,6 +14,7 @@
 4. **The bottom is: the telemetry strip, the PATH row, then the HINT row last.** (Today: telemetry, hint, path.) The two rows swap; nothing else of the footer moves, so no list, panel or modal changes its bottom edge.
 5. **The path row is never empty.** The pointer first, then the selection (the Files panel, the sidebar's folder), then the active session's folder, else `lico://home` (the state says `source: "home"`): in Home, in a Home session and with no session at all the row says where the person is.
 6. **The menus keep every entry** (the owner asked for a simpler menu bar; the lead takes out only what the new toolbar made redundant, which is nothing in the menus, and asks the owner which rarely used entries to remove, see the questions below). New: `New browser tab`, `New local browser tab`; renamed: `New Home session`.
+7. **The left column runs from the top of the window** (the owner, after the commit of the first six, 2026-11-18: the main functions on the left, Directories and Chats, reach the very top, and the menu must not invade that area). The sidebar's two tabs are the first thing at the top; the menu bar, the toolbar (and its dropdowns and the Files host popup) and the real-screen banner are drawn to the right of the column only. The tab row of the sessions stays where it was, to the right.
 
 ## What stays as it is
 
@@ -49,6 +50,12 @@ The key `Ctrl+N`, `Ctrl+Shift+N`, `Ctrl+A` and every other key. The Files panel 
 - Gates: `cargo xtask check` and `verify` pass; `graph` 204 modules, 71 nodes (one cycle, as before).
 - Manual inspection: `private/manual_inspection/202611/20261118/00002_M22-P04_toolbar_icons_path_row_hint_last/` (the toolbar, the hover word, the Home form, a Home session with the path row `lico://home`, the Session menu).
 - What the person may notice: the toolbar is three small icons; the tab row has no buttons; a Home tab starts with `H` (was `G`); the hint row is the last line and the full folder is the line above it.
+
+## The left column from the top (item 7)
+
+- Steps: [x] red test (`tests/test_toolbar_icons_and_bottom_rows.py`, third test: the sidebar's tabs start at the top, the menu titles, the toolbar buttons, the window button and every dropdown start right of the column, a click on the sidebar's top tab reaches the sidebar); [x] `ui.rs` (the column's top by `left_column_tops` in `sidebar.rs`), `sidebar_render.rs` (the header is its own height, no longer the tab row's), `toolbar.rs` (`draw_top_bars` takes the column's width; the bars, the buttons and the dropdowns start there), `realbar.rs` (the banner starts there); [x] two older tests followed: `test_frame_cost.py` clicks the first menu title at the column's width + 20 (it clicked x 50), `corner_is_background` of the window helper says what the corner holds now (the sidebar's tabs or the background, never a solid marker square); [x] `ui.rs` is one line shorter than before (1116, the allowance is lowered).
+- Results: unit test `the_left_column_starts_at_the_top...` (mutation: the column starting at `top` fails it; restored); the changed-files suite: 243 tests in 79 files, 242 pass; the one that failed (`test_first_view.py`, a click on a list row, 23 s under four workers at load) passes alone in 8.9 s and passed in the run before it, a timing flake that this change does not touch.
+- Not done: the realbar banner's own window test does not exist; the banner is drawn from the column's edge by the same code as the bars.
 
 ## What this phase does not do
 
