@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.7,
+    "compile_s": 1.0,
     "peak_mib": 0.0,
     "wall_s": 0.0
   },
   "date": "2026-11-17",
-  "hash": "a51cc2f283b81b36c0fcabcf4a453184e55e163bf97e915b09d8bde27a88649a",
+  "hash": "3cd7809fba4afa20491a868ccb06c53fccd879a660dc15d3ae9050a4c2239f74",
   "inputs": {
     "dependencies": [],
     "externals": [],
@@ -21,15 +21,15 @@
       ],
       [
         "SPEC.md",
-        "3927b130460d2461db5807b405457cbab1f09d38d667361f6117f27f9d9235e8"
+        "b341ca5fc72fc27b21a9d8d3662ea1c683c909b62ba4cb4fab0346a938a19ec8"
       ],
       [
         "src/lib.rs",
-        "06dbba84aa1052e8e45d9fbafce9a3009dc7a5d4a7a08224fb8d3387a2cb0cd8"
+        "4505c400b76553b35c09c6bace06165f1e990eb794737e9485e372f60c1fe213"
       ],
       [
         "tests/contract.rs",
-        "8d2541ee928f4f6cd606b47b26a29944405b6ef86b47e3ec05126e1d9ae96fc9"
+        "7d939ffa900347af28d99821ddc334beecb5755059219f2aec3f7cdbb2787296"
       ]
     ],
     "lock": "",

@@ -79,11 +79,11 @@ pub fn total_ink(plain: Color) -> Color {
 /// The warning level and the limit in MB the host sent (the defaults until it does).
 static WARN_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(400);
 static LIMIT_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(500);
-static STALL_MIN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(lico_memguard::DEFAULT_STALL_MIN);
+static STALL_SECS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(lico_memguard::DEFAULT_STALL_MIN * 60);
 
-/// Minutes without activity after which a working session is stalled (what the host sent; 0: off).
-pub fn stall_min() -> u64 {
-    STALL_MIN.load(std::sync::atomic::Ordering::Relaxed)
+/// Seconds without activity after which a working session is stalled (what the host sent; 0: off).
+pub fn stall_secs() -> u64 {
+    STALL_SECS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 fn now_secs() -> u64 {
@@ -97,7 +97,7 @@ pub fn quiet_secs(row: &Row, now: u64) -> u64 {
 
 /// A working session with no activity for the set time.
 pub fn stalled(row: &Row, now: u64) -> bool {
-    row.last_active_at > 0 && lico_memguard::stalled(row.activity == "working", quiet_secs(row, now), stall_min())
+    row.last_active_at > 0 && lico_memguard::stalled(row.activity == "working", quiet_secs(row, now), stall_secs())
 }
 
 pub fn limits() -> lico_memguard::Limits {
@@ -107,8 +107,8 @@ pub fn limits() -> lico_memguard::Limits {
 /// Takes the limits of a `status` reply when they are usable.
 pub fn set_limits(status: &Value) {
     let l = lico_memguard::Limits { warn_mb: status["memory_limits"]["warn_mb"].as_u64().unwrap_or(0), limit_mb: status["memory_limits"]["limit_mb"].as_u64().unwrap_or(0) };
-    if let Some(m) = status["memory_limits"]["stall_min"].as_u64() {
-        STALL_MIN.store(m, std::sync::atomic::Ordering::Relaxed);
+    if let Some(s) = status["memory_limits"]["stall_s"].as_u64() {
+        STALL_SECS.store(s, std::sync::atomic::Ordering::Relaxed);
     }
     if l.valid() {
         WARN_MB.store(l.warn_mb, std::sync::atomic::Ordering::Relaxed);

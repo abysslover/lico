@@ -94,12 +94,14 @@ fn the_warning_to_the_main_agent_is_a_fixed_text_with_numbers_the_id_and_the_com
 #[test]
 fn a_working_session_that_shows_nothing_for_the_set_time_is_stalled_and_an_idle_one_never_is() {
     assert_eq!(DEFAULT_STALL_MIN, 10);
-    assert!(!stalled(true, 10 * 60 - 1, 10));
-    assert!(stalled(true, 10 * 60, 10));
-    assert!(stalled(true, 3 * 3600 + 1800, 10), "the worker that stood still for 3.5 hours");
-    assert!(!stalled(false, 10_000, 10), "an idle session waits for the person: not stalled");
-    assert!(!stalled(true, 10_000, 0), "0 minutes switches the check off");
-    assert!(stalled(true, 5 * 60, 5) && !stalled(true, 5 * 60 - 1, 5));
+    let ten = DEFAULT_STALL_MIN * 60;
+    assert!(!stalled(true, 10 * 60 - 1, ten));
+    assert!(stalled(true, 10 * 60, ten));
+    assert!(stalled(true, 3 * 3600 + 1800, ten), "the worker that stood still for 3.5 hours");
+    assert!(!stalled(false, 10_000, ten), "an idle session waits for the person: not stalled");
+    assert!(!stalled(true, 10_000, 0), "0 switches the check off");
+    assert!(stalled(true, 5 * 60, 5 * 60) && !stalled(true, 5 * 60 - 1, 5 * 60));
+    assert!(stalled(true, 3, 3) && !stalled(true, 2, 3), "seconds, so that a test need not wait minutes");
 }
 
 #[test]

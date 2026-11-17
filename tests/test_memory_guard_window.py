@@ -81,7 +81,7 @@ def test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_
     def check(w, conn, sid, figure):
         import time
         assert figure["max_rss_kb"] >= 60 * 1024, figure
-        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60, "stall_min": 10}, "the host sends the owner's limits in every status reply"
+        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60, "stall_s": 600}, "the host sends the owner's limits in every status reply"
         window_sees(w, 60)
         w.click(*centre(tab_rect(w, sid)))
         panel = wait_for(lambda: w.ui()["panel"], timeout=30)
@@ -133,7 +133,7 @@ def test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_
 
 
 def test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_under_the_list_orange():
-    """`stall_min` 1 in the owner's file; a simulator turn that says nothing for a long time (`quiet:900`); the picture is taken once it has been quiet for over a minute."""
+    """`stall_s` 3 in the owner's file; a simulator turn that says nothing for a long time (`quiet:900`); the picture is taken once it has been quiet for over the stall time."""
     import time
     with private_dir() as directory:
         args, _ = claude_args(directory)
@@ -142,15 +142,15 @@ def test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_
         def session(w):
             made["sid"], made["generation"] = new_claude(Conn(w.socket), name="quiet")
             setting = Path(w.directory) / "state" / "lico" / "memory.json"
-            setting.write_text('{"stall_min": 1}')
+            setting.write_text('{"stall_s": 3}')
             setting.chmod(0o600)
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
             conn, sid = Conn(w.socket), made["sid"]
             begin(conn, sid, made["generation"], "quiet:900")
             wait_for(lambda: status_of(conn, sid).get("activity") == "working", timeout=30)
-            assert conn.call(op="status")["memory_limits"]["stall_min"] == 1
-            time.sleep(63)                                  # a working turn with no activity for over a minute
+            assert conn.call(op="status")["memory_limits"]["stall_s"] == 3
+            time.sleep(6)                                   # a working turn with no activity for over the stall time
             assert status_of(conn, sid).get("activity") == "working"
             w.click(*centre(tab_rect(w, sid)))
             time.sleep(1.5)

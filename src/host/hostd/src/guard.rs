@@ -52,13 +52,13 @@ pub struct Config {
     /// The warning to the main agent (ON by default, one switch) and the session the person marked as the main agent (`main_agent`).
     pub warn_main: bool,
     pub main_agent: Option<String>,
-    /// Minutes of no activity after which a working session is called stalled (0: off).
-    pub stall_min: u64,
+    /// Seconds of no activity after which a working session is called stalled (0: off). The owner's file gives minutes (`stall_min`); `stall_s` (seconds) wins when both are there and lets a test or a quick check use seconds.
+    pub stall_secs: u64,
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config { limits: Limits::default(), auto_close: false, auto_close_off: Vec::new(), warn_main: true, main_agent: None, stall_min: lico_memguard::DEFAULT_STALL_MIN }
+        Config { limits: Limits::default(), auto_close: false, auto_close_off: Vec::new(), warn_main: true, main_agent: None, stall_secs: lico_memguard::DEFAULT_STALL_MIN * 60 }
     }
 }
 
@@ -70,7 +70,8 @@ pub fn parse_config(text: &str) -> Config {
         c.limits = limits;
     }
     c.auto_close = v["auto_close"].as_bool() == Some(true);
-    c.stall_min = v["stall_min"].as_u64().map_or(c.stall_min, |m| m.min(24 * 60));
+    c.stall_secs = v["stall_min"].as_u64().map_or(c.stall_secs, |m| m.min(24 * 60) * 60);
+    c.stall_secs = v["stall_s"].as_u64().map_or(c.stall_secs, |s| s.min(24 * 3600));
     c.warn_main = v["warn_main"].as_bool() != Some(false);
     c.main_agent = v["main_agent"].as_str().filter(|s| !s.is_empty() && s.len() <= 64).map(str::to_string);
     c.auto_close_off = v["auto_close_off"].as_array().into_iter().flatten().filter_map(|s| s.as_str().map(str::to_string)).take(64).collect();
@@ -250,9 +251,9 @@ pub fn limits(state_dir: &Path) -> Limits {
     read_config(state_dir).limits
 }
 
-/// The stall time in minutes the host uses (the owner's `stall_min`, else 10).
-pub fn stall_min(state_dir: &Path) -> u64 {
-    read_config(state_dir).stall_min
+/// The stall time in seconds the host uses (the owner's `stall_min` or `stall_s`, else 10 minutes).
+pub fn stall_secs(state_dir: &Path) -> u64 {
+    read_config(state_dir).stall_secs
 }
 
 /// What to do now after a `status` reply (computed here, done by the hubs: this module names no hub, so it stays out of the cycle of the hubs).
@@ -492,11 +493,14 @@ mod tests {
 
     #[test]
     fn the_stall_time_is_ten_minutes_unless_the_file_says_otherwise_and_is_capped_at_a_day() {
-        assert_eq!(Config::default().stall_min, 10);
-        assert_eq!(parse_config(r#"{"stall_min": 3}"#).stall_min, 3);
-        assert_eq!(parse_config(r#"{"stall_min": 0}"#).stall_min, 0, "0 switches it off");
-        assert_eq!(parse_config(r#"{"stall_min": 99999}"#).stall_min, 24 * 60);
-        assert_eq!(parse_config(r#"{"stall_min": "x"}"#).stall_min, 10);
+        assert_eq!(Config::default().stall_secs, 600);
+        assert_eq!(parse_config(r#"{"stall_min": 3}"#).stall_secs, 180);
+        assert_eq!(parse_config(r#"{"stall_min": 0}"#).stall_secs, 0, "0 switches it off");
+        assert_eq!(parse_config(r#"{"stall_min": 99999}"#).stall_secs, 24 * 3600);
+        assert_eq!(parse_config(r#"{"stall_min": "x"}"#).stall_secs, 600);
+        assert_eq!(parse_config(r#"{"stall_s": 3}"#).stall_secs, 3, "seconds");
+        assert_eq!(parse_config(r#"{"stall_min": 3, "stall_s": 7}"#).stall_secs, 7, "seconds win");
+        assert_eq!(parse_config(r#"{"stall_s": 999999}"#).stall_secs, 24 * 3600);
     }
 
     #[test]
