@@ -218,7 +218,7 @@ impl Browser {
         let mut row = obj(json!({
             "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "local": entry.local,
             "viewport": [w, h], "viewport_capped": entry.tab.viewport_capped(), "has_frame": entry.tab.kept_bytes() > 0, "dropped_frames": entry.tab.dropped_frames(),
-            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "frame_seq": entry.tab.frame_seq(),
+            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "frame_seq": entry.tab.frame_seq(), "shown": entry.tab.shown(),
         }));
         match entry.tab.phase() {
             Phase::Starting => row.insert("phase".into(), json!("starting")),

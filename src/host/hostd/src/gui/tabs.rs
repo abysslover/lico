@@ -32,6 +32,8 @@ pub struct TabsGeom {
     pub next_rect: Option<[f32; 4]>,
     pub new_rect: Option<[f32; 4]>,
     pub new_global_rect: Option<[f32; 4]>,
+    pub new_browser_rect: Option<[f32; 4]>,
+    pub new_browser_local_rect: Option<[f32; 4]>,
 }
 
 pub fn height_px(shown: bool, scale: f32, line_h: f32) -> f32 {
@@ -158,6 +160,8 @@ impl App {
             "next_rect": self.ui.tabs_geom.next_rect,
             "new_rect": self.ui.tabs_geom.new_rect,
             "new_global_rect": self.ui.tabs_geom.new_global_rect,
+            "new_browser_rect": self.ui.tabs_geom.new_browser_rect,
+            "new_browser_local_rect": self.ui.tabs_geom.new_browser_local_rect,
         })
     }
 
@@ -235,6 +239,7 @@ impl App {
                 (cid.clone(), cap, active, sel, status, round)
             })
             .collect();
+        let browser_entries: Vec<(String, String, bool, bool)> = self.ui.browser.tabs.iter().map(|t| (t.id.clone(), super::super::browser_view::caption(t), self.browser_active() && self.ui.browser.active.as_deref() == Some(t.id.as_str()), t.local)).collect();
         let ensure = std::mem::take(&mut self.ui.tab_ensure_visible);
         let active_idx = entries.iter().position(|e| e.3);
 
@@ -256,8 +261,12 @@ impl App {
         let g_w = controls.width(fs, "+G") + 12.0 * s;
         let n_w = controls.width(fs, "+") + 12.0 * s;
         let nav_w = controls.width(fs, "<") + 10.0 * s;
+        let b_w = controls.width(fs, "+B") + 12.0 * s;
+        let bl_w = controls.width(fs, "+BL") + 12.0 * s;
         let g_rect = [x_right - 4.0 * s - g_w, by0, x_right - 4.0 * s, by1];
-        let n_rect = [g_rect[0] - 4.0 * s - n_w, by0, g_rect[0] - 4.0 * s, by1];
+        let bl_rect = [g_rect[0] - 4.0 * s - bl_w, by0, g_rect[0] - 4.0 * s, by1];
+        let b_rect = [bl_rect[0] - 4.0 * s - b_w, by0, bl_rect[0] - 4.0 * s, by1];
+        let n_rect = [b_rect[0] - 4.0 * s - n_w, by0, b_rect[0] - 4.0 * s, by1];
         let mut tabs_limit_x = n_rect[0] - 6.0 * s;
 
         let close_w = controls.width(fs, "\u{00d7}") + 8.0 * s;
@@ -269,9 +278,10 @@ impl App {
             .iter()
             .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
             .collect();
-        let total_w: f32 = widths.iter().chain(&call_widths).map(|w| *w + 3.0 * s).sum();
+        let browser_widths: Vec<f32> = browser_entries.iter().map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w).collect();
+        let total_w: f32 = widths.iter().chain(&call_widths).chain(&browser_widths).map(|w| *w + 3.0 * s).sum();
         let all_fit = self.ui.tab_scroll == 0 && total_w <= (tabs_limit_x - (x_left + 6.0 * s)).max(0.0);
-        let show_nav = (!entries.is_empty() || !call_entries.is_empty()) && !all_fit;
+        let show_nav = (!entries.is_empty() || !call_entries.is_empty() || !browser_entries.is_empty()) && !all_fit;
         let (mut prev_rect, mut next_rect) = (None, None);
         if show_nav {
             let nx_rect = [tabs_limit_x - nav_w, by0, tabs_limit_x, by1];
@@ -293,7 +303,7 @@ impl App {
             }
         }
 
-        if entries.is_empty() && call_entries.is_empty() {
+        if entries.is_empty() && call_entries.is_empty() && browser_entries.is_empty() {
             controls.text(
                 fs,
                 swash,
@@ -303,7 +313,7 @@ impl App {
                 x_left + 8.0 * s,
                 by0 + s,
                 tabs_limit_x as i32,
-                "No open session tabs  \u{00b7}  click + or +G (Global)",
+                "No open session tabs  \u{00b7}  click + or +G (Global), +B for a browser tab",
                 dim,
             );
         } else {
@@ -392,6 +402,25 @@ impl App {
                 });
                 tx = rx1 + 3.0 * s;
             }
+            for (bid, cap, selected, local) in &browser_entries {
+                let bw = controls.width(fs, cap) + 14.0 * s + close_w;
+                if tx + close_w + 16.0 * s > tabs_limit_x {
+                    break;
+                }
+                let rx1 = (tx + bw).min(tabs_limit_x);
+                let trect = [tx, by0, rx1, y1 - 1.0];
+                let blue = Color::rgb(0x8F, 0xB4, 0xFF);
+                controls::fill(buf, width, height, trect, if *selected { 0xFF1E_2A4A } else { 0xFF17_1F36 });
+                if *selected {
+                    controls::fill(buf, width, height, [trect[0], trect[1], trect[2], trect[1] + 2.0 * s], if *local { 0xFFE0_9A4A } else { 0xFF6A_8CFF });
+                }
+                let crect = [rx1 - close_w - 2.0 * s, by0 + 2.0 * s, rx1 - 2.0 * s, by1];
+                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, cap, if *selected { ink } else { blue });
+                controls.target(trect, Action::BrowserTab(bid.clone()));
+                controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
+                controls.target(crect, Action::CloseBrowserTab(bid.clone()));
+                tx = rx1 + 3.0 * s;
+            }
         }
 
         if let (Some(pr), Some(nr)) = (prev_rect, next_rect) {
@@ -439,6 +468,10 @@ impl App {
             Color::rgb(0x64, 0xE2, 0xCB),
             Action::NewGlobal,
         );
+        controls.button(fs, swash, buf, width, height, b_rect, "+B", 0xFF1E_2A4A, Color::rgb(0x8F, 0xB4, 0xFF), Action::NewBrowser(false));
+        controls.button(fs, swash, buf, width, height, bl_rect, "+BL", 0xFF3A_2A1A, Color::rgb(0xE0, 0x9A, 0x4A), Action::NewBrowser(true));
+        self.ui.tabs_geom.new_browser_rect = Some(b_rect);
+        self.ui.tabs_geom.new_browser_local_rect = Some(bl_rect);
         self.ui.tabs_geom.new_rect = Some(n_rect);
         self.ui.tabs_geom.new_global_rect = Some(g_rect);
     }

@@ -27,8 +27,8 @@ impl App {
         let line = |text: String| Prompt { rows: vec![text], note: None, caret: None };
         if self.code_entry() {
             line(format!("> {}", self.shown_input()))
-        } else if self.ui.panel.is_some() || !self.has_prompt_target() {
-            line(format!("> {}[{}]", self.ed.text(), self.preedit))
+        } else if self.ui.panel.is_some() || !self.has_prompt_target() || self.browser_active() {
+            line(format!("> {}[{}]", self.ed.text(), self.preedit)) // the address row is one line, with the composition in it
         } else {
             self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
         }
@@ -312,6 +312,10 @@ impl App {
 
     /// Send the draft of the visible session as one input with its own request id; `/exit` and `/quit` dismiss the tab locally instead of sending to the agent.
     pub(crate) fn send_draft(&mut self) {
+        if self.browser_active() {
+            self.browser_submit();
+            return;
+        }
         if let Some(cid) = self.ui.calls.active_call.clone() {
             if matches!(self.ed.text().trim(), "/exit" | "/quit") {
                 self.ed.clear();

@@ -65,6 +65,7 @@ pub struct FrameStats {
 
 #[derive(Default)]
 pub struct UiState {
+    pub browser: super::browser_view::BrowserState,
     pub stats: FrameStats,
     pub faces: super::fonts::Faces,
     pub enabled: bool,
@@ -253,6 +254,9 @@ impl App {
     }
 
     fn header_base(&self) -> String {
+        if let Some(h) = self.browser_header() {
+            return h;
+        }
         if let Some(ch) = self.active_call_header() {
             return ch;
         }
@@ -391,6 +395,9 @@ impl App {
                             Some(Action::TabScroll(d)) => self.step_tab_scroll(d),
                             Some(Action::NewTab) => self.form_open(),
                             Some(Action::NewGlobal) => self.form_open_global(),
+                            Some(Action::NewBrowser(local)) => self.browser_prompt(local),
+                            Some(Action::BrowserTab(id)) => self.browser_activate(&id),
+                            Some(Action::CloseBrowserTab(id)) => self.browser_close_ui(&id),
                             Some(Action::FocusSessionDir) => self.focus_active_session_dir(),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
@@ -420,7 +427,7 @@ impl App {
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 (self.ui.flash, self.ui.clicked) = (None, None);
-                if self.llm_key(event) || self.native_key(event) || self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.browser_hotkey(event) || self.llm_key(event) || self.native_key(event) || self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
@@ -568,7 +575,7 @@ impl App {
         let settings = json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
         let shown_lines = self.shown_lines_dump();
         let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
-        let dump = json!({
+        let mut dump = json!({
             "ev": "ui", "rows": rows, "selected": self.session, "header": self.header_text(), "activity_line": self.status_line(self.panel_view().is_some()).unwrap_or_default(),
             "approval_bar": self.approval_row_any_panel().and_then(|r| r.approvals.first().map(|(id, prompt)| format!("approval {id}: {prompt}"))),
             "card_seen": self.ui.card_seen.is_some(), "card_ready": self.card_ready(),
@@ -582,6 +589,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
+        dump["browser"] = self.browser_json();
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)
@@ -610,6 +618,7 @@ impl App {
             self.ui.composed = None; // what the buffer holds is not known
         }
         self.card_frame(presented);
+        self.browser_after_paint();
         let done = Instant::now();
         let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
         let stats = &mut self.ui.stats;
@@ -625,6 +634,9 @@ impl App {
     /// was done and the painting; none when nothing could be drawn. The scroll step (see scroll.rs) lives here.
     pub(crate) fn compose(&mut self, buf: &mut [u32], width: usize, height: usize, age: u8) -> Option<(Instant, Instant)> {
         let mut buf = buf;
+        if self.browser_active() {
+            self.ui.composed = None; // the page is painted over the frame: every frame is a full repaint
+        }
         let s = self.ui.scale.max(1.0);
         let list_w = self.effective_list_w(s);
         let (fp, line_h) = (self.font_px(), self.line_h());
@@ -672,11 +684,17 @@ impl App {
         let status = self.status_line(panel_view.is_some());
         let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
         let is_tx = panel_view.is_none();
+        let browser_rows = if panel_view.is_none() && self.browser_active() { Some(rows_avail) } else { None };
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
                 let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone(), 0u16)).collect();
                 let n = v.len();
                 (v, n)
+            }
+            None if browser_rows.is_some() => {
+                // the page is painted over these rows: empty lines keep the address row at the bottom
+                let n = browser_rows.unwrap_or(0);
+                ((0..n).map(|i| (i, i as i64, " ".to_string(), 0u16)).collect(), n) // a space: an empty line would have no height
             }
             None => {
                 let total_raw = self.view.as_ref().map_or(0, |v| v.lines.len());
@@ -941,6 +959,13 @@ impl App {
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
         self.draw_path_bar(&mut buf, width, height, bar_y_f, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
+        if self.browser_active() {
+            let header_bottom = frame.lines.first().map_or(chat_top + lh, |l| l.bottom);
+            let prompt_top = frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(hint_y_f, |l| l.top);
+            let r = super::browser_view::page_rect(list_w as f32 + 4.0 * s, header_bottom, prompt_top, width);
+            self.ui.browser.rect = [r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32];
+            self.draw_browser_frame(&mut buf, width, height);
+        }
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);
         self.draw_mention_popup(&mut buf, width, height, list_w);

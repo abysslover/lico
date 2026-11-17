@@ -12,6 +12,7 @@ mod capture;
 mod claude;
 mod cli;
 mod clipboard;
+mod base64;
 mod browser;
 mod browser_cli;
 mod clipwrite;

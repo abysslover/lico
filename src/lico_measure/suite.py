@@ -67,12 +67,15 @@ def ensure_build(files):
         recorded = json.loads(stamp.read_text())
     except (OSError, ValueError):
         recorded = {}
-    if recorded.get("tree") == current and recorded.get("lico") == receipts.digest(binary) and (out / "release" / "lico-synth-agent").is_file():
+    if recorded.get("tree") == current and recorded.get("lico") == receipts.digest(binary) and (out / "release" / "lico-synth-agent").is_file() and (out / "release" / "lico-fake-engine").is_file():
         return "build: skipped (the sources hash to the one the binary was built from)", 0.0
     env = dict(os.environ, CARGO_HOME=str(REPO / "private" / "cargo-home"), CARGO_TARGET_DIR=str(out), CARGO_NET_OFFLINE="true", CARGO_BUILD_JOBS=COMPILE_JOBS)
     began = time.monotonic()
     done = subprocess.run(["cargo", "build", "--release", "--locked", "--offline", "--manifest-path", "src/host/hostd/Cargo.toml", "--bins"],
                           cwd=REPO, env=env, capture_output=True, text=True)
+    if not done.returncode:
+        # the test double of the browser engine (M17-P07): the window tests of the browser tab run it in place of the real engine
+        done = subprocess.run(["cargo", "build", "--release", "--locked", "--offline", "--manifest-path", "tools/fake-engine/Cargo.toml"], cwd=REPO, env=env, capture_output=True, text=True)
     seconds = time.monotonic() - began
     if done.returncode:
         raise SystemExit(f"the build failed:\n{done.stderr[-3000:]}")

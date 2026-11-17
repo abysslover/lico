@@ -2,6 +2,7 @@
 //! With `--ui` it shows the first view; commands arrive on stdin for tests, see `handle_command`.
 
 mod approval_modal;
+mod browser_view;
 mod call_view;
 mod controls;
 mod editor;

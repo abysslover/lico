@@ -137,6 +137,7 @@ impl App {
             AsyncJob::SidebarChats { .. } | AsyncJob::ChatResume { .. } => self.on_chats_async(done.job, done.reply),
             AsyncJob::NewChatLast { .. } | AsyncJob::NewChatStart { .. } => self.on_newchat_async(done.job, done.reply),
             AsyncJob::LlmFind { .. } | AsyncJob::LocalScan { .. } => self.on_llm_async(done.job, done.reply),
+            AsyncJob::Browser(job) => self.on_browser_async(job, done.reply),
             AsyncJob::CallGet { .. } | AsyncJob::CallSay { .. } | AsyncJob::CallStart | AsyncJob::CallAction => self.on_call_async(done.job, done.reply),
         }
     }
@@ -211,7 +212,7 @@ impl App {
     /// The title and the lines of what the panel shows now, or the first screen when no session is selected.
     pub(crate) fn panel_view(&self) -> Option<(String, Vec<String>)> {
         let Some(p) = self.ui.panel.as_ref() else {
-            if self.session.is_empty() && !self.active_call_open() {
+            if self.session.is_empty() && !self.active_call_open() && !self.browser_active() {
                 return Some(("select a session".into(), self.start_lines()));
             }
             return None;

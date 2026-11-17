@@ -186,7 +186,7 @@ impl App {
     }
 
     pub(crate) fn has_prompt_target(&self) -> bool {
-        !self.session.is_empty() || self.ui.calls.active_call.is_some()
+        !self.session.is_empty() || self.ui.calls.active_call.is_some() || self.browser_active()
     }
 
     pub(crate) fn prompt_target_id(&self) -> String {
@@ -194,7 +194,7 @@ impl App {
             .calls
             .active_call
             .clone()
-            .unwrap_or_else(|| self.session.clone())
+            .unwrap_or_else(|| if self.browser_active() { format!("browser:{}", self.ui.browser.active.as_deref().unwrap_or("new")) } else { self.session.clone() })
     }
 
     pub(crate) fn park_active_call_draft(&mut self) {

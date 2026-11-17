@@ -16,6 +16,7 @@ pub(crate) enum AsyncJob {
     CallStart, CallAction,
     LlmFind { req_id: u64 },
     LocalScan { req_id: u64 },
+    Browser(super::browser_view::BrowserJob),
 }
 
 pub(crate) struct AsyncDone {
