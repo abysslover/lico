@@ -70,15 +70,22 @@ def measure(scale: str, geometry: str, resize_to: tuple[int, int] | None, tag: s
     real_xvfb = captures.Xvfb
     captures.Xvfb = lambda: real_xvfb(geometry)
     try:
-        with ProductWindow(host_binary=LICO, before_window=pinned_engine, env_extra={"WINIT_X11_SCALE_FACTOR": scale}) as w:
+        with ProductWindow(host_binary=LICO, before_window=pinned_engine, env_extra={} if scale == "1" else {"WINIT_X11_SCALE_FACTOR": scale}) as w:
             if resize_to:
                 subprocess.run(["xdotool", "windowsize", w.window_id(), str(resize_to[0]), str(resize_to[1])], env=w.env, check=True)
                 time.sleep(1.0)
             time.sleep(1.0)
             pid = w.proc.pid
             idle = rss_mib(pid)
-            tab = open_tab(w, f"http://localhost:{port}/", local=True)
-            t = painted(w, tab)
+            try:
+                tab = open_tab(w, f"http://localhost:{port}/", local=True)
+            except AssertionError:
+                u = w.ui()
+                raise AssertionError((u['header'], u['input'], u['browser']['header'], u['tabs']['new_browser_local_rect']))
+            end = time.time() + 25
+            while time.time() < end and not any(x['decoded'] for x in browser(w)['tabs']):
+                time.sleep(0.2)
+            assert any(x['decoded'] for x in browser(w)['tabs']), json.dumps(browser(w))[:1500]
             time.sleep(2.0)
             b = browser(w)
             out.append(f"{tag}: scale {scale}, window area {b['rect'][2]}x{b['rect'][3]} px, frame {b['tabs'][0]['png_bytes']} bytes compressed; window RSS idle {idle:.1f} MiB, with one shown tab {rss_mib(pid):.1f} MiB (peak {hwm_mib(pid):.1f}); title {b['header']!r}")
@@ -90,9 +97,8 @@ def measure(scale: str, geometry: str, resize_to: tuple[int, int] | None, tag: s
 
 def test_probe():
     out: list[str] = []
-    measure("1", "1200x800x24", None, "default_scale1", out)
-    measure("2", "1200x800x24", None, "default_scale2", out)
-    measure("1", "1920x1080x24", (1920, 1080), "1920x1080_scale1", out)
-    measure("2", "1920x1080x24", (1920, 1080), "1920x1080_scale2", out)
-    Path(os.environ["LICO_PROBE_OUT"], "p07_window_probe.txt").write_text("\n".join(out) + "\n")
-    print("\n".join(out))
+    note = Path(os.environ["LICO_PROBE_OUT"], "p07_window_probe.txt")
+    for args in [("1", "1200x800x24", None, "default_scale1"), ("2", "2400x1600x24", None, "default_scale2"), ("1", "1920x1080x24", (1920, 1080), "1920x1080_scale1"), ("2", "3840x2160x24", (3840, 2160), "3840x2160_scale2_capped")]:
+        measure(*args, out)
+        note.write_text("\n".join(out) + "\n")
+        print(out[-1])
