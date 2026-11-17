@@ -55,8 +55,11 @@ pub fn long(kb: u64) -> String {
     }
 }
 
-/// The worst level among the rows at the last `total` call (0 ok, 1 orange, 2 red): the colour of the line under the list.
-static WORST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// The worst level among the rows at the last `total` call (0 ok, 1 orange, 2 red): the colour of the line under the list. Per thread: the window draws on one thread, and the unit tests
+/// that call `total` run on their own threads, so one cannot colour the line another test draws (the scroll oracle compared two frames across such a call once).
+thread_local! {
+    static WORST: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
 
 /// The worst level among the rows.
 pub fn worst(rows: &[Row]) -> lico_memguard::Level {
@@ -66,7 +69,7 @@ pub fn worst(rows: &[Row]) -> lico_memguard::Level {
 
 /// The colour of the total line: orange or red when a session is, else `plain`.
 pub fn total_ink(plain: Color) -> Color {
-    match WORST.load(std::sync::atomic::Ordering::Relaxed) {
+    match WORST.with(std::cell::Cell::get) {
         2 => ink(lico_memguard::Level::Red, plain),
         1 => ink(lico_memguard::Level::Orange, plain),
         _ => plain,
@@ -148,7 +151,7 @@ pub fn draw(controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache
 
 /// The line under the list: the running sessions together, the host and this window.
 pub fn total(rows: &[Row], look: &Look) -> String {
-    WORST.store(worst(rows).max(look.machine_level()) as u8, std::sync::atomic::Ordering::Relaxed); // the line is drawn after this call in the same frame, by four callers that each pass their own plain colour
+    WORST.with(|w| w.set(worst(rows).max(look.machine_level()) as u8)); // the line is drawn after this call in the same frame, by four callers that each pass their own plain colour
     let sessions: u64 = rows.iter().map(|r| if r.rss_kb > 0 { r.rss_kb } else { r.memory_kb }).sum();
     if let Some(pct) = look.machine_percent().filter(|_| look.machine_level() != lico_memguard::Level::Ok) {
         // the machine runs low: its figure comes first, and the line is as short as the list allows (at most 39 columns)
