@@ -1,5 +1,5 @@
-"""M11-P01: the first-run question about the provider's own default home (`Use your existing Claude/Codex login and its chats?`: Yes, No, Ask later), the Settings menu
-entries, `Native` in the `+ New chat` dialog, the Chats tab, and the name beside the input target. A private Xvfb, synthetic homes under the window's own HOME, mocked
+"""M11-P01, changed by M22-P02: the provider's own default home is open from the start (the first-run question `Use your existing Claude/Codex login and its chats?` is no longer asked),
+the Settings menu entries that turn it off and on, `Native` in the `+ New chat` dialog, the Chats tab, and the name beside the input target. A private Xvfb, synthetic homes under the window's own HOME, mocked
 providers; the owner's real homes are never read."""
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def _show_proj(w: ProductWindow, proj: Path) -> None:
     wait_for(lambda: (x := w.ui()) and x["sidebar"]["cwd"] == str(proj) and x["sidebar"]["parent"] and x)
 
 
-def test_ask_later_keeps_the_choice_open_and_the_settings_menu_turns_native_on_and_off():
+def test_no_question_is_asked_and_the_settings_menu_turns_native_off_and_on():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         proj = (root / "proj-alpha").resolve()
@@ -62,40 +62,35 @@ def test_ask_later_keeps_the_choice_open_and_the_settings_menu_turns_native_on_a
         made: dict[str, str] = {}
         with _window(root, proj, c_args, x_args, made) as w:
             _show_proj(w, proj)
-            prompt = wait_for(lambda: (p := w.ui()["sidebar"]["native_prompt"]) and p["rects"]["later"] and p)
-            assert {e["provider"]: e["chats"] for e in prompt["entries"]} == {"claude": 2, "codex": 1}, prompt
-            assert all(e["label"].startswith("Native (~/.") for e in prompt["entries"]), prompt
-            _key(w, "l")
-            wait_for(lambda: w.ui()["sidebar"]["native_prompt"] is None)
             conn = Conn(w.socket)
-            assert {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]} == {"claude": "ask", "codex": "ask"}, "Ask later stores nothing"
-            time.sleep(2.5)  # a negative: the question does not come back during this window start
+            assert {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]} == {"claude": "on", "codex": "on"}, "on by default: nothing was asked"
+            time.sleep(2.5)  # a negative: no question comes, during this window start or after it
             assert w.ui()["sidebar"]["native_prompt"] is None
 
-            # the dialog lists the managed accounts only while Native is not open
+            # the dialog lists the managed accounts and the two Native entries
             w.click(*_centre(w.ui()["sidebar"]["new_chat_rect"]))
             nc = wait_for(lambda: (u := w.ui()["sidebar"]["new_chat"]) and u)
-            assert [a["label"] for a in nc["accounts"]] == ["ClaudeWork", "CodexWork"], nc
+            assert [a["label"] for a in nc["accounts"]] == ["ClaudeWork", "CodexWork", "Native (~/.claude)", "Native (~/.codex)"], nc
             _key(w, "Escape")
             wait_for(lambda: w.ui()["sidebar"]["new_chat"] is None)
 
-            # the View menu: Native Claude is not chosen; one click turns it on, the next turns it off
-            _key(w, "alt+v")
-            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
-            item = next(i for i in menu["items"] if "Use existing Claude Code login" in i["label"])
-            assert item["label"].endswith("not chosen"), item
-            w.click(*_centre(item["rect"]))
-            wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "on")
-            wait_for(lambda: next(n for n in w.ui()["sidebar"]["native"] if n["provider"] == "claude")["state"] == "on")
+            # the View menu: Native Claude is on; one click turns it off, the next turns it on
             _key(w, "alt+v")
             menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
             item = next(i for i in menu["items"] if "Use existing Claude Code login" in i["label"])
             assert item["label"].endswith(": on"), item
             w.click(*_centre(item["rect"]))
             wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "off")
+            wait_for(lambda: next(n for n in w.ui()["sidebar"]["native"] if n["provider"] == "claude")["state"] == "off")
+            _key(w, "alt+v")
+            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
+            item = next(i for i in menu["items"] if "Use existing Claude Code login" in i["label"])
+            assert item["label"].endswith(": off"), item
+            w.click(*_centre(item["rect"]))
+            wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "on")
 
 
-def test_yes_opens_native_in_the_dialog_the_chats_tab_and_the_header_and_resume_runs_in_the_default_home():
+def test_native_is_open_from_the_start_in_the_dialog_the_chats_tab_and_the_header_and_resume_runs_in_the_default_home():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         proj = (root / "proj-alpha").resolve()
@@ -105,9 +100,7 @@ def test_yes_opens_native_in_the_dialog_the_chats_tab_and_the_header_and_resume_
         made: dict[str, str] = {}
         with _window(root, proj, c_args, x_args, made) as w:
             _show_proj(w, proj)
-            prompt = wait_for(lambda: (p := w.ui()["sidebar"]["native_prompt"]) and p["rects"]["yes"] and p)
-            w.click(*_centre(prompt["rects"]["yes"]))
-            wait_for(lambda: w.ui()["sidebar"]["native_prompt"] is None)
+            assert w.ui()["sidebar"]["native_prompt"] is None, "no question is asked"
             conn = Conn(w.socket)
             wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]} == {"claude": "on", "codex": "on"})
 

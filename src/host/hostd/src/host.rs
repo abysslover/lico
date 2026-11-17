@@ -2,7 +2,7 @@
 //! the durable log independently of any GUI, and serves protocol v1 on an
 //! owner-only Unix socket, plus an optional loopback HTTP listener.
 
-use crate::{accounts, core, http, ipc, registry, session};
+use crate::{accounts, chats, core, http, ipc, registry, session};
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Write;
@@ -161,6 +161,7 @@ pub fn run(args: Vec<String>) {
     let accounts_dir = cfg.accounts_dir.clone();
     let shared = Arc::new(Shared { cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts::Accounts::load(&accounts_dir).unwrap_or_else(|why| refuse(&why))), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default() });
     registry::recover(&shared).unwrap_or_else(|why| refuse(&why)); // sessions of an earlier run come back as disconnected
+    chats::prewarm(&shared); // the chat indexes of the homes that exist are built in the background, so the first list is ready
     {
         // durability policy: the logs are synced to disk about once a second while records arrive, and the registry is
         // rewritten within a second of a change; a power cut can lose the last second, never leave a torn record read as data

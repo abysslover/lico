@@ -367,7 +367,13 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "input.status" => core::input_status(shared, session, text(request, "request_id")),
         "approval.text" => crate::pending::text_page(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), int(request, "offset").unwrap_or(0) as usize, int(request, "limit").unwrap_or(crate::pending::PAGE as i64) as usize),
         "approval.answer" => core::approval_answer(shared, session, generation.unwrap_or(0), int(request, "approval_id").unwrap_or(0), text(request, "answer"), request.get("keep").and_then(Value::as_bool).unwrap_or(false)),
-        "settings.set" => crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch::of_map(request)),
+        "settings.set" => {
+            let reply = crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch::of_map(request));
+            if reply.is_ok() && (request.contains_key("native_claude") || request.contains_key("native_codex")) {
+                crate::chats::prewarm(shared); // a provider's own home was turned on: its index is built now, not by the first list that asks
+            }
+            reply
+        }
         "folder.git" => match request.get("ssh_host").and_then(Value::as_str) {
             Some(host) => crate::ssh_remote::folder_git(shared, host, text(request, "cwd")),
             None => crate::worktree::folder_git_op(shared, text(request, "cwd")),

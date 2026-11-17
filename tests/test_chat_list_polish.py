@@ -49,9 +49,7 @@ def test_the_list_says_when_each_chat_was_written_shows_a_live_chats_title_and_n
             tab = u["tabs"]["items"][0]
             w.click((tab["rect"][0] + tab["close_rect"][0]) / 2.0, (tab["rect"][1] + tab["rect"][3]) / 2.0)
             wait_for(lambda: (x := w.ui()) and x["sidebar"]["cwd"] == str(proj) and x["sidebar"]["parent"] and x)
-            wait_for(lambda: w.ui()["sidebar"]["native_prompt"])
-            _key(w, "y")  # use the default home: its chats are listed
-            wait_for(lambda: w.ui()["sidebar"]["native_prompt"] is None)
+            assert w.ui()["sidebar"]["native_prompt"] is None  # the default home is on by default: its chats are listed and nothing is asked
             w.click(*_centre(w.ui()["sidebar"]["chats_tab_rect"]))
             listed = wait_for(lambda: (s := w.ui()["sidebar"]) and s["tab"] == "chats" and s["chats_loading"] is False and s["chats_total"] >= 6 and s)
             by_id = {e["provider_session"]: e for e in listed["chats_entries"]}

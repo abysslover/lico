@@ -2,9 +2,9 @@
 //! resumed-transcript seeding (`resume_id` on `session.create`) across `claude` and `codex`
 //! for both local and `[ssh: <host>]` accounts (`M07-P03`).
 
+mod index;
 mod latest;
 mod live;
-mod newest;
 mod others;
 mod seed;
 mod turns;
@@ -12,12 +12,12 @@ mod turns;
 /// What a scan of one transcript file finds: provider session id, directory, title, modification time, and the file itself.
 type Scanned = (String, String, String, u64, PathBuf);
 
+pub use index::{count_of, prewarm};
 pub use latest::latest_chat;
 pub use others::{others, sentence};
 pub use seed::seed_resumed_transcript;
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -25,7 +25,7 @@ use std::time::UNIX_EPOCH;
 use serde_json::{json, Map, Value};
 
 use crate::core::{Reply, Shared};
-use crate::folders::{check_folder, derive_auto_title, refused_char, valid_path_shape, MAX_NAME};
+use crate::folders::{check_folder, derive_auto_title, refused_char, MAX_NAME};
 use crate::provider_record::{valid_provider_session, O_NOFOLLOW, O_NONBLOCK};
 use crate::session::{obj, State};
 
@@ -210,156 +210,6 @@ pub(super) fn codex_msg_text(v: &Value) -> Option<(bool, String)> {
     }
 }
 
-fn scan_claude_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<Scanned> {
-    let name = path.file_name()?.to_str()?;
-    let stem = name.strip_suffix(".jsonl")?;
-    if !valid_provider_session(stem) {
-        return None;
-    }
-    let (file, _, mtime) = open_regular_nofollow(path)?;
-    let reader = BufReader::new(file.take(MAX_HEAD_BYTES));
-    let mut found_cwd: Option<String> = None;
-    let mut first_prompt: Option<String> = None;
-    for line in reader.lines().take(MAX_SCAN_LINES).flatten() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-        if found_cwd.is_none() {
-            if let Some(c) = v.get("cwd").and_then(Value::as_str).filter(|s| s.starts_with('/') && valid_path_shape(s)) {
-                if !match_cwd(c) {
-                    return None;
-                }
-                found_cwd = Some(norm_path(c).to_string());
-            }
-        }
-        if first_prompt.is_none() && v.get("type").and_then(Value::as_str) == Some("user") {
-            if let Some(txt) = claude_msg_text(&v, true) {
-                if derive_auto_title(&txt).is_some() {
-                    first_prompt = Some(txt);
-                }
-            }
-        }
-        if found_cwd.is_some() && first_prompt.is_some() {
-            break;
-        }
-    }
-    let cwd = found_cwd?;
-    let title = clean_title(first_prompt.as_deref().unwrap_or(""), "claude", stem);
-    Some((stem.to_string(), cwd, title, mtime, path.to_path_buf()))
-}
-
-fn scan_codex_file(path: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Option<Scanned> {
-    let name = path.file_name()?.to_str()?;
-    let stem = name.strip_suffix(".jsonl")?;
-    let (file, _, mtime) = open_regular_nofollow(path)?;
-    let reader = BufReader::new(file.take(MAX_HEAD_BYTES));
-    let mut meta_id: Option<String> = None;
-    let mut found_cwd: Option<String> = None;
-    let mut first_prompt: Option<String> = None;
-    for line in reader.lines().take(MAX_SCAN_LINES).flatten() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
-        let vtype = v.get("type").and_then(Value::as_str).unwrap_or("");
-        if vtype == "session_meta" {
-            if let Some(id) = v.pointer("/payload/id").and_then(Value::as_str).filter(|s| valid_provider_session(s)) {
-                meta_id = Some(id.to_string());
-            }
-            if let Some(c) = v.pointer("/payload/cwd").and_then(Value::as_str).filter(|s| s.starts_with('/') && valid_path_shape(s)) {
-                if !match_cwd(c) {
-                    return None;
-                }
-                found_cwd = Some(norm_path(c).to_string());
-            }
-        } else if found_cwd.is_none() {
-            if let Some(c) = v.get("cwd").and_then(Value::as_str).filter(|s| s.starts_with('/') && valid_path_shape(s)) {
-                if !match_cwd(c) {
-                    return None;
-                }
-                found_cwd = Some(norm_path(c).to_string());
-            }
-        }
-        if first_prompt.is_none() {
-            if let Some((true, txt)) = codex_msg_text(&v) {
-                if derive_auto_title(&txt).is_some() {
-                    first_prompt = Some(txt);
-                }
-            } else if vtype == "event_msg" && v.pointer("/payload/type").and_then(Value::as_str) == Some("user_message") {
-                if let Some(m) = v.pointer("/payload/message").and_then(Value::as_str) {
-                    if !is_codex_system_text(m) && derive_auto_title(m).is_some() {
-                        first_prompt = Some(m.to_string());
-                    }
-                }
-            }
-        }
-        if found_cwd.is_some() && first_prompt.is_some() && meta_id.is_some() {
-            break;
-        }
-    }
-    let cwd = found_cwd?;
-    let prov_sid = meta_id.or_else(|| codex_stem_id(stem))?;
-    let title = clean_title(first_prompt.as_deref().unwrap_or(""), "codex", &prov_sid);
-    Some((prov_sid, cwd, title, mtime, path.to_path_buf()))
-}
-
-fn scan_claude_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<Scanned> {
-    let mut out = Vec::new();
-    let projects = home.join("projects");
-    if !real_dir(&projects) {
-        return out;
-    }
-    let Ok(dirs) = std::fs::read_dir(&projects) else { return out };
-    let mut seen_files = 0usize;
-    for d_entry in dirs.flatten() {
-        let dp = d_entry.path();
-        if !real_dir(&dp) {
-            continue;
-        }
-        let Ok(files) = std::fs::read_dir(&dp) else { continue };
-        for f_entry in files.flatten() {
-            if seen_files >= MAX_SCAN_FILES {
-                return out;
-            }
-            seen_files += 1;
-            if let Some(rec) = scan_claude_file(&f_entry.path(), match_cwd) {
-                out.push(rec);
-            }
-        }
-    }
-    out
-}
-
-fn walk_codex_dir(dir: &Path, depth: usize, left: &mut usize, match_cwd: &dyn Fn(&str) -> bool, out: &mut Vec<Scanned>) {
-    if depth > 5 || *left == 0 || !real_dir(dir) {
-        return;
-    }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        if *left == 0 {
-            return;
-        }
-        let p = entry.path();
-        let Ok(meta) = std::fs::symlink_metadata(&p) else { continue };
-        if meta.file_type().is_dir() {
-            walk_codex_dir(&p, depth + 1, left, match_cwd, out);
-        } else if meta.file_type().is_file() {
-            *left -= 1;
-            if let Some(rec) = scan_codex_file(&p, match_cwd) {
-                out.push(rec);
-            }
-        }
-    }
-}
-
-fn scan_codex_home(home: &Path, match_cwd: &dyn Fn(&str) -> bool) -> Vec<Scanned> {
-    let mut out = Vec::new();
-    let mut left = MAX_SCAN_FILES;
-    walk_codex_dir(&home.join("sessions"), 0, &mut left, match_cwd, &mut out);
-    out
-}
-
 pub(super) fn unbound_codex_home() -> Option<PathBuf> {
     let p = std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
@@ -367,7 +217,7 @@ pub(super) fn unbound_codex_home() -> Option<PathBuf> {
     p.is_absolute().then_some(p)
 }
 
-/// Which chats a request asks for: those of one folder, those of the host's workspace root (Anon), or every one of them (`all`, `M22-P01`).
+/// Which chats a request asks for: those of one folder, those of the host's workspace root (Home), or every one of them (`all`, `M22-P01`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum Scope {
     Folder,
@@ -379,7 +229,7 @@ pub(super) enum Scope {
 pub(super) struct Collected {
     pub(super) items: Vec<ChatItem>,
     pub(super) scope: Scope,
-    pub(super) truncated: bool, // `all` only: older records of a home were left unread (`newest.rs`)
+    pub(super) truncated: bool, // `all` only: older records of a home were left out of its index (`index.rs`)
     pub(super) canon_cwd: Option<String>,
     pub(super) ssh_host: Option<String>,
     pub(super) offset: usize,
@@ -518,7 +368,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             let nc = norm_path(c);
             nc == ws_prefix || nc.starts_with(&format!("{ws_prefix}/"))
         };
-        // where a record belongs: its folder, or Anon (no folder) when it was made in the workspace root; a folder scope has its folder, the Anon scope none
+        // where a record belongs: its folder, or Home (no folder) when it was made in the workspace root; a folder scope has its folder, the Home scope none
         let place = |rec_cwd: String| -> (Option<String>, bool) {
             match scope {
                 Scope::Global => (None, true),
@@ -534,17 +384,11 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                 in_workspace(c)
             }
         };
-        // one home, read whole for `all` (the newest records only: `newest.rs`) and for one folder or Anon by the folder test
+        // one home, read through the index (`index.rs`): the incremental pass, then the records of the scope
         let mut read_home = |provider: &str, home: &Path| -> Vec<Scanned> {
-            if scope == Scope::All {
-                let read = if provider == "claude" { newest::claude_home(home, newest::ALL_SCAN_MAX) } else { newest::codex_home(home, newest::ALL_SCAN_MAX) };
-                truncated |= read.left_out;
-                read.found
-            } else if provider == "claude" {
-                scan_claude_home(home, &match_cwd)
-            } else {
-                scan_codex_home(home, &match_cwd)
-            }
+            let read = if provider == "claude" { index::claude_home(home) } else { index::codex_home(home) };
+            truncated |= read.left_out;
+            read.found.into_iter().filter(|rec| scope == Scope::All || match_cwd(&rec.1)).collect()
         };
 
         for acc in &all_accounts {
@@ -635,7 +479,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                 cwd: match scope {
                     Scope::Global => None,
                     Scope::Folder => canon_cwd.clone().or(cand.cwd),
-                    Scope::All => cand.cwd, // an open session keeps its own folder (none for Anon)
+                    Scope::All => cand.cwd, // an open session keeps its own folder (none for Home)
                 },
                 ..cand
             });

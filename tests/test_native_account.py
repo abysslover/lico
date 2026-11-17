@@ -1,5 +1,5 @@
-"""M11-P01: the provider's own default home as a visible `Native` entry (reserved ids `native-claude` and `native-codex`): closed until the person chooses, listed and
-resumed in place once chosen with the provider's own login (a Native session gets the default home and nothing of a managed account), one listing rule for all
+"""M11-P01: the provider's own default home as a visible `Native` entry (reserved ids `native-claude` and `native-codex`): open by default since M22-P02 (the person's `off` closes
+it), listed and resumed in place with the provider's own login (a Native session gets the default home and nothing of a managed account), one listing rule for all
 accounts, a choice kept in settings, the label beside the target, and the tool `create` that never switches a Native caller to another account. Synthetic homes and
 mocked providers only: no real home of the owner is read and no turn is billable."""
 
@@ -39,7 +39,7 @@ def _seed_default_homes(home: Path, proj: Path) -> None:
     _seed_codex_jsonl(home / ".codex", CODEX_NEW, str(proj), "codex native task", "codex native answer", 1_760_000_600)
 
 
-def test_native_is_listed_closed_until_chosen_then_open_and_one_rule_serves_every_account():
+def test_native_is_listed_open_by_default_and_off_closes_it_and_one_rule_serves_every_account():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         proj = (root / "proj").resolve()
@@ -55,38 +55,37 @@ def test_native_is_listed_closed_until_chosen_then_open_and_one_rule_serves_ever
             nat = {n["provider"]: n for n in listed["native"]}
             assert nat["claude"]["account"] == "native-claude" and nat["claude"]["label"] == "Native (~/.claude)", nat
             assert nat["codex"]["account"] == "native-codex" and nat["codex"]["label"] == "Native (~/.codex)", nat
-            assert nat["claude"]["state"] == "ask" and nat["claude"]["chosen"] is None and nat["claude"]["chats"] == 2 and nat["codex"]["chats"] == 1, nat
+            assert nat["claude"]["state"] == "on" and nat["claude"]["chosen"] is None and nat["claude"]["chats"] == 2 and nat["codex"]["chats"] == 1, nat
             assert [a["account"] for a in listed["accounts"]] == [acc_c, _acc_x], "the managed accounts are not touched"
 
-            # not chosen yet: no chat of the default home is listed or read, and a session cannot be made on it
-            assert conn.call(op="session.chats", cwd=str(proj))["total"] == 0
-            closed = conn.call(op="session.chats", cwd=str(proj), account="native-claude")
-            assert closed["ok"] == 0 and closed["error"] == "native_off", closed
-            refused = conn.call(op="session.create", kind="claude", account="native-claude", cwd=str(proj), mode="auto")
-            assert refused["ok"] == 0 and refused["error"] == "native_off", refused
-
-            # the choice is kept in the settings and is per provider
-            assert conn.call(op="settings.set", native_claude="maybe")["ok"] == 0
-            on = conn.call(op="settings.set", native_claude="on")
-            assert on["ok"] == 1 and on["settings"]["native_claude"] == "on", on
-            nat = {n["provider"]: n for n in conn.call(op="account.list")["native"]}
-            assert (nat["claude"]["state"], nat["claude"]["chosen"], nat["codex"]["state"]) == ("on", "on", "ask"), nat
-
+            # nothing was chosen: the chats of the default homes are listed (no question first), and a session can be made on them
+            everyone = conn.call(op="session.chats", cwd=str(proj))
+            assert [i["provider_session"] for i in everyone["items"]] == [CODEX_NEW, "cl-nat-new", "cl-nat-old"], "no account named: every account that is open, Native included"
             only = conn.call(op="session.chats", cwd=str(proj), account="native-claude")
             assert only["ok"] == 1 and v1.validate_response("session.chats", only) == [], only
             assert [i["provider_session"] for i in only["items"]] == ["cl-nat-new", "cl-nat-old"], only
             assert {i["account"] for i in only["items"]} == {"native-claude"} and {i["account_label"] for i in only["items"]} == {"Native (~/.claude)"}
             assert conn.call(op="session.chats", cwd=str(proj), account=acc_c)["total"] == 0, "a managed account lists only its own home"
-            everyone = conn.call(op="session.chats", cwd=str(proj))
-            assert [i["provider_session"] for i in everyone["items"]] == ["cl-nat-new", "cl-nat-old"], "no account named: every account that is open, Native included"
             latest = json.loads(cli(host, "chat", "latest", "--cwd", str(proj), "--account", "native-claude").stdout)
             assert [i["provider_session"] for i in latest["items"]] == ["cl-nat-new"], latest
             wrong = conn.call(op="session.create", kind="codex", account="native-claude", cwd=str(proj), mode="auto")
             assert wrong["ok"] == 0 and wrong["error"] == "bad_request", "Native of one provider is not an account of the other"
+            assert conn.call(op="settings.set", native_claude="maybe")["ok"] == 0
 
-            # "ask" takes the choice back
+            # `off` is the person's choice, kept in the settings and per provider: no chat of that home is listed or read, and a session cannot be made on it
+            off = conn.call(op="settings.set", native_claude="off")
+            assert off["ok"] == 1 and off["settings"]["native_claude"] == "off", off
+            nat = {n["provider"]: n for n in conn.call(op="account.list")["native"]}
+            assert (nat["claude"]["state"], nat["claude"]["chosen"], nat["claude"]["chats"], nat["codex"]["state"]) == ("off", "off", None, "on"), nat
+            assert [i["provider_session"] for i in conn.call(op="session.chats", cwd=str(proj))["items"]] == [CODEX_NEW], "Codex stays open: the choice is per provider"
+            closed = conn.call(op="session.chats", cwd=str(proj), account="native-claude")
+            assert closed["ok"] == 0 and closed["error"] == "native_off", closed
+            refused = conn.call(op="session.create", kind="claude", account="native-claude", cwd=str(proj), mode="auto")
+            assert refused["ok"] == 0 and refused["error"] == "native_off", refused
+
+            # "ask" takes the choice back, which is the default: on
             assert conn.call(op="settings.set", native_claude="ask")["settings"].get("native_claude") is None
-            assert conn.call(op="session.chats", cwd=str(proj))["total"] == 0
+            assert [i["provider_session"] for i in conn.call(op="session.chats", cwd=str(proj))["items"]] == [CODEX_NEW, "cl-nat-new", "cl-nat-old"]
         finally:
             host.stop()
 
@@ -132,7 +131,7 @@ def test_a_native_session_resumes_in_place_with_the_default_home_and_nothing_of_
             host.stop()
 
 
-def test_the_first_run_without_a_managed_account_still_uses_the_default_home_and_it_is_labelled_native():
+def test_the_default_home_stays_open_when_a_managed_account_is_added_and_it_is_labelled_native():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         proj = (root / "proj").resolve()
@@ -142,17 +141,17 @@ def test_the_first_run_without_a_managed_account_still_uses_the_default_home_and
             conn = Conn(host.socket)
             _seed_default_homes(home, proj)
             nat = {n["provider"]: n for n in conn.call(op="account.list")["native"]}
-            assert (nat["claude"]["state"], nat["claude"]["chosen"]) == ("on", None), "nothing else to choose: the legacy first run, now visible"
+            assert (nat["claude"]["state"], nat["claude"]["chosen"]) == ("on", None), "on by default, whatever else exists"
             listed = conn.call(op="session.chats", cwd=str(proj))
             assert [i["provider_session"] for i in listed["items"]] == [CODEX_NEW, "cl-nat-new", "cl-nat-old"] and {i["account"] for i in listed["items"]} == {"native-claude", "native-codex"}, listed
             made = conn.call(op="session.create", kind="claude", cwd=str(proj), mode="auto")
             assert made["ok"] == 1 and status_of(conn, made["session"])["native"] == "Native (~/.claude)"
-            # the first managed account closes the default home until the person says yes: the old rule, but visible and answerable
+            # a managed account does not close the default home any more (M22-P02): only the person's `off` does
             account(conn, "ClaudeWork", "claude")
-            assert {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "ask"
+            assert {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "on"
             after = conn.call(op="session.chats", cwd=str(proj))["items"]
-            assert [i["provider_session"] for i in after if i["provider"] == "claude" and i["open_session"] is None] == [], "Claude: a managed account exists and nothing was chosen"
-            assert [i["provider_session"] for i in after if i["provider"] == "codex"] == [CODEX_NEW], "Codex has no managed account yet: its default home is still the only one"
+            assert [i["provider_session"] for i in after if i["provider"] == "claude" and i["open_session"] is None] == ["cl-nat-new", "cl-nat-old"], "Claude: still listed beside the managed account"
+            assert [i["provider_session"] for i in after if i["provider"] == "codex"] == [CODEX_NEW]
         finally:
             host.stop()
 

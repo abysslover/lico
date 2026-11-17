@@ -60,7 +60,7 @@ def test_the_new_chat_row_and_modal_resume_new_options_and_the_keys():
             assert sb["new_chat_enabled"] is True and sb["new_chat"] is None
             w.click(*_centre(sb["new_chat_rect"]))
             nc = wait_for(lambda: (u := w.ui()["sidebar"]["new_chat"]) and u["open"] and u)
-            assert [a["label"] for a in nc["accounts"]] == ["ClaudeWork", "CodexWork"] and nc["selected"] == 0 and nc["resume"] is True, nc
+            assert [a["label"] for a in nc["accounts"]] == ["ClaudeWork", "CodexWork", "Native (~/.claude)", "Native (~/.codex)"] and nc["selected"] == 0 and nc["resume"] is True, nc
             assert nc["accounts"][0]["default"] is True and nc["rects"]["ok"] and nc["rects"]["cancel"] and nc["rects"]["options"], nc
 
             # Resume shows the Last Session line of the latest chat of this folder and account

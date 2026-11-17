@@ -1,7 +1,7 @@
 # M22-P02 Plan — The Chat Index: A List That Is Ready Before It Is Asked For
 
-- Status: planned (2026-11-18)
-- Version: 1.0.0
+- Status: in work (2026-11-18); steps 1 to 6 done, step 7 (the suite) running
+- Version: 1.1.0
 - Branch: `phase/M22-P02-chat-index` (stacked on `phase/M22-P01-chats-of-all-sessions`, `0900c95`)
 - Milestone: [M22](../../../milestones/202611/20261118/20261118_01_M22_simple_window_chats_of_all_sessions_milestone.md)
 - The owner's words (the chat, 2026-11-18): listing everything may need performance work and a background index; experiment, think it through, leave no delay.
@@ -46,15 +46,35 @@ Budget: a warm page in **under 5 ms**; the build in the background **under 1 s**
 
 If E2 shows the pass above the budget on a cold cache, the answer is a background refresher (a thread that refreshes every home that was read in the last minutes, and calls read its snapshot without waiting) and the exactness is lost for tests: that choice is then written down with the measurement before it is taken.
 
+## What was built (2026-11-18)
+
+- `chats/index.rs` (new): one index per home in a registry (`Kind` + path), a lock per home; `list` walks the directories and `stat`s each `*.jsonl` (a link is never followed, the depth is the provider's: Claude `projects/<folder>/<file>`, Codex `sessions/` five levels); `Home::update` is the incremental pass (keeps what did not change to the nanosecond and byte, reads the head of a new or changed file, drops a gone one; a pass that changed nothing only looks each record up); the head parsers moved here from `mod.rs`; `prewarm` (a thread named `chat-index`) builds every local home at host start and after a `settings.set` of the native choice, and counts the turns of the newest 100 records of each; `count_of` serves `account.list`.
+- One bound, `MAX_SCAN_FILES` (2,500 records per home); a listing is bounded by `LIST_MAX` (20,000 files). P01's `newest.rs` and its `ALL_SCAN_MAX` (2,000) are gone; `collect` filters the index by scope (folder, Home, `all`). The three old scanners are gone.
+- `native::state` is `on` unless `off`; `State::Ask` is removed (the wire still takes `ask` in `settings.set` and means "take the choice back"); `account.list`'s `chats` is the index's count while a home is on. The window's question is never asked (its code goes with the window phase); the two window tests and the end-to-end native test were changed first.
+
+## Measured (the probe `probe_index.py` in the lead's scratchpad, not kept in the repository; `/run` tmpfs, a private HOME, synthetic records of two lines; a page is 100 chats)
+
+| Records in the home | first call (background build done) | repeat (warm) | one new record | the second page | eight calls at once (wall) |
+|---|---|---|---|---|---|
+| 500 | 12.6 ms | 3.3 ms | 2.9 ms | 4.0 ms | 13 ms |
+| 2,500 (the bound) | 18.0 ms | 10.5 ms | 10.8 ms | 11.0 ms | 55 ms |
+| 5,000 (2,500 kept, `truncated`) | 28.7 ms | 13.5 ms | 14.3 ms | 15.6 ms | 97 ms |
+
+- **This machine's own homes** (154 chats; timing only; nothing of their text was printed): first call 14 ms after the build (62 ms when asked at once after the host was up: it waits for one pass of the build), a repeat **5 ms**, the second page 22 ms (the turn counts of the 54 chats beyond the first page are read then). Before the index: first 147 ms, repeat 19 ms, second page 79 ms, and 153 of the chats found (the `.jsonl` defect).
+- **The cost is the `stat` of every record** (a listing alone is 5 ms at 2,500; 2 microseconds a file), which is what keeps the answer exact. The data pages being cold (`posix_fadvise(DONTNEED)` on every record) cost 0.1 to 5 ms more (the heads are not read again; only the turn counts of the page). The directory and inode caches cannot be dropped without root: a really cold disk is not measured, and is what the background build is for.
+- **Memory:** the host's resident set 15.4 to 17.3 MiB with 2,500 to 5,000 records in the index (9.3 MiB with the real homes).
+- **Against the budget** (warm page under 5 ms; the build under 1 s in the background; no call over 50 ms with cold data pages; a refresh after one new record under 10 ms; under 2 MiB for 2,500 records): met up to about 1,000 records (3.3 ms at 500) and by a wide margin on this machine's own homes (5 ms with 154); at the bound of 2,500 a warm call is 10.5 ms, twice the figure, because of the `stat` pass. A parallel `stat` (four threads) would bring it near 3 ms; it is not done: a call of 10 ms is below what a person notices, and the threads cost more at the common sizes. The owner can ask for it. The build: 18 to 29 ms for 2,500 to 5,000 records, far under a second. The index of 2,500 records is about 1 MiB (the memory figure above includes the whole host).
+- **Contention** (E5): calls on one home take turns (a pass holds its lock): eight at once finish in 13 / 55 / 97 ms for 500 / 2,500 / 5,000 records, each waiting at most for the others' passes. The window asks one at a time.
+
 ## Steps (tests first; green-only commits)
 
-- [ ] 1. Red tests: the Rust unit tests of the index (a record that did not change is not opened again, counted by a counter in the test; a grown record is read again; a deleted one goes; a link is never followed; only `.jsonl`; the bound and `truncated`; the turn count is kept and recounted when the size changed); a system test with Codex's other files in the home (the defect) and 3,000 records (a count, the order and the bound); `native` default `on` in the existing native tests (they say `ask` today: they change first and fail first).
-- [ ] 2. E2 and E3 on the real homes and synthetic ones; the budget is confirmed or the design changes before more code.
-- [ ] 3. `chats/index.rs`: the index; `collect` reads it for the three scopes; `newest.rs` and the two scanners are removed (their tests move to the index); `turns` read through the cache.
-- [ ] 4. The builder thread at host start; the setting's change builds the home at once.
-- [ ] 5. `native::state` default; `account.list`; the manual and the guide.
-- [ ] 6. E4, E5, E6; the figures in the plan and, later, the report.
-- [ ] 7. `suite run --changed --receipts`, `cargo xtask check|verify|graph`; commit.
+- [x] 1. Red tests: the unit tests of the index (an unchanged record is not opened again, counted by a counter; a grown one, one whose time changed, a new one are; a removed one goes; a file that is no chat is remembered; a link is never followed; only `*.jsonl` at the provider's depth; the bound and the tie rule; the heads) with a mutation check (two mutations, four tests fail); the system test `tests/test_chat_index.py` (red for the right reasons: an empty list for a home of 3,000 other files, a record made unreadable vanished, the bound was 2,000); `native` default `on` in the native tests.
+- [x] 2. E2 and E3 on synthetic homes (above); the design did not change.
+- [x] 3. `chats/index.rs`; `collect` reads it for the three scopes; `newest.rs` and the scanners removed; the turn cache keeps its place.
+- [x] 4. The builder thread at host start and after the native setting changes.
+- [x] 5. `native::state` default; `account.list`; the manual.
+- [x] 6. E4, E5, E6 (above).
+- [ ] 7. `suite run --changed --receipts`, `cargo xtask check|verify|graph` (`check` and `verify` pass, `graph` runs); commit.
 
 ## Stop and ask
 

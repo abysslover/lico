@@ -1,5 +1,5 @@
 """M11-P03: the whole M11 flow in one window on synthetic homes, a private socket and mocked providers (no billable turn; the owner's real homes are never read): a person who
-used Claude Code before Lico finds those chats again. The first-run question, Yes, the account list with Native, the latest Native chat, a Claude process in the folder
+used Claude Code before Lico finds those chats again. No first-run question (the default home is on since M22-P02), the account list with Native, the latest Native chat, a Claude process in the folder
 (a fake: a script named `claude`) that is writing it (listed `[elsewhere]`, Resume refused, New allowed), a closed chat of the same folder that resumes in the default home
 with the provider's own login (the process environment is the default home's, nothing of a managed account), and the hint of an account that has no chat here."""
 
@@ -61,12 +61,9 @@ def test_earlier_chats_are_found_again_through_native_and_a_chat_another_termina
                 wait_for(lambda: (x := w.ui()) and x["sidebar"]["cwd"] == str(proj) and x["sidebar"]["parent"] and x)
                 conn = Conn(w.socket)
 
-                # 1. before the answer nothing of the default home is listed; the question names the count and reads nothing else
-                assert conn.call(op="session.chats", cwd=str(proj))["total"] == 0 or all(i["account"] != "native-claude" for i in conn.call(op="session.chats", cwd=str(proj))["items"])
-                prompt = wait_for(lambda: (p := w.ui()["sidebar"]["native_prompt"]) and p["rects"]["yes"] and p)
-                assert [(e["provider"], e["chats"]) for e in prompt["entries"]] == [("claude", 2)], prompt
-                w.click(*_centre(prompt["rects"]["yes"]))
-                wait_for(lambda: w.ui()["sidebar"]["native_prompt"] is None)
+                # 1. nothing is asked: the chats of the default home are listed from the first moment
+                assert w.ui()["sidebar"]["native_prompt"] is None
+                assert {"cl-before-lico", "cl-open-terminal"} <= {i["provider_session"] for i in conn.call(op="session.chats", cwd=str(proj))["items"]}
 
                 # 2. the Chats tab lists the chats from before Lico; only the one the other terminal writes is marked
                 w.click(*_centre(w.ui()["sidebar"]["chats_tab_rect"]))
