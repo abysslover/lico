@@ -144,6 +144,7 @@
 | [M17-P10 plan](plans/202611/20261117/20261117_25_M17-P10_engine_auto_install_plan.md) | The plan note of the patch (the way, the three causes to stop, the stop rule) |
 | [M19-P01 plan](plans/202611/20261117/20261117_27_M19-P01_memory_guard_plan.md) | The memory guard: what the host measures, the design, the steps and the State for the lead |
 | [M19-P01 report](reports/202611/20261117/20261117_28_M19-P01_memory_guard_and_0_6_0_report.md) | The memory guard and release 0.6.0: what the person sees, the review, the tests, the eight-session measurement |
+| [M17-P11 report](reports/202611/20261117/20261117_29_M17-P11_page_looks_alive_and_0_6_1_report.md) | The page looks alive, release 0.6.1: why the owner could not click or type in Google (diagnosis), the cues added, what Obscura says about Google, the limits |
 | [M18 milestone](milestones/202611/20261117/20261117_03_M18_remote_lico_host_milestone.md) | The remote lico host (Phase 0 done) |
 | [M19 milestone](milestones/202611/20261117/20261117_04_M19_memory_guard_milestone.md) | The memory guard (P01: done, release 0.6.0) |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |

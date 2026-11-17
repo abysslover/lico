@@ -9,6 +9,13 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.6.1 — 2026-11-17 (`M17-P11`)
+
+- **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P11 report](doc/reports/202611/20261117/20261117_29_M17-P11_page_looks_alive_and_0_6_1_report.md)); release commit `50eb786`, `10,667,208` bytes (`-153,056` against `0.6.0`, not explained: see the report), two clean clones identical (`4ff19236...2948`); recorded as approved by the lead under the owner's delegation, to be confirmed by the owner.
+- **Highlights** (the owner's reports in the chat, 2026-11-17: "I cannot see a cursor, it feels like a picture"; the typing did run but Google blocked the search): the browser tab says where typing goes (the header: the page, or the address row), marks the last click on the page with a ring, makes the pointer a crosshair over the page, lets the address row follow the page's address when the person has not edited it (it kept the first address after a link), and shows the composition of the input method in the header while the page has the keys. The F1 help and the guide name the limits: the engine draws no caret, Korean in a single-line `<input>` may paint as boxes, `contenteditable` takes no typing, Google search refuses this engine. `lico-browser-view` `0.7.0`; new product-spec row BROW-09.
+- **Not changed, on purpose**: no stealth switch (BROW-05): Obscura's own docs say nothing about Google blocking, and its anti-detect mode is the owner's decision. The diagnosis showed Lico's input path was not broken (click, typing, links, forms, a textarea, a checkbox all work with the real engine).
+- **Measured**: window tests `9/9`, component tests `39/39`, mutants `12/13` killed (the survivor is equivalent), cold 573-test suite one run `160.2 s`, `1,901.6 MiB`.
+
 ## 0.6.0 — 2026-11-17 (`M19-P01`)
 
 - **Milestone**: [M19 The memory guard](doc/milestones/202611/20261117/20261117_04_M19_memory_guard_milestone.md) ([M19-P01 report](doc/reports/202611/20261117/20261117_28_M19-P01_memory_guard_and_0_6_0_report.md)); release commit `95f39e3`, `10,820,264` bytes (`+97,952`, `+0.91 %` over `0.5.1`), two clean clones identical (`88870041...e0a8`); recorded as approved by the lead under the owner's delegation, to be confirmed by the owner.
