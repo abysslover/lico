@@ -1,4 +1,4 @@
-//! Pixel rendering, host combo-box popup, and UI-dump serialization for the two-tab left sidebar (`M07-P02`).
+//! Pixel rendering, host combo-box popup, and UI-dump serialization for the two-tab left sidebar (`M07-P02`; `Directories | Chats`, `M22-P03`).
 
 use cosmic_text::{Color, SwashCache};
 use serde_json::{json, Value};
@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use super::controls::{self, Action};
 use super::editor;
 use super::panel::files_ui::HOST_POPUP_MAX_VIS;
-use super::sidebar::{SidebarEntryGeom, SidebarGeom};
+use super::sidebar::{SidebarEntryGeom, SidebarGeom, HOME_LABEL};
 use super::sidebar_tabs::{palette, TAB_LABELS};
 use super::ui::memrow;
 use super::{App, BACKGROUND};
@@ -105,7 +105,7 @@ impl App {
         let mut out = json!({
             "shown": self.sidebar_shown(),
             "collapsed": sb.collapsed,
-            "tab": match sb.tab { 0 => "directories", 1 => "chats", _ => "calls" },
+            "tab": match sb.tab { 0 => "directories", _ => "chats" },
             "tab_index": sb.tab,
             "global_scope": sb.global_scope,
             "active_cwd_highlighted": self.sidebar_is_active_cwd(),
@@ -150,12 +150,11 @@ impl App {
         out["new_chat_enabled"] = json!(self.newchat_gate().is_ok());
         out["new_chat_reason"] = json!(self.newchat_gate().err());
         out["new_chat"] = self.newchat_json();
-        out["native_prompt"] = self.native_prompt_json();
+        out["home_label"] = json!(HOME_LABEL);
         out["llm_find"] = self.llm_json();
         out["native"] = json!(sb.native_entries.iter().map(|e| json!({"account": e.id, "provider": e.provider, "label": e.label, "state": e.state, "chosen": e.chosen, "chats": e.chats})).collect::<Vec<_>>());
         self.insert_chats_json(&mut out);
         self.insert_nav_json(&mut out);
-        self.insert_calls_json(&mut out);
         out
     }
 
@@ -208,9 +207,6 @@ impl App {
         let filtered = self.ui.sidebar.filtered_indices();
         let char_w = self.char_w();
 
-        let calls_total = self.ui.sidebar.calls.summaries.len();
-        let calls_active = self.ui.sidebar.calls.active_count();
-
         let Some(fs) = self.font_system.as_mut() else { return };
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
@@ -222,54 +218,41 @@ impl App {
         let gold_ink = Color::rgb(0xFA, 0xD2, 0x6E);
         let teal_ink = Color::rgb(0x64, 0xE2, 0xCB);
 
-        // 1. Top 3-Tab Header (`[ Directories ]` | `[ Chats ]` | `[ Calls ]`) aligned with chat tab bar (`top..chat_top`).
+        // 1. Top 2-Tab Header (`[ Directories ]` | `[ Chats ]`) aligned with chat tab bar (`top..chat_top`).
         let tab_y1 = if chat_top > top + 8.0 * s { chat_top } else { top + lh + 6.0 * s };
         controls::fill(buf, width, height, [0.0, top, x_right, tab_y1], 0xFF13_1A23);
         controls::fill(buf, width, height, [0.0, tab_y1 - 1.0, x_right, tab_y1], 0xFF2B_3646);
-        let split1 = (x_right * 0.43).floor();
-        let split2 = (x_right * 0.68).floor();
-        let d_rect = [2.0 * s, top + 2.0 * s, split1 - 1.0 * s, tab_y1 - 1.0];
-        let p_rect = [split1 + 1.0 * s, top + 2.0 * s, split2 - 1.0 * s, tab_y1 - 1.0];
-        let c_rect = [split2 + 1.0 * s, top + 2.0 * s, x_right - 2.0 * s, tab_y1 - 1.0];
+        let split = (x_right * 0.5).floor();
+        let d_rect = [2.0 * s, top + 2.0 * s, split - 1.0 * s, tab_y1 - 1.0];
+        let p_rect = [split + 1.0 * s, top + 2.0 * s, x_right - 2.0 * s, tab_y1 - 1.0];
         let tint = |tab: usize| {
             let p = palette(tab, usize::from(tab_idx) == tab);
             (p.fill, ink_color(p.ink))
         };
         let (d_fill, d_col) = tint(0);
         let (p_fill, p_col) = tint(1);
-        let (c_fill, c_col) = if tab_idx != 2 && calls_active > 0 { (tint(2).0, teal_ink) } else { tint(2) };
         controls::fill(buf, width, height, d_rect, d_fill);
         controls::fill(buf, width, height, p_rect, p_fill);
-        controls::fill(buf, width, height, c_rect, c_fill);
-        let active_bar = [d_rect, p_rect, c_rect][usize::from(tab_idx).min(2)];
-        let bar_col = palette(usize::from(tab_idx).min(2), true).bar;
+        let active_bar = [d_rect, p_rect][usize::from(tab_idx).min(1)];
+        let bar_col = palette(usize::from(tab_idx).min(1), true).bar;
         controls::fill(buf, width, height, [active_bar[0], active_bar[1], active_bar[2], active_bar[1] + 2.0 * s], bar_col);
-        let d_lbl = if controls.width(fs, TAB_LABELS[0]) + 10.0 * s <= d_rect[2] - d_rect[0] { TAB_LABELS[0] } else { "Dir" };
-        let c_lbl = if calls_total > 0 { format!("{} ({calls_total})", TAB_LABELS[2]) } else { TAB_LABELS[2].to_string() };
-        controls.text(fs, swash, buf, width, height, d_rect[0] + 6.0 * s, d_rect[1] + s, d_rect[2] as i32, d_lbl, d_col);
+        controls.text(fs, swash, buf, width, height, d_rect[0] + 6.0 * s, d_rect[1] + s, d_rect[2] as i32, TAB_LABELS[0], d_col);
         controls.target(d_rect, Action::SidebarTab(0));
         controls.text(fs, swash, buf, width, height, p_rect[0] + 6.0 * s, p_rect[1] + s, p_rect[2] as i32, TAB_LABELS[1], p_col);
         controls.target(p_rect, Action::SidebarTab(1));
-        controls.text(fs, swash, buf, width, height, c_rect[0] + 6.0 * s, c_rect[1] + s, c_rect[2] as i32, &c_lbl, c_col);
-        controls.target(c_rect, Action::SidebarTab(2));
 
         let mut geom = SidebarGeom {
             dir_tab_rect: Some(d_rect),
             chats_tab_rect: Some(p_rect),
-            calls_tab_rect: Some(c_rect),
             ..Default::default()
         };
 
         let mem_y = hint_y - lh;
         let mut y = tab_y1 + 4.0 * s;
-        self.ui.sidebar.chats.page_size = super::sidebar_chats::calc_chats_ps(tab_y1, hint_y, lh, s);
+        self.ui.sidebar.chats.page_size = super::sidebar_chats::calc_chats_ps(tab_y1, hint_y, lh, s, ssh_host.is_some());
 
         if tab_idx == 1 {
             self.draw_chats_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
-            return;
-        }
-        if tab_idx == 2 {
-            self.draw_calls_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
             return;
         }
 
@@ -408,18 +391,18 @@ impl App {
         }
         y += row_h + 4.0 * s;
 
-        // 4. Global general scope pill/row
+        // 4. The Home pill: the virtual directory of the sessions that have no folder (`HOME_LABEL`)
         let g_rect = [4.0 * s, y, x_right - 4.0 * s, y + lh + 2.0 * s];
         let (g_fill, g_col, g_lbl) = if is_glob_hi {
-            (0xFF17_3436, teal_ink, "\u{2605} Global (general)  [active]")
+            (0xFF17_3436, teal_ink, format!("\u{2605} {HOME_LABEL}  [active]"))
         } else {
-            (0xFF15_1D28, muted, "\u{25cb} Global (general)")
+            (0xFF15_1D28, muted, format!("\u{25cb} {HOME_LABEL}"))
         };
         controls::fill(buf, width, height, g_rect, g_fill);
         if is_glob_hi {
             controls::fill(buf, width, height, [g_rect[0], g_rect[1], g_rect[0] + 3.0 * s, g_rect[3]], 0xFF4E_D4B8);
         }
-        controls.text(fs, swash, buf, width, height, g_rect[0] + 7.0 * s, y + s, g_rect[2] as i32, g_lbl, g_col);
+        controls.text(fs, swash, buf, width, height, g_rect[0] + 7.0 * s, y + s, g_rect[2] as i32, &g_lbl, g_col);
         controls.target(g_rect, Action::SidebarGlobal);
         geom.global_rect = Some(g_rect);
         y += lh + 5.0 * s;

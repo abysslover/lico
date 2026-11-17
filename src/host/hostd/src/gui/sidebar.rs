@@ -3,7 +3,7 @@
 //! Replaces the legacy left session list in `lico gui` (`self.ui.workbench && self.ui.menu`) since open
 //! sessions live in the top chat tab bar (`gui/tabs.rs`). Supports `Ctrl+B` collapse/expand, local and
 //! SSH (`Host: local v` / `Host: <alias> v`) directory navigation, `.dotfiles` toggle, explicit refresh,
-//! instant in-memory filename filtering, active working-directory / `Global` highlighting, auto-sync on
+//! instant in-memory filename filtering, active working-directory / `Home` highlighting, auto-sync on
 //! session tab switch (non-blocking via `spawn_host_call`, zero background timers), pagination, and
 //! unified file activation (wide inline UTF-8 preview with `Esc` back to chat, or system default opener).
 
@@ -19,6 +19,10 @@ use super::panel::AsyncJob;
 use super::ui::LIST_W;
 use super::App;
 
+/// The virtual directory of the sessions that have no folder (the wire's `global`): where it is, and the words of its row (`M22-P03`).
+pub(crate) const HOME_PATH: &str = "lico://home";
+pub(crate) const HOME_LABEL: &str = "Home  lico://home";
+
 #[derive(Clone, Default)]
 pub struct SidebarEntryGeom {
     pub index: usize,
@@ -30,7 +34,7 @@ pub struct SidebarEntryGeom {
 
 #[derive(Clone, Default)]
 pub struct SidebarGeom {
-    pub dir_tab_rect: Option<Rect>, pub chats_tab_rect: Option<Rect>, pub calls_tab_rect: Option<Rect>,
+    pub dir_tab_rect: Option<Rect>, pub chats_tab_rect: Option<Rect>,
     pub back_rect: Option<Rect>, pub forward_rect: Option<Rect>,
     pub bookmark_toggle_rect: Option<Rect>, pub bookmarks_btn_rect: Option<Rect>,
     pub host_rect: Option<Rect>,
@@ -54,7 +58,7 @@ pub struct SidebarGeom {
 #[derive(Default)]
 pub struct SidebarState {
     pub collapsed: bool,
-    pub tab: u8, // 0 = Directories, 1 = Chats
+    pub tab: u8, // 0 = Directories, 1 = Chats (`M22-P03`: no third tab)
     pub initialized: bool,
     pub global_scope: bool,
     pub ssh_host: Option<String>,
@@ -79,11 +83,11 @@ pub struct SidebarState {
     pub last_opened: Option<String>,
     pub nav: super::sidebar_nav::DirNavState,
     pub chats: super::sidebar_chats::ChatsSidebarState,
-    pub native_entries: Vec<super::native_prompt::NativeEntry>, pub native_prompt: Option<super::native_prompt::Prompt>, pub native_asked: bool, // the provider's own default home (`Native`) and its first-run question (`M11-P01`)
+    pub native_entries: Vec<super::native_prompt::NativeEntry>, // the provider's own default home (`Native`) (`M11-P01`; its first-run question is gone, `M22-P03`)
     pub llm: Option<super::llm_find::LlmFind>, // "Find Local LLM servers..." while it is open (`M12`)
     pub llm_cache: Vec<super::llm_find::Kept>, // the last result of each (host, all users) pair, in this window's memory only (`M13`)
     pub newchat: Option<super::newchat::NewChat>, // the "+ New chat" modal while it is open (`M10-P03`)
-    pub calls: super::sidebar_calls::CallsSidebarState,
+    pub calls: super::sidebar_calls::CallsSidebarState, // the rooms the host reports: they feed the room tabs and the `⇄` mark on a session's tab, not a list
     pub geom: SidebarGeom,
 }
 
@@ -277,6 +281,7 @@ impl App {
         }
         self.ui.sidebar.initialized = true;
         self.ui.sidebar.ssh_hosts = self.fetch_ssh_host_aliases();
+        self.chats_prefetch(); // the Chats tab opens with its list
         if self.sidebar_restore_initial_nav() {
             return;
         }
@@ -331,7 +336,7 @@ impl App {
     }
 
     pub(crate) fn sidebar_select_tab(&mut self, tab: u8) {
-        let clamped = tab.min(2);
+        let clamped = tab.min(1);
         self.ui.sidebar.host_popup_open = false;
         self.ui.sidebar.nav.popup_open = false;
         self.ui.sidebar.filter_focused = false;
@@ -652,8 +657,7 @@ impl App {
         }
         match self.ui.sidebar.tab {
             0 => self.sidebar_step_page(if step > 0 { 1 } else { -1 }),
-            1 => self.chats_step_page(if step > 0 { 1 } else { -1 }),
-            _ => self.calls_step_page(if step > 0 { 1 } else { -1 }),
+            _ => self.chats_step_page(if step > 0 { 1 } else { -1 }),
         }
         true
     }
@@ -769,10 +773,9 @@ impl App {
             Action::SidebarChatEntry(idx) => self.chats_activate_entry(idx),
             Action::SidebarPage(d) => match self.ui.sidebar.tab {
                 1 => self.chats_step_page(d),
-                2 => self.calls_step_page(d),
                 _ => self.sidebar_step_page(d),
             },
-            _ => return self.sidebar_calls_click(action),
+            _ => return false,
         }
         true
     }

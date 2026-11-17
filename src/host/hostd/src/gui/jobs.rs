@@ -13,7 +13,7 @@ pub(crate) enum AsyncJob {
     SidebarChats { req_id: u64, scope_key: String, page: usize },
     ChatResume { req_id: u64, created_cwd: Option<String> }, NewChatLast { req_id: u64, account: String }, NewChatStart { req_id: u64, created_cwd: Option<String>, resume: bool },
     CallGet { call_id: String }, CallSay { call_id: String, text: String },
-    CallStart, CallAction,
+    CallAction,
     LlmFind { req_id: u64 },
     LocalScan { req_id: u64 },
     Browser(super::browser_view::BrowserJob),

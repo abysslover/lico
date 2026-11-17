@@ -1,6 +1,6 @@
 """M08: persistent Call Rooms (`⇄ A · B`), `@AgentName` shared-context mentions,
 host-verified `OWNER-AUTHORIZED` call envelopes, bounded 4-round-trip collaboration,
-left-sidebar `[ Calls ]` tab, top-bar Call Room tabs, live `call.say` & `Hang up`,
+the mark `⇄` on the tab of each session in a room (the left-sidebar Calls tab is gone, `M22-P03`), top-bar Call Room tabs, live `call.say` & `Hang up`,
 clickable jump cards, and CLI / IPC / loopback HTTP parity (`0.2.4`)."""
 
 from __future__ import annotations
@@ -246,22 +246,27 @@ def test_mention_popup_shared_context_call_room_tab_sidebar_say_copy_and_hangup(
                 )
                 assert u_after_say["input"] == ""
 
-                # 7. Switch the left sidebar to `[ Calls ]` and verify the Call Room card & quick-connect list!
-                calls_tab_r = u_after_say["sidebar"]["calls_tab_rect"]
-                assert calls_tab_r is not None
-                w.click(*_centre(calls_tab_r))
-                u_calls_sb = wait_for(
+                # 7. M22-P03: the left side has no Calls tab. A room is seen between the agents: the tab of each of its two sessions carries the mark `⇄` (`room` is the call id),
+                #    and a click on the mark opens the room. Close the room's tab; the mark brings it back.
+                sb = u_after_say["sidebar"]
+                assert sb["tab_labels"] == ["Directories", "Chats"] and sb.get("calls_tab_rect") is None and "call_entries" not in sb and "call_peer_starters" not in sb
+                by_session = {t["session"]: t for t in u_after_say["tabs"]["items"]}
+                assert by_session[s_lico]["room"] == call_id and by_session[s_avatar]["room"] == call_id, by_session
+                assert "⇄" in by_session[s_lico]["label"] and by_session[s_lico]["mark_rect"] is not None
+                room_tab = next(t for t in u_after_say["tabs"]["call_items"] if t["call_id"] == call_id)
+                w.click(*_centre(room_tab["close_rect"]))
+                u_closed = wait_for(lambda: (u := w.ui()) and not u["tabs"]["call_items"] and u["calls"]["active_call"] is None and u)
+                w.click(*_centre(next(t for t in u_closed["tabs"]["items"] if t["session"] == s_lico)["mark_rect"]))
+                u_back = wait_for(
                     lambda: (u := w.ui())
-                    and u["sidebar"]["tab"] == "calls"
-                    and len(u["sidebar"]["call_entries"]) == 1
+                    and u["calls"]["active_call"] == call_id
+                    and any(t["call_id"] == call_id and t["selected"] is True for t in u["tabs"]["call_items"])
+                    and u["calls"]["detail"] is not None
                     and u
                 )
-                assert u_calls_sb["sidebar"]["call_entries"][0]["call_id"] == call_id
-                assert "Pri-Lico" in u_calls_sb["sidebar"]["call_entries"][0]["title"]
-                assert "Pri-Avatar" in u_calls_sb["sidebar"]["call_entries"][0]["title"]
 
                 # 8. Click `Hang up` in the Call Room header and verify the room pauses (`paused == True`)!
-                w.click(*_centre(u_calls_sb["calls"]["hangup_rect"]))
+                w.click(*_centre(u_back["calls"]["hangup_rect"]))
                 u_paused = wait_for(
                     lambda: (u := w.ui())
                     and u["calls"]["detail"] is not None
@@ -269,7 +274,7 @@ def test_mention_popup_shared_context_call_room_tab_sidebar_say_copy_and_hangup(
                     and u["calls"]["detail"]["status"] == "paused"
                     and u
                 )
-                assert u_paused["sidebar"]["call_entries"][0]["status"] == "paused"
+                assert any(t["call_id"] == call_id and t["status"] == "paused" for t in u_paused["tabs"]["call_items"])
 
                 # 9. Verify CLI (`lico call list|show|say|hangup|close`) and loopback HTTP (`/v1/calls...`) parity!
                 cli_list = json.loads(

@@ -121,7 +121,7 @@ def test_left_two_tab_directory_sidebar_highlight_filter_preview_and_collapse():
             assert ub["sidebar"]["active_cwd_highlighted"] is True
             assert ub["sidebar"]["total_pages"] >= 2
 
-            # 3. Switching to Global session highlights `★ Global (general)` while keeping proj_b browsable
+            # 3. Switching to a Home session (one with no folder) highlights the Home pill while keeping proj_b browsable
             tab_g = next(t for t in ub["tabs"]["items"] if t["session"] == s_g)
             w.click(*_tab_click_xy(tab_g))
             ug = wait_for(lambda: (u := w.ui()) and u["selected"] == s_g and u["sidebar"]["global_highlighted"] is True and u)

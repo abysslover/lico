@@ -21,6 +21,9 @@ pub struct TabItemGeom {
     pub selected: bool,
     pub state: String,
     pub unread: bool,
+    /// `M22-P03`: the call id of the room this session is in (the mark `⇄` on its tab), and the rect of the mark, whose click opens the room.
+    pub room: Option<String>,
+    pub mark_rect: Option<[f32; 4]>,
     pub rect: [f32; 4],
     pub close_rect: [f32; 4],
 }
@@ -127,6 +130,8 @@ impl App {
                     "selected": t.selected,
                     "state": t.state,
                     "unread": t.unread,
+                    "room": t.room,
+                    "mark_rect": t.mark_rect,
                     "rect": t.rect,
                     "close_rect": t.close_rect,
                 })
@@ -189,7 +194,7 @@ impl App {
         } else if self.ui.tab_scroll >= total {
             self.ui.tab_scroll = total - 1;
         }
-        let entries: Vec<(String, String, bool, bool, String, bool, bool)> = self
+        let entries: Vec<(String, String, bool, bool, String, bool, bool, Option<String>)> = self
             .ui
             .numbered
             .iter()
@@ -203,6 +208,7 @@ impl App {
                     r.state.clone(),
                     self.row_unread(r),
                     !r.approvals.is_empty(),
+                    self.ui.sidebar.calls.room_of(&r.session).map(|c| c.call_id.clone()),
                 ))
             })
             .collect();
@@ -270,9 +276,11 @@ impl App {
         let mut tabs_limit_x = n_rect[0] - 6.0 * s;
 
         let close_w = controls.width(fs, "\u{00d7}") + 8.0 * s;
+        // the mark of a session that is in a room sits after its caption: `<caption> ⇄`
+        let mark_glyph = "\u{21c4}";
         let widths: Vec<f32> = entries
             .iter()
-            .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
+            .map(|(_, cap, .., room)| controls.width(fs, &if room.is_some() { format!("{cap} {mark_glyph}") } else { cap.clone() }) + 14.0 * s + close_w)
             .collect();
         let call_widths: Vec<f32> = call_entries
             .iter()
@@ -325,7 +333,7 @@ impl App {
             };
             let sess_limit_x = (tabs_limit_x - call_reserve).max(tx);
             for idx in self.ui.tab_scroll..entries.len() {
-                let (ref sid, ref cap, is_global, selected, ref state, unread, has_app) = entries[idx];
+                let (ref sid, ref cap, is_global, selected, ref state, unread, has_app, ref room) = entries[idx];
                 let tw = widths[idx];
                 if tx + tw > sess_limit_x && (idx > self.ui.tab_scroll || call_reserve > 0.0) {
                     break;
@@ -350,13 +358,26 @@ impl App {
                     controls::fill(buf, width, height, [trect[0], trect[1], trect[2], trect[1] + 2.0 * s], accent);
                 }
                 let crect = [rx1 - close_w - 2.0 * s, by0 + 2.0 * s, rx1 - 2.0 * s, by1];
-                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, cap, text_col);
+                let label = if room.is_some() { format!("{cap} {mark_glyph}") } else { cap.clone() };
+                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, &label, text_col);
                 controls.target(trect, Action::Tab(sid.clone()));
+                // the mark: the last glyph of the label; it is registered after the tab, so its click wins and opens the room
+                let mark_rect = room.as_ref().and_then(|cid| {
+                    let x1 = (tx + 7.0 * s + controls.width(fs, &label)).min(crect[0] - 2.0 * s);
+                    let x0 = x1 - controls.width(fs, mark_glyph) - 6.0 * s;
+                    (x1 > x0 && x0 > trect[0]).then(|| {
+                        let r = [x0, by0, x1, y1 - 1.0];
+                        controls.target(r, Action::CallTab(cid.clone()));
+                        r
+                    })
+                });
                 controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
                 controls.target(crect, Action::CloseTab(sid.clone()));
                 self.ui.tabs_geom.items.push(TabItemGeom {
                     session: sid.clone(),
-                    label: cap.clone(),
+                    label,
+                    room: room.clone(),
+                    mark_rect,
                     global: is_global,
                     selected,
                     state: state.clone(),

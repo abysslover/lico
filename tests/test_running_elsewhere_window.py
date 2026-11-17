@@ -51,7 +51,7 @@ def test_the_window_marks_a_live_chat_refuses_its_resume_allows_new_and_hints_wh
             tab = u["tabs"]["items"][0]
             w.click((tab["rect"][0] + tab["close_rect"][0]) / 2.0, (tab["rect"][1] + tab["rect"][3]) / 2.0)
             wait_for(lambda: (x := w.ui()) and x["sidebar"]["cwd"] == str(proj) and x["sidebar"]["parent"] and x)
-            assert w.ui()["sidebar"]["native_prompt"] is None  # the default home has a chat and is on by default: no question is asked
+            assert "native_prompt" not in w.ui()["sidebar"]  # the default home has a chat and is on by default: no question is asked (M22-P03: the question is gone from the window)
 
             # the Chats tab marks the chat that is being written, not the closed one
             w.click(*_centre(w.ui()["sidebar"]["chats_tab_rect"]))

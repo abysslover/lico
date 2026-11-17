@@ -56,9 +56,9 @@ def test_the_chats_tab_the_command_and_the_new_chat_dialog_agree_and_resume_open
             w.click((tab["rect"][0] + tab["close_rect"][0]) / 2.0, (tab["rect"][1] + tab["rect"][3]) / 2.0)
             wait_for(lambda: (u := w.ui()) and u["sidebar"]["cwd"] == str(proj) and u)
 
-            # 1. the three tabs and what the Chats tab lists for this folder
+            # 1. the two tabs and what the Chats tab lists (M22-P03: every session of this machine, whatever the folder)
             sb = w.ui()["sidebar"]
-            assert sb["tab_labels"] == ["Directories", "Chats", "Calls"]
+            assert sb["tab_labels"] == ["Directories", "Chats"]
             w.click(*_centre(sb["chats_tab_rect"]))
             listed = wait_for(lambda: (u := w.ui()["sidebar"]) and u["tab"] == "chats" and u["chats_loading"] is False and u["chats_total"] >= 2 and u)
             ids = [e["provider_session"] for e in listed["chats_entries"] if e["provider_session"].startswith("cl-e2e")]

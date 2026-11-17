@@ -49,22 +49,22 @@ def test_the_list_says_when_each_chat_was_written_shows_a_live_chats_title_and_n
             tab = u["tabs"]["items"][0]
             w.click((tab["rect"][0] + tab["close_rect"][0]) / 2.0, (tab["rect"][1] + tab["rect"][3]) / 2.0)
             wait_for(lambda: (x := w.ui()) and x["sidebar"]["cwd"] == str(proj) and x["sidebar"]["parent"] and x)
-            assert w.ui()["sidebar"]["native_prompt"] is None  # the default home is on by default: its chats are listed and nothing is asked
+            assert "native_prompt" not in w.ui()["sidebar"]  # the default home is on by default: its chats are listed and nothing is asked (M22-P03: the question is gone from the window)
             w.click(*_centre(w.ui()["sidebar"]["chats_tab_rect"]))
             listed = wait_for(lambda: (s := w.ui()["sidebar"]) and s["tab"] == "chats" and s["chats_loading"] is False and s["chats_total"] >= 6 and s)
             by_id = {e["provider_session"]: e for e in listed["chats_entries"]}
 
             live = by_id["cl-live"]
             assert live["running_elsewhere"] is True and live["pill"] == "[elsewhere]" and live["pill_line"] == 2, live
-            assert re.fullmatch(r"\[elsewhere\] written (\d+s|\d+m) ago(?: · ClaudeWork)?", live["sub"]), live["sub"]
+            assert re.fullmatch(r"\[elsewhere\] written (\d+s|\d+m) ago · \S+/proj-alpha(?: · ClaudeWork)?", live["sub"]), live["sub"]  # M22-P03: a card names its folder
             assert live["title_shown"].startswith("Refactor the billing exporter so") and len(live["title_shown"]) >= 30, "the mark no longer takes the title's room: " + live["title_shown"]
 
             for sid, age in (("cl-native0", r"10m ago"), ("cl-native1", r"3h ago"), ("cl-native2", r"2d ago")):
                 sub = by_id[sid]["sub"]
-                assert re.fullmatch(age + r" · #" + sid[:8], sub), sub
+                assert re.fullmatch(age + r" · \S+/proj-alpha · #" + sid[:8], sub), sub
                 assert "Native" not in sub and by_id[sid]["pill"] is None, by_id[sid]
             closed = by_id["cl-closed"]
-            assert re.fullmatch(r"2h ago · ClaudeWork · #cl-close", closed["sub"]), closed["sub"]
+            assert re.fullmatch(r"2h ago · \S+/proj-alpha · ClaudeWork · #cl-close", closed["sub"]), closed["sub"]
             assert all("Native" not in e["sub"] for e in listed["chats_entries"]), [e["sub"] for e in listed["chats_entries"]]
             here = next(e for e in listed["chats_entries"] if e["open_session"])
             assert here["pill"] == "[open]" and here["pill_line"] == 1, here

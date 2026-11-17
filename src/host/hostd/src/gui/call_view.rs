@@ -337,17 +337,6 @@ impl App {
         self.dirty = true;
     }
 
-    pub(crate) fn start_call_between(&mut self, from_sid: &str, to_sid: &str) {
-        if self.socket.is_empty() {
-            return;
-        }
-        let _ = self.spawn_host_call(
-            json!({"op": "call.start", "from": from_sid, "to": to_sid}),
-            6,
-            |_| AsyncJob::CallStart,
-        );
-    }
-
     pub(crate) fn on_call_async(&mut self, job: AsyncJob, reply: Value) {
         match job {
             AsyncJob::CallGet { call_id } => {
@@ -373,21 +362,6 @@ impl App {
                     self.ui.flash = Some(format!("Call Room send refused: {err}"));
                     self.dirty = true;
                 }
-            }
-            AsyncJob::CallStart => {
-                if reply["ok"] == json!(1) {
-                    if let Some(det) = parse_call_detail(&reply) {
-                        let cid = det.call_id.clone();
-                        self.ui.calls.details.insert(cid.clone(), det);
-                        self.send("{\"op\":\"status\"}");
-                        self.open_call_tab(&cid);
-                        self.ui.flash = Some("Opened Call Room.".into());
-                    }
-                } else {
-                    let err = reply["error"].as_str().unwrap_or("unknown");
-                    self.ui.flash = Some(format!("Could not start Call Room: {err}"));
-                }
-                self.dirty = true;
             }
             AsyncJob::CallAction => {
                 self.send("{\"op\":\"status\"}");

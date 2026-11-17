@@ -130,7 +130,7 @@ impl DirBookmarkEntry {
 
 fn make_bookmark_label(loc: &DirHistoryEntry) -> String {
     let base = if loc.global {
-        "Global".to_string()
+        "Home".to_string()
     } else {
         let leaf = if loc.cwd == "/" {
             "/"

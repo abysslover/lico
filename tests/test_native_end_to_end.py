@@ -62,7 +62,7 @@ def test_earlier_chats_are_found_again_through_native_and_a_chat_another_termina
                 conn = Conn(w.socket)
 
                 # 1. nothing is asked: the chats of the default home are listed from the first moment
-                assert w.ui()["sidebar"]["native_prompt"] is None
+                assert "native_prompt" not in w.ui()["sidebar"]
                 assert {"cl-before-lico", "cl-open-terminal"} <= {i["provider_session"] for i in conn.call(op="session.chats", cwd=str(proj))["items"]}
 
                 # 2. the Chats tab lists the chats from before Lico; only the one the other terminal writes is marked

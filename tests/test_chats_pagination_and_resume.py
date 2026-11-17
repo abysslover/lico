@@ -392,20 +392,20 @@ def test_gui_chats_tab_multi_page_navigation_and_one_click_resume():
             w.click(*_tab_click_xy(open_tab))
             ua = wait_for(lambda: (u := w.ui()) and u["selected"] == s_open and u["sidebar"]["cwd"] == str(proj_a) and u)
 
-            # 1. Switch to `[ Chats ]` tab -> loads Page 1 of 37 sessions (>= 2 pages)
+            # 1. Switch to `[ Chats ]` tab -> loads Page 1 of 39 sessions (M22-P03: the 37 of this folder and the 2 Home chats; >= 2 pages)
             w.click(*_centre(ua["sidebar"]["chats_tab_rect"]))
             up1 = wait_for(
                 lambda: (u := w.ui())
                 and u["sidebar"]["tab"] == "chats"
                 and u["sidebar"]["chats_loading"] is False
-                and u["sidebar"]["chats_total"] == 37
+                and u["sidebar"]["chats_total"] == 39
                 and u
             )
             total_pages = up1["sidebar"]["chats_total_pages"]
             assert total_pages >= 2
             assert up1["sidebar"]["chats_page"] == 1
 
-            # 2. Traverse ALL pages via `>` and verify all 37 distinct chats are reachable
+            # 2. Traverse ALL pages via `>` and verify all 39 distinct chats are reachable
             seen_ids = [e["provider_session"] for e in up1["sidebar"]["chats_entries"]]
             cur_u = up1
             for expected_page in range(2, total_pages + 1):
@@ -417,7 +417,8 @@ def test_gui_chats_tab_multi_page_navigation_and_one_click_resume():
                     and u
                 )
                 seen_ids.extend(e["provider_session"] for e in cur_u["sidebar"]["chats_entries"])
-            assert len(seen_ids) == 37 and len(set(seen_ids)) == 37
+            assert len(seen_ids) == 39 and len(set(seen_ids)) == 39
+            assert {"cl-glob-hist-1", "cl-glob-hist-2"} <= set(seen_ids), "the Home chats are in the same list"
 
             # Return to Page 1 via `<`
             while cur_u["sidebar"]["chats_page"] > 1:
@@ -445,27 +446,14 @@ def test_gui_chats_tab_multi_page_navigation_and_one_click_resume():
             uf_cleared = wait_for(
                 lambda: (u := w.ui())
                 and u["sidebar"]["chats_loading"] is False
-                and u["sidebar"]["chats_total"] == 37
+                and u["sidebar"]["chats_total"] == 39
                 and u
             )
 
-            # 4. Toggle `Global (general)` scope in `[ Chats ]`, then switch back to active directory
-            w.click(*_centre(uf_cleared["sidebar"]["global_rect"]))
-            ug = wait_for(
-                lambda: (u := w.ui())
-                and u["sidebar"]["global_scope"] is True
-                and u["sidebar"]["chats_loading"] is False
-                and u["sidebar"]["chats_total"] == 2
-                and u
-            )
-            w.click(*_centre(ug["sidebar"]["active_dir_rect"]))
-            udir = wait_for(
-                lambda: (u := w.ui())
-                and u["sidebar"]["global_scope"] is False
-                and u["sidebar"]["chats_loading"] is False
-                and u["sidebar"]["chats_total"] == 37
-                and u
-            )
+            # 4. M22-P03: no scope rows in `[ Chats ]` (no Global pill, no folder row): the list is the same whatever the folder
+            assert uf_cleared["sidebar"].get("global_rect") is None and uf_cleared["sidebar"].get("active_dir_rect") is None
+            assert uf_cleared["sidebar"]["chats_scope"] == "all"
+            udir = uf_cleared
 
             # 5. One-click resume on `[closed]` (`disconnected`) tab -> reconnects in-place
             closed_card = next(e for e in udir["sidebar"]["chats_entries"] if e["open_session"] == s_closed)

@@ -65,7 +65,7 @@ def test_no_question_is_asked_and_the_settings_menu_turns_native_off_and_on():
             conn = Conn(w.socket)
             assert {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]} == {"claude": "on", "codex": "on"}, "on by default: nothing was asked"
             time.sleep(2.5)  # a negative: no question comes, during this window start or after it
-            assert w.ui()["sidebar"]["native_prompt"] is None
+            assert "native_prompt" not in w.ui()["sidebar"]  # M22-P03: the question is gone from the window
 
             # the dialog lists the managed accounts and the two Native entries
             w.click(*_centre(w.ui()["sidebar"]["new_chat_rect"]))
@@ -100,7 +100,7 @@ def test_native_is_open_from_the_start_in_the_dialog_the_chats_tab_and_the_heade
         made: dict[str, str] = {}
         with _window(root, proj, c_args, x_args, made) as w:
             _show_proj(w, proj)
-            assert w.ui()["sidebar"]["native_prompt"] is None, "no question is asked"
+            assert "native_prompt" not in w.ui()["sidebar"], "no question is asked"
             conn = Conn(w.socket)
             wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]} == {"claude": "on", "codex": "on"})
 
