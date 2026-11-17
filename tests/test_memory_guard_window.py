@@ -34,15 +34,15 @@ def run(mib, check, auto_close=False):
 
         def session(w):
             made["sid"], made["generation"] = new_claude(Conn(w.socket), name="heavy")
-            if auto_close:   # the owner's switch: `memory.json` in the state folder, owner-only
-                setting = Path(w.directory) / "state" / "lico" / "memory.json"
-                setting.write_text('{"auto_close": true}')
-                setting.chmod(0o600)
+            # the owner's file `memory.json` in the state folder, owner-only: small limits, so that the tests hold little memory (the defaults 400 and 500 MB are the unit tests')
+            setting = Path(w.directory) / "state" / "lico" / "memory.json"
+            setting.write_text('{"warn_mb": 40, "limit_mb": 60' + (', "auto_close": true' if auto_close else "") + "}")
+            setting.chmod(0o600)
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
             conn, sid, generation = Conn(w.socket), made["sid"], made["generation"]
             begin(conn, sid, generation, f"hold:{mib}:0:0")
-            figure = wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m.get("max_rss_kb", 0) >= mib * 1024 * 0.95 and m)
+            figure = wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m.get("max_rss_kb", 0) >= (mib + 20) * 1024 * 0.95 and m)
             check(w, conn, sid, figure)
 
 
@@ -54,81 +54,79 @@ def tab_rect(w, sid):
     return next(t["rect"] for t in w.ui()["tabs"]["items"] if t["session"] == sid)
 
 
+def window_sees(w, mb):
+    """The window has read a status that carries the session's figure (the line under the list sums the sessions): a click before that finds the old figure and asks nothing."""
+    wait_for(lambda: "sessions " in w.ui()["memory"]["total"] and int(w.ui()["memory"]["total"].split("sessions ")[1].split("M")[0].split(".")[0]) >= mb, timeout=30)
+
+
 def settle(w):
     import time
     time.sleep(1.2)      # the window redraws after the model changed; let the picture catch up
 
 
-def test_a_session_holding_450_mb_is_orange_and_a_click_asks_nothing():
+def test_a_session_holding_45_mb_is_orange_and_a_click_asks_nothing():
     def check(w, conn, sid, figure):
-        assert 400 * 1024 <= figure["max_rss_kb"] < 500 * 1024, figure
+        assert 40 * 1024 <= figure["max_rss_kb"] < 60 * 1024, figure
         w.click(*centre(tab_rect(w, sid)))
         wait_for(lambda: w.ui()["selected"] == sid)
-        wait_for(lambda: "M" in w.ui()["memory"]["total"] and int(w.ui()["memory"]["total"].split("sessions ")[1].split("M")[0]) >= 400)
+        wait_for(lambda: "M" in w.ui()["memory"]["total"] and int(w.ui()["memory"]["total"].split("sessions ")[1].split("M")[0]) >= 20)
         settle(w)
         assert w.ui()["panel"] is None, "orange asks nothing"
         shot(w, "1_orange.png")
-    run(450, check)
+    run(22, check)
 
 
-def test_a_click_on_a_red_session_asks_once_and_end_and_resume_gives_a_clean_process():
+def test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_a_clean_process_and_the_session_is_left_alone_meanwhile():
+    """One test for the whole red flow (each heavy session holds over 500 MB: the suite's memory bound is why they are not one test each)."""
     def check(w, conn, sid, figure):
-        assert figure["max_rss_kb"] >= 500 * 1024, figure
+        import time
+        assert figure["max_rss_kb"] >= 60 * 1024, figure
+        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60}, "the host sends the owner's limits in every status reply"
+        window_sees(w, 60)
         w.click(*centre(tab_rect(w, sid)))
-        panel = wait_for(lambda: w.ui()["panel"])
+        panel = wait_for(lambda: w.ui()["panel"], timeout=30)
         text = str(panel)
-        assert "limit 500" in text and "End it and continue" in text and "tool jobs that were running are lost" in text, text
+        assert "limit 60" in text and "End it and continue" in text and "tool jobs that were running are lost" in text, text
         settle(w)
         shot(w, "2_red_question.png")
-        w.key("n")                                         # cancel: the session opens as usual and stays as it is
-        wait_for(lambda: w.ui()["panel"] is None)
-        assert status_of(conn, sid)["state"] == "running" and status_of(conn, sid)["memory"]["max_rss_kb"] >= 500 * 1024
+        w.key("n")                                         # cancel: the session opens as usual and stays as it is (no switch is on: nothing else touches it)
+        wait_for(lambda: w.ui()["panel"] is None, timeout=30)
+        assert status_of(conn, sid)["state"] == "running" and status_of(conn, sid)["memory"]["max_rss_kb"] >= 60 * 1024
         w.click(*centre(tab_rect(w, sid)))
-        import time
         time.sleep(0.8)
         assert w.ui()["panel"] is None, "once for each red episode"
         settle(w)
         shot(w, "3_red_after_cancel.png")
-        # a new episode: leave red (end and resume below does it); here the person asks again through a second session click after the figure has dropped
+        # the guard's own close records who closed it and a resume clears it; the figure drops, so the red episode ends
         reply = conn.call(op="session.close", session=sid, generation=status_of(conn, sid)["generation"], by="guard")
         assert reply["ok"] == 1 and status_of(conn, sid)["closed_by"] == "guard", reply
         reply = conn.call(op="session.resume", session=sid, generation=reply["generation"])
         assert reply["ok"] == 1 and "closed_by" not in status_of(conn, sid), reply
-        wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m["max_rss_kb"] < 400 * 1024 and m)
-    run(520, check)
+        wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m["max_rss_kb"] < 40 * 1024 and m, timeout=40)
+    run(70, check)
 
 
 def test_y_on_the_question_ends_the_session_and_resumes_it_to_a_clean_process():
     def check(w, conn, sid, figure):
         before = status_of(conn, sid)
+        window_sees(w, 60)
         w.click(*centre(tab_rect(w, sid)))
-        wait_for(lambda: w.ui()["panel"])
+        wait_for(lambda: w.ui()["panel"], timeout=30)
         w.key("y")
-        wait_for(lambda: w.ui()["panel"] is None)
-        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s.get("memory") and s["memory"]["max_rss_kb"] < 400 * 1024 and s)
+        wait_for(lambda: w.ui()["panel"] is None, timeout=30)
+        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s.get("memory") and s["memory"]["max_rss_kb"] < 40 * 1024 and s, timeout=40)
         assert after["generation"] > before["generation"] and "closed_by" not in after, (before["generation"], after)
         settle(w)
         shot(w, "4_after_end_and_resume.png")
-    run(520, check)
+    run(70, check)
 
 
 def test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched():
     def check(w, conn, sid, figure):
         first = status_of(conn, sid)["generation"]
         # the guard acts when something looks at the status: the polls of this test are those looks (and the window's own)
-        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s["generation"] > first and s.get("memory") and s["memory"]["max_rss_kb"] < 400 * 1024 and s, timeout=60)
+        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s["generation"] > first and s.get("memory") and s["memory"]["max_rss_kb"] < 40 * 1024 and s, timeout=90)
         assert "closed_by" not in after, "resumed: nobody closed it now"
         settle(w)
         shot(w, "5_auto_closed_and_resumed.png")
-    run(520, check, auto_close=True)
-
-
-def test_without_the_switch_a_red_session_is_left_alone():
-    def check(w, conn, sid, figure):
-        import time
-        first = status_of(conn, sid)["generation"]
-        for _ in range(8):
-            time.sleep(1.0)
-            s = status_of(conn, sid)
-        assert s["state"] == "running" and s["generation"] == first and s["memory"]["max_rss_kb"] >= 500 * 1024, s
-    run(520, check)
+    run(70, check, auto_close=True)

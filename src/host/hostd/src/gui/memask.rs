@@ -19,7 +19,7 @@ fn first_red(id: &str, level: Level) -> bool {
 
 /// The question's text: the heading and the lines (Y and N lines are the actions of the confirmation panel).
 pub(super) fn view(ask: &Ask) -> (String, Vec<String>) {
-    let limit = lico_memguard::Limits::default().limit_mb;
+    let limit = memrow::limits().limit_mb;
     (
         "Memory".into(),
         vec![

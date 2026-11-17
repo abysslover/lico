@@ -167,6 +167,11 @@ fn plan(entries: &[Value], cfg: &Config, st: &mut State, now: u64) -> Vec<(Strin
     out
 }
 
+/// The warning level and the limit the host uses (the owner's `memory.json`, else 400 and 500 MB): sent in every `status` reply so that the window colours by the same numbers.
+pub fn limits(state_dir: &Path) -> Limits {
+    read_config(state_dir).limits
+}
+
 /// What to do now after a `status` reply (computed here, done by the hubs: this module names no hub, so it stays out of the cycle of the hubs).
 pub struct Step {
     pub now: u64,

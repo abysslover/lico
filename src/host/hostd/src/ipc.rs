@@ -290,9 +290,13 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "hello" => core::hello(shared),
         "capabilities" => crate::admin::capabilities(shared),
         "status" => {
-            let r = core::status(shared);
-            if let Ok(reply) = &r {
+            let mut r = core::status(shared);
+            if let Ok(reply) = &mut r {
                 crate::lifecycle::guard_tick(shared, reply);
+                if let Some(dir) = shared.cfg.registry_dir.parent() {
+                    let l = crate::guard::limits(dir);
+                    reply.insert("memory_limits".into(), json!({"warn_mb": l.warn_mb, "limit_mb": l.limit_mb}));
+                }
             }
             r
         }

@@ -69,9 +69,26 @@ pub fn total_ink(plain: Color) -> Color {
     }
 }
 
+/// The warning level and the limit in MB the host sent (the defaults until it does).
+static WARN_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(400);
+static LIMIT_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(500);
+
+pub fn limits() -> lico_memguard::Limits {
+    lico_memguard::Limits { warn_mb: WARN_MB.load(std::sync::atomic::Ordering::Relaxed), limit_mb: LIMIT_MB.load(std::sync::atomic::Ordering::Relaxed) }
+}
+
+/// Takes the limits of a `status` reply when they are usable.
+pub fn set_limits(status: &Value) {
+    let l = lico_memguard::Limits { warn_mb: status["memory_limits"]["warn_mb"].as_u64().unwrap_or(0), limit_mb: status["memory_limits"]["limit_mb"].as_u64().unwrap_or(0) };
+    if l.valid() {
+        WARN_MB.store(l.warn_mb, std::sync::atomic::Ordering::Relaxed);
+        LIMIT_MB.store(l.limit_mb, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// The level of a session for the memory guard: its largest single process against the warning level and the limit (400 and 500 MB unless the owner's setting says otherwise).
 pub fn level(row: &Row) -> lico_memguard::Level {
-    lico_memguard::Limits::default().level(row.max_rss_kb)
+    limits().level(row.max_rss_kb)
 }
 
 /// The colour of a figure: the row's own below the warning level, orange from it, red from the limit.
@@ -134,6 +151,7 @@ pub fn sentence(row: &Row, cols: usize) -> Option<String> {
 impl Look {
     /// A status reply: the host's figure, and this window's own (read every third time; one small file).
     pub fn read(&mut self, status: &Value) {
+        set_limits(status);
         let kb = |k: &str| status["host_memory"][k].as_u64().unwrap_or(0);
         self.host = Figure { private_kb: kb("private_kb"), rss_kb: kb("rss_kb"), max_rss_kb: kb("rss_kb"), processes: 1 };
         if self.reads % 3 == 0 {
