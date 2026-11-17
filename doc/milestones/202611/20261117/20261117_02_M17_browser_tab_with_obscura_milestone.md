@@ -1,6 +1,6 @@
 # M17 — A Browser in a Tab, with the Obscura Engine (Phase 0)
 
-- Status: **all nine phases P01 to P09 implemented, and the patch P10 (`lico 0.5.1`, commit `1592da5`; done after the M18 Phase 0 report)**; every approval was given by the LEAD under the owner's delegation (the owner away) and is to be confirmed by the owner; the milestone waits for the lead's close and the owner's G3 and G4 (nothing here is accepted by the owner)
+- Status: **all nine phases P01 to P09 implemented, and the patch P10 (`lico 0.5.1`, commit `1592da5`; done after the M18 Phase 0 report)**; every approval was given by the LEAD under the owner's delegation (the owner away) and is to be confirmed by the owner; the milestone is on `main` since 2026-11-18 by the owner's G4 and push yes in the chat (a fast-forward of `main` through the M20-P03 tip); G3 (the owner's inspection) is pending: inspection pending. Its engine, Obscura, was replaced by Moli in M20 (release `0.7.0`); this note stays as the history of the tab
 - Version: 1.0.0
 - Approved: not yet (G1 for the milestone waits for the Phase 0 report)
 - Project: Lico

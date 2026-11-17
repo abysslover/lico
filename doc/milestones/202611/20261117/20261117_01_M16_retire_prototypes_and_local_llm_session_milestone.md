@@ -1,6 +1,6 @@
 # M16 — Retire the Prototypes, and a Found Local LLM Server as Its Own Session Kind (Phase 0)
 
-- Status: all eight phases P01 to P08 implemented (`lico 0.4.0`), waiting for the lead's close and the owner's G3; before: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 implemented (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
+- Status: all eight phases P01 to P08 implemented (`lico 0.4.0`), on `main` since 2026-11-18 by the owner's G4 and push yes in the chat (a fast-forward of `main` through the M20-P03 tip); G3 (the owner's inspection) is pending: inspection pending; before: P01 and P02 implemented; the owner accepted the design on 2026-11-17 (ten recommendations of report 119); P03 and P04 implemented (P01 and P02 approved by the owner on the screen on 2026-11-17; later phases are sketches until the owner picks the design)
 - Version: 1.0.0
 - Approved: 2026-11-17 (the owner's approval of the short plan for P01 and P02)
 - Project: Lico

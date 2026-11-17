@@ -1,6 +1,6 @@
 # M19 — The Memory Guard
 
-- Status: P01 done and released as 0.6.0 (slices A to D by the worker, the rest and the release by the lead after the worker's budget ended); every approval is the LEAD's under the owner's delegation, to be confirmed by the owner. Report: [M19-P01 report](../../../reports/202611/20261117/20261117_28_M19-P01_memory_guard_and_0_6_0_report.md)
+- Status: P01 done and released as 0.6.0, on `main` since 2026-11-18 by the owner's G4 and push yes in the chat (a fast-forward of `main` through the M20-P03 tip); G3 (the owner's inspection) is pending: inspection pending; (slices A to D by the worker, the rest and the release by the lead after the worker's budget ended); every approval is the LEAD's under the owner's delegation, to be confirmed by the owner. Report: [M19-P01 report](../../../reports/202611/20261117/20261117_28_M19-P01_memory_guard_and_0_6_0_report.md)
 - Version: 1.0.0
 - Project: Lico
 - Updated: 2026-11-17
