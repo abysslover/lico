@@ -150,6 +150,9 @@
 | [M20 milestone](milestones/202611/20261117/20261117_32_M20_moli_engine_component_milestone.md) | Moli is the engine of the browser tab, held by the versioned component `lico-engine` (P01 to P03 done, release 0.7.0; M21, our own build, waits for the owner) |
 | [M20-P01 plan](plans/202611/20261117/20261117_33_M20-P01_moli_engine_component_plan.md) | `lico-engine`, the Moli adapter, Obscura and the stealth setting removed |
 | [M20 report](reports/202611/20261117/20261117_34_M20_moli_engine_jpeg_frames_and_0_7_0_report.md) | Moli as the engine and `lico-engine`, JPEG frames (the big-frame fix, `lico-frame` 0.2.0), the refusal-order fix of `lico-proxy` 0.4.1, release 0.7.0: the measurements, the limits and what is open for the owner |
+| [M22 milestone](milestones/202611/20261118/20261118_01_M22_simple_window_chats_of_all_sessions_milestone.md) | A simpler window: two left tabs, every past session in Chats, one virtual directory Anon, a path row that is never empty, a one-line top bar, an address bar at the top of the browser tab (proposed) |
+| [M22-P01 plan](plans/202611/20261118/20261118_03_M22-P01_chats_of_all_sessions_plan.md) | `session.chats` scope `all`: every past session in one list, newest first, bounded cost |
+| [M23 milestone](milestones/202611/20261118/20261118_02_M23_terminal_agents_milestone.md) | A terminal in Lico: an agent run in it comes into Lico (idea; the questions the research must answer) |
 | [M18 milestone](milestones/202611/20261117/20261117_03_M18_remote_lico_host_milestone.md) | The remote lico host (Phase 0 done) |
 | [M19 milestone](milestones/202611/20261117/20261117_04_M19_memory_guard_milestone.md) | The memory guard (P01: done, release 0.6.0) |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
