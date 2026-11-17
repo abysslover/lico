@@ -198,3 +198,20 @@ pub fn warning_text(id: &str, name: &str, mb: u64, limit_mb: u64) -> String {
 pub fn machine_warning_text(sessions: u32, percent_available: u32, available_mb: u64) -> String {
     format!("Lico memory warning: {sessions} sessions are running and only {percent_available} percent of memory is available ({available_mb} MB). End an idle heavy session and continue it later with `lico session close ID` then `lico session resume ID`.")
 }
+
+/// The minutes after which a WORKING session that shows nothing is called stalled, unless the owner's setting says otherwise.
+pub const DEFAULT_STALL_MIN: u64 = 10;
+
+/// A working session whose last activity is `quiet_secs` ago is stalled from `stall_min` minutes on; an idle session waits for the person and never is; 0 minutes switches the check off.
+pub fn stalled(working: bool, quiet_secs: u64, stall_min: u64) -> bool {
+    working && stall_min > 0 && quiet_secs >= stall_min.saturating_mul(60)
+}
+
+/// "last activity N min ago" (minutes up to two hours, then hours).
+pub fn quiet_text(quiet_secs: u64) -> String {
+    match quiet_secs / 60 {
+        0 => "last activity just now".to_string(),
+        m if m < 120 => format!("last activity {m} min ago"),
+        m => format!("last activity {} h ago", m / 60),
+    }
+}

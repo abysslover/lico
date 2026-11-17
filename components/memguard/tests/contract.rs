@@ -90,3 +90,25 @@ fn the_warning_to_the_main_agent_is_a_fixed_text_with_numbers_the_id_and_the_com
     let m = machine_warning_text(8, 7, 1024);
     assert!(m.contains("8 sessions") && m.contains("1024 MB") && m.contains("lico session close"), "{m}");
 }
+
+#[test]
+fn a_working_session_that_shows_nothing_for_the_set_time_is_stalled_and_an_idle_one_never_is() {
+    assert_eq!(DEFAULT_STALL_MIN, 10);
+    assert!(!stalled(true, 10 * 60 - 1, 10));
+    assert!(stalled(true, 10 * 60, 10));
+    assert!(stalled(true, 3 * 3600 + 1800, 10), "the worker that stood still for 3.5 hours");
+    assert!(!stalled(false, 10_000, 10), "an idle session waits for the person: not stalled");
+    assert!(!stalled(true, 10_000, 0), "0 minutes switches the check off");
+    assert!(stalled(true, 5 * 60, 5) && !stalled(true, 5 * 60 - 1, 5));
+}
+
+#[test]
+fn the_last_activity_is_said_in_minutes_then_hours() {
+    assert_eq!(quiet_text(0), "last activity just now");
+    assert_eq!(quiet_text(59), "last activity just now");
+    assert_eq!(quiet_text(60), "last activity 1 min ago");
+    assert_eq!(quiet_text(10 * 60 + 59), "last activity 10 min ago");
+    assert_eq!(quiet_text(119 * 60), "last activity 119 min ago");
+    assert_eq!(quiet_text(120 * 60), "last activity 2 h ago");
+    assert_eq!(quiet_text(3 * 3600 + 1800), "last activity 3 h ago");
+}

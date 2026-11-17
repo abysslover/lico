@@ -11,3 +11,6 @@ Pure decisions of the memory guard (M19-P01). No clock (milliseconds are passed 
 5. **Idle.** `Idle::ok` only with no turn running, no approval pending and the person not typing.
 6. **Texts.** `warning_text` and `machine_warning_text` are fixed templates: numbers, the session id, a name cleaned of control characters and cut at 40 characters, and the exact commands `lico session close ID` and `lico session resume ID`.
 7. No thread, file, socket, environment variable or `unsafe`. Budget: the default 256 MiB and 30 s.
+
+8. **Stalled (Slice D).** `stalled(working, quiet_secs, stall_min)`: a WORKING session whose last activity is `stall_min` minutes ago (default `DEFAULT_STALL_MIN` 10; 0 switches it off) is stalled; an idle session never is. `quiet_text(quiet_secs)` says "last activity N min ago" (minutes up to two hours, then hours, "just now" under a minute).
+
