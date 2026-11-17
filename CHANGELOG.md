@@ -9,6 +9,14 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.6.2 — 2026-11-17 (`M17-P12`)
+
+- **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P12 report](doc/reports/202611/20261117/20261117_30_M17-P12_stealth_as_the_owners_option_and_0_6_2_report.md)); release commit `962d9c2`, `10,818,296` bytes (`+151,088` over `0.6.1`, `-1,968` against `0.6.0`), two clean clones identical (`9075ce36...6566`).
+- **Highlights** (the owner's correction in the chat, 2026-11-17: "Lico can use stealth, though it may also not"): the engine's stealth mode is the owner's option, off by default. `{"stealth": true}` in the owner-only `browser.json` starts the ordinary engine with `--stealth` and leaves the engine's own user-agent; the tab's header says "stealth on" and `browser.list` shows it; the tab for this machine's own services never gets it; the fence, the guard and the ports are unchanged. BROW-05 is rewritten (the old sentence "Lico passes no stealth switch" was not the owner's and is corrected; the 0.6.1 entry stays as history). `lico-browser-view` `0.7.1` (two help sentences).
+- **Measured**: stealth did NOT get a Google search through from this machine, with the plain engine, with the plain engine and `--stealth`, or with the release built with stealth; `https://html.duckduckgo.com/html/?q=WORDS` shows real results and the help names it. The stealth build (75 MB) is not pinned or installed.
+- **Also fixed**: a new engine start swept every scratch folder of the state's `browser` folder, so the engine for this machine's own services deleted the running ordinary engine's home and working folder; the folder name holds the host's process number now and the sweep spares this host's folders.
+- **Tests**: system test `browser_engine_stealth_by_the_owners_setting` (new), window tests `10/10`, whole run `574/574` in `170.9 s`, `1,964.2 MiB` (margin `83.8 MiB`, one run).
+
 ## 0.6.1 — 2026-11-17 (`M17-P11`)
 
 - **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P11 report](doc/reports/202611/20261117/20261117_29_M17-P11_page_looks_alive_and_0_6_1_report.md)); release commit `50eb786`, `10,667,208` bytes (`-153,056` against `0.6.0`, not explained: see the report), two clean clones identical (`4ff19236...2948`); recorded as approved by the lead under the owner's delegation, to be confirmed by the owner.
