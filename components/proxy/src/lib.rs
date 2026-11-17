@@ -270,11 +270,13 @@ fn refuse(sh: &Shared, client: &mut TcpStream, code: u16, host: &str, port: u16,
 }
 
 fn refuse_why(sh: &Shared, client: &mut TcpStream, code: u16, host: &str, port: u16, authenticated: bool, why: Why) {
+    // The observer is told BEFORE the answer is written (0.4.1): whoever hears the refusal from the answer (the engine) can only act after the observer's owner has heard it, so a
+    // host that attaches the refusal to the pages that are loading never sees the page finish first.
+    sh.refused.fetch_add(1, Ordering::SeqCst);
+    notify(sh, EventKind::Refused(code), host, port, authenticated, why);
     let challenge = if code == 407 { "Proxy-Authenticate: Basic realm=\"lico\"\r\n" } else { "" };
     let _ = client.write_all(format!("HTTP/1.1 {code} {}\r\nConnection: close\r\nContent-Length: 0\r\n{challenge}\r\n", reason(code)).as_bytes());
     let _ = client.shutdown(Shutdown::Both);
-    sh.refused.fetch_add(1, Ordering::SeqCst);
-    notify(sh, EventKind::Refused(code), host, port, authenticated, why);
 }
 
 fn accept_loop(listener: TcpListener, sh: Arc<Shared>) {

@@ -666,6 +666,41 @@ fn what_is_observed_is_the_host_and_the_port_and_never_the_path_or_the_query() {
 }
 
 #[test]
+fn a_refusal_is_told_to_the_observer_before_the_answer_is_written() {
+    // M20-P03: the host's tab learns of a refusal from the observer and the engine learns of it from the answer; if the answer went first, the engine's page could be finished and
+    // the tab no longer loading before the host heard of the refusal, and the person was never told why (a flake of the window test under load). The observer here holds the
+    // refusal until the test lets it go: while it is held, the client must have been given nothing.
+    let (told_tx, told_rx) = std::sync::mpsc::channel::<()>();
+    let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
+    let (told_tx, go_rx) = (Mutex::new(told_tx), Mutex::new(go_rx));
+    let cfg = Config {
+        observe: Some(Arc::new(move |e: &Event| {
+            if e.kind == EventKind::Refused(403) {
+                let _ = told_tx.lock().unwrap().send(());
+                let _ = go_rx.lock().unwrap().recv_timeout(Duration::from_secs(5));
+            }
+        })),
+        ..config()
+    };
+    let r = rig(cfg, Some(ok_reply()));
+    let mut s = TcpStream::connect(r.proxy.addr()).unwrap();
+    s.write_all(&get("private.test", "")).unwrap();
+    told_rx.recv_timeout(Duration::from_secs(4)).expect("the observer is told of the refusal");
+    s.set_read_timeout(Some(Duration::from_millis(400))).unwrap();
+    let mut first = [0u8; 64];
+    match s.read(&mut first) {
+        Err(e) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+        other => panic!("the answer was written while the observer still held the refusal: {other:?}"),
+    }
+    go_tx.send(()).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(4))).unwrap();
+    let mut out = Vec::new();
+    let _ = s.read_to_end(&mut out);
+    assert_eq!(status(&out), 403, "the refusal is answered once the observer has been told");
+    assert_eq!(r.proxy.stats().refused, 1);
+}
+
+#[test]
 fn stop_ends_every_connection_and_the_listener_and_returns_quickly() {
     let r = rig(config(), None);
     let addr = r.proxy.addr();

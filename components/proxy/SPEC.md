@@ -1,4 +1,4 @@
-# lico-proxy 0.4.0 — specification
+# lico-proxy 0.4.1 — specification
 
 Written with the P05 plan (M17-P05); approved by the lead under the owner's delegation (the owner away), mail 148. Marks: **KNOWN FROM DOCUMENTATION** (HTTP/1.1 message syntax and semantics, RFC 9110 and 9112; `CONNECT`, RFC 9110 section 9.3.6; the special-purpose address registries of IANA, RFC 6890 and its updates; Basic authentication, RFC 7617), **PROPOSED** (the limits; whether the engine takes proxy credentials and honours the proxy for every fetch is the second measurement of M17-P05).
 
@@ -57,10 +57,11 @@ If `Config.token` is set, every request needs `Proxy-Authorization: Basic` for t
 2. After `stop` no listener, no connection and no thread of this crate remains (a connection that waits for a lookup that does not return ends when the lookup does or at its deadline); before `start` nothing exists.
 3. The observer and the counters never see a path, a query, a header value or the token.
 4. The Std resolver is never run by a test; every address in a test is a fake or a loopback socket of the test's own; the "public" addresses of the tests are never connected to (the fake connector sends them to a local origin).
+5. **A refusal is told to the observer before the answer is written** (0.4.1, M20-P03): the counter and the observer are done when the client is first given the refusal, so whoever learns of it from the answer (an engine) can act only after the observer's owner has heard of it. The test holds the observer and checks that the client has received nothing meanwhile.
 
 ## Versioning and budget
 
-`0.1.0` while it has met one client (the engine of M17-P05); `0.4.0` (M17-P08) removes the accept poll; `0.3.0` (M17-P07, mail 152) adds `Event.why`; `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.
+`0.1.0` while it has met one client (the engine of M17-P05); `0.4.1` (M20-P03) tells the observer of a refusal before the answer is written (the host's tab was sometimes not told why a page was refused, under load); `0.4.0` (M17-P08) removes the accept poll; `0.3.0` (M17-P07, mail 152) adds `Event.why`; `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.
 
 ## No timer (0.4.0, M17-P08, mail 152)
 

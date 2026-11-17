@@ -1,6 +1,6 @@
 [package]
 name = "lico-proxy"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "A small HTTP and CONNECT proxy on a loopback port, the fetch guard of a browser engine: it resolves names itself, refuses addresses that are not public, connects to the address it checked and relays; one destination per connection."
 publish = false
