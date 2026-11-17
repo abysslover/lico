@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is next
-- Version: 2.4.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is next, then P05
+- Version: 2.6.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -31,6 +31,7 @@
 - **The browser's address bar takes a search too, for now**: words that are not an address are searched.
 - **A browser page opened before can be opened again.**
 - **Chats also lists what was opened outside Lico, with Claude or Codex themselves; this is on by default** (the setting that includes the provider's own home is ON unless the person turns it off).
+- **The menu is not cut, it is a tree** (the chat, after P04, asked which entries to remove): no function is removed. Starting a session offers the three modes **Claude, Codex, Local LLM** by default, and choosing Local LLM shows the candidates (the servers found) there, so `Find Local LLM servers...` is no longer a menu chore; functions the person may not know when they will use are **classified and kept in the menu bar as a tree** (submenus), not deleted. This is phase P04a.
 - **Performance** (a message sent while the lead worked): listing everything may need performance work and a background index. Experiment, think it through, and leave no delay.
 
 ## What the code does today (read 2026-11-18)
@@ -62,7 +63,8 @@
 | M22-P01 | host: `session.chats` scope `all` (every past session, newest first, one list), CLI and REST | [Plan](../../../plans/202611/20261118/20261118_03_M22-P01_chats_of_all_sessions_plan.md) | done (`0900c95`) |
 | M22-P02 | host: the chat index (background, incremental, every scope reads it), `.jsonl` only, the provider's own home on by default, the performance experiments | [Plan](../../../plans/202611/20261118/20261118_04_M22-P02_chat_index_plan.md) | done (`4cb06c9`) |
 | M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | [Plan](../../../plans/202611/20261118/20261118_05_M22-P03_window_two_tabs_home_chats_plan.md) | done (`7361c18`) |
-| M22-P04 | window: the toolbar of four icon buttons, the menus, the path row above the hint row and never empty, the tab row | written when P03 is done | planned |
+| M22-P04 | window: the toolbar of icon buttons (three now, the terminal's comes with M23), the path row above the hint row and never empty, the tab row without buttons, Global gone from every word | [Plan](../../../plans/202611/20261118/20261118_06_M22-P04_window_toolbar_icons_bottom_rows_plan.md) | done (`8f9cfb7`) |
+| M22-P04a | window: the menu bar as a tree (classified submenus, no function removed) and the New session screen with the three modes Claude, Codex, Local LLM (Local LLM shows the servers found) | written when started | planned |
 | M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
