@@ -1,7 +1,7 @@
 # M22-P02 Plan — The Chat Index: A List That Is Ready Before It Is Asked For
 
-- Status: in work (2026-11-18); steps 1 to 6 done, step 7 (the suite) running
-- Version: 1.1.0
+- Status: done (2026-11-18), `4cb06c9`; steps 1 to 7 done
+- Version: 1.2.0
 - Branch: `phase/M22-P02-chat-index` (stacked on `phase/M22-P01-chats-of-all-sessions`, `0900c95`)
 - Milestone: [M22](../../../milestones/202611/20261118/20261118_01_M22_simple_window_chats_of_all_sessions_milestone.md)
 - The owner's words (the chat, 2026-11-18): listing everything may need performance work and a background index; experiment, think it through, leave no delay.
@@ -74,7 +74,7 @@ If E2 shows the pass above the budget on a cold cache, the answer is a backgroun
 - [x] 4. The builder thread at host start and after the native setting changes.
 - [x] 5. `native::state` default; `account.list`; the manual.
 - [x] 6. E4, E5, E6 (above).
-- [ ] 7. `suite run --changed --receipts`, `cargo xtask check|verify|graph` (`check` and `verify` pass, `graph` runs); commit.
+- [x] 7. `suite run --changed --receipts` (green), `cargo xtask check|verify|graph` (pass); commit `4cb06c9`, with the commit guard on: the owner approved the prefix `phase/M22-P02-` in the chat (2026-11-18, option 1) and the lead added it to the guard's list. The hooks path of the repository (`core.hooksPath`) points at a directory that no longer exists, so a plain commit runs no hook; `0900c95` (M22-P01) was committed that way, without the guard and the changed-files suite step. The owner has not yet decided to repoint it.
 
 ## Stop and ask
 
