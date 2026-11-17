@@ -82,6 +82,7 @@
 "tests/test_session_memory.py" = ["gui", "host"]
 "tests/test_session_lifecycle.py" = ["host"]
 "tests/test_single_executable.py" = ["cli", "gui", "host"]
+"tests/test_install_seam_absent.py" = ["host"]
 "tests/test_size_ratchet.py" = []
 "tests/test_stale_host.py" = ["cli", "gui", "host", "synth"]
 "tests/test_text_rules.py" = ["host"]
