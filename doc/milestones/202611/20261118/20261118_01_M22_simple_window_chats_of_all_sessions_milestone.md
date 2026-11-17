@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is in work
-- Version: 2.2.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is next
+- Version: 2.4.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -48,7 +48,7 @@
 - **The window never says Global.** The wire keeps `global` (a CLI, REST or tool contract names it); a chat of the host's workspace root is a Home chat, its path `lico://home`.
 - **Chats is one list of everything opened before, newest first:** sessions (Lico's own and the provider's own home), later also browser pages (a small mark tells the kind). A click on a session opens it and moves Directories to its folder (or to Home); a click on a page opens it in a browser tab.
 - **A chat index in the host, not a scan per call.** A snapshot of every record of every home (path, size, modification time, folder, title, turn count) is built when the host starts, kept fresh by comparing sizes and times (no record is opened again unless it changed), and read by every scope of `session.chats`. A call reads memory. The lead measures first (cold disk, warm, one changed record, 5,000 records), and the budget is: a page in under 5 ms warm, the first build under 1 s in the background, no call waits for a build. Phase P02.
-- **Calls leave the sidebar, not Lico.** A room two sessions share shows as a small `⇄` mark on the session's card and tab; a click opens the room. The agents' tools and the REST and CLI calls do not change.
+- **Calls leave the sidebar, not Lico.** A room two sessions share shows as a small `⇄` mark on the tab of each of the two sessions (decided in P03: a session with no transcript has no card, a tab always exists while the session is open); a click opens the room. The agents' tools and the REST and CLI calls do not change.
 - **The bottom is: path row, then the key-hint row.** The path row always has text: the folder, `lico://home` in Home, the row under the pointer when there is one.
 - **The top is the menu bar and a toolbar of four icon buttons** (the terminal's appears with M23, so that no button is shown that does nothing); the session tabs row loses `+ +B +BL +G`. Every other action stays in the menus.
 - **The browser tab has an address bar at the top** (`‹ ›  ⟳  address`): cut in the MIDDLE when long (the host name and the end stay), the whole address when the bar has the keys, Enter goes. Text that is not an address is a search with the engine of the setting `browser_search` (a URL with `%s`); the default engine is chosen by one measured probe in P05 (three requests, to find one the engine can use). A new tab is an EMPTY page with the bar focused; the explanation is on `F1`. The click ring goes (BROW-09 is removed in `lico-browser-view`).
@@ -61,7 +61,7 @@
 |---|---|---|---|
 | M22-P01 | host: `session.chats` scope `all` (every past session, newest first, one list), CLI and REST | [Plan](../../../plans/202611/20261118/20261118_03_M22-P01_chats_of_all_sessions_plan.md) | done (`0900c95`) |
 | M22-P02 | host: the chat index (background, incremental, every scope reads it), `.jsonl` only, the provider's own home on by default, the performance experiments | [Plan](../../../plans/202611/20261118/20261118_04_M22-P02_chat_index_plan.md) | done (`4cb06c9`) |
-| M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | [Plan](../../../plans/202611/20261118/20261118_05_M22-P03_window_two_tabs_home_chats_plan.md) | in work |
+| M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | [Plan](../../../plans/202611/20261118/20261118_05_M22-P03_window_two_tabs_home_chats_plan.md) | done (`7361c18`) |
 | M22-P04 | window: the toolbar of four icon buttons, the menus, the path row above the hint row and never empty, the tab row | written when P03 is done | planned |
 | M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
