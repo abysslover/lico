@@ -29,3 +29,5 @@ This reverses ONE rule of M17, "Lico never downloads the engine": opening a brow
 ## Cost
 
 Estimate 3 to 5 USD, stop rule 7 (mail 155); the ledger stops me at 230. Waits at most 4:50.
+
+Mail 156 (the lead, under the owner's delegation, 2026-11-17): the stop rule of P10 is raised from 7 to 9 (P10 stood at 5.3 when it was written: the slow queued builds, not the scope); the ceiling of 230 on the ledger stays. If the money runs short the order is: (a) commit what is green, (b) the one real acceptance and the three window pictures, (c) the release 0.5.1 and its install with the 0.5.0 backup, (d) the cold whole suite and the xtask checks, (e) CHANGELOG, README, milestone note, report 141. The curl sandbox is said as it is: curl is NOT run under the sandbox; it runs with a cleared environment, in the staging folder, and what it fetched is used only after the pinned hash matches.

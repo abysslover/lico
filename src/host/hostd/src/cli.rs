@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::time::{Duration, Instant};
 
-const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
+pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   capabilities                   protocol, operations, HTTP routes, MCP tools and limits\n\
   status                         host and session status\n\
   resources                      host resource report\n\
@@ -27,8 +27,8 @@ const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
   llm discover [--ssh-host HOST] [--all-users]\n\
                  find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
-  browser open URL [--localhost] | list | close ID | shot ID FILE\n\
-                 a browser tab (http or https; the engine is started with the first tab and ended with the last; --localhost lets that tab reach this computer's own addresses; shot writes the newest frame to a new PNG)\n\
+  browser open URL [--local] | list | close ID | shot ID FILE\n\
+                 a browser tab (http or https; the engine is installed by itself the first time, the command waits for that and says so; it is started with the first tab and ended with the last; --local lets that tab reach this computer's own addresses; shot writes the newest frame to a new PNG)\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -672,7 +672,31 @@ pub fn run(args: Vec<String>) {
         ["browser", rest @ ..] => {
             let cwd = std::env::current_dir().unwrap_or_default();
             let request = crate::browser_cli::request(rest, &cwd).unwrap_or_else(|_| die(1, USAGE));
-            expect_ok(call(&mut connect(&socket), request));
+            let is_open = rest.first() == Some(&"open");
+            let mut conn = connect(&socket);
+            let mut reply = call(&mut conn, request);
+            if let (true, Some(line)) = (is_open && reply["ok"] == json!(1), crate::browser_cli::installing_line(&reply)) {
+                // the engine is being installed for this tab: wait on the host's watch (no polling) and say how it ended
+                eprintln!("{line}");
+                let tab = reply["tab"].as_str().unwrap_or("").to_string();
+                let mut seq = 0;
+                loop {
+                    let w = call(&mut conn, json!({"op": "browser.watch", "tab": tab, "seq": seq}));
+                    if w["ok"] != json!(1) || w.get("tab").is_none() {
+                        break;
+                    }
+                    seq = w["seq"].as_u64().unwrap_or(seq);
+                    if w["tab"]["phase"] != json!("installing") {
+                        eprintln!("{}", crate::browser_cli::finished_line(&w["tab"]));
+                        reply["phase"] = w["tab"]["phase"].clone();
+                        if let Some(n) = w["tab"].get("notice") {
+                            reply["notice"] = n.clone();
+                        }
+                        break;
+                    }
+                }
+            }
+            expect_ok(reply);
         }
         ["llm", "discover", rest @ ..] => {
             let mut request = json!({"op": "llm.discover"});

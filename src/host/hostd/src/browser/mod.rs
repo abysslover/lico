@@ -4,6 +4,7 @@
 
 mod engine;
 mod fonts;
+mod installer;
 mod map;
 mod ops;
 mod profile;
@@ -13,11 +14,13 @@ mod supervisor;
 mod watch;
 mod window_ops;
 #[cfg(test)]
+mod ops_install_tests;
+#[cfg(test)]
 mod real_probe;
 #[cfg(test)]
 mod system_tests;
 
 /// Registers the browser's operations with the host (called once, from the root).
 pub fn register() {
-    crate::driver::register_ops(std::sync::Arc::new(ops::Browser::new()));
+    crate::driver::register_ops(ops::Browser::new());
 }

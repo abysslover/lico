@@ -72,3 +72,10 @@ mib = 512
 seconds = 60
 measured_mib = "23.9"
 measured_seconds = "23.2"
+
+[[test]]
+name = "browser_engine_installs_itself"
+path = "browser::system_tests::browser_engine_installs_itself_when_a_tab_is_opened_and_runs"
+why = "needs the real host binary built with the test seam and the real `curl` and `tar`: a tab opened with no engine says it is installing, the command waits, the pinned-hash check passes on the file from a local fake release server, the engine is moved into place, started and paints; the second tab asks the server for nothing"
+mib = 512
+seconds = 60

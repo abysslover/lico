@@ -1,6 +1,6 @@
 //! The unit tests of the window's browser module (`browser_view.rs`): its pure parts and the one call that reads a watch answer.
 
-use super::browser_view::{call_watch, caption, page_rect, BTab};
+use super::browser_view::{call_watch, caption, engine_text, page_rect, BTab};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixListener;
@@ -61,4 +61,15 @@ fn a_watch_answer_gives_the_frame_as_bytes_and_the_reply_without_the_text_of_it(
     let (reply, _) = call_watch(&socket, json!({}));
     server.join().unwrap();
     assert_eq!(reply["error"], json!("host_unreachable"), "a garbled line is a failure, not a frame");
+}
+
+#[test]
+fn the_header_says_the_engine_is_being_installed_with_size_source_and_hash_and_no_question_and_gives_the_manual_way_only_when_absent() {
+    let installing = engine_text(&json!({"phase": "installing", "size_mb": 72, "source": "github.com", "sha256_start": "eed986e478c5"})).unwrap();
+    assert_eq!(installing, "installing the browser engine (about 72 MB from github.com, SHA-256 starts eed986e478c5)");
+    assert!(!installing.contains('?') && !installing.contains("by hand"), "no question, no manual steps while it installs");
+    let absent = engine_text(&json!({"phase": "absent", "download": "https://x.test/a.tar.gz", "expected_sha256": "ab", "directory": "/h/.local/share/lico/browser/v0.2.6"})).unwrap();
+    assert!(absent.contains("by hand: download https://x.test/a.tar.gz (SHA-256 ab)") && absent.contains("/h/.local/share/lico/browser/v0.2.6"), "{absent}");
+    assert_eq!(engine_text(&json!({"phase": "ready"})), None);
+    assert_eq!(engine_text(&json!({})), None);
 }

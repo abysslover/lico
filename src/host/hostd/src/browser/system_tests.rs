@@ -34,6 +34,12 @@ impl Rig {
 
     /// `real`: a directory with the real engine's two files, put in the pinned place of the private home (no setting file: the hash is checked). None: the fake, by the setting.
     pub(super) fn start_with(name: &str, real: Option<&Path>) -> Rig {
+        Rig::start_full(name, real, None)
+    }
+
+    /// `seam`: a file that names the release address and hashes the host takes in place of the pinned ones (the host binary of the system tests is built with the feature that reads it);
+    /// no setting file and no engine are put in the private home: the host installs the engine itself, into the pinned place.
+    pub(super) fn start_full(name: &str, real: Option<&Path>, seam: Option<&Path>) -> Rig {
         let binary = std::env::var("LICO_BIN").unwrap_or_else(|_| panic!("LICO_BIN must name the release binary (cargo xtask system sets it); a system test never skips"));
         let dir = std::env::temp_dir().join(format!("lico_browser_system_{name}_{}", crate::core::random_hex(6)));
         let state = dir.join("state");
@@ -43,6 +49,7 @@ impl Rig {
             std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
         let engine_exe = match real {
+            None if seam.is_some() => dir.join(".local/share/lico/browser/v0.2.6/obscura"),
             None => {
                 let fake = std::env::var("LICO_FAKE_ENGINE").unwrap_or_else(|_| panic!("LICO_FAKE_ENGINE must name the fake engine (cargo xtask system sets it); a system test never skips"));
                 std::fs::copy(&fake, engine.join("obscura")).unwrap();
@@ -74,6 +81,7 @@ impl Rig {
             .env("HOME", &dir)
             .env("XDG_RUNTIME_DIR", &dir)
             .env_remove("XDG_DATA_HOME")
+            .envs(seam.map(|f| ("LICO_INSTALL_SEAM_FILE", f.to_path_buf())))
             .env_remove("DBUS_SESSION_BUS_ADDRESS")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -499,4 +507,66 @@ fn browser_input_reaches_the_engine_at_once_and_nothing_wakes_while_a_still_page
     let none = rig.wakeups() - b;
     println!("host wake-ups over {:.0} s: {shown} with a still page shown, {none} with no tab (the host's own background threads)", t0.elapsed().as_secs_f64().min(t1.elapsed().as_secs_f64() + 10.0));
     assert!(shown <= none + 4, "a still page shown woke the host {shown} times in ten seconds against {none} with no tab at all");
+}
+
+#[test]
+#[ignore = "a system test of tests/system_tests.toml: run by `cargo xtask system` with LICO_BIN and LICO_FAKE_ENGINE set"]
+fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
+    let _ = IGNORED;
+    use super::installer::tests::{serve, Reply};
+    use std::sync::atomic::Ordering;
+    // a release of the test: the fake engine and a worker file in an archive made by tar, served by a local fake server that answers when the test says so
+    let work = std::env::temp_dir().join(format!("lico_browser_install_{}", crate::core::random_hex(6)));
+    let src = work.join("src");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::copy(std::env::var("LICO_FAKE_ENGINE").expect("LICO_FAKE_ENGINE"), src.join("obscura")).unwrap();
+    std::fs::write(src.join("obscura-worker"), b"#!/bin/sh\n").unwrap();
+    let archive = work.join("a.tar.gz");
+    assert!(Command::new("tar").arg("-czf").arg(&archive).arg("-C").arg(&src).args(["obscura", "obscura-worker"]).status().unwrap().success());
+    let bytes = std::fs::read(&archive).unwrap();
+    let hex = |p: &Path| super::sha256::hex_of(std::fs::File::open(p).unwrap()).unwrap();
+    let (gate, held) = std::sync::mpsc::channel();
+    let server = serve(Reply::Held(bytes.clone(), held));
+    let seam = work.join("seam.json");
+    std::fs::write(&seam, json!({"url": server.url, "archive_sha256": hex(&archive), "engine_sha256": hex(&src.join("obscura")), "worker_sha256": hex(&src.join("obscura-worker")), "max_archive": 64 << 20}).to_string()).unwrap();
+    let rig = Rig::start_full("install", None, Some(&seam));
+    let binary = std::env::var("LICO_BIN").unwrap();
+    // the command line: it says it is installing, waits, and ends when the tab has an engine
+    let mut cli = Command::new(&binary).args(["browser", "open", "https://pages.test/start", "--socket", &rig.socket]).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut said = String::new();
+    let mut cli_err = BufReader::new(cli.stderr.take().unwrap()); // kept open: the command writes its next line there when the install ends
+    cli_err.read_line(&mut said).unwrap();
+    assert!(said.contains("installing the browser engine: about") && said.contains("MB from 127.0.0.1:") && said.contains(&hex(&archive)[..12]), "{said}");
+    let tab = rig.tab("b1");
+    assert_eq!(tab["phase"], json!("installing"), "{tab}");
+    assert!(rig.engines().is_empty() && !pinned_dir(&rig).join("obscura").exists(), "no engine and nothing installed while the download has not come");
+    gate.send(()).unwrap();
+    let mut out = String::new();
+    cli.stdout.take().unwrap().read_to_string(&mut out).unwrap();
+    let mut rest = String::new();
+    cli_err.read_to_string(&mut rest).unwrap();
+    assert!(cli.wait().unwrap().success(), "{rest}");
+    assert!(rest.contains("the engine is installed and the tab is starting"), "{rest}");
+    let printed: Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(printed["phase"], json!("starting"), "the command ends when the engine has been installed and the tab is being started: {out}");
+    let tab = rig.wait(20, "the page of the installed engine", || Some(rig.tab("b1")).filter(|t| t["has_frame"] == json!(true) && t["title"] == json!("A fake page") && t["phase"] == json!("ready")));
+    assert_eq!(tab["unpinned"], json!(false), "the engine in the pinned place is the one whose hash was checked: {tab}");
+    assert_eq!(server.hits.load(Ordering::SeqCst), 1, "one download");
+    let dir = pinned_dir(&rig);
+    for name in ["obscura", "obscura-worker"] {
+        assert_eq!(std::fs::metadata(dir.join(name)).unwrap().permissions().mode() & 0o777, 0o700, "{name}");
+    }
+    let parent: Vec<_> = std::fs::read_dir(dir.parent().unwrap()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(parent, ["v0.2.6"], "no staging folder and no archive is left");
+    // closing the tab ends the engine; a tab opened again uses the installed engine and asks the server for nothing
+    assert_eq!(rig.call(json!({"op": "browser.close", "tab": "b1"}))["engine_stopped"], json!(true));
+    let again = rig.open("https://pages.test/again");
+    rig.wait(20, "the second tab", || Some(rig.tab(&again)).filter(|t| t["has_frame"] == json!(true) && t["phase"] == json!("ready")));
+    assert_eq!(server.hits.load(Ordering::SeqCst), 1, "the second open made no request");
+    assert_eq!(rig.engines().len(), 1);
+    let _ = std::fs::remove_dir_all(&work);
+}
+
+fn pinned_dir(rig: &Rig) -> PathBuf {
+    rig.dir.join(".local/share/lico/browser/v0.2.6")
 }

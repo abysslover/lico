@@ -4,6 +4,23 @@
 use serde_json::{json, Value};
 use std::path::Path;
 
+/// The flags of `lico browser open` (the parser below accepts these and no other; the help names them).
+pub const OPEN_FLAGS: [&str; 1] = ["--local"];
+
+/// What `lico browser open` says when the host is installing the engine for the tab (before it waits).
+pub fn installing_line(reply: &Value) -> Option<String> {
+    (reply["phase"] == json!("installing")).then(|| format!("installing the browser engine: about {} MB from {}, SHA-256 starts {} (no question; this waits until it is done)", reply["size_mb"].as_u64().unwrap_or(0), reply["source"].as_str().unwrap_or("the release page"), reply["sha256_start"].as_str().unwrap_or("")))
+}
+
+/// What it says when the install ended: the tab's row from the watch.
+pub fn finished_line(row: &Value) -> String {
+    match row["phase"].as_str().unwrap_or("") {
+        "absent" => format!("the engine could not be installed: {}", row["notice"].as_str().unwrap_or("no reason was given")),
+        "installing" => "still installing".to_string(),
+        other => format!("the engine is installed and the tab is {other}"),
+    }
+}
+
 /// The request for `lico browser ARGS...`; `Err` is a usage error. A relative `FILE` is made absolute from `cwd` without touching the file system.
 pub fn request(args: &[&str], cwd: &Path) -> Result<Value, &'static str> {
     match args {
@@ -67,5 +84,34 @@ mod tests {
         for bad in [vec![], vec!["open"], vec!["open", "a", "b"], vec!["open", "a", "--local", "--local"], vec!["open", "a", "--other"], vec!["list", "x"], vec!["close"], vec!["close", "b1", "b2"], vec!["shot", "b1"], vec!["shot"], vec!["nothing"]] {
             assert_eq!(request(&bad, cwd), Err("usage"), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn the_help_names_exactly_the_flags_the_parser_accepts() {
+        let help = crate::cli::USAGE;
+        let at = help.find("browser open URL").expect("the help has the browser line");
+        let block: String = help[at..].lines().take(2).collect::<Vec<_>>().join("\n");
+        let named: Vec<&str> = block.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')).filter(|w| w.starts_with("--")).collect();
+        for flag in &named {
+            assert!(request(&["open", "a.test", flag], Path::new("/h")).is_ok(), "the help names {flag}: the parser must accept it");
+        }
+        for flag in OPEN_FLAGS {
+            assert!(named.contains(&flag), "the parser accepts {flag}: the help must name it");
+            assert!(request(&["open", "a.test", flag], Path::new("/h")).is_ok());
+        }
+        let mut names: Vec<&str> = named.clone();
+        names.sort();
+        names.dedup();
+        assert_eq!(names, OPEN_FLAGS, "no flag in the help but the ones the parser accepts");
+        assert!(request(&["open", "a.test", "--localhost"], Path::new("/h")).is_err(), "the old name in the help was never accepted");
+    }
+
+    #[test]
+    fn the_command_says_when_the_engine_is_being_installed_and_how_it_ended() {
+        let line = installing_line(&json!({"phase": "installing", "size_mb": 72, "source": "github.com", "sha256_start": "eed986e478c5"})).unwrap();
+        assert!(line.contains("about 72 MB from github.com") && line.contains("eed986e478c5") && line.contains("waits"), "{line}");
+        assert_eq!(installing_line(&json!({"phase": "starting"})), None);
+        assert_eq!(finished_line(&json!({"phase": "starting"})), "the engine is installed and the tab is starting");
+        assert_eq!(finished_line(&json!({"phase": "absent", "notice": "SECURITY: the engine could not be installed: x"})), "the engine could not be installed: SECURITY: the engine could not be installed: x");
     }
 }

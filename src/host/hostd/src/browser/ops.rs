@@ -1,15 +1,17 @@
 //! The operations of the browser (`browser.open`, `browser.list`, `browser.close`, `browser.shot`) and the manager behind them: the table of tabs, at most two engines (one for
 //! ordinary tabs, one for tabs that opted into `local`), and nothing running when there is no tab. Registered through the driver port; the hubs never name this module.
 
-use super::engine::{self, Problem, Where, ARCHIVE_SHA256, ARCHIVE_URL, ENGINE_SHA256, PINNED, RELEASE};
+use super::engine::{self, Problem, Where, ARCHIVE_SHA256, ARCHIVE_URL, ENGINE_SHA256, RELEASE};
 use super::fonts;
+use super::installer::{self, Source};
 use super::supervisor::{self, Cmd, Engine, Entry, Hub, Setup};
 use crate::driver::{Opaque, Ops};
 use lico_browser_view::{EngineEvent, Phase, Tab};
+use lico_engine_pack::{self as pack, Failure};
 use serde_json::{json, Map, Value};
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 /// The most tabs the browser holds (all engines together): each is a page in the engine, and on Lico's side at most one compressed frame (4 MiB) and, while it is painted, one
@@ -83,6 +85,8 @@ pub(super) struct Prepared {
     pub absent: Option<Value>,
     pub font_missing: bool,
     pub unpinned: bool,
+    /// The engine is being installed (a tab opened with no engine there): the tab says so and is started when the install ends.
+    pub installing: bool,
 }
 
 pub struct Browser {
@@ -95,16 +99,41 @@ pub struct Browser {
     state_dir: Mutex<Option<PathBuf>>,
     /// Where to look for the engine instead of the process's own home (a test gives its own; the product never does).
     at: Option<Where>,
+    /// This browser, for the install thread that restarts the tabs that waited for it.
+    me: Weak<Browser>,
+    /// An install is running (the engines lock is held when it is read or written: two tabs opened together install once).
+    installing: Mutex<bool>,
+    /// What is fetched (the pinned release; only a test build can have another).
+    pub(super) source: Source,
 }
 
 impl Browser {
-    pub fn new() -> Browser {
-        Browser { hub: Arc::new(Hub::new()), engines: Mutex::new([None, None]), next: Mutex::new(0), epoch: std::time::Instant::now(), state_dir: Mutex::new(None), at: None }
+    pub fn new() -> Arc<Browser> {
+        Self::build(None, installer::source_of_process())
+    }
+
+    fn build(at: Option<Where>, source: Source) -> Arc<Browser> {
+        Arc::new_cyclic(|me| Browser {
+            hub: Arc::new(Hub::new()),
+            engines: Mutex::new([None, None]),
+            next: Mutex::new(0),
+            epoch: std::time::Instant::now(),
+            state_dir: Mutex::new(None),
+            at,
+            me: me.clone(),
+            installing: Mutex::new(false),
+            source,
+        })
     }
 
     #[cfg(test)]
-    fn looking_in(at: Where) -> Browser {
-        Browser { at: Some(at), ..Browser::new() }
+    pub(super) fn looking_in(at: Where) -> Arc<Browser> {
+        Self::build(Some(at), Source::pinned())
+    }
+
+    #[cfg(test)]
+    pub(super) fn installing_from(at: Where, source: Source) -> Arc<Browser> {
+        Self::build(Some(at), source)
     }
 
     fn state_dir_of(&self, shared: &Opaque) -> Option<PathBuf> {
@@ -122,7 +151,7 @@ impl Browser {
 
     /// Makes sure the engine of class `index` runs (starting it, or replacing one that ended by itself: the restart), and says what a new tab of it must know. An engine that
     /// is not installed is not an error: the tab is shown in the `absent` phase.
-    pub(super) fn ensure_engine(&self, engines: &mut [Option<Engine>; 2], shared: &Opaque, index: usize) -> Result<Prepared, &'static str> {
+    pub(super) fn ensure_engine(&self, engines: &mut [Option<Engine>; 2], shared: &Opaque, index: usize, may_install: bool) -> Result<Prepared, &'static str> {
         let local = index == 1;
         let state_dir = self.state_dir_of(shared).ok_or("engine_failed")?;
         if engines[index].as_ref().is_some_and(Engine::finished) {
@@ -130,13 +159,13 @@ impl Browser {
                 old.reap();
             }
         }
-        let mut prepared = Prepared { absent: None, font_missing: false, unpinned: false };
+        let mut prepared = Prepared { absent: None, font_missing: false, unpinned: false, installing: false };
         if engines[index].is_none() {
             let at = match &self.at {
                 Some(at) => Where { state_dir: state_dir.clone(), ..at.clone() },
                 None => Where::of_process(state_dir.clone()).ok_or("engine_failed")?,
             };
-            match engine::locate(&at, &PINNED) {
+            match engine::locate(&at, &engine::Pins { engine: &self.source.engine_sha256, worker: &self.source.worker_sha256 }) {
                 Ok(located) => {
                     let font = fonts::find_on_this_machine();
                     prepared.font_missing = font.is_none();
@@ -147,7 +176,16 @@ impl Browser {
                         Err(e) => return Err(e.0),
                     }
                 }
-                Err(Problem::Absent { dir }) => prepared.absent = Some(Self::absent_fields(&dir)),
+                Err(Problem::Absent { dir }) => {
+                    if may_install && !engine::auto_install_off(&at.state_dir) {
+                        if !self.begin_install(shared, at.clone()) {
+                            return Err("engine_failed");
+                        }
+                        prepared.installing = true;
+                    } else {
+                        prepared.absent = Some(Self::absent_fields(&dir));
+                    }
+                }
                 Err(Problem::Unsafe(_)) => return Err("engine_unsafe"),
                 Err(Problem::Mismatch) => return Err("engine_not_pinned"),
                 Err(Problem::Setting(_)) => return Err("engine_setting"),
@@ -161,12 +199,15 @@ impl Browser {
     }
 
     /// A new model for a tab of class `index`, shown at `area`, with what the engine's state says about it (absent, unpinned, no font, local) and the address typed.
-    pub(super) fn new_tab(prepared: &Prepared, local: bool, area: (u32, u32), url: &str) -> Tab {
+    pub(super) fn new_tab(prepared: &Prepared, source: &Source, local: bool, area: (u32, u32), url: &str) -> Tab {
         let mut tab = Tab::new();
         tab.show(area, 0);
         let _ = tab.submit_address(url); // first: an absent engine ends the tab's ability to take an address, but the address typed stays
         if prepared.absent.is_some() {
             tab.engine_event(EngineEvent::Missing { expected_sha256: ENGINE_SHA256.to_string(), release: RELEASE.to_string() });
+        }
+        if prepared.installing {
+            tab.engine_event(Self::installing_event(source));
         }
         if prepared.unpinned {
             tab.engine_event(EngineEvent::UnpinnedEngine);
@@ -194,12 +235,16 @@ impl Browser {
             *n += 1;
             format!("b{n}")
         };
-        let prepared = self.ensure_engine(&mut engines, shared, index)?;
-        let tab = Self::new_tab(&prepared, local, DEFAULT_AREA, &url);
+        let prepared = self.ensure_engine(&mut engines, shared, index, true)?;
+        let tab = Self::new_tab(&prepared, &self.source, local, DEFAULT_AREA, &url);
         self.hub.tabs.lock().unwrap().push(Entry::new(id.clone(), tab, index, local));
-        let mut reply = obj(json!({"tab": id, "phase": if prepared.absent.is_some() { "absent" } else { "starting" }, "local": local, "unpinned": prepared.unpinned}));
+        let mut reply = obj(json!({"tab": id, "phase": Self::phase_word(&prepared), "local": local, "unpinned": prepared.unpinned}));
+        if prepared.installing {
+            reply.extend(obj(json!({"size_mb": pack::size_mb(), "source": installer::host_of(&self.source.url), "sha256_start": pack::hash12(&self.source.archive_sha256)})));
+        }
         match prepared.absent {
             Some(fields) => reply.extend(obj(fields)),
+            None if prepared.installing => {} // the install thread opens the page when it has the engine
             None => {
                 if let Some(e) = &engines[index] {
                     let _ = e.tx.send(Cmd::Open(id));
@@ -207,6 +252,68 @@ impl Browser {
             }
         }
         Ok(reply)
+    }
+
+    pub(super) fn phase_word(prepared: &Prepared) -> &'static str {
+        if prepared.absent.is_some() {
+            "absent"
+        } else if prepared.installing {
+            "installing"
+        } else {
+            "starting"
+        }
+    }
+
+    fn installing_event(source: &Source) -> EngineEvent {
+        EngineEvent::Installing { size_mb: pack::size_mb(), source: installer::host_of(&source.url), hash12: pack::hash12(&source.archive_sha256).to_string() }
+    }
+
+    /// Starts the install on its own thread unless one runs (the caller holds the engines lock). False: the thread could not be made.
+    fn begin_install(&self, shared: &Opaque, at: Where) -> bool {
+        let mut running = self.installing.lock().unwrap();
+        if *running {
+            return true;
+        }
+        let Some(me) = self.me.upgrade() else { return false };
+        let (shared, source) = (shared.clone(), self.source.clone());
+        let spawned = std::thread::Builder::new().name("lico-install".into()).spawn(move || {
+            let result = installer::install(&at, &source);
+            me.finish_install(&shared, result);
+        });
+        *running = spawned.is_ok();
+        spawned.is_ok()
+    }
+
+    /// The install ended: the tabs that waited are started, or told why not. Woken watchers see it at once (no timer).
+    fn finish_install(&self, shared: &Opaque, result: Result<(), Failure>) {
+        let mut engines = self.engines.lock().unwrap();
+        *self.installing.lock().unwrap() = false;
+        let waiting: Vec<(String, usize)> = self.hub.tabs.lock().unwrap().iter().filter(|e| matches!(e.tab.phase(), Phase::Installing { .. })).map(|e| (e.id.clone(), e.engine)).collect();
+        for (id, index) in waiting {
+            let failure = match &result {
+                Err(f) => Some(f.clone()),
+                Ok(()) => match self.ensure_engine(&mut engines, shared, index, false) {
+                    Ok(p) if p.absent.is_none() => None,
+                    Ok(_) => Some(Failure::Cannot("the engine is not there after the install")),
+                    Err(code) => Some(Failure::Other(format!("the engine could not be started: {code}"))),
+                },
+            };
+            let mut tabs = self.hub.tabs.lock().unwrap();
+            let Some(entry) = tabs.iter_mut().find(|e| e.id == id) else { continue };
+            match failure {
+                None => {
+                    entry.tab.engine_event(EngineEvent::Starting);
+                    if let Some(e) = &engines[index] {
+                        let _ = e.tx.send(Cmd::Open(id.clone()));
+                    }
+                }
+                Some(f) => {
+                    entry.tab.engine_event(EngineEvent::InstallFailed { why: f.text(), security: f.security(), expected_sha256: ENGINE_SHA256.to_string(), release: RELEASE.to_string() });
+                }
+            }
+            self.hub.touch(entry);
+        }
+        self.hub.changed.notify_all();
     }
 
     fn font_known_missing(&self) -> bool {
@@ -229,6 +336,12 @@ impl Browser {
                 row.insert("release".into(), json!(release));
                 row.insert("download".into(), json!(ARCHIVE_URL));
                 row.insert("phase".into(), json!("absent"))
+            }
+            Phase::Installing { size_mb, source, hash12 } => {
+                row.insert("size_mb".into(), json!(size_mb));
+                row.insert("source".into(), json!(source));
+                row.insert("sha256_start".into(), json!(hash12));
+                row.insert("phase".into(), json!("installing"))
             }
             Phase::Failed(why) => {
                 row.insert("reason".into(), json!(why));
@@ -372,7 +485,7 @@ impl Ops for Browser {
 
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
 
@@ -424,7 +537,12 @@ mod tests {
         }
     }
 
-    fn world(name: &str) -> (std::path::PathBuf, Browser, Opaque) {
+    pub(in crate::browser) fn world(name: &str) -> (std::path::PathBuf, Arc<Browser>, Opaque) {
+        world_with(name, None)
+    }
+
+    /// A private home and state. With no `source` the self-install is switched off in the owner's setting file (so that no test downloads anything); with one, the browser installs from it.
+    pub(in crate::browser) fn world_with(name: &str, source: Option<Source>) -> (std::path::PathBuf, Arc<Browser>, Opaque) {
         let dir = std::env::temp_dir().join(format!("lico_browser_ops_{name}_{}", crate::core::random_hex(6)));
         std::fs::create_dir_all(&dir).unwrap();
         let shared = crate::driver_hubs_tests::shared(&dir.join("state_parent_unused"));
@@ -433,7 +551,15 @@ mod tests {
         // the state directory is the parent of the registry directory: give the host a registry inside `state`
         let mut shared = Arc::try_unwrap(shared).ok().expect("the only owner");
         shared.cfg.registry_dir = state.join("registry");
-        let browser = Browser::looking_in(Where { home: dir.clone(), xdg_data: None, state_dir: state });
+        let at = Where { home: dir.clone(), xdg_data: None, state_dir: state.clone() };
+        let browser = match source {
+            Some(src) => Browser::installing_from(at, src),
+            None => {
+                std::fs::write(state.join("browser.json"), r#"{"auto_install": false}"#).unwrap();
+                std::fs::set_permissions(state.join("browser.json"), std::fs::Permissions::from_mode(0o600)).unwrap();
+                Browser::looking_in(at)
+            }
+        };
         (dir, browser, Arc::new(shared) as Opaque)
     }
 

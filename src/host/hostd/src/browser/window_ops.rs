@@ -170,8 +170,8 @@ impl Browser {
             let e = tabs.iter().find(|e| e.id == id).ok_or("unknown_tab")?;
             (e.engine, e.local, e.tab.viewport())
         };
-        let prepared = self.ensure_engine(&mut engines, shared, index)?;
-        let tab = Browser::new_tab(&prepared, local, area, &url);
+        let prepared = self.ensure_engine(&mut engines, shared, index, true)?;
+        let tab = Browser::new_tab(&prepared, &self.source, local, area, &url);
         {
             let mut tabs = self.hub.tabs.lock().unwrap();
             let e = tabs.iter_mut().find(|e| e.id == id).ok_or("unknown_tab")?;
@@ -180,12 +180,12 @@ impl Browser {
             e.session = None;
             self.hub.touch(e);
         }
-        if prepared.absent.is_none() {
+        if prepared.absent.is_none() && !prepared.installing {
             if let Some(engine) = engines[index].as_ref() {
                 let _ = engine.tx.send(Cmd::Open(id.to_string()));
             }
         }
-        Ok(obj(json!({"tab": id, "url": url, "restarted": true, "phase": if prepared.absent.is_some() { "absent" } else { "starting" }})))
+        Ok(obj(json!({"tab": id, "url": url, "restarted": true, "phase": Browser::phase_word(&prepared)})))
     }
 
     /// The person's input (a mouse move, a press, a wheel step, a key, committed text) for the page: the model decides (no input to a tab that is not shown, not active or has the

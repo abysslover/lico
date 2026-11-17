@@ -152,7 +152,7 @@ fn main() -> ExitCode {
             let binary = match std::env::var("LICO_BIN") {
                 Ok(b) => PathBuf::from(b),
                 Err(_) => {
-                    let built = std::process::Command::new("cargo").args(["build", "--release", "--locked", "--offline", "--bin", "lico", "-p", "lico", "--target-dir"]).arg(&target).status();
+                    let built = std::process::Command::new("cargo").args(["build", "--release", "--locked", "--offline", "--bin", "lico", "-p", "lico", "--features", "install_seam", "--target-dir"]).arg(&target).status();
                     if !matches!(built, Ok(s) if s.success()) {
                         eprintln!("the release binary did not build");
                         return ExitCode::FAILURE;

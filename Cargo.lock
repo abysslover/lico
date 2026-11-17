@@ -620,12 +620,13 @@ dependencies = [
 
 [[package]]
 name = "lico"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "cosmic-text",
  "lico-browser-view",
  "lico-cdp",
  "lico-convo",
+ "lico-engine-pack",
  "lico-frame",
  "lico-llm-fake",
  "lico-llm-http",
@@ -643,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "lico-browser-view"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "lico-frame",
  "lico-png",

@@ -76,6 +76,16 @@ pub(crate) struct BrowserState {
 /// The most of the page the window asks for at scale 2 and more (pixels).
 pub(crate) const SCALE2_CAP: (u32, u32) = (1400, 900);
 
+/// What the header says about the engine: that it is being installed (the size, the source and the start of the pinned hash: no question), or, when the install failed or is
+/// switched off, the manual way (the reason is the tab's notice).
+pub(crate) fn engine_text(row: &Value) -> Option<String> {
+    match row["phase"].as_str()? {
+        "installing" => Some(format!("installing the browser engine (about {} MB from {}, SHA-256 starts {})", row["size_mb"].as_u64().unwrap_or(0), row["source"].as_str().unwrap_or("the release page"), row["sha256_start"].as_str().unwrap_or(""))),
+        "absent" => Some(format!("the engine is not installed; by hand: download {} (SHA-256 {}) and put obscura and obscura-worker in {}", row["download"].as_str().unwrap_or(""), row["expected_sha256"].as_str().or_else(|| row["engine_sha256"].as_str()).unwrap_or(""), row["directory"].as_str().unwrap_or("~/.local/share/lico/browser/v0.2.6"))),
+        _ => None,
+    }
+}
+
 /// The caption of a browser tab in the tab bar.
 pub(crate) fn caption(tab: &BTab) -> String {
     let title = tab.row["title"].as_str().filter(|t| !t.is_empty()).or_else(|| tab.row["url"].as_str()).unwrap_or(&tab.id);
@@ -453,8 +463,8 @@ impl App {
         if drawn.0 > 0 && (drawn.0 < rw as i64 || drawn.1 < rh as i64) {
             h = format!("{h} | the page is drawn at {} x {}", drawn.0, drawn.1);
         }
-        if phase == "absent" {
-            h = format!("{h} | the engine is not installed: {} (SHA-256 {}), put it in {}", t.row["download"].as_str().unwrap_or(""), t.row["expected_sha256"].as_str().or_else(|| t.row["engine_sha256"].as_str()).unwrap_or(""), t.row["directory"].as_str().unwrap_or("the engine folder"));
+        if let Some(text) = engine_text(&t.row) {
+            h = format!("{h} | {text}");
         }
         if phase == "failed" {
             h = format!("{h} | {} (open an address to start the engine again)", t.row["reason"].as_str().unwrap_or("the browser engine stopped"));

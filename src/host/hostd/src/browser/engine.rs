@@ -9,14 +9,7 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 /// The pinned release of the engine, the download page of its archive and the SHA-256 of the archive (for the person who downloads it), and the SHA-256 of the two files Lico checks.
-pub const RELEASE: &str = "v0.2.6";
-pub const ARCHIVE_URL: &str = "https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.6/obscura-x86_64-linux.tar.gz";
-pub const ARCHIVE_SHA256: &str = "eed986e478c5ec5439f531f2d7fb6b0e36a356f1df7a6c44a8e8fd4f2486bd76";
-pub const ENGINE_SHA256: &str = "c1400eec0b1572ea9b583b1544feafb0b25cea4e155b353dbba9c144d94ae6e3";
-pub const WORKER_SHA256: &str = "d1025e540736b494d5c3fefe5abc09f3a774c65d9be891d818b0eb374d34dd72";
-/// The file names inside the engine's directory.
-pub const ENGINE_FILE: &str = "obscura";
-pub const WORKER_FILE: &str = "obscura-worker";
+pub use lico_engine_pack::{ARCHIVE_SHA256, ARCHIVE_URL, ENGINE_FILE, ENGINE_SHA256, RELEASE, WORKER_FILE, WORKER_SHA256};
 /// The owner-only file of the state directory that names an engine that is not the pinned release.
 pub const SETTING_FILE: &str = "browser.json";
 
@@ -172,12 +165,27 @@ pub fn read_setting(state_dir: &Path) -> Result<Option<PathBuf>, Problem> {
     let mut text = String::new();
     std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text).map_err(|_| Problem::Setting("the engine setting cannot be read"))?;
     let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| Problem::Setting("the engine setting is not JSON"))?;
-    let dir = value.get("engine_dir").and_then(|v| v.as_str()).ok_or(Problem::Setting("the engine setting has no engine_dir"))?;
+    let Some(dir) = value.get("engine_dir").and_then(|v| v.as_str()) else {
+        // a setting that only says `auto_install` names no engine
+        return if value.get("auto_install").is_some() { Ok(None) } else { Err(Problem::Setting("the engine setting has no engine_dir")) };
+    };
     let dir = PathBuf::from(dir);
     if !dir.is_absolute() || dir.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir)) {
         return Err(Problem::Setting("engine_dir must be an absolute path without . or .."));
     }
     Ok(Some(dir))
+}
+
+/// Whether the owner turned the self-install off (`{"auto_install": false}` in the owner-only setting file; nothing else turns it on or off, and a missing or unreadable file leaves it on).
+pub fn auto_install_off(state_dir: &Path) -> bool {
+    let Ok(file) = OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_CLOEXEC).open(state_dir.join(SETTING_FILE)) else { return false };
+    let Ok(m) = file.metadata() else { return false };
+    if !m.is_file() || !mine(&m) || m.permissions().mode() & 0o077 != 0 {
+        return false;
+    }
+    let mut text = String::new();
+    let _ = std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text);
+    serde_json::from_str::<serde_json::Value>(&text).ok().is_some_and(|v| v.get("auto_install") == Some(&serde_json::Value::Bool(false)))
 }
 
 /// Finds the engine to run: the owner's setting if there is one (unpinned), else the pinned release.
