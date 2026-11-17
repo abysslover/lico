@@ -3,6 +3,8 @@
 
 mod approval_modal;
 mod browser_view;
+#[cfg(test)]
+mod browser_view_tests;
 mod call_view;
 mod controls;
 mod editor;
