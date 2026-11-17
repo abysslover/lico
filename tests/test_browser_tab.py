@@ -253,3 +253,23 @@ def test_a_pasted_text_goes_to_the_page_only_on_the_persons_own_paste_and_is_cap
         got = wait_for(lambda: [p["text"] for m, p in input_log(w) if m == "Input.insertText"] or None)
         assert got[0].startswith("가나다 pasted ") and len(got[0]) <= 4096, len(got[0])
         assert len(got) == 1, "one paste is one insert"
+
+
+def test_at_scale_two_the_page_is_asked_for_at_most_1400_by_900_and_the_tab_says_so():
+    import lico_measure.captures as captures
+
+    real = captures.Xvfb
+    captures.Xvfb = lambda: real("2400x1600x24")                # the window is 2400 x 1600 pixels at scale 2
+    try:
+        with ProductWindow(host_binary=LICO, before_window=fake_engine, env_extra={"WINIT_X11_SCALE_FACTOR": "2"}) as w:
+            conn = Conn(w.socket)
+            tab = open_tab(w, "https://pages.test/start")
+            painted(w, tab)
+            b = browser(w)
+            assert b["rect"][2] > 1400 and b["rect"][3] > 900, f"the area is larger than the cap: {b['rect']}"
+            row = wait_for(lambda: next((r for r in conn.call(op="browser.list")["tabs"] if r["tab"] == tab and r["viewport"] == [1400, 900]), None))
+            assert row["shown"]
+            assert "the page is drawn at 1400 x 900" in wait_for(lambda: (h := browser(w)["header"]) and "drawn at" in h and h), browser(w)["header"]
+            shot(w, "11_scale2_cap_said_in_the_tab.png")
+    finally:
+        captures.Xvfb = real

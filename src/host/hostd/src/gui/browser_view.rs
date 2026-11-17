@@ -73,6 +73,9 @@ pub(crate) struct BrowserState {
     pub input_inflight: bool,
 }
 
+/// The most of the page the window asks for at scale 2 and more (pixels).
+pub(crate) const SCALE2_CAP: (u32, u32) = (1400, 900);
+
 /// The caption of a browser tab in the tab bar.
 pub(crate) fn caption(tab: &BTab) -> String {
     let title = tab.row["title"].as_str().filter(|t| !t.is_empty()).or_else(|| tab.row["url"].as_str()).unwrap_or(&tab.id);
@@ -362,7 +365,10 @@ impl App {
         let visible = self.browser_active();
         let active = self.ui.browser.active.clone();
         let rect = self.ui.browser.rect;
-        let area = ((rect[2].max(64)) as u32, (rect[3].max(64)) as u32);
+        // at scale 2 and more the page is asked for no more than 1400 x 900 pixels: a frame is decoded with its scratch beside it (two pictures of memory at the moment), and a full
+        // area would take the window over 50 MiB at that moment; the tab says the size it is drawn at
+        let cap = if self.ui.scale >= 2.0 { SCALE2_CAP } else { (lico_browser_view::MAX_VIEWPORT_W, lico_browser_view::MAX_VIEWPORT_H) };
+        let area = ((rect[2].max(64) as u32).min(cap.0), (rect[3].max(64) as u32).min(cap.1));
         let socket = self.socket.clone();
         let proxy = self.ui.proxy.clone();
         // a page that is not there (starting, absent, failed) has no focus: the keys go to the address row, where the next address is typed; when it comes up the page has them
@@ -442,9 +448,10 @@ impl App {
         if let Some(n) = t.row["notice"].as_str() {
             h = format!("{h} | {n}");
         }
-        if t.row["viewport_capped"] == json!(true) {
-            let v = &t.row["viewport"];
-            h = format!("{h} | the page is drawn at {} x {}", v[0], v[1]);
+        let drawn = (t.row["viewport"][0].as_i64().unwrap_or(0), t.row["viewport"][1].as_i64().unwrap_or(0));
+        let [_, _, rw, rh] = self.ui.browser.rect;
+        if drawn.0 > 0 && (drawn.0 < rw as i64 || drawn.1 < rh as i64) {
+            h = format!("{h} | the page is drawn at {} x {}", drawn.0, drawn.1);
         }
         if phase == "absent" {
             h = format!("{h} | the engine is not installed: {} (SHA-256 {}), put it in {}", t.row["download"].as_str().unwrap_or(""), t.row["expected_sha256"].as_str().or_else(|| t.row["engine_sha256"].as_str()).unwrap_or(""), t.row["directory"].as_str().unwrap_or("the engine folder"));
