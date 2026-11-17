@@ -631,6 +631,7 @@ dependencies = [
  "lico-llm-fake",
  "lico-llm-http",
  "lico-llm-wire",
+ "lico-memguard",
  "lico-png",
  "lico-proxy",
  "lico-sandbox",
