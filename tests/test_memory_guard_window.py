@@ -81,7 +81,7 @@ def test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_
     def check(w, conn, sid, figure):
         import time
         assert figure["max_rss_kb"] >= 60 * 1024, figure
-        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60}, "the host sends the owner's limits in every status reply"
+        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60, "stall_min": 10}, "the host sends the owner's limits in every status reply"
         window_sees(w, 60)
         w.click(*centre(tab_rect(w, sid)))
         panel = wait_for(lambda: w.ui()["panel"], timeout=30)
