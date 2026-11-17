@@ -131,6 +131,15 @@ fn a_changed_file_invalidates_the_receipt_and_so_does_a_change_below() {
 }
 
 #[test]
+fn the_failing_tests_of_a_binary_are_named_with_their_panic_and_the_two_lines_after_it() {
+    let text = "running 3 tests\ntest a ... ok\ntest b ... FAILED\ntest c ... ok\n\nfailures:\n\n---- b stdout ----\n\nthread 'b' (7) panicked at tests/x.rs:9:5:\nassertion `left == right` failed\n  left: 1\n right: 2\nnote: run with RUST_BACKTRACE=1\n\ntest result: FAILED. 2 passed; 1 failed";
+    let said = runner::failures_of(text);
+    assert!(said.contains("test b ... FAILED") && said.contains("panicked at tests/x.rs:9:5") && said.contains("left == right") && said.contains("  left: 1"), "{said}");
+    assert!(!said.contains("test a ... ok") && !said.contains("RUST_BACKTRACE"), "{said}");
+    assert_eq!(runner::failures_of("test result: ok. 3 passed").len(), 0);
+}
+
+#[test]
 fn an_over_budget_run_is_reported_with_the_figure_that_broke_it() {
     let root = workspace("budget");
     component(

@@ -117,6 +117,9 @@ pub fn run(root: &Path, component: &Component, target: &Path) -> Result<Run, Str
         let (text, wall, peak) = measured(command)?;
         run.wall_s += wall;
         run.peak_mib = run.peak_mib.max(peak);
+        if text.lines().any(|l| l.starts_with("test result: FAILED")) {
+            eprintln!("{}", failures_of(&text)); // a flake that cannot be repeated must still say which test it was
+        }
         for line in text.lines().filter(|l| l.starts_with("test result:")) {
             let count = |word: &str| line.split(';').find(|p| p.trim_end().ends_with(word)).and_then(|p| p.split_whitespace().rev().nth(1).and_then(|n| n.parse::<u64>().ok())).unwrap_or(0);
             run.passed += count("passed");
@@ -125,6 +128,25 @@ pub fn run(root: &Path, component: &Component, target: &Path) -> Result<Run, Str
         }
     }
     Ok(run)
+}
+
+/// The lines of a test binary's output that say which tests failed and why (the `FAILED` lines, and each panic with the two lines after it), at most 40.
+pub fn failures_of(text: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let mut after_panic = 0;
+    for line in text.lines() {
+        if line.starts_with("test ") && line.ends_with("FAILED") {
+            out.push(line);
+        } else if line.starts_with("thread '") || line.contains("panicked at") {
+            out.push(line);
+            after_panic = 2;
+        } else if after_panic > 0 {
+            out.push(line);
+            after_panic -= 1;
+        }
+    }
+    out.truncate(40);
+    out.join("\n")
 }
 
 /// What a run exceeded of the manifest's budget, in words; None when it is inside.
