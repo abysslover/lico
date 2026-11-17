@@ -5,23 +5,23 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.0,
-    "peak_mib": 3.6,
+    "compile_s": 0.8,
+    "peak_mib": 9.4,
     "wall_s": 0.85
   },
-  "date": "2026-11-16",
-  "hash": "485914711c1e390c8e9371754a94cb9eba50a175893024374406d713bde73606",
+  "date": "2026-11-17",
+  "hash": "e6a6fb26fe4c6badb73856bea108c574cd914c5f285ae845e5279edf2403f82f",
   "inputs": {
     "dependencies": [],
     "externals": [],
     "files": [
       [
         "Cargo.toml",
-        "11595917bfee0ac00e130b342eacf43c88ffafb13d5c9c0befd57422262bd5d8"
+        "bf547bbfa391a701135bd632ab15f92b3dd04e4ae373d1682f4dae2343d989a8"
       ],
       [
         "SPEC.md",
-        "5796a1b1272e64e14b211caec3494ec9c337e071e3e2093ab7a1fed5881316fa"
+        "41ae298d0b982709545e0c83ef30a1797df08ebdf9290b749f2eaa49be86ff6d"
       ],
       [
         "src/frame.rs",
@@ -29,7 +29,7 @@
       ],
       [
         "src/lib.rs",
-        "4d194695f96216ca1095e70a5521585ba8f9a6b7d37ff9ffda9166a007f3304d"
+        "7a31a1cd7db846e3ad62c5fb80c4b79496133f015e66c3b5cc08b64534d7b857"
       ],
       [
         "src/sha1.rs",
@@ -41,18 +41,18 @@
       ],
       [
         "tests/contract.rs",
-        "fbdf3b58f4979c373d8558f3acad54755217769f6f6450e8eedf67e4184d6377"
+        "69133d908fcb773a2be3ae9eb91a163686dadde2b8108c3d4de48d9304d42bb5"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 34,
+    "count": 36,
     "failed": 0,
     "ignored": 0,
-    "passed": 34
+    "passed": 36
   },
   "tool": "lico-xtask 0.1.0",
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

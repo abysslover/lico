@@ -301,3 +301,116 @@ fn a_screencast_conversation_works_end_to_end_with_the_fake() {
     c.call(method::SCREENCAST_ACK, cmd::screencast_ack(id), Some("S1"), SEC).unwrap();
     assert_eq!(fake.calls()[1].params, json!({"sessionId": 1}));
 }
+
+// ---- the link (0.2.0): a reader that blocks and callers that write at once ----------------------------------------------------------------------------
+
+fn echo_fake() -> Fake {
+    Fake::start(Script::new().on_fn("Echo.it", |c| Answer::result(json!({"got": c.params.clone()}))).on("Slow.never", Answer::silent()).on("Ev.burst", Answer::result(json!({})).event("A.one", json!({"n": 1})).event("A.two", json!({"n": 2})))).unwrap()
+}
+
+#[test]
+fn callers_on_other_threads_get_their_own_replies_while_the_reader_blocks_and_events_come_out_in_order() {
+    let fake = echo_fake();
+    let (mut reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &limits()).unwrap();
+    let events = thread::spawn(move || {
+        let mut seen = Vec::new();
+        while let Ok(e) = reader.next_event(None) {
+            if let Some(e) = e {
+                seen.push(e.method);
+            }
+            if seen.len() == 2 {
+                break;
+            }
+        }
+        (seen, reader)
+    });
+    let threads: Vec<_> = (0..4)
+        .map(|t| {
+            let c = caller.clone();
+            thread::spawn(move || {
+                for i in 0..25 {
+                    let r = c.call("Echo.it", json!({"t": t, "i": i}), None, SEC).unwrap();
+                    assert_eq!(r["got"], json!({"t": t, "i": i}), "a reply goes to the call it answers");
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+    caller.call("Ev.burst", json!({}), None, SEC).unwrap();
+    let (seen, reader) = events.join().unwrap();
+    assert_eq!(seen, ["A.one", "A.two"]);
+    assert_eq!(reader.stray(), 0);
+}
+
+#[test]
+fn a_fired_command_waits_for_nothing_and_its_reply_is_counted_as_stray() {
+    let fake = echo_fake();
+    let (mut reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &limits()).unwrap();
+    caller.fire("Echo.it", json!({"x": 1}), None).unwrap();
+    // an event after it makes the reader read the reply too
+    caller.fire("Ev.burst", json!({}), None).unwrap();
+    let mut n = 0;
+    while n < 2 {
+        if reader.next_event(Some(Duration::from_millis(500))).unwrap().is_some() {
+            n += 1;
+        }
+    }
+    assert_eq!(reader.stray(), 2, "the replies of the two fired commands had no one waiting");
+    assert_eq!(fake.calls().iter().filter(|c| c.method == "Echo.it").count(), 1);
+}
+
+#[test]
+fn a_call_times_out_alone_and_a_blocked_reader_wakes_for_a_message_only() {
+    let fake = echo_fake();
+    let (mut reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &limits()).unwrap();
+    let waits = thread::spawn(move || {
+        let t = Instant::now();
+        let e = reader.next_event(None).unwrap().unwrap();
+        (e.method, t.elapsed())
+    });
+    let t = Instant::now();
+    assert_eq!(caller.call("Slow.never", json!({}), None, Duration::from_millis(300)), Err(Error::Timeout));
+    assert!(t.elapsed() >= Duration::from_millis(300) && t.elapsed() < Duration::from_secs(2));
+    thread::sleep(Duration::from_millis(300));
+    caller.fire("Ev.burst", json!({}), None).unwrap();
+    let (method, waited) = waits.join().unwrap();
+    assert_eq!(method, "A.one");
+    assert!(waited >= Duration::from_millis(500), "the reader did not return before a message came: {waited:?}");
+}
+
+#[test]
+fn a_dead_connection_fails_every_waiting_call_and_ends_the_reader_and_a_shutdown_releases_it() {
+    let fake = echo_fake();
+    let (reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &limits()).unwrap();
+    let c2 = caller.clone();
+    let waiting = thread::spawn(move || c2.call("Slow.never", json!({}), None, Duration::from_secs(10)));
+    thread::sleep(Duration::from_millis(200));
+    let mut reader = reader;
+    let ends = thread::spawn(move || reader.next_event(None));
+    fake.stop();
+    assert_eq!(waiting.join().unwrap(), Err(Error::Closed), "a waiting call is told at once");
+    assert!(matches!(ends.join().unwrap(), Err(Error::Closed) | Err(Error::Ws(_))));
+    assert_eq!(caller.fire("Echo.it", json!({}), None), Err(Error::Closed));
+    // a shutdown from another thread releases a reader that waits
+    let fake = echo_fake();
+    let (mut reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &limits()).unwrap();
+    let released = thread::spawn(move || reader.next_event(None));
+    thread::sleep(Duration::from_millis(200));
+    caller.shutdown();
+    assert_eq!(released.join().unwrap(), Err(Error::Cancelled));
+    assert_eq!(caller.call("Echo.it", json!({}), None, SEC), Err(Error::Closed));
+}
+
+#[test]
+fn a_reader_with_no_timeout_goes_on_waiting_past_the_idle_limit_of_the_connection() {
+    let fake = echo_fake();
+    let quick = Limits { connect: SEC, handshake: SEC, idle: Duration::from_millis(400), max_message: 1 << 20 };
+    let (mut reader, caller) = link(fake.addr(), "/devtools/browser/x", None, &quick).unwrap();
+    let waits = thread::spawn(move || reader.next_event(None).map(|e| e.map(|e| e.method)));
+    thread::sleep(Duration::from_millis(1300)); // three idle limits with no message: no end, no answer
+    assert!(!waits.is_finished(), "an idle connection is not an end for a reader that waits");
+    caller.fire("Ev.burst", json!({}), None).unwrap();
+    assert_eq!(waits.join().unwrap(), Ok(Some("A.one".to_string())));
+}

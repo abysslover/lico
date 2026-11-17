@@ -5,11 +5,11 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.9,
-    "peak_mib": 9.1,
-    "wall_s": 0.06
+    "compile_s": 0.1,
+    "peak_mib": 9.3,
+    "wall_s": 0.16
   },
-  "date": "2026-11-16",
+  "date": "2026-11-17",
   "hash": "2726a964470974365f4ef9433890d2a01692276140decc9a76b1f1e59644e1e5",
   "inputs": {
     "dependencies": [

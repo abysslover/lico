@@ -570,3 +570,63 @@ fn the_head_the_server_role_read_never_shows_a_secret_header_in_debug() {
     assert!(!shown.contains("SECRET-TOKEN") && !shown.contains("SECRET-COOKIE") && shown.contains("visible") && shown.contains("authorization"), "{shown}");
     h.join().unwrap();
 }
+
+#[test]
+fn a_writer_half_sends_from_other_threads_while_the_reader_blocks_and_every_frame_arrives_whole() {
+    let (addr, server) = serve(any, |mut c| {
+        let mut seen = Vec::new();
+        for _ in 0..200 {
+            match c.recv().unwrap() {
+                Message::Text(t) => seen.push(t),
+                other => panic!("{other:?}"),
+            }
+        }
+        seen.sort();
+        c.send_text("done").unwrap();
+        // every message of every thread came whole and none twice
+        let mut want: Vec<String> = (0..4).flat_map(|t| (0..50).map(move |i| format!("t{t}-{i}-{}", "x".repeat(20000 * (i % 5))))).collect();
+        want.sort();
+        assert_eq!(seen, want);
+    });
+    let mut c = open(addr);
+    let writer = c.writer();
+    let threads: Vec<_> = (0..4)
+        .map(|t| {
+            let w = writer.clone();
+            thread::spawn(move || {
+                for i in 0..50 {
+                    w.send_text(&format!("t{t}-{i}-{}", "x".repeat(20000 * (i % 5)))).unwrap();
+                }
+            })
+        })
+        .collect();
+    // the reader blocks in `recv` with no deadline of its own while they write
+    c.set_read_timeout(Some(Duration::from_secs(10)));
+    assert_eq!(c.recv().unwrap(), Message::Text("done".into()));
+    for t in threads {
+        t.join().unwrap();
+    }
+    server.join().unwrap();
+}
+
+#[test]
+fn a_writer_is_refused_after_a_close_and_after_a_cancel() {
+    let (addr, server) = serve(any, |mut c| {
+        let _ = c.recv();
+    });
+    let mut c = open(addr);
+    let w = c.writer();
+    assert!(w.send_text("one").is_ok());
+    c.close(1000).unwrap();
+    assert_eq!(w.send_text("two"), Err(Error::Closed), "nothing is sent after a close, by any half");
+    server.join().unwrap();
+    let (addr, server) = serve(any, |mut c| {
+        let _ = c.recv();
+    });
+    let c = open(addr);
+    let (w, cancel) = (c.writer(), c.canceller());
+    cancel.cancel();
+    assert_eq!(w.send_text("x"), Err(Error::Closed));
+    drop(c);
+    server.join().unwrap();
+}

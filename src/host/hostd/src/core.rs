@@ -23,7 +23,7 @@ pub const OPS: &[&str] = &[
     "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
     "folder.git", "folder.list", "folder.read", "session.search", "session.chats", "llm.discover", "account.rename", "session.mode", "capabilities", "ssh.hosts", "ssh.check", "call.list", "call.get", "call.start", "call.say", "call.hangup", "call.close",
-    "browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch",
+    "browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch", "browser.input",
 ];
 pub const REPLAY_CHUNK: usize = 256;
 const MAX_EVENTS: usize = 256;

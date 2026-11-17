@@ -5,20 +5,20 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 1.1,
-    "peak_mib": 3.6,
-    "wall_s": 0.71
+    "compile_s": 0.4,
+    "peak_mib": 3.9,
+    "wall_s": 1.31
   },
-  "date": "2026-11-16",
-  "hash": "e95163d799ce95cf13cd496ea79ffdb72a792832d80c8e3510916500f4946315",
+  "date": "2026-11-17",
+  "hash": "1fa58c0f5f32ee2831717f5c20979ffa024959f2dc1128738b389477c3bd7ea7",
   "inputs": {
     "dependencies": [
       {
-        "hash": "485914711c1e390c8e9371754a94cb9eba50a175893024374406d713bde73606",
+        "hash": "e6a6fb26fe4c6badb73856bea108c574cd914c5f285ae845e5279edf2403f82f",
         "name": "lico-ws"
       },
       {
-        "hash": "da4f98b5308304892c1e5585d23719c22f2448c240516b5ba455ea69720ce977",
+        "hash": "db21987d7da8b84170c9fa42e4c570e88b9a0bc70e3ffdb784c22af2a1120ea0",
         "name": "lico-cdp-fake (dev)"
       }
     ],
@@ -26,30 +26,30 @@
     "files": [
       [
         "Cargo.toml",
-        "270ed071ff6b079214d4fe2816445d41b74e9c1c59ef1171570e34625887cdbd"
+        "ec74a1dc6122d010ccfe65527cfb7bd3d5370876c00df7b2ea15373e96bb1849"
       ],
       [
         "SPEC.md",
-        "82ac4b9fabd8bc063e4c97a1de5db525bbd239de16ce43d458b37f9f1ea96225"
+        "dfca1be643fb20f4705216d44370d44fcf93b6cea6870bacf239e5ffde35d435"
       ],
       [
         "src/lib.rs",
-        "480b87d42fcf17554f11ba3d192e639606716ed7a3c602f04a06b2d0d72c1a22"
+        "cb295ea60076197725ec5c57e66598ca7fe516524047b24a7c1fae0c5a447e31"
       ],
       [
         "tests/contract.rs",
-        "b1856f236e69fc54cdf27ee133bfdd153b6b44d440c3416b6dc13c88fddbca3b"
+        "d6f538fae50bb2c17a3581e4e441a71f1170c53aff1b7a5e7109edffb95d4b98"
       ]
     ],
     "lock": "c8829ba71ebbc5068b3fe78bf7b3916ab51a975dbda68ea6f508d94e587241b0",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 18,
+    "count": 23,
     "failed": 0,
     "ignored": 0,
-    "passed": 18
+    "passed": 23
   },
   "tool": "lico-xtask 0.1.0",
-  "version": "0.1.1"
+  "version": "0.2.0"
 }

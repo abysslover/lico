@@ -5,9 +5,12 @@ pub use lico_ws::{Canceller, Limits};
 
 use lico_ws::Message;
 use serde_json::{json, Map, Value};
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The events kept for the caller between two reads: a tab sends a frame every few tens of milliseconds while it changes, and a caller that reads each time it wakes never has
@@ -102,6 +105,22 @@ fn sort(text: &str) -> Result<Got, Error> {
         })),
         None => Err(Error::Protocol("a message that is neither a reply nor an event")),
     }
+}
+
+fn message(id: u64, method: &str, params: Value, session: Option<&str>) -> Result<String, Error> {
+    let params = match params {
+        Value::Null => json!({}),
+        p if p.is_object() => p,
+        _ => return Err(Error::Protocol("params is not an object")),
+    };
+    let mut message = Map::new();
+    message.insert("id".into(), json!(id));
+    message.insert("method".into(), json!(method));
+    message.insert("params".into(), params);
+    if let Some(s) = session {
+        message.insert("sessionId".into(), json!(s));
+    }
+    Ok(Value::Object(message).to_string())
 }
 
 impl Client {
@@ -338,5 +357,138 @@ pub mod cmd {
 
     pub fn attach(target_id: &str) -> Value {
         json!({"targetId": target_id, "flatten": true})
+    }
+}
+
+
+// ---- the link (0.2.0): a reader that blocks and callers that write at once --------------------------------------------------------------------------------
+
+type Waiting = SyncSender<Result<Value, Error>>;
+
+struct Shared {
+    writer: lico_ws::Writer,
+    canceller: Canceller,
+    next_id: AtomicU64,
+    pending: Mutex<HashMap<u64, Waiting>>,
+    dead: AtomicBool,
+}
+
+impl Shared {
+    /// The connection is over: every call that waits is told at once.
+    fn end(&self) {
+        self.dead.store(true, Ordering::SeqCst);
+        for (_, waiting) in self.pending.lock().unwrap().drain() {
+            let _ = waiting.send(Err(Error::Closed));
+        }
+    }
+}
+
+/// The reading half of a link: ONE thread owns it and blocks in `next_event`; it routes the replies to the calls that wait and hands the events on. It makes no call itself.
+pub struct Reader {
+    conn: lico_ws::Conn,
+    shared: Arc<Shared>,
+    stray: u64,
+}
+
+/// The calling half of a link: cloneable, any thread; a command is written at once (no poll, no queue behind the reader).
+#[derive(Clone)]
+pub struct Caller {
+    shared: Arc<Shared>,
+}
+
+/// Connects like `Client::connect` and splits the connection into its two halves. Give the connection a long `idle` in `limits` (a reader with no timeout of its own wakes once
+/// each `idle`: it is the only timer left).
+pub fn link(addr: SocketAddr, path: &str, token: Option<&str>, limits: &Limits) -> Result<(Reader, Caller), Error> {
+    let bearer = token.map(|t| format!("Bearer {t}"));
+    let headers: Vec<(&str, &str)> = bearer.iter().map(|b| ("Authorization", b.as_str())).collect();
+    let conn = lico_ws::connect(&lico_ws::Request { addr, path, headers: &headers }, limits).map_err(Error::Ws)?;
+    let shared = Arc::new(Shared { writer: conn.writer(), canceller: conn.canceller(), next_id: AtomicU64::new(1), pending: Mutex::new(HashMap::new()), dead: AtomicBool::new(false) });
+    Ok((Reader { conn, shared: shared.clone(), stray: 0 }, Caller { shared }))
+}
+
+impl Reader {
+    /// Replies that nobody waited for (a fired command, or a call that timed out).
+    pub fn stray(&self) -> u64 {
+        self.stray
+    }
+
+    /// The next event. With `Some(timeout)` it returns `Ok(None)` when nothing comes; with `None` it waits for a message and nothing else. An error ends the link: every
+    /// waiting call gets `Closed`.
+    pub fn next_event(&mut self, timeout: Option<Duration>) -> Result<Option<Event>, Error> {
+        loop {
+            self.conn.set_read_timeout(timeout);
+            let text = match self.conn.recv() {
+                Ok(Message::Text(t)) => t,
+                Ok(Message::Binary(_)) => return Err(self.fail(Error::Protocol("a binary message"))),
+                Ok(Message::Close { .. }) => return Err(self.fail(Error::Closed)),
+                Err(lico_ws::Error::Timeout) if timeout.is_some() => return Ok(None),
+                Err(lico_ws::Error::Timeout) => continue, // the idle limit of the connection with no message: not an end, a quiet hour
+                Err(e) => return Err(self.fail(from_ws(e))),
+            };
+            match sort(&text) {
+                Ok(Got::Reply { id, outcome }) => match self.shared.pending.lock().unwrap().remove(&id) {
+                    Some(waiting) => {
+                        let _ = waiting.send(outcome);
+                    }
+                    None => self.stray += 1,
+                },
+                Ok(Got::Event(e)) => return Ok(Some(e)),
+                Err(e) => return Err(self.fail(e)),
+            }
+        }
+    }
+
+    fn fail(&mut self, e: Error) -> Error {
+        self.shared.end();
+        e
+    }
+}
+
+impl Drop for Reader {
+    fn drop(&mut self) {
+        self.shared.end();
+    }
+}
+
+impl Caller {
+    fn send(&self, method: &str, params: Value, session: Option<&str>, waiting: Option<Waiting>) -> Result<u64, Error> {
+        if self.shared.dead.load(Ordering::SeqCst) {
+            return Err(Error::Closed);
+        }
+        let id = self.shared.next_id.fetch_add(1, Ordering::SeqCst);
+        let text = message(id, method, params, session)?;
+        if let Some(w) = waiting {
+            self.shared.pending.lock().unwrap().insert(id, w);
+        }
+        if let Err(e) = self.shared.writer.send_text(&text) {
+            self.shared.pending.lock().unwrap().remove(&id);
+            return Err(from_ws(e));
+        }
+        Ok(id)
+    }
+
+    /// One call: it is written at once and waits for its reply (the reader delivers it) at most `timeout`. Never call it from the thread that owns the `Reader`.
+    pub fn call(&self, method: &str, params: Value, session: Option<&str>, timeout: Duration) -> Result<Value, Error> {
+        let (tx, rx) = sync_channel(1);
+        let id = self.send(method, params, session, Some(tx))?;
+        match rx.recv_timeout(timeout) {
+            Ok(outcome) => outcome,
+            Err(_) => {
+                // forget it: a late reply is a stray one
+                self.shared.pending.lock().unwrap().remove(&id);
+                Err(if self.shared.dead.load(Ordering::SeqCst) { Error::Closed } else { Error::Timeout })
+            }
+        }
+    }
+
+    /// A command that nobody waits for (an acknowledgement, a mouse move, a key): written at once; its reply, when it comes, is counted as stray.
+    pub fn fire(&self, method: &str, params: Value, session: Option<&str>) -> Result<(), Error> {
+        self.send(method, params, session, None).map(|_| ())
+    }
+
+    /// Ends the connection from any thread: a reader that waits returns `Cancelled`, and every call is refused.
+    pub fn shutdown(&self) {
+        self.shared.canceller.cancel();
+        self.shared.end();
     }
 }

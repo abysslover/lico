@@ -651,7 +651,7 @@ dependencies = [
 
 [[package]]
 name = "lico-cdp"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "lico-cdp-fake",
  "lico-ws",
@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "lico-proxy"
-version = "0.3.0"
+version = "0.4.0"
 
 [[package]]
 name = "lico-sandbox"
@@ -747,7 +747,7 @@ dependencies = [
 
 [[package]]
 name = "lico-ws"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lico-ws",
 ]

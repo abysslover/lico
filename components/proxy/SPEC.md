@@ -1,4 +1,4 @@
-# lico-proxy 0.3.0 — specification
+# lico-proxy 0.4.0 — specification
 
 Written with the P05 plan (M17-P05); approved by the lead under the owner's delegation (the owner away), mail 148. Marks: **KNOWN FROM DOCUMENTATION** (HTTP/1.1 message syntax and semantics, RFC 9110 and 9112; `CONNECT`, RFC 9110 section 9.3.6; the special-purpose address registries of IANA, RFC 6890 and its updates; Basic authentication, RFC 7617), **PROPOSED** (the limits; whether the engine takes proxy credentials and honours the proxy for every fetch is the second measurement of M17-P05).
 
@@ -60,4 +60,8 @@ If `Config.token` is set, every request needs `Proxy-Authorization: Basic` for t
 
 ## Versioning and budget
 
-`0.1.0` while it has met one client (the engine of M17-P05); `0.3.0` (M17-P07, mail 152) adds `Event.why`; `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.
+`0.1.0` while it has met one client (the engine of M17-P05); `0.4.0` (M17-P08) removes the accept poll; `0.3.0` (M17-P07, mail 152) adds `Event.why`; `0.2.0` (M17-P06, mail 151, approved by the lead under the owner's delegation) adds `only_loopback` and `deny_port`. Budget: the default 256 MiB and 30 s.
+
+## No timer (0.4.0, M17-P08, mail 152)
+
+The listener blocks in `accept` (it no longer polls every 20 ms: that were 50 wake-ups a second while an engine ran, MEASURED in P06); `stop` sets the flag and makes one connection to the guard's own address, which wakes the accept (the connection is not counted and not served). An idle guard wakes for nothing: a test of its own process counts the voluntary context switches of its threads over 1.5 s (76 before, at most 6 allowed after). A connection thread still works only while its connection lives.

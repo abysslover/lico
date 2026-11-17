@@ -5,16 +5,16 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.8,
-    "peak_mib": 3.2,
+    "compile_s": 1.0,
+    "peak_mib": 3.0,
     "wall_s": 0.57
   },
-  "date": "2026-11-16",
-  "hash": "da4f98b5308304892c1e5585d23719c22f2448c240516b5ba455ea69720ce977",
+  "date": "2026-11-17",
+  "hash": "db21987d7da8b84170c9fa42e4c570e88b9a0bc70e3ffdb784c22af2a1120ea0",
   "inputs": {
     "dependencies": [
       {
-        "hash": "485914711c1e390c8e9371754a94cb9eba50a175893024374406d713bde73606",
+        "hash": "e6a6fb26fe4c6badb73856bea108c574cd914c5f285ae845e5279edf2403f82f",
         "name": "lico-ws"
       }
     ],

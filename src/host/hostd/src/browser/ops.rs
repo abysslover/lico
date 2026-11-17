@@ -20,7 +20,7 @@ pub const DEFAULT_AREA: (u32, u32) = (1024, 768);
 /// How long `browser.shot` waits for a first frame.
 pub const SHOT_WAIT: Duration = Duration::from_secs(3);
 
-pub const NAMES: [&str; 10] = ["browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch"];
+pub const NAMES: [&str; 11] = ["browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch", "browser.input"];
 
 /// `op`, `v` and `id` are the fields every request may carry.
 pub fn valid_common(key: &str, v: &Value) -> bool {
@@ -141,7 +141,7 @@ impl Browser {
                     let font = fonts::find_on_this_machine();
                     prepared.font_missing = font.is_none();
                     let release = if located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() };
-                    let setup = Setup { index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
+                    let setup = Setup { epoch: self.epoch, index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
                     match supervisor::start(setup) {
                         Ok(e) => engines[index] = Some(e),
                         Err(e) => return Err(e.0),
@@ -361,6 +361,7 @@ impl Ops for Browser {
             "browser.go" => self.go(shared, request),
             "browser.nav" => self.nav(request),
             "browser.watch" => self.watch(request),
+            "browser.input" => self.input(request),
             _ => Err("unknown_op"),
         }
     }
@@ -572,6 +573,53 @@ mod tests {
         assert_eq!(watch(99)["hidden"], json!(true));
         browser.call(&shared, "browser.close", &req(json!({"op": "browser.close", "tab": id}))).unwrap();
         assert_eq!(watch(0)["gone"], json!(true));
+    }
+
+    #[test]
+    fn the_input_operation_accepts_exactly_what_a_kind_needs() {
+        let ok = |v: Value| valid("browser.input", &req(v));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 10, "y": 20})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "down", "x": 1, "y": 2, "button": "left", "clicks": 2})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "up", "x": 1, "y": 2, "button": "right"})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "wheel", "x": 1, "y": 2, "delta": -120.0})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "Enter", "code": "Enter"})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "a", "code": "KeyA", "text": "a"})));
+        assert!(ok(json!({"op": "browser.input", "tab": "b1", "kind": "text", "text": "안녕"})));
+        for bad in [
+            json!({"op": "browser.input", "tab": "b1"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "click", "x": 1, "y": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 1, "y": 1, "text": "a"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "down", "x": 1, "y": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "down", "x": 1, "y": 1, "button": "left", "clicks": 4}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "wheel", "x": 1, "y": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "wheel", "x": 1, "y": 1, "delta": 1e9}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "key_down"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "a\nb"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "a", "text": "123456789"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "a", "x": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "text"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "text", "text": "a", "key": "a"}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "text", "text": "x".repeat(16_385)}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 1, "y": 1, "extra": 1}),
+            json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 1_000_000, "y": 1}),
+        ] {
+            assert!(!ok(bad.clone()), "{bad}");
+        }
+    }
+
+    #[test]
+    fn no_input_goes_to_a_tab_that_is_absent_hidden_or_not_there() {
+        let (_home, browser, shared) = world("input");
+        let id = open_absent(&browser, &shared);
+        let input = |v: Value| browser.call(&shared, "browser.input", &req(v));
+        let kinds = [json!({"kind": "move", "x": 5, "y": 5}), json!({"kind": "down", "x": 5, "y": 5, "button": "left"}), json!({"kind": "key_down", "key": "a"}), json!({"kind": "text", "text": "a"})];
+        for mut k in kinds.clone() {
+            k["op"] = json!("browser.input");
+            k["tab"] = json!(id);
+            assert_eq!(input(k.clone()).unwrap()["sent"], json!(false), "an absent engine takes no input: {k}");
+        }
+        assert_eq!(input(json!({"op": "browser.input", "tab": "b99", "kind": "text", "text": "a"})), Err("unknown_tab"));
     }
 
     #[test]

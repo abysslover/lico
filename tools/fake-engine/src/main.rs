@@ -68,8 +68,20 @@ fn main() {
     let counter = std::sync::Arc::new(AtomicU64::new(1));
     let (c1, c2, c3, c4) = (counter.clone(), counter.clone(), counter.clone(), counter.clone());
     let targets = AtomicU64::new(1);
+    let home = std::env::var("HOME").ok();
     let script = Script::new()
         .token(&token)
+        .observe(move |call: &Call| {
+            // what the person did reaches the engine: one line each, with the time it arrived (nanoseconds since the epoch), for the tests that measure how long it took
+            if call.method.starts_with("Input.") {
+                if let Some(h) = &home {
+                    let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(format!("{h}/input.log")) {
+                        let _ = writeln!(f, "{ns} {} {}", call.method, call.params);
+                    }
+                }
+            }
+        })
         .idle(Duration::from_secs(3600))
         .http("/json/version", 200, &json!({"Browser": "Chrome/145.0.0.0", "webSocketDebuggerUrl": format!("ws://127.0.0.1:{port}/devtools/browser")}).to_string())
         .on("Browser.getVersion", Answer::result(json!({"product": "Chrome/145.0.0.0", "userAgent": "fake"})))

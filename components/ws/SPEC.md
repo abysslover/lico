@@ -1,4 +1,4 @@
-# lico-ws 0.2.0 — specification
+# lico-ws 0.3.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shapes of RFC 6455 and RFC 4648, SHA-1 of FIPS 180), **PROPOSED** (a value chosen here that the first measurement of the engine may change).
 
@@ -46,3 +46,7 @@ A WebSocket connection between two ends on this machine: the client role (always
 ## Versioning and budget
 
 `0.2.0`: the default cap was lowered to 4 MiB from the figure of the first measurement (a changed default is a changed behaviour); semantic after. Budget: the default 256 MiB and 30 s.
+
+## The writer half (0.3.0, M17-P08, mail 152)
+
+`Conn::writer() -> Writer` (cheap to clone, any thread): `send_text` and `send_binary` from another thread while the owner of the `Conn` blocks in `recv`, so that a command reaches the peer at once and nothing polls. One frame is written whole before the next begins, whichever half writes (a pong or a close of the reader included: one lock for the socket's writes); after a close frame or a cancel every half refuses to send (`Error::Closed`). The server role stays behind the `server` feature; the writer half has the client's masking like `Conn`.

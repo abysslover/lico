@@ -5,16 +5,16 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 2.5,
-    "peak_mib": 59.6,
-    "wall_s": 0.48
+    "compile_s": 1.5,
+    "peak_mib": 64.7,
+    "wall_s": 0.43
   },
-  "date": "2026-11-16",
-  "hash": "c82551427b2511d833c493a51e26be506d3556cdd846ac97ffbd406f226aa1d5",
+  "date": "2026-11-17",
+  "hash": "7f4cc777cd221bad3ef5751eee25c3b72f8a95ee0b5dcb6935a8696dcc2628de",
   "inputs": {
     "dependencies": [
       {
-        "hash": "e95163d799ce95cf13cd496ea79ffdb72a792832d80c8e3510916500f4946315",
+        "hash": "1fa58c0f5f32ee2831717f5c20979ffa024959f2dc1128738b389477c3bd7ea7",
         "name": "lico-cdp (dev)"
       },
       {
@@ -22,7 +22,7 @@
         "name": "lico-png (dev)"
       },
       {
-        "hash": "410e0cf15a4f79f18f2dc8e8393a84d4dc600189f9cb53b2407fb0a7c952b9ac",
+        "hash": "5167a7bb1b8816e67341ed9c84b955ca4e845bdb2787f34372879d63057a50eb",
         "name": "lico-proxy (dev)"
       }
     ],

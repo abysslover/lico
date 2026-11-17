@@ -144,6 +144,29 @@ impl Rig {
         std::fs::read_to_string(format!("/proc/{}/status", self.child.id())).unwrap().lines().find_map(|l| l.strip_prefix("Threads:")).and_then(|v| v.trim().parse().ok()).unwrap()
     }
 
+    /// Voluntary context switches summed over every thread of the host: each wake-up of a sleeping thread is one.
+    pub(super) fn wakeups(&self) -> u64 {
+        std::fs::read_dir(format!("/proc/{}/task", self.child.id()))
+            .map(|r| r.filter_map(|e| e.ok()).map(|e| std::fs::read_to_string(e.path().join("status")).unwrap_or_default().lines().find_map(|l| l.strip_prefix("voluntary_ctxt_switches:")).and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(0)).sum())
+            .unwrap_or(0)
+    }
+
+    /// The lines the fake engine wrote for what reached it (time in nanoseconds, method, parameters), from the scratch folder of its run.
+    pub(super) fn input_log(&self) -> Vec<(u128, String, Value)> {
+        let Ok(dirs) = std::fs::read_dir(self.dir.join("state/browser")) else { return Vec::new() };
+        dirs.filter_map(|d| d.ok())
+            .filter_map(|d| std::fs::read_to_string(d.path().join("input.log")).ok())
+            .flat_map(|t| {
+                t.lines()
+                    .filter_map(|l| {
+                        let mut p = l.splitn(3, ' ');
+                        Some((p.next()?.parse::<u128>().ok()?, p.next()?.to_string(), serde_json::from_str(p.next()?).ok()?))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     pub(super) fn scratch_dirs(&self) -> usize {
         std::fs::read_dir(self.dir.join("state/browser")).map(|r| r.filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("scratch-")).count()).unwrap_or(0)
     }
@@ -417,4 +440,63 @@ fn browser_watch_hands_the_window_the_newest_frame_and_nothing_polls() {
     std::thread::sleep(Duration::from_millis(200));
     assert_eq!(rig.call(json!({"op": "browser.close", "tab": tab}))["ok"], json!(1));
     assert_eq!(read_answer(held, 5).expect("released by the close")["gone"], json!(true));
+}
+
+fn now_ns() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+}
+
+#[test]
+#[ignore = "a system test of tests/system_tests.toml: run by `cargo xtask system` with LICO_BIN and LICO_FAKE_ENGINE set"]
+fn browser_input_reaches_the_engine_at_once_and_nothing_wakes_while_a_still_page_is_shown() {
+    let rig = Rig::start("input");
+    let tab = rig.open("https://pages.test/start");
+    rig.wait(15, "the page", || Some(()).filter(|_| rig.tab(&tab)["has_frame"] == json!(true) && rig.tab(&tab)["phase"] == json!("ready")));
+    // what the person does reaches the page: a press, a key, committed Korean text
+    let input = |v: Value| {
+        let mut v = v;
+        v["op"] = json!("browser.input");
+        v["tab"] = json!(tab);
+        rig.call(v)
+    };
+    assert_eq!(input(json!({"kind": "down", "x": 30, "y": 40, "button": "left", "clicks": 1}))["sent"], json!(true));
+    assert_eq!(input(json!({"kind": "up", "x": 30, "y": 40, "button": "left", "clicks": 1}))["sent"], json!(true));
+    assert_eq!(input(json!({"kind": "wheel", "x": 30, "y": 40, "delta": -120.0}))["sent"], json!(true));
+    assert_eq!(input(json!({"kind": "key_down", "key": "Enter", "code": "Enter"}))["sent"], json!(true));
+    assert_eq!(input(json!({"kind": "text", "text": "안녕하세요"}))["sent"], json!(true));
+    let log = rig.wait(5, "the input to reach the engine", || Some(rig.input_log()).filter(|l| l.len() >= 5));
+    let methods: Vec<&str> = log.iter().map(|l| l.1.as_str()).collect();
+    assert_eq!(methods, ["Input.dispatchMouseEvent", "Input.dispatchMouseEvent", "Input.dispatchMouseEvent", "Input.dispatchKeyEvent", "Input.insertText"], "in the order it was given");
+    assert_eq!((log[0].2["type"].clone(), log[0].2["button"].clone(), log[2].2["deltaY"].clone(), log[3].2["key"].clone(), log[4].2["text"].clone()), (json!("mousePressed"), json!("left"), json!(-120.0), json!("Enter"), json!("안녕하세요")));
+    // how long a command takes to arrive: sixty mouse moves, one after another, each stamped before it is sent and when the engine got it
+    let mut sent = Vec::new();
+    for i in 0..60 {
+        sent.push(now_ns());
+        assert_eq!(input(json!({"kind": "move", "x": 100 + i, "y": 50}))["sent"], json!(true));
+        std::thread::sleep(Duration::from_millis(15)); // a mouse does not move faster than this in a test; and no two commands wait for each other
+    }
+    let log = rig.wait(5, "all the moves", || Some(rig.input_log()).filter(|l| l.iter().filter(|e| e.2["type"] == json!("mouseMoved")).count() >= 60));
+    let arrived: Vec<u128> = log.iter().filter(|e| e.2["type"] == json!("mouseMoved")).map(|e| e.0).collect();
+    let mut lag: Vec<f64> = sent.iter().zip(&arrived).map(|(s, a)| (*a as f64 - *s as f64) / 1e6).collect();
+    lag.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let (p50, p95, worst) = (lag[lag.len() / 2], lag[lag.len() * 95 / 100], lag[lag.len() - 1]);
+    println!("a command reaches the engine: p50 {p50:.2} ms, p95 {p95:.2} ms, worst {worst:.2} ms");
+    assert!(p95 < 20.0, "p95 {p95:.2} ms (the gate is under 20): p50 {p50:.2}, worst {worst:.2}");
+    // no input to a tab that is hidden or whose engine died
+    assert_eq!(rig.call(json!({"op": "browser.hide", "tab": tab}))["ok"], json!(1));
+    assert_eq!(input(json!({"kind": "text", "text": "a"}))["sent"], json!(false), "a hidden tab takes no input");
+    assert_eq!(rig.call(json!({"op": "browser.show", "tab": tab, "width": 800, "height": 600}))["ok"], json!(1));
+    rig.wait(5, "the screencast again", || Some(()).filter(|_| rig.tab(&tab)["shown"] == json!(true)));
+    // nothing wakes while a still page is shown: the host's wake-ups over ten seconds with the page shown are those of the host with no tab, give or take a few
+    std::thread::sleep(Duration::from_secs(1)); // let the show settle
+    let (a, t0) = (rig.wakeups(), Instant::now());
+    std::thread::sleep(Duration::from_secs(10));
+    let shown = rig.wakeups() - a;
+    assert_eq!(rig.call(json!({"op": "browser.close", "tab": tab}))["engine_stopped"], json!(true));
+    std::thread::sleep(Duration::from_secs(1));
+    let (b, t1) = (rig.wakeups(), Instant::now());
+    std::thread::sleep(Duration::from_secs(10));
+    let none = rig.wakeups() - b;
+    println!("host wake-ups over {:.0} s: {shown} with a still page shown, {none} with no tab (the host's own background threads)", t0.elapsed().as_secs_f64().min(t1.elapsed().as_secs_f64() + 10.0));
+    assert!(shown <= none + 4, "a still page shown woke the host {shown} times in ten seconds against {none} with no tab at all");
 }

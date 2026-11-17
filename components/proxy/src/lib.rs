@@ -187,7 +187,6 @@ impl Proxy {
     /// Binds `127.0.0.1:0` (never another address) and starts the acceptor. Nothing runs before this and nothing after `stop`.
     pub fn start(cfg: Config, resolver: Arc<dyn Resolver>, connector: Arc<dyn Connector>) -> std::io::Result<Proxy> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
-        listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
         let shared = Arc::new(Shared {
             cfg,
@@ -222,6 +221,8 @@ impl Proxy {
 
     fn shutdown(&mut self) {
         self.shared.stop.store(true, Ordering::SeqCst);
+        // the accept blocks (no timer): a connection to ourselves wakes it, and it sees the stop
+        let _ = TcpStream::connect_timeout(&self.addr, Duration::from_millis(500));
         for s in self.shared.streams.lock().unwrap().values() {
             let _ = s.shutdown(Shutdown::Both);
         }
@@ -280,8 +281,10 @@ fn accept_loop(listener: TcpListener, sh: Arc<Shared>) {
     while !sh.stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((mut stream, _)) => {
+                if sh.stop.load(Ordering::SeqCst) {
+                    break; // the connection that `stop` made to wake this accept
+                }
                 sh.accepted.fetch_add(1, Ordering::SeqCst);
-                let _ = stream.set_nonblocking(false);
                 if sh.active.load(Ordering::SeqCst) >= sh.cfg.max_connections {
                     let _ = stream.set_write_timeout(Some(Duration::from_millis(200)));
                     refuse(&sh, &mut stream, 503, "", 0, false);

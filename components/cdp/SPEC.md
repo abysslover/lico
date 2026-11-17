@@ -1,4 +1,4 @@
-# lico-cdp 0.1.1 — specification
+# lico-cdp 0.2.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages and the names and parameters of the commands, from Chrome's public protocol reference), **PROPOSED** (a choice made here that the first measurement of the engine may change; a command the engine lacks is found by that measurement, not guessed here).
 
@@ -40,4 +40,8 @@ A synchronous CDP client over one WebSocket on this machine: a call is sent with
 
 ## Versioning and budget
 
-`0.1.1`: the default cap follows `lico-ws 0.2.0`; `0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.2.0` adds the link; `0.1.1`: the default cap follows `lico-ws 0.2.0`; `0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+
+## The link (0.2.0, M17-P08, mail 152)
+
+`link(addr, path, token, limits) -> (Reader, Caller)`: the connection split into a reading half and a calling half. ONE thread owns the `Reader` and blocks in `next_event(None)` (a message is all that wakes it; with `Some(t)` it returns `Ok(None)` after `t`); it routes each reply to the call that waits and hands the events on, and it never makes a call itself. `Caller` is cloneable and used from any thread: `call` writes the command AT ONCE through the writer half of `lico-ws 0.3.0` and waits for its reply at most `timeout` (a timed-out call is forgotten; its late reply counts as stray); `fire` writes and waits for nothing (acknowledgements, mouse moves, keys); `shutdown` cancels the connection from any thread (a waiting reader returns `Cancelled`). When the connection ends, every waiting call is told `Closed` at once and every later call is refused. `Client` (the single-owner client) is unchanged. Give the connection a long `idle`: a reader with no timeout of its own wakes once each `idle` and goes on; it is the only timer left.

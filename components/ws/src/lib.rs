@@ -14,7 +14,7 @@ use std::fmt;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The longest head of an upgrade request or answer: a real one is under 1 KiB; 16 KiB leaves room for a long path and a token and stops a peer that never ends a head.
@@ -148,6 +148,42 @@ impl Canceller {
     }
 }
 
+fn write_frame(stream: &TcpStream, role: Role, idle: Duration, wlock: &Mutex<()>, sent_close: &AtomicBool, cancelled: &AtomicBool, op: Op, payload: &[u8]) -> Result<(), Error> {
+    if sent_close.load(Ordering::SeqCst) || cancelled.load(Ordering::SeqCst) {
+        return Err(Error::Closed);
+    }
+    let mask = (role == Role::Client).then(new_mask);
+    let bytes = encode_frame(true, op, payload, mask);
+    let _one_at_a_time = wlock.lock().unwrap_or_else(|e| e.into_inner());
+    let _ = stream.set_write_timeout(Some(idle));
+    (&*stream).write_all(&bytes).map_err(|e| match e.kind() {
+        ErrorKind::WouldBlock | ErrorKind::TimedOut => Error::Timeout,
+        ErrorKind::BrokenPipe | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::NotConnected => Error::Closed,
+        kind => Error::Io(kind),
+    })
+}
+
+/// The writing half of a connection (see `Conn::writer`); cheap to clone, usable from any thread.
+#[derive(Clone)]
+pub struct Writer {
+    stream: Arc<TcpStream>,
+    role: Role,
+    idle: Duration,
+    wlock: Arc<Mutex<()>>,
+    sent_close: Arc<AtomicBool>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Writer {
+    pub fn send_text(&self, text: &str) -> Result<(), Error> {
+        write_frame(&self.stream, self.role, self.idle, &self.wlock, &self.sent_close, &self.cancelled, Op::Text, text.as_bytes())
+    }
+
+    pub fn send_binary(&self, bytes: &[u8]) -> Result<(), Error> {
+        write_frame(&self.stream, self.role, self.idle, &self.wlock, &self.sent_close, &self.cancelled, Op::Binary, bytes)
+    }
+}
+
 pub struct Conn {
     stream: TcpStream,
     role: Role,
@@ -156,8 +192,10 @@ pub struct Conn {
     idle: Duration,
     read_timeout: Option<Duration>,
     peer_closed: bool,
-    sent_close: bool,
+    sent_close: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
+    /// One frame is written whole before another begins, whichever half writes (a pong from the reader, a message from a writer half).
+    wlock: Arc<Mutex<()>>,
 }
 
 impl fmt::Debug for Conn {
@@ -183,8 +221,9 @@ impl Conn {
             idle: limits.idle,
             read_timeout: None,
             peer_closed: false,
-            sent_close: false,
+            sent_close: Arc::new(AtomicBool::new(false)),
             cancelled: Arc::new(AtomicBool::new(false)),
+            wlock: Arc::new(Mutex::new(())),
         };
         if !leftover.is_empty() {
             c.pending.extend(c.dec.feed(leftover));
@@ -208,23 +247,19 @@ impl Conn {
     }
 
     fn send(&mut self, op: Op, payload: &[u8]) -> Result<(), Error> {
-        if self.sent_close || self.cancelled.load(Ordering::SeqCst) {
-            return Err(Error::Closed);
-        }
-        let mask = (self.role == Role::Client).then(new_mask);
-        let bytes = encode_frame(true, op, payload, mask);
-        let _ = self.stream.set_write_timeout(Some(self.idle));
-        self.stream.write_all(&bytes).map_err(|e| match e.kind() {
-            ErrorKind::WouldBlock | ErrorKind::TimedOut => Error::Timeout,
-            ErrorKind::BrokenPipe | ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted | ErrorKind::NotConnected => Error::Closed,
-            kind => Error::Io(kind),
-        })
+        write_frame(&self.stream, self.role, self.idle, &self.wlock, &self.sent_close, &self.cancelled, op, payload)
+    }
+
+    /// A writer half (0.3.0): it sends text and binary messages from another thread while this half blocks in `recv`; the frames are written whole, one after another, with the
+    /// pongs and the close that this half sends. After a close or a cancel every half refuses to send (`Closed`).
+    pub fn writer(&self) -> Writer {
+        Writer { stream: Arc::new(self.stream.try_clone().expect("a duplicate of a socket")), role: self.role, idle: self.idle, wlock: self.wlock.clone(), sent_close: self.sent_close.clone(), cancelled: self.cancelled.clone() }
     }
 
     /// Sends a close frame with the code; nothing can be sent after it, and `recv` goes on until the peer answers or ends.
     pub fn close(&mut self, code: u16) -> Result<(), Error> {
         let r = self.send(Op::Close, &code.to_be_bytes());
-        self.sent_close = true;
+        self.sent_close.store(true, Ordering::SeqCst);
         r
     }
 
@@ -252,9 +287,9 @@ impl Conn {
                 }
                 Some(Ok(Incoming::Pong(_))) => continue,
                 Some(Ok(Incoming::Close { code, reason })) => {
-                    if !self.sent_close {
+                    if !self.sent_close.load(Ordering::SeqCst) {
                         let _ = self.send(Op::Close, &code.unwrap_or(1000).to_be_bytes());
-                        self.sent_close = true;
+                        self.sent_close.store(true, Ordering::SeqCst);
                     }
                     self.peer_closed = true;
                     return Ok(Message::Close { code, reason });

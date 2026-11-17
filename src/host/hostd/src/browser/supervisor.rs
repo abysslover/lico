@@ -1,13 +1,15 @@
 //! One engine and the one thread that runs it (M17-P06). The thread exists only while the engine does: it makes a scratch directory, starts the fetch guard, starts the engine
 //! behind `lico-sandbox` from the open, hashed file (it is the spawning thread, so the engine's death-with-parent signal follows this thread, which lives as long as the engine),
-//! owns the CDP client, feeds the tab models and executes their effects, and at the end stops the engine, the guard and removes the scratch directory.
-//! While it runs it wakes ten times a second (the read timeout of the client): said plainly, measured, and the first thing the input phase removes.
+//! owns the calling half of the CDP link, feeds the tab models and executes their effects, and at the end stops the engine, the guard and removes the scratch directory.
+//! Two threads, no timer: a reader that blocks in the CDP socket and hands each message on, and the command thread that blocks on one queue (commands of the operations, the
+//! engine's events, the guard's refusals) and writes to the engine at once through the calling half of the link. The only time it wakes without a message is the one half second
+//! after a tab is shown, for the model's fallback screenshot.
 
 use super::engine::Located;
 use super::map;
 use super::profile::{self, Params};
 use lico_browser_view::{Effect, EngineEvent, Refusal, Tab};
-use lico_cdp::{Client, Error as CdpError, Limits};
+use lico_cdp::{link, Caller, Error as CdpError, Limits, Reader};
 use lico_proxy::{Config as ProxyConfig, EventKind, Policy, Proxy, Resolver, StdConnector, StdResolver, Why};
 use serde_json::{json, Value};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -19,8 +21,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-/// How long the worker waits for the engine's events before it looks at its commands again.
-pub const POLL: Duration = Duration::from_millis(100);
+/// How long after a tab is shown the model may ask for one screenshot if no frame came (the only timer: one wake each time a tab is shown).
+const FALLBACK: Duration = Duration::from_millis(550);
+/// The idle limit of the engine's connection: a reader with no message waits through it (once an hour it wakes and goes on).
+const QUIET: Duration = Duration::from_secs(3600);
 /// How many times the start is tried when the engine cannot bind the port that was picked (another program took it between the pick and the bind).
 pub const BIND_TRIES: usize = 3;
 /// How long one try waits for the engine's CDP port to accept a connection.
@@ -84,6 +88,12 @@ pub enum Cmd {
     /// Close the page with this target id (the manager has already taken the tab out of the table).
     Close(String),
     Shutdown,
+    /// A message of the engine (the reader hands each one on).
+    Event(lico_cdp::Event),
+    /// The guard served or refused something (the counts are refreshed; a refusal is told to the tabs).
+    Guard(Option<Refused>),
+    /// The engine's socket ended.
+    Died,
 }
 
 pub struct Engine {
@@ -139,6 +149,8 @@ fn why_of(w: Why) -> Refusal {
 pub struct StartError(pub &'static str);
 
 pub struct Setup {
+    /// The browser's clock: the model's times (when a tab was shown) count from it.
+    pub epoch: Instant,
     pub index: usize,
     pub local: bool,
     pub located: Located,
@@ -220,10 +232,11 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
     let guard_counts = Arc::new(Mutex::new((0u64, 0u64)));
     let unpinned = setup.located.unpinned;
     let (d2, r2, g2) = (dead.clone(), reported.clone(), guard_counts.clone());
+    let tx2 = tx.clone();
     let join = thread::Builder::new()
         .name("lico-browser-engine".into())
         .spawn(move || {
-            run(setup, rx, ready_tx, &r2, &g2);
+            run(setup, rx, tx2, ready_tx, &r2, &g2);
             d2.store(true, Ordering::SeqCst);
         })
         .map_err(|_| StartError("engine_failed"))?;
@@ -242,7 +255,7 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
 }
 
 struct Running {
-    client: Client,
+    caller: Caller,
     child: Child,
     guard: Option<Proxy>,
     scratch: PathBuf,
@@ -256,9 +269,8 @@ fn release(ports: &[u16]) {
     }
 }
 
-fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>, counts: &Arc<Mutex<(u64, u64)>>) {
-    let (gtx, grx) = mpsc::channel::<Refused>();
-    let mut running = match bring_up(&setup, gtx) {
+fn run(setup: Setup, rx: Receiver<Cmd>, tx: Sender<Cmd>, ready: Sender<Result<(), &'static str>>, reported: &Arc<Mutex<String>>, counts: &Arc<Mutex<(u64, u64)>>) {
+    let (mut running, reader) = match bring_up(&setup, tx.clone()) {
         Ok(r) => r,
         Err(why) => {
             let _ = ready.send(Err(why));
@@ -266,14 +278,37 @@ fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>,
         }
     };
     log(if setup.located.unpinned { "engine started (not the pinned release)" } else { "engine started" });
-    if let Ok(v) = running.client.call("Browser.getVersion", json!({}), None, CALL) {
+    // the reader: it blocks in the socket and hands each message to the command thread; it makes no call
+    let rtx = tx.clone();
+    let reading = thread::Builder::new().name("lico-browser-reader".into()).spawn(move || {
+        let mut reader = reader;
+        loop {
+            match reader.next_event(None) {
+                Ok(Some(e)) => {
+                    if rtx.send(Cmd::Event(e)).is_err() {
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    let _ = rtx.send(Cmd::Died);
+                    break;
+                }
+            }
+        }
+    });
+    if let Ok(v) = running.caller.call("Browser.getVersion", json!({}), None, CALL) {
         if let Some(p) = v.get("product").and_then(Value::as_str) {
             *reported.lock().unwrap() = lico_browser_view::clean(p, 100);
         }
     }
     let _ = ready.send(Ok(()));
-    let crashed = serve(&setup, &mut running, &rx, &grx, counts);
-    let status = tear_down(running);
+    let crashed = serve(&setup, &running, &rx, counts);
+    let status = tear_down(&mut running);
+    running.caller.shutdown();
+    if let Ok(h) = reading {
+        let _ = h.join();
+    }
     match status {
         Some(code) => log(&format!("engine ended, exit code {code}")),
         None => log("engine ended"),
@@ -287,14 +322,13 @@ fn run(setup: Setup, rx: Receiver<Cmd>, ready: Sender<Result<(), &'static str>>,
     }
 }
 
-fn bring_up(setup: &Setup, gtx: Sender<Refused>) -> Result<Running, &'static str> {
+fn bring_up(setup: &Setup, gtx: Sender<Cmd>) -> Result<(Running, Reader), &'static str> {
     let scratch = scratch_dir(&setup.state_dir).map_err(|_| "engine_failed")?;
     let guard_token = crate::core::random_hex(16);
     let cdp_token = crate::core::random_hex(16);
     let observe: Arc<dyn Fn(&lico_proxy::Event) + Send + Sync> = Arc::new(move |e| {
-        if let EventKind::Refused(status) = e.kind {
-            let _ = gtx.send(Refused { status, host: e.host.clone(), port: e.port, why: why_of(e.why) });
-        }
+        let refused = if let EventKind::Refused(status) = e.kind { Some(Refused { status, host: e.host.clone(), port: e.port, why: why_of(e.why) }) } else { None };
+        let _ = gtx.send(Cmd::Guard(refused));
     });
     let cfg = ProxyConfig { token: Some(guard_token.clone()), policy: if setup.local { Policy { allow_loopback: true, only_loopback: true } } else { Policy::default() }, observe: Some(observe), deny_port: Some(Arc::new(super::reserved::denied)), ..ProxyConfig::default() };
     let guard = match Proxy::start(cfg, Arc::new(Named(StdResolver)), Arc::new(StdConnector)) {
@@ -337,8 +371,9 @@ fn bring_up(setup: &Setup, gtx: Sender<Refused>) -> Result<Running, &'static str
         let addr = SocketAddr::from(([127, 0, 0, 1], cdp_port));
         let end = Instant::now() + CONNECT_WAIT;
         loop {
-            match Client::connect(addr, "/devtools/browser", Some(&cdp_token), &Limits::default()) {
-                Ok(client) => return Ok(Running { client, child, guard: Some(guard), scratch, ports: mine }),
+            let limits = Limits { idle: QUIET, ..Limits::default() };
+            match link(addr, "/devtools/browser", Some(&cdp_token), &limits) {
+                Ok((reader, caller)) => return Ok((Running { caller, child, guard: Some(guard), scratch, ports: mine }, reader)),
                 Err(_) if child.try_wait().ok().flatten().is_some() || Instant::now() >= end => break,
                 Err(_) => thread::sleep(Duration::from_millis(50)),
             }
@@ -351,49 +386,66 @@ fn bring_up(setup: &Setup, gtx: Sender<Refused>) -> Result<Running, &'static str
     Err(last)
 }
 
-/// The loop. True when the engine died on its own (the socket closed or the process ended), false when it was asked to end.
-fn serve(setup: &Setup, r: &mut Running, rx: &Receiver<Cmd>, grx: &Receiver<Refused>, counts: &Arc<Mutex<(u64, u64)>>) -> bool {
-    let began = Instant::now();
+/// The loop of the command thread: it blocks on the queue, with no timer except the half second after a tab is shown. True when the engine died on its own (its socket
+/// ended), false when it was asked to end.
+fn serve(setup: &Setup, r: &Running, rx: &Receiver<Cmd>, counts: &Arc<Mutex<(u64, u64)>>) -> bool {
+    let caller = &r.caller;
+    let mut due: Option<Instant> = None;
     loop {
-        // commands first: a command waits at most one poll (see the top of this file)
-        loop {
-            match rx.try_recv() {
-                Ok(Cmd::Open(id)) => open_tab(setup, &mut r.client, &id),
-                Ok(Cmd::Effects(id, fx)) => run_effects(setup, &mut r.client, &id, fx),
-                Ok(Cmd::Close(target)) => close_target(&mut r.client, &target),
-                Ok(Cmd::Shutdown) | Err(mpsc::TryRecvError::Disconnected) => return false,
-                Err(mpsc::TryRecvError::Empty) => break,
+        let cmd = match due {
+            Some(at) => match rx.recv_timeout(at.saturating_duration_since(Instant::now())) {
+                Ok(c) => Some(c),
+                Err(mpsc::RecvTimeoutError::Timeout) => None,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return false,
+            },
+            None => match rx.recv() {
+                Ok(c) => Some(c),
+                Err(_) => return false,
+            },
+        };
+        match cmd {
+            Some(Cmd::Open(id)) => {
+                open_tab(setup, caller, &id);
+                due = Some(Instant::now() + FALLBACK);
             }
-        }
-        while let Ok(refused) = grx.try_recv() {
-            refusal(setup, &mut r.client, refused);
-        }
-        match r.client.next_event(POLL) {
-            Ok(Some(event)) => on_event(setup, &mut r.client, &event),
-            Ok(None) => {}
-            Err(_) => return true,
+            Some(Cmd::Effects(id, fx)) => {
+                if fx.iter().any(|e| matches!(e, Effect::StartScreencast)) {
+                    due = Some(Instant::now() + FALLBACK);
+                }
+                run_effects(setup, caller, &id, fx);
+            }
+            Some(Cmd::Close(target)) => close_target(caller, &target),
+            Some(Cmd::Shutdown) => return false,
+            Some(Cmd::Died) => return true,
+            Some(Cmd::Guard(refused)) => {
+                if let Some(refused) = refused {
+                    refusal(setup, caller, refused);
+                }
+            }
+            Some(Cmd::Event(event)) => on_event(setup, caller, &event),
+            None => {
+                // the half second came: a shown tab with no frame yet is asked for one screenshot by the model, once
+                due = None;
+                let now = setup.epoch.elapsed().as_millis() as u64;
+                let ids: Vec<String> = setup.hub.tabs.lock().unwrap().iter().filter(|e| e.engine == setup.index).map(|e| e.id.clone()).collect();
+                for id in ids {
+                    let fx = {
+                        let mut tabs = setup.hub.tabs.lock().unwrap();
+                        tabs.iter_mut().find(|e| e.id == id).map(|e| e.tab.tick(now)).unwrap_or_default()
+                    };
+                    run_effects(setup, caller, &id, fx);
+                }
+            }
         }
         if let Some(g) = &r.guard {
             let st = g.stats();
             *counts.lock().unwrap() = (st.accepted, st.refused);
         }
-        if r.child.try_wait().ok().flatten().is_some() {
-            return true;
-        }
-        let now = began.elapsed().as_millis() as u64;
-        let ids: Vec<String> = setup.hub.tabs.lock().unwrap().iter().filter(|e| e.engine == setup.index).map(|e| e.id.clone()).collect();
-        for id in ids {
-            let fx = {
-                let mut tabs = setup.hub.tabs.lock().unwrap();
-                tabs.iter_mut().find(|e| e.id == id).map(|e| e.tab.tick(now)).unwrap_or_default()
-            };
-            run_effects(setup, &mut r.client, &id, fx);
-        }
     }
 }
 
-fn tear_down(mut r: Running) -> Option<i32> {
-    let _ = r.client.call("Browser.close", json!({}), None, Duration::from_secs(1));
+fn tear_down(r: &mut Running) -> Option<i32> {
+    let _ = r.caller.call("Browser.close", json!({}), None, Duration::from_secs(1));
     let status = match wait_exit(&mut r.child, GRACE) {
         Some(s) => s,
         None => {
@@ -413,9 +465,9 @@ fn with_entry<T>(setup: &Setup, id: &str, f: impl FnOnce(&mut Entry) -> T) -> Op
     setup.hub.tabs.lock().unwrap().iter_mut().find(|e| e.id == id && e.engine == setup.index).map(f)
 }
 
-fn open_tab(setup: &Setup, client: &mut Client, id: &str) {
-    let made = client.call("Target.createTarget", json!({"url": "about:blank"}), None, CALL).ok().and_then(|v| v.get("targetId").and_then(Value::as_str).map(str::to_string));
-    let session = made.as_ref().and_then(|t| client.call("Target.attachToTarget", json!({"targetId": t, "flatten": true}), None, CALL).ok()).and_then(|v| v.get("sessionId").and_then(Value::as_str).map(str::to_string));
+fn open_tab(setup: &Setup, caller: &Caller, id: &str) {
+    let made = caller.call("Target.createTarget", json!({"url": "about:blank"}), None, CALL).ok().and_then(|v| v.get("targetId").and_then(Value::as_str).map(str::to_string));
+    let session = made.as_ref().and_then(|t| caller.call("Target.attachToTarget", json!({"targetId": t, "flatten": true}), None, CALL).ok()).and_then(|v| v.get("sessionId").and_then(Value::as_str).map(str::to_string));
     let (Some(target), Some(session)) = (made, session) else {
         with_entry(setup, id, |e| {
             e.tab.engine_event(EngineEvent::TargetGone);
@@ -429,16 +481,16 @@ fn open_tab(setup: &Setup, client: &mut Client, id: &str) {
     });
     let ua = map::user_agent(&setup.lico_version, &setup.release);
     for (method, params) in [("Page.enable", json!({})), ("Runtime.enable", json!({})), ("Emulation.setUserAgentOverride", json!({"userAgent": ua}))] {
-        let _ = client.call(method, params, Some(&session), CALL);
+        let _ = caller.call(method, params, Some(&session), CALL);
     }
-    deliver(setup, client, id, EngineEvent::Started);
+    deliver(setup, caller, id, EngineEvent::Started);
 }
 
-fn close_target(client: &mut Client, target: &str) {
-    let _ = client.call("Target.closeTarget", json!({"targetId": target}), None, CALL);
+fn close_target(caller: &Caller, target: &str) {
+    let _ = caller.call("Target.closeTarget", json!({"targetId": target}), None, CALL);
 }
 
-fn refusal(setup: &Setup, client: &mut Client, refused: Refused) {
+fn refusal(setup: &Setup, caller: &Caller, refused: Refused) {
     let Refused { status, host, port, why } = refused;
     let host = host.as_str();
     let targets = {
@@ -447,61 +499,68 @@ fn refusal(setup: &Setup, client: &mut Client, refused: Refused) {
         map::refusal_targets(&views, host)
     };
     for id in targets {
-        deliver(setup, client, &id, EngineEvent::FetchRefused { status, host: host.to_string(), port, why });
+        deliver(setup, caller, &id, EngineEvent::FetchRefused { status, host: host.to_string(), port, why });
     }
 }
 
-fn on_event(setup: &Setup, client: &mut Client, event: &lico_cdp::Event) {
+fn on_event(setup: &Setup, caller: &Caller, event: &lico_cdp::Event) {
     let Some(session) = event.session_id.as_deref() else { return };
     let id = setup.hub.tabs.lock().unwrap().iter().find(|e| e.engine == setup.index && e.session.as_deref() == Some(session)).map(|e| e.id.clone());
     let Some(id) = id else { return };
     for ev in map::engine_events(event) {
         let finished = ev == EngineEvent::LoadFinished;
         let navigated = if let EngineEvent::Navigated(u) = &ev { Some(map::host_of(u)) } else { None };
-        deliver(setup, client, &id, ev);
+        deliver(setup, caller, &id, ev);
         if let Some(host) = navigated.filter(|h| !h.is_empty()) {
             log(&format!("page of {host}"));
         }
         if finished {
-            ask_title(setup, client, &id, session);
+            ask_title(setup, caller, &id, session);
         }
     }
 }
 
 /// The title of the page, asked once the page has loaded (text, cleaned and cut by the model; the engine may also tell it by itself).
-fn ask_title(setup: &Setup, client: &mut Client, id: &str, session: &str) {
-    let r = client.call("Runtime.evaluate", json!({"expression": "document.title", "returnByValue": true}), Some(session), CALL);
+fn ask_title(setup: &Setup, caller: &Caller, id: &str, session: &str) {
+    let r = caller.call("Runtime.evaluate", json!({"expression": "document.title", "returnByValue": true}), Some(session), CALL);
     if let Some(t) = r.ok().and_then(|v| v["result"].get("value").and_then(Value::as_str).map(str::to_string)) {
-        deliver(setup, client, id, EngineEvent::Title(t));
+        deliver(setup, caller, id, EngineEvent::Title(t));
     }
 }
 
 /// Gives an event to a tab's model and executes what it asks for.
-fn deliver(setup: &Setup, client: &mut Client, id: &str, event: EngineEvent) {
+fn deliver(setup: &Setup, caller: &Caller, id: &str, event: EngineEvent) {
     let fx = with_entry(setup, id, |e| {
         let fx = e.tab.engine_event(event);
         setup.hub.touch(e);
         fx
     })
     .unwrap_or_default();
-    run_effects(setup, client, id, fx);
+    run_effects(setup, caller, id, fx);
 }
 
-fn run_effects(setup: &Setup, client: &mut Client, id: &str, fx: Vec<Effect>) {
+fn run_effects(setup: &Setup, caller: &Caller, id: &str, fx: Vec<Effect>) {
     for effect in fx {
         let Some((session, viewport)) = with_entry(setup, id, |e| (e.session.clone(), e.tab.viewport())).and_then(|(s, v)| s.map(|s| (s, v))) else { return };
         let wire = map::wire_of(&effect, viewport);
-        match client.call(wire.method, wire.params, Some(&session), wire.timeout) {
+        // only a navigation (its refusal is told in the reply) and a screenshot (its data is the reply) wait for an answer; every other command is written at once and forgotten
+        if !matches!(effect, Effect::Navigate(_) | Effect::CaptureScreenshot) {
+            if caller.fire(wire.method, wire.params, Some(&session)).is_err() {
+                return;
+            }
+            continue;
+        }
+        match caller.call(wire.method, wire.params, Some(&session), wire.timeout) {
             Ok(reply) => {
                 if matches!(effect, Effect::CaptureScreenshot) {
                     if let Some(png) = reply.get("data").and_then(Value::as_str).and_then(map::base64_decode) {
-                        deliver(setup, client, id, EngineEvent::Screenshot(png));
+                        deliver(setup, caller, id, EngineEvent::Screenshot(png));
                     }
                 }
             }
             Err(CdpError::Remote { message, .. }) if matches!(effect, Effect::Navigate(_)) && map::is_local_refusal(&message) => {
-                deliver(setup, client, id, EngineEvent::LocalAddressRefused);
-                deliver(setup, client, id, EngineEvent::LoadFinished);
+                deliver(setup, caller, id, EngineEvent::LocalAddressRefused);
+                deliver(setup, caller, id, EngineEvent::LoadFinished);
             }
             Err(CdpError::Remote { .. }) | Err(CdpError::Timeout) => log(&format!("a call of the engine failed ({})", wire.method)),
             Err(_) => return, // the connection is gone: the loop sees it on its next read
