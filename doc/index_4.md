@@ -138,6 +138,9 @@
 | [M17-P07 plan and result](plans/202611/20261117/20261117_20_M17-P07_window_tab_plan.md) | The browser tab in the window: how frames reach it, the address row, states, help, the `+` entries, memory, tests |
 | [M17-P08 plan and result](plans/202611/20261117/20261117_21_M17-P08_input_and_no_timers_plan.md) | No timers in the browser threads, and the person's input (mouse, wheel, keys, committed text, paste) |
 | [M17-P09 report](reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md) | Verification and the release `lico 0.5.0`: measured acceptance, the smoke test with the real engine, the owner's first real-site check, the cost table, the owner's list |
+| [M18-P01 plan](plans/202611/20261117/20261117_23_M18-P01_remote_lico_host_phase0_plan.md) | Phase 0 for the remote lico host: a report only |
+| [M18-P01 report](reports/202611/20261117/20261117_24_M18-P01_remote_lico_host_phase0_report.md) | The remote lico host: today, the transport, the install with the owner's approval per host, credentials, components, phases, cost and the owner's questions |
+| [M18 milestone](milestones/202611/20261117/20261117_03_M18_remote_lico_host_milestone.md) | The remote lico host (Phase 0 done) |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |
