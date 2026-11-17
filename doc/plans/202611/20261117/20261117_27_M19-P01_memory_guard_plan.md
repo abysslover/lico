@@ -36,7 +36,7 @@
 
 ## What the lead has to do (in this order)
 
-1. Protocol document: add `memory_limits` (`warn_mb`, `limit_mb`) to the `status` row.
+1. (done at the end: the `status` row of the protocol document names `memory_limits`.)
 2. Slice D ("last activity N min ago", orange when a working session shows nothing for a set time).
 3. The gaps listed at steps 3 to 5 above (the machine line in the window, the warning before a new session is created, the grace time before an auto-close, the line "memory N MB: closed and resumed automatically", a default main agent = the session that created the others: the host does not record the creator yet).
 4. The small real measurement (eight fake sessions against `MemAvailable`, reported as MEASURED), the binary growth, `cargo xtask check|verify|graph|test|accept|system`, the cold suite three times, the version `0.6.0` (two tests pin the version: `tests/test_control_parity.py` and `tests/test_single_executable.py`), the two-clone build, the install with the `0.5.1` backup at `private/release_0_5_1_backup/lico`, the report (next number 142).
