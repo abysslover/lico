@@ -17,6 +17,7 @@ from lico_measure.rig import private_dir
 from lico_protocol.v1 import validate_response
 from tests.account_helpers import account
 from tests.test_claude_adapter import status_of
+from tests.gui_helpers import menu_click
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
 from tests.test_reconnect_window import codex_args
@@ -123,9 +124,8 @@ def test_claude_and_codex_weekly_quota_telemetry_and_gui_context_display():
             assert f"dir: {proj}" in ui_codex["header"]
             assert "codex / WorkCodex  7d 14%!" in ui_codex["list_text"], ui_codex["list_text"]
 
-            # Open Accounts via toolbar and verify both accounts show detailed quota breakdown.
-            acct_rect = next(b for b in ui_codex["toolbar"]["buttons"] if b["id"] == "accounts")["rect"]
-            w.click((acct_rect[0] + acct_rect[2]) / 2.0, (acct_rect[1] + acct_rect[3]) / 2.0)
+            # Open Accounts via the File menu (M22-P04: the toolbar is three icons) and verify both accounts show detailed quota breakdown.
+            menu_click(w, 0, "Accounts")
             ui_accts = wait_for(lambda: (u := w.ui()) and u["panel"] and u["panel"]["title"] == "Accounts" and u)
             body = "\n".join(ui_accts["panel"]["body"])
             assert "7d 68% left · 5h 91% left" in body, body

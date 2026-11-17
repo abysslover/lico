@@ -86,7 +86,7 @@ def measure(scale: str, geometry: str, resize_to: tuple[int, int] | None, tag: s
                 tab = open_tab(w, f"http://localhost:{port}/", local=True)
             except AssertionError:
                 u = w.ui()
-                raise AssertionError((u['header'], u['input'], u['browser']['header'], u['tabs']['new_browser_local_rect']))
+                raise AssertionError((u['header'], u['input'], u['browser']['header'], u['toolbar']['buttons']))
             end = time.time() + 25
             while time.time() < end and not any(x['decoded'] for x in browser(w)['tabs']):
                 time.sleep(0.2)

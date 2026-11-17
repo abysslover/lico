@@ -1,11 +1,13 @@
-//! The status bar across the bottom edge of the window (`M14`): the FULL path of what the person points at (a directory or file row of the sidebar, a chat card's folder), else of the
-//! row the Files panel is on or the directory the sidebar shows, else the working directory of the active session; `host:path` on an ssh host. A path too long for the bar keeps its end
+//! The status bar across the bottom of the window (`M14`; `M22-P04`: the row above the hint row, which is the last row, and never empty): the FULL path of what the person points at (a
+//! directory or file row of the sidebar, a chat card's folder), else of the row the Files panel is on or the directory the sidebar shows, else the working directory of the active
+//! session, else `lico://home` (Home has no folder); `host:path` on an ssh host. A path too long for the bar keeps its end
 //! behind a leading ellipsis (the end of a path says most) and stays whole one click away: a click on the bar copies the whole text. The bar belongs to the window layer and uses
 //! nothing but its state: it is drawn again only when the text it shows changes (a change of the row under the pointer, of the selection or of the session), never by a timer.
 
 use serde_json::{json, Value};
 
 use super::controls::{Action, Rect};
+use super::sidebar::HOME_PATH;
 use super::sidebar_render::tail_path;
 use super::{editor, App};
 
@@ -27,7 +29,7 @@ pub(super) enum Source {
     Pointer,
     Selection,
     Session,
-    None,
+    Home,
 }
 
 impl Source {
@@ -36,7 +38,7 @@ impl Source {
             Source::Pointer => "pointer",
             Source::Selection => "selection",
             Source::Session => "session",
-            Source::None => "none",
+            Source::Home => "home",
         }
     }
 }
@@ -67,7 +69,7 @@ pub(super) fn fit(text: &str, cols: usize) -> (String, bool) {
     (tail_path(text, cols.saturating_sub(MARK.len() + 2).max(8)), true)
 }
 
-/// The text and where it came from: the pointer first, then the selection, then the session.
+/// The text and where it came from: the pointer first, then the selection, then the session, else Home (`lico://home`): the row is never empty.
 pub(super) fn pick(pointed: Option<String>, selected: Option<String>, session: Option<String>) -> (String, Source) {
     let keep = |s: Option<String>| s.filter(|t| !t.is_empty());
     if let Some(t) = keep(pointed) {
@@ -76,7 +78,7 @@ pub(super) fn pick(pointed: Option<String>, selected: Option<String>, session: O
     if let Some(t) = keep(selected) {
         return (t, Source::Selection);
     }
-    keep(session).map_or((String::new(), Source::None), |t| (t, Source::Session))
+    keep(session).map_or((HOME_PATH.to_string(), Source::Home), |t| (t, Source::Session))
 }
 
 impl App {
@@ -87,6 +89,9 @@ impl App {
             Action::SidebarEntry(i) => sb.entries.get(i).map(|e| path_text(sb.ssh_host.as_deref(), &sb.cwd, Some(&e.name))),
             Action::SidebarChatEntry(i) => {
                 let item = sb.chats.items.get(i)?;
+                if item.global {
+                    return Some(HOME_PATH.to_string());
+                }
                 item.cwd.as_deref().map(|cwd| path_text(item.ssh_host.as_deref(), cwd, None))
             }
             _ => None,
@@ -102,7 +107,7 @@ impl App {
         (self.sidebar_shown() && !sb.global_scope).then(|| path_text(sb.ssh_host.as_deref(), &sb.cwd, None))
     }
 
-    /// The working directory of the active session (none for a Global session).
+    /// The working directory of the active session (none for a Home session).
     fn path_session(&self) -> Option<String> {
         let row = self.ui.rows.iter().find(|r| r.session == self.session)?;
         (!row.cwd.is_empty()).then(|| path_text(Some(row.ssh_host.as_str()), &row.cwd, None))
@@ -139,16 +144,16 @@ impl App {
         json!({"text": text, "shown": shown, "cut": cut, "source": source.name(), "cols": bar.cols, "rect": bar.rect, "hint_rect": bar.hint_rect, "telem_rect": bar.telem_rect})
     }
 
-    /// Draws the bar on the last row (`bar_y` to the bottom of the window).
+    /// Draws the bar on the row `bar_y`; the hint row is the last row, below it.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_path_bar(&mut self, buf: &mut [u32], width: usize, height: usize, bar_y: f32, lh: f32, s: f32, telem: Option<Rect>) {
         let (text, _) = self.path_now();
         let char_w = (self.char_w() * s).max(1.0);
         let cols = (((width as f32) - 8.0 * s) / char_w).max(10.0) as usize;
         let (shown, cut) = fit(&text, cols);
-        let bar = [0.0, bar_y, width as f32, height as f32];
+        let bar = [0.0, bar_y, width as f32, (bar_y + lh).min(height as f32)];
         self.ui.path_bar.rect = Some(bar);
-        self.ui.path_bar.hint_rect = Some([0.0, bar_y - lh, width as f32, bar_y]);
+        self.ui.path_bar.hint_rect = Some([0.0, bar[3], width as f32, height as f32]);
         self.ui.path_bar.telem_rect = telem;
         self.ui.path_bar.cols = cols;
         let (Some(fs), swash) = (self.font_system.as_mut(), self.ui.list_swash.get_or_insert_with(cosmic_text::SwashCache::new)) else { return };
@@ -171,8 +176,8 @@ mod tests {
 
     #[test]
     fn a_path_is_dir_slash_name_with_the_host_in_front_on_an_ssh_host() {
-        assert_eq!(path_text(None, "/home/u/proj", Some("notes.txt")), "/home/u/proj/notes.txt");
-        assert_eq!(path_text(None, "/home/u/proj/", None), "/home/u/proj");
+        assert_eq!(path_text(None, "/work/u/proj", Some("notes.txt")), "/work/u/proj/notes.txt");
+        assert_eq!(path_text(None, "/work/u/proj/", None), "/work/u/proj");
         assert_eq!(path_text(Some("gpu-box"), "/srv/app", Some("src")), "gpu-box:/srv/app/src");
         assert_eq!(path_text(Some(""), "/srv/app", None), "/srv/app", "an empty host is no host");
         assert_eq!(path_text(None, "/", None), "/");
@@ -182,8 +187,8 @@ mod tests {
 
     #[test]
     fn a_path_that_does_not_fit_keeps_its_end_behind_an_ellipsis_with_wide_characters_counted_twice() {
-        assert_eq!(fit("/home/u/proj", 40), ("/home/u/proj".to_string(), false));
-        let long = "/home/u/\u{d55c}\u{ae00}\u{b85c}-\u{c544}\u{c8fc}-\u{ae34}-\u{b514}\u{b809}\u{d130}\u{b9ac}/\u{b450}\u{bc88}\u{c9f8}-\u{ae34}-\u{b514}\u{b809}\u{d130}\u{b9ac}/end";
+        assert_eq!(fit("/work/u/proj", 40), ("/work/u/proj".to_string(), false));
+        let long = "/work/u/\u{d55c}\u{ae00}\u{b85c}-\u{c544}\u{c8fc}-\u{ae34}-\u{b514}\u{b809}\u{d130}\u{b9ac}/\u{b450}\u{bc88}\u{c9f8}-\u{ae34}-\u{b514}\u{b809}\u{d130}\u{b9ac}/end";
         let (shown, cut) = fit(long, 30);
         assert!(cut && shown.starts_with('\u{2026}') && long.ends_with(&shown[3..]), "{shown}");
         assert!(width(&shown) + MARK.len() + 2 <= 30, "{shown}: room is left for the mark");
@@ -196,6 +201,7 @@ mod tests {
         assert_eq!(pick(s("/a"), s("/b"), s("/c")), ("/a".to_string(), Source::Pointer));
         assert_eq!(pick(None, s("/b"), s("/c")), ("/b".to_string(), Source::Selection));
         assert_eq!(pick(None, s(""), s("/c")), ("/c".to_string(), Source::Session));
-        assert_eq!(pick(None, None, None), (String::new(), Source::None));
+        assert_eq!(pick(None, None, None), ("lico://home".to_string(), Source::Home), "Home has no folder: the row says where the person is");
+        assert_eq!(pick(None, s(""), s("")), ("lico://home".to_string(), Source::Home), "an empty text is no text");
     }
 }

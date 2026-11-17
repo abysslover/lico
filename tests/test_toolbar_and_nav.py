@@ -13,6 +13,7 @@ from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 from lico_protocol import v1
 from tests.account_helpers import account
+from tests.gui_helpers import menu_click, menu_entry
 from tests.test_claude_adapter import new_claude, status_of
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
@@ -152,43 +153,43 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             tb = u_reordered["toolbar"]
             assert tb["shown"] is True
             ids = [b["id"] for b in tb["buttons"]]
-            assert ids == ["new_session", "accounts", "files", "close", "rename", "toggle_mode", "toggle_group", "find", "send_to"]
+            assert ids == ["new_session", "new_home", "new_browser"], ids  # M22-P04: three icons; the rest is in the menus
             rects = [b["rect"] for b in tb["buttons"]]
             assert all(r is not None and 0 <= r[0] < r[2] <= 1200 and r[1] > 18 and r[3] < 60 for r in rects), rects
             assert all(a[2] <= b[0] for a, b in zip(rects, rects[1:])), rects
 
-            # Click 'Group: acct' -> toggles to 'Group: dir' (workspace grouping)
-            w.click(*_centre(_tool_btn(u_reordered, "toggle_group")["rect"]))
-            u_grp = wait_for(lambda: (u := w.ui())["settings"]["group_by"] == "workspace" and u)
-            assert _tool_btn(u_grp, "toggle_group")["label"] == "Group: dir"
-            # Toggle back to account grouping via toolbar click
-            w.click(*_centre(_tool_btn(u_grp, "toggle_group")["rect"]))
-            u_acct = wait_for(lambda: (u := w.ui())["settings"]["group_by"] == "account" and u)
-            assert _tool_btn(u_acct, "toggle_group")["label"] == "Group: acct"
+            # View menu 'Group sessions: account' -> toggles to workspace grouping, and back
+            assert menu_entry(w, 2, "Group sessions:")["label"] == "Group sessions: account"
+            menu_click(w, 2, "Group sessions:")
+            wait_for(lambda: (u := w.ui())["settings"]["group_by"] == "workspace" and u)
+            assert menu_entry(w, 2, "Group sessions:")["label"] == "Group sessions: workspace"
+            menu_click(w, 2, "Group sessions:")
+            wait_for(lambda: (u := w.ui())["settings"]["group_by"] == "account" and u)
+            assert menu_entry(w, 2, "Group sessions:")["label"] == "Group sessions: account"
 
-            # Click 'Mode: auto' -> toggles session permission mode to 'asks for approval' ('Mode: ask')
-            w.click(*_centre(_tool_btn(u_acct, "toggle_mode")["rect"]))
-            u_mode = wait_for(lambda: (u := w.ui()) and "mode: asks for approval" in u["header"] and u)
-            assert _tool_btn(u_mode, "toggle_mode")["label"] == "Mode: ask"
+            # Session menu 'Permission mode: auto' -> toggles session permission mode to 'asks for approval'
+            assert menu_entry(w, 1, "Permission mode:")["label"] == "Permission mode: auto"
+            menu_click(w, 1, "Permission mode:")
+            wait_for(lambda: (u := w.ui()) and "mode: asks for approval" in u["header"] and u)
+            assert menu_entry(w, 1, "Permission mode:")["label"] == "Permission mode: approval"
 
-            # Click 'Find' -> opens in-session search bar; Escape closes it
-            w.click(*_centre(_tool_btn(u_mode, "find")["rect"]))
+            # View menu 'Find in conversation' -> opens in-session search bar; Escape closes it
+            menu_click(w, 2, "Find in conversation")
             wait_for(lambda: w.ui()["search"] is not None)
             _fast_key(w, "Escape")
             wait_for(lambda: w.ui()["search"] is None)
 
-            # Click 'Accounts' -> opens Accounts panel; click '+ New' -> switches directly to New session panel
-            w.click(*_centre(_tool_btn(w.ui(), "accounts")["rect"]))
+            # File menu 'Accounts' -> opens Accounts panel; the toolbar's plus -> switches directly to New session panel
+            menu_click(w, 0, "Accounts")
             wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"] == "Accounts")
             w.click(*_centre(_tool_btn(w.ui(), "new_session")["rect"]))
             wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"] == "New session")
 
-            # Click disconnected s_closed in sidebar while New session is open -> closes panel, selects s_closed, toolbar offers 'Reconnect'!
+            # Click disconnected s_closed in sidebar while New session is open -> closes panel, selects s_closed, the Session menu offers 'Resume session'
             w.click(*_row_centre(w, s_closed))
-            u_closed_sel = wait_for(lambda: (u := w.ui())["panel"] is None and u["selected"] == s_closed and u)
-            resume_btn = _tool_btn(u_closed_sel, "resume")
-            assert resume_btn["label"] == "Reconnect" and resume_btn["enabled"] is True
-            w.click(*_centre(resume_btn["rect"]))
+            wait_for(lambda: (u := w.ui())["panel"] is None and u["selected"] == s_closed and u)
+            assert menu_entry(w, 1, "Resume session")["enabled"] is True
+            menu_click(w, 1, "Resume session")
             wait_for(lambda: status_of(conn, s_closed)["state"] == "running")
             _reload(w)
-            wait_for(lambda: any(b["id"] == "close" for b in w.ui()["toolbar"]["buttons"]))
+            wait_for(lambda: menu_entry(w, 1, "Close session")["enabled"] is True)

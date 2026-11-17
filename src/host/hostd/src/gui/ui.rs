@@ -28,6 +28,8 @@ pub(crate) use row::{clock_text, memrow, Row};
 pub(super) mod clip;
 #[path = "search.rs"]
 mod search;
+#[path = "icons.rs"]
+mod icons;
 #[path = "tabs.rs"]
 mod tabs;
 #[path = "telemetry.rs"]
@@ -359,7 +361,7 @@ impl App {
                 self.ui.mouse = (position.x, position.y);
                 self.browser_move();
                 self.browser_pointer();
-                self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved();
+                self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved() | self.toolbar_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
                 }
@@ -395,9 +397,6 @@ impl App {
                             Some(Action::CallJumpSession(sid)) => self.switch_to(&sid),
                             Some(Action::MentionItem(i)) => { let _ = self.complete_mention_index(i); }
                             Some(Action::TabScroll(d)) => self.step_tab_scroll(d),
-                            Some(Action::NewTab) => self.form_open(),
-                            Some(Action::NewGlobal) => self.form_open_global(),
-                            Some(Action::NewBrowser(local)) => self.browser_prompt(local),
                             Some(Action::BrowserTab(id)) => self.browser_activate(&id),
                             Some(Action::CloseBrowserTab(id)) => self.browser_close_ui(&id),
                             Some(Action::FocusSessionDir) => self.focus_active_session_dir(),
@@ -833,8 +832,8 @@ impl App {
                 _ => line_extent(&mut view.buffer, fs, &mut view.swash, 0, ox, oy),
             };
         }
-        let bar_y_f = height as f32 - lh; // the path bar is the last row, the hint line the one above it
-        let hint_y_f = bar_y_f - lh;
+        let last_row_y = height as f32 - lh; // `M22-P04`: the hint line is the last row, the path bar the one above it (`hint_y_f`), the telemetry strip above that
+        let hint_y_f = last_row_y - lh;
         let telem_y_f = hint_y_f - lh;
         let hint_row = (if show_telem { telem_y_f } else { hint_y_f }) as i32;
         let mut frame = Composed {
@@ -952,7 +951,7 @@ impl App {
         // the permanent hint line, over whatever reaches the bottom row
         let hint_y = hint_y_f;
         controls::fill(&mut buf, width, height, [0.0, hint_y, width as f32, height as f32], 0xFF18_1E26);
-        let hint_w = controls.text(fs, swash, &mut buf, width, height, 4.0 * s, hint_y, i32::MAX, &hint, hint_ink);
+        let hint_w = controls.text(fs, swash, &mut buf, width, height, 4.0 * s, last_row_y, i32::MAX, &hint, hint_ink);
         if !sb_mode {
             memrow::draw_total(controls, fs, swash, &mut buf, width, height, [4.0 * s, hint_y - lh, list_w as f32 - 2.0, y], &total, hint_ink);
         }
@@ -961,8 +960,8 @@ impl App {
             self.draw_sidebar(&mut buf, width, height, list_w, top, chat_top, hint_y, &total);
         }
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
-        self.draw_path_bar(&mut buf, width, height, bar_y_f, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
-        self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
+        self.draw_path_bar(&mut buf, width, height, hint_y, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
+        self.draw_global_quota_summary(&mut buf, width, height, last_row_y, 4.0 * s + hint_w);
         if self.browser_active() {
             self.browser_paint(&mut buf, width, height, (list_w as f32 + 4.0 * s, frame.lines.first().map_or(chat_top + lh, |l| l.bottom), frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(hint_y_f, |l| l.top)));
         }

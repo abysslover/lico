@@ -96,7 +96,7 @@ impl App {
     pub(crate) fn start_lines(&self) -> Vec<String> {
         let mut lines = vec![
             "No session is open.".to_string(),
-            "Ctrl+N  new session   ·   Ctrl+Shift+N  new Global general session".to_string(),
+            "Ctrl+N  new session   ·   Ctrl+Shift+N  new Home session".to_string(),
             "Ctrl+A  accounts and sign-in".to_string(),
             "Ctrl+E  working directory files".to_string(),
         ];
@@ -183,7 +183,7 @@ impl App {
             return;
         }
         if row.is_global() {
-            self.ui.flash = Some("Global general session (no fixed working directory).".into());
+            self.ui.flash = Some("Home session (no fixed working directory).".into());
             self.dirty = true;
             return;
         }
@@ -298,9 +298,9 @@ impl App {
             "Local (no files)".to_string()
         } else if global {
             if !row.ssh_host.is_empty() {
-                format!("Global [ssh:{}]", row.ssh_host)
+                format!("Home [ssh:{}]", row.ssh_host)
             } else {
-                "Global (general)".to_string()
+                "Home  lico://home".to_string()
             }
         } else {
             let host_prefix = if row.ssh_host.is_empty() { String::new() } else { format!("ssh:{}:", row.ssh_host) };

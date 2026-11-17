@@ -43,9 +43,22 @@ def browser(w: ProductWindow) -> dict:
     return w.ui()["browser"]
 
 
+def click_menu(w: ProductWindow, index: int, label: str) -> None:
+    w.click(*centre(w.ui()["menu"]["titles"][index]["rect"]))
+    items = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == index and m["items"] and m["items"])
+    w.click(*centre(next(i for i in items if i["label"] == label)["rect"]))
+
+
+def click_new_tab(w: ProductWindow, local: bool = False) -> None:
+    """M22-P04: the tab row has no `+B` and `+BL`; the browser icon of the toolbar opens a tab, the Session menu opens one that keeps no history."""
+    if local:
+        click_menu(w, 1, "New local browser tab")
+    else:
+        w.click(*centre(next(b for b in w.ui()["toolbar"]["buttons"] if b["id"] == "new_browser")["rect"]))
+
+
 def open_tab(w: ProductWindow, address: str, local: bool = False) -> str:
-    u = w.ui()
-    w.click(*centre(u["tabs"]["new_browser_local_rect" if local else "new_browser_rect"]))
+    click_new_tab(w, local)
     wait_for(lambda: browser(w)["prompt"] is not None and browser(w)["shown"])
     w.type_text(address)
     w.key("Return")
@@ -60,8 +73,9 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
     with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
         conn = Conn(w.socket)
         u = w.ui()
-        assert u["tabs"]["new_browser_rect"] and u["tabs"]["new_browser_local_rect"], "the two + buttons are drawn"
-        w.click(*centre(u["tabs"]["new_browser_rect"]))
+        assert any(b["id"] == "new_browser" and b["rect"] for b in u["toolbar"]["buttons"]), "the browser icon is drawn"
+        assert not any(k in u["tabs"] for k in ("new_browser_rect", "new_browser_local_rect")), "the tab row has no buttons"
+        click_new_tab(w)
         b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b)
         assert "type an address" in b["header"] and "F1 help" in b["header"] and b["help"], b
         assert any("lico browser open https://SITE" in line for line in b["help_lines"]), b["help_lines"]
@@ -117,7 +131,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         u = w.ui()
         assert "only http and https" in (u["header"] or ""), (u["header"], u["input"], u["browser"]["header"])
         # a prompt for another tab hides this one: the host stops its screencast
-        w.click(*centre(w.ui()["tabs"]["new_browser_rect"]))
+        click_new_tab(w)
         wait_for(lambda: not next(r for r in conn.call(op="browser.list")["tabs"] if r["tab"] == tab)["shown"])
         assert browser(w)["tabs"][0]["decoded"] is False, "a hidden tab keeps only its compressed frame in the window"
         # closing the tab (Ctrl+W on the tab) ends it and, being the last, the engine
@@ -184,8 +198,7 @@ def test_korean_composes_in_the_address_row_and_nothing_reaches_a_page():
 
     with ProductWindow(host_binary=LICO, before_window=fake_engine, ime=True) as w:
         conn = Conn(w.socket)
-        u = w.ui()
-        w.click(*centre(u["tabs"]["new_browser_rect"]))
+        click_new_tab(w)
         wait_for(lambda: browser(w)["prompt"] is not None and browser(w)["shown"])
         time.sleep(0.5)
         w.key("shift+space")                                   # the engine starts in Latin mode: its trigger key switches to Hangul

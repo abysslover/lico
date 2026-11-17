@@ -17,6 +17,7 @@ from tests.account_helpers import account
 from tests.test_claude_adapter import FIXTURE as CLAUDE_FIXTURE, SIM as CLAUDE_SIM, records, status_of
 from tests.test_codex_adapter import FIXTURE as CODEX_FIXTURE, SIM as CODEX_SIM, usual_umask, wait_for
 from tests.test_first_view import PixelReader
+from tests.gui_helpers import menu_click, menu_click_when_enabled
 
 
 def _centre(rect: list[float]) -> tuple[float, float]:
@@ -334,13 +335,7 @@ def test_mouse_drag_auto_copies_and_all_right_pane_panels_are_copyable_while_kee
                 assert reader.selection_owner("PRIMARY") == 0
 
                 # 3. `Send to session` panel (`Step::Send`): `< 4 px` single click still toggles row, while mouse drag selects & auto-copies!
-                u_chat = wait_for(
-                    lambda: (u := w.ui())
-                    and any(b["id"] == "send_to" and b["enabled"] and b["rect"] is not None for b in u["toolbar"]["buttons"])
-                    and u
-                )
-                send_btn = next(b for b in u_chat["toolbar"]["buttons"] if b["id"] == "send_to")
-                w.click(*_centre(send_btn["rect"]))
+                menu_click_when_enabled(w, 1, "Send to session")  # M22-P04: the toolbar is three icons; Send is an entry of the Session menu
                 u_send = wait_for(
                     lambda: (u := w.ui())
                     and u["panel"] is not None
@@ -375,13 +370,7 @@ def test_mouse_drag_auto_copies_and_all_right_pane_panels_are_copyable_while_kee
                 wait_for(lambda: w.ui()["panel"] is None)
 
                 # 4. `Accounts` panel (`Step::Accounts`) drag auto-copy:
-                u_chat2 = wait_for(
-                    lambda: (u := w.ui())
-                    and any(b["id"] == "accounts" and b["rect"] is not None for b in u["toolbar"]["buttons"])
-                    and u
-                )
-                acc_btn = next(b for b in u_chat2["toolbar"]["buttons"] if b["id"] == "accounts")
-                w.click(*_centre(acc_btn["rect"]))
+                menu_click(w, 0, "Accounts")  # M22-P04: Accounts is the File menu's entry, not a toolbar button
                 u_acc = wait_for(
                     lambda: (u := w.ui())
                     and u["panel"] is not None

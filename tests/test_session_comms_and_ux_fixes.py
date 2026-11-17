@@ -16,6 +16,7 @@ from lico_protocol import codex_mapping, v1
 from tests.account_helpers import account
 from tests.test_claude_adapter import FIXTURE as CLAUDE_FIXTURE, SIM as CLAUDE_SIM, records, status_of
 from tests.test_codex_adapter import FIXTURE as CODEX_FIXTURE, SIM as CODEX_SIM, sent as codex_sent, usual_umask, wait_for
+from tests.gui_helpers import menu_click, menu_entry
 from tests.test_first_view import PixelReader
 
 
@@ -250,15 +251,17 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                     and u["selected"] == s1
                     and len(u["rows"]) == 2
                     and len(u["layout"]["lines"]) >= 5
-                    and any(b["id"] == "send_to" for b in u["toolbar"]["buttons"])
                     else None
                 )
-                send_btn0 = next(b for b in ui0["toolbar"]["buttons"] if b["id"] == "send_to")
-                assert send_btn0["label"] == "Send -> Session (1)"
-                assert not any(b["id"] == "copy" for b in ui0["toolbar"]["buttons"])
+                # M22-P04: the toolbar is three icons; `Send to session` and `Copy` are entries of the Session menu (Copy is greyed until something is selected)
+                send0 = menu_entry(w, 1, "Send to session")
+                assert send0["enabled"] is False and send0["reason"] == "nothing to send: type in the input box or select lines"
+                copy0 = menu_entry(w, 1, "Copy selected")
+                assert copy0["enabled"] is False and copy0["reason"] == "nothing is selected"
+                assert [b["id"] for b in ui0["toolbar"]["buttons"]] == ["new_session", "new_home", "new_browser"]
                 assert reader.selection_owner("CLIPBOARD") == 0 and reader.selection_owner("PRIMARY") == 0
 
-                # Drag mouse across transcript lines: mouse release auto-copies to CLIPBOARD, and lights up `Copy` + `Send -> Session (1)`!
+                # Drag mouse across transcript lines: mouse release auto-copies to CLIPBOARD, and lights up the menu entries `Copy selected lines` + `Send to session...`!
                 lines = ui0["layout"]["lines"]
                 y0 = (lines[1][0] + lines[1][1]) / 2.0
                 y1 = (lines[2][0] + lines[2][1]) / 2.0
@@ -268,27 +271,21 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                     env=w.env,
                     check=True,
                 )
-                ui_sel = wait_for(
-                    lambda: u
-                    if (u := w.ui()) and u["selection"] and any(b["id"] == "copy" for b in u["toolbar"]["buttons"])
-                    else None
-                )
+                ui_sel = wait_for(lambda: u if (u := w.ui()) and u["selection"] else None)
                 wait_for(lambda: reader.selection_owner("CLIPBOARD") != 0 or None)
                 assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
                 assert reader.selection_owner("PRIMARY") == 0
                 copied_after_drag = ui_sel["copied"]
-                copy_btn = next(b for b in ui_sel["toolbar"]["buttons"] if b["id"] == "copy")
-                send_btn = next(b for b in ui_sel["toolbar"]["buttons"] if b["id"] == "send_to")
-                assert copy_btn["enabled"] is True and send_btn["enabled"] is True
+                assert menu_entry(w, 1, "Copy selected")["enabled"] is True and menu_entry(w, 1, "Send to session")["enabled"] is True
 
-                # Click toolbar `Copy`: owns CLIPBOARD with exact UTF-8 selection, leaves PRIMARY untouched
-                w.click(*_centre(copy_btn["rect"]))
+                # Click the menu entry `Copy selected lines`: owns CLIPBOARD with exact UTF-8 selection, leaves PRIMARY untouched
+                menu_click(w, 1, "Copy selected")
                 wait_for(lambda: w.ui()["copied"] > copied_after_drag or None)
                 assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
                 assert reader.selection_owner("PRIMARY") == 0
 
-                # Click toolbar `Send -> Session (1)`: opens Send panel with s2 pre-selected and sends on Return!
-                w.click(*_centre(send_btn["rect"]))
+                # Click the menu entry `Send to session...`: opens Send panel with s2 pre-selected and sends on Return!
+                menu_click(w, 1, "Send to session")
                 wait_for(lambda: (p := w.ui().get("panel")) and p.get("title") == "Send to session" or None)
                 w.key("Return")
                 wait_for(lambda: w.ui().get("panel") is None and "Sent to" in w.ui().get("header", "") or None)

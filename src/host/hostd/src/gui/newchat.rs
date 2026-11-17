@@ -159,7 +159,7 @@ pub(super) fn gate(unreachable: bool, global: bool, folder: &str) -> Result<(), 
     if unreachable {
         Err("that SSH host is unreachable")
     } else if global {
-        Err("Global has no folder: open a directory first")
+        Err("Home has no folder: open a directory first")
     } else if folder.is_empty() {
         Err("no directory is shown")
     } else {
@@ -511,7 +511,7 @@ mod tests {
     fn the_button_says_why_it_cannot_be_used() {
         assert!(gate(false, false, "/w").is_ok());
         assert!(gate(true, false, "/w").unwrap_err().contains("unreachable"));
-        assert!(gate(false, true, "/w").unwrap_err().contains("Global"));
+        assert!(gate(false, true, "/w").unwrap_err().contains("Home"));
         assert!(gate(false, false, "").unwrap_err().contains("no directory"));
     }
 

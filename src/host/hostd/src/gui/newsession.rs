@@ -383,7 +383,7 @@ impl App {
                     Field::Server => f.servers.get(f.server).map_or("(none yet)".to_string(), |s| format!("< {} >", local_rows::line(s))),
                     Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
-                        t if t.is_empty() && field == Field::Folder => "(Global general session: gets a scratch workspace of its own)".into(),
+                        t if t.is_empty() && field == Field::Folder => "(Home session: gets a scratch workspace of its own)".into(),
                         t if t.is_empty() => "(optional)".into(),
                         t => t,
                     },

@@ -17,6 +17,7 @@ from lico_measure.p02 import LICO, ProtoConn as Conn, cli, start
 from lico_measure.rig import private_dir
 from lico_protocol import v1
 from tests.account_helpers import account
+from tests.gui_helpers import menu_click
 from tests.test_claude_adapter import status_of
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_control_parity import _http
@@ -195,8 +196,8 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
             u_sel = wait_for(lambda: (u := w.ui())["selected"] == sid and u)
 
-            # 1. Click Toolbar 'Files' -> opens Files viewer in proj, exposes '+ New here' & 'Refresh'
-            w.click(*_centre(_tool_btn(u_sel, "files")["rect"]))
+            # 1. View menu 'Working directory files' (M22-P04: the toolbar's Files button is gone) -> opens Files viewer in proj, exposes '+ New here' & 'Refresh'
+            menu_click(w, 2, "Working directory files")
             u_files = wait_for(
                 lambda: (u := w.ui())["panel"] is not None
                 and u["panel"]["files"] is not None
@@ -209,17 +210,15 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             assert [e["name"] for e in f0["entries"]] == ["sub", "initial.txt"]
             assert [b["id"] for b in u_files["toolbar"]["buttons"]] == [
                 "new_session",
-                "accounts",
-                "files",
+                "new_home",
+                "new_browser",
                 "files_host",
                 "new_here",
                 "refresh_files",
                 "toggle_hidden",
                 "prev_page",
                 "next_page",
-                "toggle_group",
             ]
-            assert _tool_btn(u_files, "files")["active"] is True
 
             # 2. Create a new file on disk -> NO background inotify/timer refresh occurs!
             (proj / "added_on_disk.txt").write_text("created later\n", encoding="utf-8")

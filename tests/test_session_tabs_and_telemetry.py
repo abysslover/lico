@@ -103,9 +103,9 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             st0_by_id = {s["session"]: s for s in st0["sessions"]}
             assert "tokens" not in st0_by_id[s_claude]
 
-            # 2. Create a dedicated Global general session via `+G` tab-bar button
-            new_g_rect = u0["tabs"]["new_global_rect"]
-            assert new_g_rect is not None
+            # 2. Create a dedicated Home general session via the toolbar's house button (M22-P04: the tab row has no `+G` any more)
+            assert "new_global_rect" not in u0["tabs"]
+            new_g_rect = next(b for b in u0["toolbar"]["buttons"] if b["id"] == "new_home")["rect"]
             w.click(*_centre(new_g_rect))
             uf = wait_for(
                 lambda: (u := w.ui())
@@ -115,7 +115,7 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
                 and u
             )
             assert uf["panel"]["form"]["folder"] == ""
-            assert any("Global general session" in line for line in uf["panel"]["body"])
+            assert any("Home session" in line for line in uf["panel"]["body"])
             assert uf["telemetry"]["shown"] is False  # hidden while modal panel owns prompt row
 
             # Press Enter directly from Model row to launch Global session
@@ -131,8 +131,8 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             s_global = ug["selected"]
             assert s_global not in (s_claude, s_codex)
             global_tab = next(t for t in ug["tabs"]["items"] if t["session"] == s_global)
-            assert global_tab["global"] is True and global_tab["label"].startswith("G\u00b7")
-            assert "Global" in ug["telemetry"]["cwd_text"]
+            assert global_tab["global"] is True and global_tab["label"].startswith("H\u00b7")
+            assert "Home" in ug["telemetry"]["cwd_text"]
             assert ug["telemetry"]["tokens_text"] == "Tok: in:-- out:--"
 
             # 3. Emit live token + quota events on Claude & Codex sessions and verify telemetry bar

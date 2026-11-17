@@ -15,6 +15,8 @@ pub const TITLES: [&str; 4] = ["File", "Session", "View", "Help"];
 pub enum Cmd {
     NewSession,
     NewGlobalSession,
+    NewBrowser,
+    NewLocalBrowser,
     Accounts,
     Quit,
     Next,
@@ -98,7 +100,9 @@ impl App {
             1 => {
                 let two = if sessions >= 2 { None } else { Some("needs two sessions") };
                 let mut v = vec![
-                    Self::entry("New Global session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
+                    Self::entry("New Home session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
+                    Self::entry("New browser tab", "", Cmd::NewBrowser, panel_reason),
+                    Self::entry("New local browser tab", "", Cmd::NewLocalBrowser, panel_reason),
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
                     Self::entry("Start screen", "Esc", Cmd::Start, panel_reason.or(none_open)),
@@ -253,6 +257,8 @@ impl App {
         match cmd {
             Cmd::NewSession => self.form_open(),
             Cmd::NewGlobalSession => self.form_open_global(),
+            Cmd::NewBrowser => self.browser_prompt(false),
+            Cmd::NewLocalBrowser => self.browser_prompt(true),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
             Cmd::Next => {

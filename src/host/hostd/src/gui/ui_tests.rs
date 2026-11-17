@@ -90,14 +90,16 @@ fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_tool
     app.refresh_list();
     app.push_line(0, "hello world".into());
 
+    // the toolbar is the three icons (and Copy while lines are selected); Send to session is the Session menu's entry (M22-P04)
+    let send = |app: &super::super::App| app.menu_entries(1).into_iter().find(|e| e.cmd == super::super::menu::Cmd::SendTo).map(|e| e.reason);
     let btns = app.toolbar_entries();
-    assert!(btns.iter().any(|b| b.id == "send_to" && b.label == "Send -> Session (1)" && b.reason == Some("nothing to send: type in the input box or select lines")));
-    assert!(!btns.iter().any(|b| b.id == "copy"));
+    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["new_session", "new_home", "new_browser"]);
+    assert_eq!(send(&app), Some(Some("nothing to send: type in the input box or select lines")));
 
     app.ui.sel = Some((0, 0));
     let btns_sel = app.toolbar_entries();
-    assert!(btns_sel.iter().any(|b| b.id == "send_to" && b.label == "Send -> Session (1)" && b.reason.is_none()));
-    assert!(btns_sel.iter().any(|b| b.id == "copy" && b.label == "Copy" && b.reason.is_none()));
+    assert!(btns_sel.iter().any(|b| b.id == "copy" && b.label == "Copy" && b.reason.is_none() && b.icon.is_none()));
+    assert_eq!(send(&app), Some(None));
 
     app.ed.set("/exit".into());
     app.send_draft();

@@ -126,6 +126,7 @@
 "tests/test_running_elsewhere_window.py" = ["gui", "host"]
 "tests/test_chat_list_polish.py" = ["gui", "host"]
 "tests/test_two_tabs_home_chats.py" = ["gui", "host"]
+"tests/test_toolbar_icons_and_bottom_rows.py" = ["gui", "host"]
 "tests/test_path_status_bar.py" = ["gui", "host"]
 "tests/test_maximized_start.py" = ["gui"]
 "tests/test_m14_end_to_end.py" = ["gui", "host"]
@@ -340,6 +341,10 @@ reason = "documents"
 [[inert]]
 glob = "exp/**"
 reason = "experiment notes"
+
+[[inert]]
+glob = "tests/probe_*.py"
+reason = "the measured probes run by hand with the real engine (the file name has no `test_`, so no suite run collects them and no test imports them)"
 
 [[inert]]
 glob = ".gitignore"

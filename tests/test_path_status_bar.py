@@ -1,4 +1,4 @@
-"""M14-P01 in the window: a status bar across the bottom edge shows the FULL path of what the person points at (a directory or file row of the sidebar, a chat card's folder), else of the
+"""M14-P01 in the window: a status bar across the bottom (M22-P04: the row above the hint row, which is the last row, and never empty: `lico://home` in Home) shows the FULL path of what the person points at (a directory or file row of the sidebar, a chat card's folder), else of the
 Files panel row or the directory the sidebar is on, else the working directory of the active session; `host:path` on an ssh host. A path too long for the bar keeps its end behind a leading
 ellipsis and a click copies the whole text. The bar does not overlap the hint line, the telemetry strip or the lists, and it draws nothing by itself while the window is idle. A private
 Xvfb, synthetic homes, the fake ssh of the ssh tests: no real terminal, home or host is looked at."""
@@ -65,12 +65,14 @@ def test_the_bar_is_the_last_row_at_full_width_shows_the_pointed_row_and_falls_b
             u = w.ui()
             width, height = u["layout"]["window_size"]
             bar = u["path_bar"]
-            assert bar["rect"][0] == 0 and bar["rect"][2] == width and bar["rect"][3] == height and bar["rect"][3] - bar["rect"][1] >= 16, (bar["rect"], width, height)
+            hint = bar["hint_rect"]
+            assert hint[0] == 0 and hint[2] == width and hint[3] == height and hint[3] - hint[1] >= 16, (hint, width, height)  # M22-P04: the hint row is the last row
+            assert bar["rect"][0] == 0 and bar["rect"][2] == width and bar["rect"][3] == hint[1] and bar["rect"][3] - bar["rect"][1] >= 16, (bar["rect"], hint)
             assert bar["text"] == str(proj) and bar["source"] in ("selection", "session") and bar["cut"] is False, bar
-            # no overlap: the bar is the last row, the hint line is above it, the telemetry strip above that, and no list reaches into them
-            assert bar["hint_rect"][3] == bar["rect"][1] and bar["telem_rect"][3] <= bar["hint_rect"][1], bar
+            # no overlap: the hint line is the last row, the path bar is above it, the telemetry strip above that, and no list reaches into them
+            assert bar["rect"][3] == bar["hint_rect"][1] and bar["telem_rect"][3] <= bar["rect"][1], bar
             entries = u["sidebar"]["entries"]
-            assert entries and all(e["rect"][3] <= bar["hint_rect"][1] for e in entries), (entries[-1]["rect"], bar["hint_rect"])
+            assert entries and all(e["rect"][3] <= bar["rect"][1] for e in entries), (entries[-1]["rect"], bar["rect"])
 
             # the pointer: a directory row, then a file row, then away
             by_name = {e["name"]: e for e in entries}
@@ -89,7 +91,7 @@ def test_the_bar_is_the_last_row_at_full_width_shows_the_pointed_row_and_falls_b
             w.move(*_centre(listed["chats_entries"][0]["rect"]))
             card = wait_for(lambda: (b := _bar(w)) and b["source"] == "pointer" and b)
             assert card["text"] == str(proj), card
-            assert all(e["rect"][3] <= card["hint_rect"][1] for e in listed["chats_entries"]), "the cards end above the hint line"
+            assert all(e["rect"][3] <= card["rect"][1] for e in listed["chats_entries"]), "the cards end above the path row"
 
             # two idle seconds draw nothing
             w.move(width - 40, 300)
@@ -138,7 +140,7 @@ def test_a_long_path_with_wide_characters_keeps_its_end_and_a_click_copies_the_w
             assert bar["cut"] is True and bar["shown"].startswith("…") and bar["text"].endswith(bar["shown"][1:]), bar
             assert _cols(bar["shown"]) <= bar["cols"] and _cols(bar["text"]) > bar["cols"], (bar["cols"], _cols(bar["shown"]))
             # the telemetry strip, the hint line and the bar are three rows that do not overlap, at this width too
-            assert bar["hint_rect"][3] == bar["rect"][1] and (bar["telem_rect"] is None or bar["telem_rect"][3] <= bar["hint_rect"][1]), bar
+            assert bar["rect"][3] == bar["hint_rect"][1] and (bar["telem_rect"] is None or bar["telem_rect"][3] <= bar["rect"][1]), bar
             w.click(*_centre(bar["rect"]))
             got = wait_for(lambda: subprocess.run(["xclip", "-o", "-selection", "clipboard", "-t", "UTF8_STRING"], env={"DISPLAY": w.xvfb.display, "PATH": "/usr/bin:/bin"}, capture_output=True,
                                                   text=True).stdout or None)

@@ -33,10 +33,6 @@ pub struct TabsGeom {
     pub items: Vec<TabItemGeom>,
     pub prev_rect: Option<[f32; 4]>,
     pub next_rect: Option<[f32; 4]>,
-    pub new_rect: Option<[f32; 4]>,
-    pub new_global_rect: Option<[f32; 4]>,
-    pub new_browser_rect: Option<[f32; 4]>,
-    pub new_browser_local_rect: Option<[f32; 4]>,
 }
 
 pub fn height_px(shown: bool, scale: f32, line_h: f32) -> f32 {
@@ -93,9 +89,9 @@ impl App {
 
     fn tab_caption(&self, row: &Row) -> String {
         let prefix = if row.provider == "local" {
-            "L" // it has no folder, and is not a Global general session
+            "L" // it has no folder, and is not a Home session
         } else if row.is_global() {
-            "G"
+            "H"
         } else if row.provider == "claude" {
             "C"
         } else {
@@ -163,10 +159,6 @@ impl App {
             "call_items": call_items,
             "prev_rect": self.ui.tabs_geom.prev_rect,
             "next_rect": self.ui.tabs_geom.next_rect,
-            "new_rect": self.ui.tabs_geom.new_rect,
-            "new_global_rect": self.ui.tabs_geom.new_global_rect,
-            "new_browser_rect": self.ui.tabs_geom.new_browser_rect,
-            "new_browser_local_rect": self.ui.tabs_geom.new_browser_local_rect,
         })
     }
 
@@ -263,17 +255,9 @@ impl App {
         let muted = Color::rgb(0x9E, 0xAB, 0xBC);
         let dim = Color::rgb(0x5E, 0x6B, 0x7C);
 
-        // Right-anchored `+` and `+G` buttons so creating a workspace or Global session is always 1 click away.
-        let g_w = controls.width(fs, "+G") + 12.0 * s;
-        let n_w = controls.width(fs, "+") + 12.0 * s;
+        // `M22-P04`: the row holds tabs only; a new session, a Home session and a browser tab are the buttons of the toolbar and the entries of the Session menu.
         let nav_w = controls.width(fs, "<") + 10.0 * s;
-        let b_w = controls.width(fs, "+B") + 12.0 * s;
-        let bl_w = controls.width(fs, "+BL") + 12.0 * s;
-        let g_rect = [x_right - 4.0 * s - g_w, by0, x_right - 4.0 * s, by1];
-        let bl_rect = [g_rect[0] - 4.0 * s - bl_w, by0, g_rect[0] - 4.0 * s, by1];
-        let b_rect = [bl_rect[0] - 4.0 * s - b_w, by0, bl_rect[0] - 4.0 * s, by1];
-        let n_rect = [b_rect[0] - 4.0 * s - n_w, by0, b_rect[0] - 4.0 * s, by1];
-        let mut tabs_limit_x = n_rect[0] - 6.0 * s;
+        let mut tabs_limit_x = x_right - 6.0 * s;
 
         let close_w = controls.width(fs, "\u{00d7}") + 8.0 * s;
         // the mark of a session that is in a room sits after its caption: `<caption> ⇄`
@@ -321,7 +305,7 @@ impl App {
                 x_left + 8.0 * s,
                 by0 + s,
                 tabs_limit_x as i32,
-                "No open session tabs  \u{00b7}  click + or +G (Global), +B for a browser tab",
+                "No open tabs",
                 dim,
             );
         } else {
@@ -475,26 +459,6 @@ impl App {
             self.ui.tabs_geom.prev_rect = Some(pr);
             self.ui.tabs_geom.next_rect = Some(nr);
         }
-
-        controls.button(fs, swash, buf, width, height, n_rect, "+", 0xFF23_3144, ink, Action::NewTab);
-        controls.button(
-            fs,
-            swash,
-            buf,
-            width,
-            height,
-            g_rect,
-            "+G",
-            0xFF1D_3536,
-            Color::rgb(0x64, 0xE2, 0xCB),
-            Action::NewGlobal,
-        );
-        controls.button(fs, swash, buf, width, height, b_rect, "+B", 0xFF1E_2A4A, Color::rgb(0x8F, 0xB4, 0xFF), Action::NewBrowser(false));
-        controls.button(fs, swash, buf, width, height, bl_rect, "+BL", 0xFF3A_2A1A, Color::rgb(0xE0, 0x9A, 0x4A), Action::NewBrowser(true));
-        self.ui.tabs_geom.new_browser_rect = Some(b_rect);
-        self.ui.tabs_geom.new_browser_local_rect = Some(bl_rect);
-        self.ui.tabs_geom.new_rect = Some(n_rect);
-        self.ui.tabs_geom.new_global_rect = Some(g_rect);
     }
 }
 

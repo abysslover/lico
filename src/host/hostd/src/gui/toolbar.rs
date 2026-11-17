@@ -7,8 +7,8 @@ use cosmic_text::{Color, SwashCache};
 use serde_json::{json, Value};
 
 use super::super::controls::{self, Action};
+use super::icons::{self, Icon};
 use super::super::menu::{Cmd, Entry, TITLES};
-use super::super::panel::confirm::Act;
 use super::super::App;
 
 pub struct ToolBtn {
@@ -17,12 +17,16 @@ pub struct ToolBtn {
     pub cmd: Cmd,
     pub active: bool,
     pub reason: Option<&'static str>,
+    /// An icon button (`M22-P04`): square, drawn by the window; `label` is its word (the state, the hover line). `None`: a text button.
+    pub icon: Option<Icon>,
 }
 
 #[derive(Default)]
 pub struct ToolbarGeom {
     pub rects: Vec<[f32; 4]>,
     pub host_items: Vec<(usize, [f32; 4])>,
+    /// The button the pointer is over (its word is shown beside the buttons).
+    pub hover: Option<usize>,
 }
 
 /// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).
@@ -37,58 +41,33 @@ pub fn bar_heights(menu_shown: bool, scale: f32, line_h: f32) -> (f32, f32) {
 }
 
 impl App {
+    /// The toolbar (`M22-P04`): three icon buttons, New session (a plus), New Home session (a house) and Open browser (a browser window). Everything else is in the menus. With the Files panel
+    /// open the panel's own buttons follow the icons: they act on what the panel shows.
     pub(crate) fn toolbar_entries(&self) -> Vec<ToolBtn> {
-        let none_open = if self.session.is_empty() { Some("no session is open") } else { None };
-        let sel = self.selected_row();
-        let (state_label, state_id, state_cmd, state_reason) = if sel.is_some_and(|r| r.state == "disconnected") {
-            ("Reconnect".to_string(), "resume", Cmd::Resume, self.resume_reason())
-        } else {
-            ("Close".to_string(), "close", Cmd::Close, self.ask_reason(Act::Close))
-        };
-        let mode_label = match sel.map(|r| r.mode.as_str()) {
-            Some("default") => "Mode: ask",
-            _ => "Mode: auto",
-        };
-        let group_label = if self.ui.group_by_workspace { "Group: dir" } else { "Group: acct" };
+        let icon_btn = |label: &str, id: &'static str, cmd: Cmd, icon: Icon| ToolBtn { label: label.into(), id, cmd, active: false, reason: None, icon: Some(icon) };
+        let mut out = vec![
+            icon_btn("New session", "new_session", Cmd::NewSession, Icon::Plus),
+            icon_btn("New Home session", "new_home", Cmd::NewGlobalSession, Icon::House),
+            icon_btn("Open browser", "new_browser", Cmd::NewBrowser, Icon::Browser),
+        ];
         let in_files = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Files);
         if in_files {
             let (has_prev, has_next) = self.files_page_nav_state();
             let hidden_label = if self.ui.show_hidden { "Hidden: on" } else { "Hidden: off" };
             let (host_label, host_active, host_reason) = self.files_host_toolbar_state();
             let new_here_reason = self.files_new_here_reason();
-            let mut out = vec![
-                ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
-                ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
-                ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: true, reason: None },
-                ToolBtn { label: host_label, id: "files_host", cmd: Cmd::CycleFilesHost, active: host_active, reason: host_reason },
-                ToolBtn { label: "+ New here".into(), id: "new_here", cmd: Cmd::NewInViewedDir, active: false, reason: new_here_reason },
-                ToolBtn { label: "Refresh".into(), id: "refresh_files", cmd: Cmd::RefreshFiles, active: false, reason: None },
-                ToolBtn { label: hidden_label.into(), id: "toggle_hidden", cmd: Cmd::ToggleHiddenFiles, active: self.ui.show_hidden, reason: None },
-                ToolBtn { label: "< Prev".into(), id: "prev_page", cmd: Cmd::FilesPrevPage, active: false, reason: if has_prev { None } else { Some("already on first page") } },
-                ToolBtn { label: "Next >".into(), id: "next_page", cmd: Cmd::FilesNextPage, active: false, reason: if has_next { None } else { Some("already on last page") } },
-                ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
-            ];
-            if self.can_copy() {
-                out.push(ToolBtn { label: "Copy".into(), id: "copy", cmd: Cmd::Copy, active: false, reason: None });
-            }
-            return out;
+            let text = |label: String, id: &'static str, cmd: Cmd, active: bool, reason: Option<&'static str>| ToolBtn { label, id, cmd, active, reason, icon: None };
+            out.extend([
+                text(host_label, "files_host", Cmd::CycleFilesHost, host_active, host_reason),
+                text("+ New here".into(), "new_here", Cmd::NewInViewedDir, false, new_here_reason),
+                text("Refresh".into(), "refresh_files", Cmd::RefreshFiles, false, None),
+                text(hidden_label.into(), "toggle_hidden", Cmd::ToggleHiddenFiles, self.ui.show_hidden, None),
+                text("< Prev".into(), "prev_page", Cmd::FilesPrevPage, false, if has_prev { None } else { Some("already on first page") }),
+                text("Next >".into(), "next_page", Cmd::FilesNextPage, false, if has_next { None } else { Some("already on last page") }),
+            ]);
         }
-        let peers = self.running_peer_count();
-        let send_label = if peers > 0 { format!("Send -> Session ({peers})") } else { "Send -> Session".to_string() };
-        let in_send = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Send);
-        let mut out = vec![
-            ToolBtn { label: "+ New".into(), id: "new_session", cmd: Cmd::NewSession, active: false, reason: None },
-            ToolBtn { label: "Accounts".into(), id: "accounts", cmd: Cmd::Accounts, active: false, reason: None },
-            ToolBtn { label: "Files".into(), id: "files", cmd: Cmd::Files, active: false, reason: None },
-            ToolBtn { label: state_label, id: state_id, cmd: state_cmd, active: false, reason: state_reason },
-            ToolBtn { label: "Rename".into(), id: "rename", cmd: Cmd::Rename, active: false, reason: self.ask_reason(Act::Rename) },
-            ToolBtn { label: mode_label.into(), id: "toggle_mode", cmd: Cmd::ToggleMode, active: sel.is_some_and(|r| r.mode == "default"), reason: self.mode_reason() },
-            ToolBtn { label: group_label.into(), id: "toggle_group", cmd: Cmd::ToggleGroupBy, active: self.ui.group_by_workspace, reason: None },
-            ToolBtn { label: "Find".into(), id: "find", cmd: Cmd::FindConversation, active: self.ui.search.open && !self.ui.search.scope_all, reason: none_open },
-            ToolBtn { label: send_label, id: "send_to", cmd: Cmd::SendTo, active: in_send, reason: self.send_reason() },
-        ];
         if self.can_copy() {
-            out.push(ToolBtn { label: "Copy".into(), id: "copy", cmd: Cmd::Copy, active: false, reason: None });
+            out.push(ToolBtn { label: "Copy".into(), id: "copy", cmd: Cmd::Copy, active: false, reason: None, icon: None });
         }
         out
     }
@@ -126,6 +105,15 @@ impl App {
         self.dirty = true;
     }
 
+    /// Moves the hover to the button under the pointer; true when it changed (the window then redraws).
+    pub(crate) fn toolbar_hover_moved(&mut self) -> bool {
+        let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
+        let over = self.ui.toolbar_geom.rects.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
+        let changed = over != self.ui.toolbar_geom.hover;
+        self.ui.toolbar_geom.hover = over;
+        changed
+    }
+
     pub(crate) fn host_popup_click(&mut self, hit: Option<Action>) -> bool {
         if !self.files_host_popup_open() {
             return false;
@@ -147,6 +135,7 @@ impl App {
                 json!({
                     "id": b.id,
                     "label": b.label,
+                    "icon": b.icon.map(Icon::name),
                     "enabled": b.reason.is_none(),
                     "active": b.active,
                     "reason": b.reason,
@@ -154,7 +143,8 @@ impl App {
                 })
             })
             .collect();
-        json!({"shown": self.ui.menu, "buttons": buttons, "host_popup": self.files_host_popup_json()})
+        let hover = self.ui.toolbar_geom.hover.and_then(|i| self.toolbar_entries().into_iter().nth(i)).map(|b| b.label);
+        json!({"shown": self.ui.menu, "buttons": buttons, "hover": hover, "host_popup": self.files_host_popup_json()})
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -212,22 +202,42 @@ impl App {
         controls::fill(buf, width, height, [0.0, bar_h - 1.0, width as f32, bar_h], 0xFF2B_3440);
         let mut tx = 6.0 * s;
         let (by0, by1) = (menu_h + 2.0 * s, bar_h - 3.0 * s);
+        let side = (by1 - by0).max(1.0);
+        let hover = self.ui.toolbar_geom.hover;
+        let mut tip: Option<String> = None;
         for (i, btn) in tool_entries.iter().enumerate() {
-            let bw = controls.width(fs, &btn.label) + 14.0 * s;
+            let bw = if btn.icon.is_some() { side } else { controls.width(fs, &btn.label) + 14.0 * s };
             if tx + bw > width as f32 - 4.0 * s {
                 break;
             }
             let r = [tx, by0, tx + bw, by1];
             let (fill, col) = if btn.reason.is_some() {
                 (0xFF1B_222D, dim)
-            } else if btn.active {
+            } else if btn.active || (btn.icon.is_some() && hover == Some(i)) {
                 (0xFF2C_4A78, ink)
             } else {
                 (0xFF23_2E3E, ink)
             };
-            controls.button(fs, swash, buf, width, height, r, &btn.label, fill, col, Action::Toolbar(i));
+            match btn.icon {
+                Some(icon) => {
+                    controls::fill(buf, width, height, r, fill);
+                    icons::draw(buf, width, height, icon, r, if btn.reason.is_some() { 0xFF70_7880 } else { 0xFFE0_E0E0 }, fill);
+                    controls.target(r, Action::Toolbar(i));
+                    if hover == Some(i) {
+                        tip = Some(btn.label.clone());
+                    }
+                }
+                None => controls.button(fs, swash, buf, width, height, r, &btn.label, fill, col, Action::Toolbar(i)),
+            }
             self.ui.toolbar_geom.rects.push(r);
             tx += bw + 5.0 * s;
+        }
+        // the word of the icon the pointer is over, after the last button
+        if let Some(label) = tip {
+            let lx = tx + 6.0 * s;
+            if lx + controls.width(fs, &label) < width as f32 - 4.0 * s {
+                controls.text(fs, swash, buf, width, height, lx, by0 + (side - lh) * 0.5, width as i32, &label, dim);
+            }
         }
 
         // 3. Open dropdown menu OR Files Host combo-box popup (on top of toolbar and main area)
