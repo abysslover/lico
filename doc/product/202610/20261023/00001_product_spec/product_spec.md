@@ -110,6 +110,21 @@ Required account tests: A/B concurrent login and request routing, independent re
 | LLM-07 | The host runs the tool loop: only the tools the host offers can be called, with the approvals every session has (the tools that need none run at once, every other tool leaves its card and ends the turn until the person decides); at most 8 rounds, 4 calls an answer, 16 calls and 10 minutes for one message of the person; a reply that is cut or fails runs no call. |
 | LLM-08 | A local session has no access to files or a shell; a tool for either needs its own requirement and the person's approvals first. |
 
+### Browser tab
+
+*Recorded in M17-P09 as approved by the LEAD under the owner's delegation (the owner away); to be confirmed by the owner.*
+
+| ID | Requirement |
+|---|---|
+| BROW-01 | A browser tab shows a page with the Obscura engine, a program the person installs. The engine is a pinned release found in a folder below the home directory in which every directory is the person's own and not writable by others and the file is the person's own, not a link and not writable by others; its SHA-256 (and its worker's) is checked from the open file and that very file is run. Lico never downloads it; when it is missing the tab says where to get it, its SHA-256 and where to put it. No environment variable and no flag skips the check; the only other engine is one named in an owner-only setting file, and every tab of it says so. |
+| BROW-02 | The engine runs only while a tab is open (no process, thread or socket otherwise), in a Landlock fence: it may read and run its own folder and the system libraries, write one scratch folder of the host's (mode 0700, removed at the end) and `/dev/null`, connect to its fetch guard's port only and bind its own CDP port; its environment is its token, an empty home and the guard's address. A kernel that cannot give this means no engine. |
+| BROW-03 | Every fetch of a page goes through a fetch guard of Lico's own on a loopback port, started with the engine, that resolves the name itself, connects to the address it checked, allows public addresses on the ports 80, 443, 8080 and 8443 only, refuses private, loopback, link-local and every other address range (a table, with IPv4-mapped forms and a name with any non-public answer), and never connects to a port of this machine that no page may reach (the host's own door, an engine's). `--proxy` is passed to nothing else. |
+| BROW-04 | A tab opened by the person for this machine's own services (`--local`, off by default, never from a page or a link) uses its own engine, which alone has the engine's private-network variable set; its guard allows loopback addresses ONLY; the tab says "this tab can reach services on this machine and no other site". |
+| BROW-05 | Lico passes no stealth switch and sets no stealth variable. The user-agent names Lico and the engine and claims no browser version; the page may still see a Windows platform, which the engine decides, and the help says so. |
+| BROW-06 | Nothing is stored: no cookie or storage is kept by Lico, no download, file chooser or dialog is accepted. A refused or failed load shows a notice in the tab (its true reason), not an error page. |
+| BROW-07 | Only the person's input reaches a page (mouse, wheel, keys, committed text, an explicit paste), never input of a program or of another page; Lico's own keys never reach it. Nothing from a page (its text, its title, its address) reaches a Lico operation, a tool, a session or the clipboard. |
+| BROW-08 | The frame of a page is a PNG of at most 4 MiB decoded in the window only for the tab that is shown; the host keeps only the newest and counts the rest; nothing in the browser polls or wakes while a still page is shown. |
+
 ## 7. Control surface and event contract
 
 One canonical host implementation serves GUI, CLI and a local REST API. Command IDs and event cursors are stable within the documented protocol version. Auth is enforced even on loopback. Prefer an owner-only OS IPC channel for the GUI; an optional HTTP listener defaults to loopback and validates credentials, Host and Origin. Do not expose remote access in the first release.

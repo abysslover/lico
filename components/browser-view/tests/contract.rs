@@ -535,7 +535,7 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu"] {
+    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
     }
     assert!(!all.contains(LOCAL_NOTE), "an ordinary tab does not carry the local sentence");

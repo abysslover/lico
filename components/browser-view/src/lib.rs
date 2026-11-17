@@ -400,14 +400,17 @@ impl Tab {
             v.push(LOCAL_NOTE.to_string());
         }
         for line in [
+            "F1 shows and hides this help.",
             "Pages are told this is Lico with the Obscura engine.",
             "A page may still see a Windows platform and vendor: the engine decides those.",
             "Only http and https load, on ports 80, 443, 8080 and 8443.",
+            "A load that is refused or fails shows a notice in the header, not an error page.",
             "Addresses on this computer or a private network are refused, by number and as localhost.",
             "To reach this machine's own services, open a tab for them from the + menu.",
             "A tab opened with the command line appears here at the next list (the + menu, or window focus).",
             "Korean is typed with the input method: the address row shows the composition.",
-            "The page gets the finished text only.",
+            "The page gets the finished text only. Korean typed in a page's input fields may show as boxes:",
+            "that is the engine's own drawing of form controls; the text the page holds is right.",
             "To look at a real site yourself: lico browser open https://SITE",
         ] {
             v.push(line.to_string());

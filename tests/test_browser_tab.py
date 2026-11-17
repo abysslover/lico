@@ -63,9 +63,15 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         assert u["tabs"]["new_browser_rect"] and u["tabs"]["new_browser_local_rect"], "the two + buttons are drawn"
         w.click(*centre(u["tabs"]["new_browser_rect"]))
         b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b)
-        assert "type an address" in b["header"] and b["help"], b
+        assert "type an address" in b["header"] and "F1 help" in b["header"] and b["help"], b
         assert any("lico browser open https://SITE" in line for line in b["help_lines"]), b["help_lines"]
         shot(w, "1_new_tab_prompt_and_help.png")
+        w.key("F1")                                            # the help goes away and comes back with the same key
+        wait_for(lambda: not browser(w)["help"])
+        w.key("F1")
+        wait_for(lambda: browser(w)["help"])
+        w.key("F1")
+        wait_for(lambda: not browser(w)["help"])
         w.type_text("https://pages.test/start")
         w.key("Return")
         tab = wait_for(lambda: browser(w)["active"])
@@ -79,6 +85,14 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         row = next(r for r in conn.call(op="browser.list")["tabs"] if r["tab"] == tab)
         assert row["shown"] and row["viewport"][0] == b["rect"][2], row
         shot(w, "2_page_painted.png")
+        w.key("F1")                                            # F1 over a page: the help lines, with the new sentences
+        h = wait_for(lambda: (b := browser(w)) and b["help"] and b["help_lines"] and b)
+        text = " ".join(h["help_lines"])
+        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "may show as boxes", "Windows platform", "next list", "localhost", "lico browser open https://SITE"]:
+            assert needle in text, (needle, text)
+        shot(w, "10_f1_help_over_a_page.png")
+        w.key("F1")
+        wait_for(lambda: not browser(w)["help"])
         # the address row follows the page, and Enter on a new address navigates
         wait_for(lambda: "pages.test/start" in w.ui()["input"])
         w.key("ctrl+l")  # the page has the keys after an address: Ctrl+L gives them to the address row

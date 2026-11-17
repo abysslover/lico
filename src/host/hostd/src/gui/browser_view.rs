@@ -434,7 +434,7 @@ impl App {
         }
         let Some(id) = self.ui.browser.active.as_ref() else {
             let local = self.ui.browser.prompt == Some(true);
-            return Some(format!("browser{} | type an address and press Enter (http or https)", if local { " (this machine)" } else { "" }));
+            return Some(format!("browser{} | type an address and press Enter (http or https) | F1 help", if local { " (this machine)" } else { "" }));
         };
         let t = self.ui.browser.tabs.iter().find(|t| &t.id == id)?;
         let phase = t.row["phase"].as_str().unwrap_or("starting");
@@ -478,6 +478,25 @@ impl App {
         let r = page_rect(place.0, place.1, place.2, width);
         self.ui.browser.rect = [r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32];
         self.draw_browser_frame(buf, width, height);
+        if self.ui.browser.help {
+            self.draw_browser_help(buf, width, height);
+        }
+    }
+
+    /// The help lines over the page area (a new tab and F1).
+    fn draw_browser_help(&mut self, buf: &mut [u32], width: usize, height: usize) {
+        let [x0, y0, w, h] = self.ui.browser.rect;
+        let lines = self.browser_help_lines();
+        let s = self.ui.scale.max(1.0);
+        let lh = self.line_h() * s;
+        super::controls::fill(buf, width, height, [x0 as f32, y0 as f32, (x0 + w) as f32, (y0 + h) as f32], 0xFF10_151C);
+        let Some(fs) = self.font_system.as_mut() else { return };
+        let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
+        let controls = &mut self.ui.controls;
+        let ink = cosmic_text::Color::rgb(0xD8, 0xDE, 0xE8);
+        for (i, line) in lines.iter().enumerate() {
+            controls.text(fs, swash, buf, width, height, x0 as f32 + 8.0 * s, y0 as f32 + 8.0 * s + i as f32 * lh, x0 + w, line, ink);
+        }
     }
 
     /// Paints the shown tab's frame 1:1 at the top left of `rect` (or the help, when there is no frame yet or F1 is pressed), decoding it first when a newer one came.
@@ -490,9 +509,10 @@ impl App {
         let Some(t) = self.ui.browser.tabs.iter_mut().find(|t| t.id == id) else { return };
         if t.frame_seq != t.decoded_seq && !t.png.is_empty() {
             let limits = lico_frame::Limits { max_input: lico_browser_view::MAX_FRAME_BYTES, max_pixels: (lico_browser_view::MAX_VIEWPORT_W * lico_browser_view::MAX_VIEWPORT_H) as usize };
-            if let Ok(img) = lico_frame::decode(&t.png, &limits) {
-                t.image = Some(img); // a frame that does not decode (too large for the window, or damaged) leaves the picture as it was
-            }
+            // the old picture is let go BEFORE the new one is decoded (the peak is one picture and the decoder's scratch, not two pictures and the scratch); a frame that does not
+            // decode (too large for the window, or damaged) leaves the picture as it was
+            let old = t.image.take();
+            t.image = lico_frame::decode(&t.png, &limits).ok().or(old);
             t.decoded_seq = t.frame_seq;
         }
         let Some(img) = &t.image else { return };
@@ -626,7 +646,15 @@ impl App {
     /// of the person go to the page when it has the focus (printable text as text, the editing and moving keys as key events).
     pub(crate) fn browser_hotkey(&mut self, event: &KeyEvent) -> bool {
         use winit::keyboard::{Key, NamedKey};
-        if !self.browser_active() || self.ui.browser.active.is_none() {
+        if !self.browser_active() {
+            return false;
+        }
+        if !event.repeat && matches!(&event.logical_key, Key::Named(NamedKey::F1)) {
+            self.ui.browser.help = !self.ui.browser.help;
+            self.dirty = true;
+            return true;
+        }
+        if self.ui.browser.active.is_none() {
             return false;
         }
         let tab = self.ui.browser.active.clone().unwrap_or_default();
@@ -640,11 +668,6 @@ impl App {
             };
             if let Some(action) = nav {
                 self.browser_call(json!({"op": "browser.nav", "tab": tab, "action": action}), 8, BrowserJob::Done);
-                return true;
-            }
-            if matches!(&event.logical_key, Key::Named(NamedKey::F1)) {
-                self.ui.browser.help = !self.ui.browser.help;
-                self.dirty = true;
                 return true;
             }
             if ctrl && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("w")) {

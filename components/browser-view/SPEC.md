@@ -1,4 +1,4 @@
-# lico-browser-view 0.5.0 — specification
+# lico-browser-view 0.5.1 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -64,3 +64,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 ## Reading the newest frame (0.5.0)
 
 `Tab::frame_seq()` (0 until a frame is kept; +1 for each kept frame; a frame over the cap changes nothing) and `Tab::newest_frame()` (the compressed bytes as they came): for a window that decodes the frame itself; neither decodes anything, and a hidden tab keeps both. Added in M17-P07 (mail 152).
+
+## The help text (0.5.1, M17-P09, mail 153)
+
+`help_lines()` also says that F1 shows and hides the help, that a refused or failed load shows a notice in the header and not an error page, and that Korean typed in a page's input fields may show as boxes (the engine's own drawing of form controls: MEASURED in P08, the text the page holds is right).
