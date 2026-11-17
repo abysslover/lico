@@ -1,12 +1,12 @@
 # M20 — Moli Is The Browser Engine, As A Versioned Lico Component
 
-- Status: planned; P01 in progress. Every approval is the LEAD's under the owner's delegation, to be confirmed by the owner.
+- Status: P01 to P03 done, release `0.7.0` ([report](../../../reports/202611/20261117/20261117_34_M20_moli_engine_jpeg_frames_and_0_7_0_report.md)); M21 waits for the owner. Every approval is the LEAD's under the owner's delegation, to be confirmed by the owner.
 - Version: 1.0.0
 - Project: Lico
 - Updated: 2026-11-17
 - Base: the M17-P12 tip `8b7b420`
-- Implementation: `phase/M20-P01-moli-engine` (then one branch per phase, stacked)
-- Version of the program: `0.7.0` (planned)
+- Implementation: `phase/M20-P01-moli-engine` (`23d0562`), `phase/M20-P02-jpeg-frames` (`fe313f9`), `phase/M20-P03-release-0-7-0` (stacked; nothing pushed or merged)
+- Version of the program: `0.7.0` (released, installed in `~/bin/lico`)
 
 ## Goal
 
@@ -29,9 +29,9 @@ The browser tab runs on Moli instead of Obscura, and the engine is a component t
 
 | Phase | Subject | Plan and state | Status |
 |---|---|---|---|
-| M20-P01 | `lico-engine`, the Moli adapter, Obscura and stealth removed | [Plan](../../../plans/202611/20261117/20261117_33_M20-P01_moli_engine_component_plan.md) | in progress |
-| M20-P02 | JPEG frames: a bounded baseline JPEG decoder in `lico-frame` 0.2.0, the host asks for JPEG | to be written after P01 | planned |
-| M20-P03 | spec, guide, README, CHANGELOG, size, graph, accept, the whole suite, one real Moli install, release `0.7.0` | to be written after P02 | planned |
+| M20-P01 | `lico-engine`, the Moli adapter, Obscura and stealth removed | [Plan](../../../plans/202611/20261117/20261117_33_M20-P01_moli_engine_component_plan.md) | done (`23d0562`) |
+| M20-P02 | JPEG frames: a bounded baseline JPEG decoder in `lico-frame` 0.2.0, the host asks for JPEG | no separate plan (the steps are in the report, section 4) | done (`fe313f9`) |
+| M20-P03 | spec, guide, README, CHANGELOG, size, graph, accept, the whole suite, one real Moli install, release `0.7.0` | no separate plan (the report, sections 5 to 8) | done (`lico-proxy` 0.4.1 refusal-order fix found in its run) |
 | M21 | the own build with a patch ledger | not planned yet; the owner's word first | idea |
 
 ## What this milestone does not do

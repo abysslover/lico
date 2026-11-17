@@ -1,6 +1,6 @@
 # M20-P01 Plan — `lico-engine`, The Moli Adapter, Obscura And Stealth Removed
 
-- Status: in progress; approved by the lead under the owner's delegation, on the owner's words in the chat, 2026-11-17 ("make moli the default ... obscura is scrapped"; "treat moli or obscura as one component and manage the version internally"); to be confirmed by the owner
+- Status: done (code commit `23d0562`; step 4's install from the pinned URL was run once in P03, see the [report](../../../reports/202611/20261117/20261117_34_M20_moli_engine_jpeg_frames_and_0_7_0_report.md)); approved by the lead under the owner's delegation, on the owner's words in the chat, 2026-11-17 ("make moli the default ... obscura is scrapped"; "treat moli or obscura as one component and manage the version internally"); to be confirmed by the owner
 - Version: 1.0.0
 - Branch: `phase/M20-P01-moli-engine` (stacked on the M17-P12 tip `8b7b420`; the trial note of `experiment/M17-moli-trial` is brought in by checkout, the 25-line experiment code is NOT)
 - Milestone: [M20](../../../milestones/202611/20261117/20261117_32_M20_moli_engine_component_milestone.md)
@@ -31,11 +31,11 @@ The tab starts Moli (`moli serve`) instead of Obscura, through a component that 
 
 ## Steps (tests first; green-only commits)
 
-- [ ] 1. `lico-engine`: contract tests (the pin, the contract number, the nested listing, the failure words, the ledger), mutation tests; remove `lico-engine-pack` and move its users.
-- [ ] 2. The adapter units: arguments, environment, fence (the CA file), the socket discovery (accept, reject a foreign host, a bad character, a missing page), the contract refusal, the setting read.
-- [ ] 3. The fake engine in Moli's shape; the system tests of the install and the run on it; `lico-browser-view` and the window tests (`tests/test_browser_tab.py`, `probe_install_window.py`, `test_install_seam_absent.py`).
-- [ ] 4. A real check, once, with the real Moli in a private test home: install from the pinned URL, one page, a click, Korean typing; the user-agent question settled.
-- [ ] 5. `suite run --changed --receipts`, `cargo xtask check|verify|graph`; commit.
+- [x] 1. `lico-engine`: contract tests (the pin, the contract number, the nested listing, the failure words, the ledger), mutation tests; remove `lico-engine-pack` and move its users.
+- [x] 2. The adapter units: arguments, environment, fence (the CA file), the socket discovery (accept, reject a foreign host, a bad character, a missing page), the contract refusal, the setting read.
+- [x] 3. The fake engine in Moli's shape; the system tests of the install and the run on it; `lico-browser-view` and the window tests (`tests/test_browser_tab.py`, `probe_install_window.py`, `test_install_seam_absent.py`).
+- [x] 4. A real check, once, with the real Moli in a private test home: install from the pinned URL, one page, a click, Korean typing; the user-agent question settled.
+- [x] 5. `suite run --changed --receipts`, `cargo xtask check|verify|graph`; commit.
 
 P02 (JPEG frames) and P03 (the release) follow on their own branches.
 
