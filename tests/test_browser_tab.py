@@ -157,7 +157,7 @@ def test_an_engine_that_is_not_installed_shows_where_to_get_it_and_where_to_put_
         open_tab(w, "https://pages.test/start")
         b = wait_for(lambda: (b := browser(w)) and ".local/share/lico/browser/v0.2.6" in (b["header"] or "") and b)
         h = b["header"]
-        assert "the engine is not installed; by hand: download" in h and "https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.6/" in h and "c1400eec0b1572ea9b583b1544feafb0b25cea4e155b353dbba9c144d94ae6e3" in h, h
+        assert "the engine is not installed; by hand: download" in h and "https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.6/" in h and "eed986e478c5ec5439f531f2d7fb6b0e36a356f1df7a6c44a8e8fd4f2486bd76" in h, h
         shot(w, "5_absent_engine.png")
 
 

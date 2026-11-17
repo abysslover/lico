@@ -81,7 +81,7 @@ pub(crate) const SCALE2_CAP: (u32, u32) = (1400, 900);
 pub(crate) fn engine_text(row: &Value) -> Option<String> {
     match row["phase"].as_str()? {
         "installing" => Some(format!("installing the browser engine (about {} MB from {}, SHA-256 starts {})", row["size_mb"].as_u64().unwrap_or(0), row["source"].as_str().unwrap_or("the release page"), row["sha256_start"].as_str().unwrap_or(""))),
-        "absent" => Some(format!("the engine is not installed; by hand: download {} (SHA-256 {}) and put obscura and obscura-worker in {}", row["download"].as_str().unwrap_or(""), row["expected_sha256"].as_str().or_else(|| row["engine_sha256"].as_str()).unwrap_or(""), row["directory"].as_str().unwrap_or("~/.local/share/lico/browser/v0.2.6"))),
+        "absent" => Some(format!("the engine is not installed; by hand: download {} (SHA-256 {}) and put obscura and obscura-worker in {}", row["download"].as_str().unwrap_or(""), row["archive_sha256"].as_str().or_else(|| row["expected_sha256"].as_str()).unwrap_or(""), row["directory"].as_str().unwrap_or("~/.local/share/lico/browser/v0.2.6"))),
         _ => None,
     }
 }

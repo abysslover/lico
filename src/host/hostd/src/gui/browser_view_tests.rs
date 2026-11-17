@@ -68,7 +68,7 @@ fn the_header_says_the_engine_is_being_installed_with_size_source_and_hash_and_n
     let installing = engine_text(&json!({"phase": "installing", "size_mb": 72, "source": "github.com", "sha256_start": "eed986e478c5"})).unwrap();
     assert_eq!(installing, "installing the browser engine (about 72 MB from github.com, SHA-256 starts eed986e478c5)");
     assert!(!installing.contains('?') && !installing.contains("by hand"), "no question, no manual steps while it installs");
-    let absent = engine_text(&json!({"phase": "absent", "download": "https://x.test/a.tar.gz", "expected_sha256": "ab", "directory": "/h/.local/share/lico/browser/v0.2.6"})).unwrap();
+    let absent = engine_text(&json!({"phase": "absent", "download": "https://x.test/a.tar.gz", "expected_sha256": "ee", "archive_sha256": "ab", "directory": "/h/.local/share/lico/browser/v0.2.6"})).unwrap();
     assert!(absent.contains("by hand: download https://x.test/a.tar.gz (SHA-256 ab)") && absent.contains("/h/.local/share/lico/browser/v0.2.6"), "{absent}");
     assert_eq!(engine_text(&json!({"phase": "ready"})), None);
     assert_eq!(engine_text(&json!({})), None);

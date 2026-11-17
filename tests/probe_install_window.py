@@ -15,13 +15,16 @@ import shutil
 import tarfile
 import tempfile
 import threading
+import time
 from pathlib import Path
 
+import lico_measure.captures as captures
 from lico_measure.captures import ProductWindow
 from tests.test_browser_tab import browser, open_tab, painted
 from tests.test_codex_adapter import wait_for
 
 SEAM_BIN = os.environ["LICO_SEAM_BIN"]
+captures.LICO = Path(SEAM_BIN)   # the window process too is the seam build (the default is the plain build in private/build/host_hostd)
 FAKE = os.environ["LICO_FAKE_ENGINE_BIN"]
 SCREENS = Path(os.environ["LICO_P10_SCREENS"])
 
@@ -75,13 +78,18 @@ def run(name: str, wrong_hash: bool, finish):
 
 def test_installing_then_ready_with_the_page_painted():
     def finish(w, tab, gate):
-        b = wait_for(lambda: (b := browser(w)) and "installing the browser engine (about 72 MB from 127.0.0.1:" in (b["header"] or "") and b)
+        try:
+            b = wait_for(lambda: (b := browser(w)) and "installing the browser engine (about 72 MB from 127.0.0.1:" in (b["header"] or "") and b)
+        except AssertionError:
+            b = browser(w)
+            raise AssertionError(f"header {b['header']!r} tabs {b['tabs']}")
         assert "SHA-256 starts" in b["header"] and "?" not in b["header"].split("|")[-1], b["header"]
         w.png(SCREENS / "1_installing.png")
         gate.set()
         painted(w, tab)
         b = wait_for(lambda: (b := browser(w)) and "| ready" in (b["header"] or "") and b)
         assert "installing" not in b["header"], b["header"]
+        time.sleep(0.8)   # the window repaints after the model changed: let the picture catch up
         w.png(SCREENS / "2_ready_painted.png")
 
     run("ok", False, finish)
@@ -92,6 +100,7 @@ def test_a_failed_install_says_why_as_a_security_notice_and_the_manual_way():
         gate.set()
         b = wait_for(lambda: (b := browser(w)) and "SECURITY: the engine could not be installed" in (b["header"] or "") and b)
         assert "by hand: download https://github.com/" in b["header"], b["header"]
+        time.sleep(0.8)   # the window repaints after the model changed: let the picture catch up
         w.png(SCREENS / "3_failed_install_notice.png")
 
     run("bad", True, finish)
