@@ -14,3 +14,8 @@ reason = "the guard acts only when something looks at the status and the host me
 test = "tests/test_memory_guard_window.py::test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_a_clean_process_and_the_session_is_left_alone_meanwhile"
 seconds = 90
 reason = "a session must hold over 500 MB twice, be seen red by the host's three-second look, be asked about, closed and resumed: the one test covers the whole red flow so that the suite holds that memory once (measured 13 s for its first half)"
+
+[[allow]]
+test = "tests/test_memory_guard_window.py::test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_under_the_list_orange"
+seconds = 90
+reason = "the stall time is whole minutes: the working session must be quiet for over a minute before the picture (measured about 75 s)"

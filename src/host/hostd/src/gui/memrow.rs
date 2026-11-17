@@ -57,7 +57,8 @@ static WORST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
 
 /// The worst level among the rows.
 pub fn worst(rows: &[Row]) -> lico_memguard::Level {
-    rows.iter().map(level).max().unwrap_or(lico_memguard::Level::Ok)
+    let now = now_secs();
+    rows.iter().map(|r| if stalled(r, now) { level(r).max(lico_memguard::Level::Orange) } else { level(r) }).max().unwrap_or(lico_memguard::Level::Ok)
 }
 
 /// The colour of the total line: orange or red when a session is, else `plain`.

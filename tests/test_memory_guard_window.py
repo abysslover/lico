@@ -130,3 +130,29 @@ def test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_
         settle(w)
         shot(w, "5_auto_closed_and_resumed.png")
     run(70, check, auto_close=True)
+
+
+def test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_under_the_list_orange():
+    """`stall_min` 1 in the owner's file; a simulator turn that says nothing for a long time (`quiet:900`); the picture is taken once it has been quiet for over a minute."""
+    import time
+    with private_dir() as directory:
+        args, _ = claude_args(directory)
+        made = {}
+
+        def session(w):
+            made["sid"], made["generation"] = new_claude(Conn(w.socket), name="quiet")
+            setting = Path(w.directory) / "state" / "lico" / "memory.json"
+            setting.write_text('{"stall_min": 1}')
+            setting.chmod(0o600)
+
+        with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
+            conn, sid = Conn(w.socket), made["sid"]
+            begin(conn, sid, made["generation"], "quiet:900")
+            wait_for(lambda: status_of(conn, sid).get("activity") == "working", timeout=30)
+            assert conn.call(op="status")["memory_limits"]["stall_min"] == 1
+            time.sleep(68)                                  # a working turn with no activity for over a minute
+            assert status_of(conn, sid).get("activity") == "working"
+            w.click(*centre(tab_rect(w, sid)))
+            time.sleep(1.5)
+            shot(w, "6_stalled.png")
+
