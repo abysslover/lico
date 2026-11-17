@@ -36,4 +36,6 @@ System test 4 (`browser_input_reaches_the_engine_at_once_and_nothing_wakes_while
 
 **What differs from the plan, plainly:** (1) a page that is starting, absent or failed has no focus: the keys go to the address row until the page comes up; after an address is sent, the page has the keys and `Ctrl+L` or a click on the address row gives them back; (2) no input method pre-edit is shown in the page (the engine has no composition events: decided in M17), it shows in the address row; (3) a middle or right press over the page is sent to the page (as a press and a release); (4) nothing the person did is retried or replayed.
 
-**Cost:** the counter stood at 72.3 after the `done` of P07 and at 76.4 here: about 4.1 USD for P08 (the lead's estimate with P07 7 to 8 each, stop rule 12).
+**Whole suite (cold, last run):** 564 tests, 562 passed; the two failures were the size ratchet (`ui.rs` 1,122 lines against 1,120: fixed, now 1,118) and `test_first_view` (the window test that is timing-flaky under load, as in P06: it passes alone and in the later run; P09 reproduces or explains it, on the M16-P08 tip too).
+
+**Cost:** the counter stood at 72.3 after the `done` of P07 and at 79.0 here: about 6.7 USD for P08 (the lead's estimate with P07 7 to 8 each, stop rule 12). The counter moved by about 2 USD while I only waited for the suites; I cannot say why.
