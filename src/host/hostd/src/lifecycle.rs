@@ -69,12 +69,15 @@ pub fn guard_tick(shared: &Arc<Shared>, reply: &serde_json::Map<String, serde_js
     let Some(entries) = reply.get("sessions").and_then(serde_json::Value::as_array) else { return };
     let Some(state_dir) = shared.cfg.registry_dir.parent() else { return };
     let step = crate::guard::step(state_dir, entries);
-    if let Some((main, text)) = step.warn {
-        let _ = crate::core::input(shared, &main, None, &format!("guard-{}", step.now), &text, crate::session::Origin::Host, None);
+    if let Some((main, text, key)) = step.warn {
+        if crate::core::input(shared, &main, None, &format!("guard-{}", step.now), &text, crate::session::Origin::Host, None).is_err() {
+            crate::guard::warn_failed(&key); // the episode stays open: tried again a little later
+        }
     }
     for (id, generation, keep_worktree) in step.close {
         if session_close_opts(shared, &id, generation, keep_worktree.then_some("keep"), false, false).is_ok() {
-            crate::guard::closed_ok(&id, step.now);
+            let kb = entries.iter().find(|e| e["session"] == id.as_str()).map_or(0, |e| e["memory"]["rss_kb"].as_u64().or(e["memory"]["max_rss_kb"].as_u64()).unwrap_or(0));
+            crate::guard::closed_ok(&id, step.now, kb / 1024);
         }
     }
     if let Some(id) = step.resume {
@@ -82,9 +85,23 @@ pub fn guard_tick(shared: &Arc<Shared>, reply: &serde_json::Map<String, serde_js
         if crate::guard::closed_by(&id) == Some("guard") {
             if let Some(found) = find(shared, &id) {
                 let generation = found.lock().unwrap().generation as i64;
-                let _ = crate::core::session_resume(shared, &id, generation);
+                if crate::core::session_resume(shared, &id, generation).is_ok() {
+                    if let Some(mb) = crate::guard::take_note(&id) {
+                        let mut s = found.lock().unwrap();
+                        let line = crate::guard::auto_note(mb);
+                        match s.provider {
+                            "claude" => crate::claude::note(&mut s, &line),
+                            "codex" => crate::codex::note(&mut s, &line),
+                            _ => {}
+                        }
+                    }
+                    crate::guard::clear(&id);
+                } else {
+                    crate::guard::resume_failed(&id); // it stays closed and marked as closed by the guard: the person resumes it by hand
+                }
+            } else {
+                crate::guard::clear(&id); // gone
             }
-            crate::guard::clear(&id);
         }
     }
 }

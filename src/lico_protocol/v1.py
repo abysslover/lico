@@ -242,7 +242,7 @@ REPLIES = {
                          "approval_id": {"type": INT, "minimum": 1}, "prompt": {"type": STR, "max_length": 200}},
                          "optional": {"tool": {"type": STR, "enum": ["send", "create", "history", "capture", "clipboard_read", "clipboard_write", "computer"]}}}},    # a question the host asks for an agent's request; the program's own has none
                      "allowed": {"type": "array", "items": {"type": "object", "required": {"tool": {"type": STR, "enum": ["send", "history"]}, "to": {"type": STR, "max_length": 64}}}}}}}},    # what the person said yes to for as long as the session lives
-                  {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY, "memory_limits": {"type": "object", "required": {"warn_mb": {"type": INT, "minimum": 1}, "limit_mb": {"type": INT, "minimum": 2}}, "optional": {"stall_min": {"type": INT, "minimum": 0}}},
+                  {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY, "machine_memory": {"type": "object", "required": {"available_kb": {"type": INT, "minimum": 0}, "total_kb": {"type": INT, "minimum": 1}}}, "memory_limits": {"type": "object", "required": {"warn_mb": {"type": INT, "minimum": 1}, "limit_mb": {"type": INT, "minimum": 2}}, "optional": {"stall_min": {"type": INT, "minimum": 0}}},
                    "calls": {"type": "array", "items": CALL_SUMMARY_BODY},
                    "settings": SETTINGS_BODY,
                    "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),

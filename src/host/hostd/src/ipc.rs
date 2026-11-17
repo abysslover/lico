@@ -296,6 +296,9 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
                 if let Some(dir) = shared.cfg.registry_dir.parent() {
                     let l = crate::guard::limits(dir);
                     reply.insert("memory_limits".into(), json!({"warn_mb": l.warn_mb, "limit_mb": l.limit_mb, "stall_min": crate::guard::stall_min(dir)}));
+                    if let Some((available, total)) = crate::guard::machine_memory() {
+                        reply.insert("machine_memory".into(), json!({"available_kb": available, "total_kb": total}));
+                    }
                 }
             }
             r

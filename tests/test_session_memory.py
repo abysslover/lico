@@ -1,4 +1,4 @@
-"""M02-P02-S06: the memory a row shows is what the agent and everything it started hold of their own. A simulator session holds a known amount in
+"""M02-P02-S06 (the row figure is the tree RSS since M19-P01; the hint still says what is its own): the memory a row shows is what the agent and everything it started hold. A simulator session holds a known amount in
 the agent, in a child and in that child's child; the host's figure, the row, the hint line under the mouse and the total line carry it."""
 import re
 
@@ -58,7 +58,7 @@ def test_a_session_shows_what_its_agent_its_child_and_its_grandchild_hold_in_the
             reply = conn.call(op="status")
             assert v1.validate_response("status", reply) == [] and reply["host_memory"]["processes"] == 1 and reply["host_memory"]["private_kb"] > 0
 
-            expected = held["private_kb"] >> 10                                         # MiB; the row rounds a figure above 100 to the nearest ten
+            expected = held["rss_kb"] >> 10                                             # MiB; the row shows the RSS of the whole tree (M19-P01) and rounds a figure above 100 to the nearest ten
             near = lambda text: (m := re.search(r"(\d+)M", text)) and abs(int(m.group(1)) - expected) <= 15        # the nearest ten, and a wobble of the figure between two reads
             wait_for(lambda: re.search(r"\t\d+M", w.ui()["list_text"]) and near(w.ui()["list_text"].split("\t")[-1]))
             total = wait_for(lambda: near(w.ui()["memory"]["total"]) and w.ui()["memory"]["total"])

@@ -1,7 +1,8 @@
-//! The memory of a session as the window shows it: a short figure at the right end of its row (amber from 1 GiB, red from 2 GiB), a sentence in the
-//! hint line while the mouse is over the row (the same figure and the RSS beside it), and one line at the bottom of the list with the sessions
-//! together, the host and this window. All of them use the host's definition (see `crate::memory`): what a program holds of its own, `RssAnon` plus
-//! `RssShmem`, never PSS; the window's own figure is read the same way from its own `/proc` entry.
+//! The memory of a session as the window shows it: a short figure at the right end of its row (the RSS of the whole tree; orange from 400 MB and red
+//! from 500 MB of its largest process, as the host sends the limits), a sentence in the hint line while the mouse is over the row (the figure of its own,
+//! `RssAnon` plus `RssShmem`, and the RSS beside it), and one line at the bottom of the list with the sessions together, the host and this window (when the
+//! machine runs low it starts with the machine's available share). The host and window figures use the host's definition (see `crate::memory`): what a
+//! program holds of its own, never PSS; the window's own figure is read the same way from its own `/proc` entry.
 
 use cosmic_text::{Color, FontSystem, SwashCache};
 use serde_json::Value;
@@ -20,6 +21,8 @@ pub struct Look {
     pub host: Figure,
     pub window: Figure,
     pub hover: Option<String>, // the session under the mouse
+    /// The machine's `MemAvailable` and `MemTotal` in kB as the host last said (none until it does).
+    pub machine: Option<(u64, u64)>,
     reads: u64,
 }
 
@@ -126,7 +129,7 @@ pub fn ink(level: lico_memguard::Level, normal: Color) -> Color {
 
 /// The figure of a row, none while the host has not given one (a session that is not running holds nothing).
 pub fn cell(row: &Row) -> Option<Cell> {
-    (row.memory_kb > 0).then(|| Cell { text: short(row.memory_kb), ink: ink(if stalled(row, now_secs()) { level(row).max(lico_memguard::Level::Orange) } else { level(row) }, Color::rgb(0x9A, 0xA4, 0xB0)) })
+    (row.memory_kb > 0).then(|| Cell { text: short(if row.rss_kb > 0 { row.rss_kb } else { row.memory_kb }), ink: ink(if stalled(row, now_secs()) { level(row).max(lico_memguard::Level::Orange) } else { level(row) }, Color::rgb(0x9A, 0xA4, 0xB0)) })
 }
 
 /// The row's text with its figure: what tells the list that it has to be drawn again.
@@ -145,8 +148,14 @@ pub fn draw(controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache
 
 /// The line under the list: the running sessions together, the host and this window.
 pub fn total(rows: &[Row], look: &Look) -> String {
-    WORST.store(worst(rows) as u8, std::sync::atomic::Ordering::Relaxed); // the line is drawn after this call in the same frame, by four callers that each pass their own plain colour
-    let sessions: u64 = rows.iter().map(|r| r.memory_kb).sum();
+    WORST.store(worst(rows).max(look.machine_level()) as u8, std::sync::atomic::Ordering::Relaxed); // the line is drawn after this call in the same frame, by four callers that each pass their own plain colour
+    let sessions: u64 = rows.iter().map(|r| if r.rss_kb > 0 { r.rss_kb } else { r.memory_kb }).sum();
+    if let Some(pct) = look.machine_percent().filter(|_| look.machine_level() != lico_memguard::Level::Ok) {
+        // the machine runs low: its figure comes first, and the line is as short as the list allows (at most 39 columns)
+        let (sessions, window) = (short(sessions), short(look.window.private_kb));
+        let with_host = format!("free {pct}% sessions {sessions} host {} win {window}", short(look.host.private_kb));
+        return if look.host.private_kb > 0 && with_host.chars().count() <= 39 { with_host } else { format!("free {pct}% sessions {sessions} win {window}") }; // the host figure is the first to go when the line is too long
+    }
     let host = if look.host.private_kb > 0 { format!("  host {}", short(look.host.private_kb)) } else { String::new() };
     format!("mem sessions {}{host}  window {}", short(sessions), short(look.window.private_kb)) // at most 39 columns: what the list is wide enough for
 }
@@ -173,10 +182,32 @@ pub fn sentence(row: &Row, cols: usize) -> Option<String> {
     Some(format!("{name}{rest}{quiet}").chars().take(cols).collect())
 }
 
+/// The warning for the person starting a session while the machine runs low on memory (a warning, never a block); none while it is well.
+pub fn new_session_warning(look: &Look) -> Option<String> {
+    let pct = look.machine_percent()?;
+    match look.machine_level() {
+        lico_memguard::Level::Ok => None,
+        lico_memguard::Level::Orange => Some(format!("Memory on this machine is getting low ({pct}% available). The new session may fail; consider closing a heavy session.")),
+        lico_memguard::Level::Red => Some(format!("Memory on this machine is very low ({pct}% available): the system may kill sessions. Close a heavy session first if you can.")),
+    }
+}
+
 impl Look {
+    /// The share of the machine's memory that is available, in percent.
+    pub fn machine_percent(&self) -> Option<u64> {
+        self.machine.map(|(avail, total)| avail.saturating_mul(100) / total.max(1))
+    }
+
+    /// The machine's level: orange under 20 percent available, red under 10 (ok while the host has not said).
+    pub fn machine_level(&self) -> lico_memguard::Level {
+        self.machine.map_or(lico_memguard::Level::Ok, |(avail, total)| lico_memguard::machine_level(avail, total))
+    }
+
     /// A status reply: the host's figure, and this window's own (read every third time; one small file).
     pub fn read(&mut self, status: &Value) {
         set_limits(status);
+        let m = &status["machine_memory"];
+        self.machine = m["total_kb"].as_u64().filter(|t| *t > 0).map(|t| (m["available_kb"].as_u64().unwrap_or(0), t));
         let kb = |k: &str| status["host_memory"][k].as_u64().unwrap_or(0);
         self.host = Figure { private_kb: kb("private_kb"), rss_kb: kb("rss_kb"), max_rss_kb: kb("rss_kb"), processes: 1 };
         if self.reads % 3 == 0 {
@@ -283,8 +314,39 @@ mod tests {
         assert!(said.starts_with("a-very-long-session-nam…: 59 MiB") && said.ends_with("counts in each"), "{said}");
         assert!(total(&[row(123 * 1024 * 1024, 0, 1)], &Look { host: Figure { private_kb: 99 * 1024, ..Default::default() }, window: Figure { private_kb: 99 * 1024, ..Default::default() }, ..Default::default() }).chars().count() <= 39);
         let look = Look { host: Figure { private_kb: 41 * 1024, ..Default::default() }, window: Figure { private_kb: 28 * 1024, ..Default::default() }, ..Default::default() };
-        assert_eq!(total(&[a, row(850 * 1024, 900 * 1024, 2)], &look), "mem sessions 1.2G  host 41M  window 28M");
+        assert_eq!(total(&[a, row(850 * 1024, 900 * 1024, 2)], &look), "mem sessions 1.6G  host 41M  window 28M", "the RSS of the sessions, as the rows show");
         assert_eq!(total(&[], &Look::default()), "mem sessions <1M  window <1M");
+    }
+
+    #[test]
+    fn the_row_figure_is_the_rss_of_the_whole_tree_and_the_machine_line_and_the_new_session_warning_come_from_the_status_reply() {
+        assert_eq!(cell(&row(350 * 1024, 707 * 1024, 4)).unwrap().text, "710M", "the RSS, which is what the colour follows");
+        assert_eq!(cell(&row(350 * 1024, 0, 1)).unwrap().text, "350M", "no RSS from the host: its own figure");
+        let gib = 1024 * 1024;
+        let at = |avail_gib: f64| {
+            let mut look = Look::default();
+            look.read(&serde_json::json!({"machine_memory": {"available_kb": (avail_gib * gib as f64) as u64, "total_kb": 16 * gib}}));
+            look
+        };
+        let quiet = Look::default();
+        assert_eq!((quiet.machine_level(), new_session_warning(&quiet)), (lico_memguard::Level::Ok, None), "a host that says nothing: no line, no warning");
+        assert_eq!((at(8.0).machine_level(), new_session_warning(&at(8.0))), (lico_memguard::Level::Ok, None));
+        let orange = at(2.5); // 15 percent
+        assert_eq!(orange.machine_level(), lico_memguard::Level::Orange);
+        assert!(new_session_warning(&orange).unwrap().contains("15%"), "{:?}", new_session_warning(&orange));
+        let red = at(1.0); // 6 percent
+        assert_eq!(red.machine_level(), lico_memguard::Level::Red);
+        assert!(new_session_warning(&red).unwrap().contains("6%"));
+        let mut look = Look { host: Figure { private_kb: 41 * 1024, ..Default::default() }, window: Figure { private_kb: 28 * 1024, ..Default::default() }, ..at(1.0) };
+        let line = total(&[row(1200 * 1024, 1200 * 1024, 2)], &look);
+        assert_eq!(line, "free 6% sessions 1.2G host 41M win 28M");
+        assert!(line.chars().count() <= 39);
+        let wide = Look { host: Figure { private_kb: 100 * 1024, ..Default::default() }, window: Figure { private_kb: 100 * 1024, ..Default::default() }, ..at(2.5) };
+        let line = total(&[row(10137 * 1024, 10137 * 1024, 2)], &wide);
+        assert_eq!(line, "free 15% sessions 9.9G win 100M", "{line}: with the host it would be 41 columns");
+        assert!(line.chars().count() <= 39);
+        look.read(&serde_json::json!({"machine_memory": {"available_kb": 1, "total_kb": 0}}));
+        assert_eq!(look.machine_level(), lico_memguard::Level::Ok, "no total: not known");
     }
 
     #[test]

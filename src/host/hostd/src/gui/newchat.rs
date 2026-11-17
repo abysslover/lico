@@ -446,7 +446,10 @@ impl App {
                     self.show(&id, None);
                     self.ui.tab_ensure_visible = true;
                     self.persist_workspace(created_cwd.as_deref(), Some("session"), Some(&id));
-                    self.ui.flash = Some(said);
+                    self.ui.flash = Some(match crate::gui::ui::memrow::new_session_warning(&self.ui.mem) {
+                        Some(warning) => format!("{said} {warning}"),
+                        None => said,
+                    });
                 }
             }
             _ => {}

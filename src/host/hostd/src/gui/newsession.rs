@@ -703,6 +703,9 @@ impl App {
             self.ui.scroll = 0;
             self.show(&id, None);
             self.persist_workspace(created_cwd.as_deref(), Some("session"), Some(&id));
+            if let Some(warning) = crate::gui::ui::memrow::new_session_warning(&self.ui.mem) {
+                self.ui.flash = Some(warning);
+            }
         } else if let Some(p) = self.ui.panel.as_mut() {
             p.notice = format!("The session was not started. {}", refusal(reply["error"].as_str().unwrap_or("unknown")));
         }
