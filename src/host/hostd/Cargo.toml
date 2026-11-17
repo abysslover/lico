@@ -37,7 +37,7 @@ lico-cdp = { path = "../../../components/cdp" }
 lico-sandbox = { path = "../../../components/sandbox" }
 lico-proxy = { path = "../../../components/proxy" }
 lico-browser-view = { path = "../../../components/browser-view" }
-lico-engine-pack = { path = "../../../components/engine-pack" }
+lico-engine = { path = "../../../components/engine" }
 lico-memguard = { path = "../../../components/memguard" }
 lico-frame = { path = "../../../components/frame" }
 

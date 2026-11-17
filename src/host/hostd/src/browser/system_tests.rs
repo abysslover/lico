@@ -32,7 +32,7 @@ impl Rig {
         Rig::start_with(name, None)
     }
 
-    /// `real`: a directory with the real engine's two files, put in the pinned place of the private home (no setting file: the hash is checked). None: the fake, by the setting.
+    /// `real`: a directory with the real engine's one file (`moli`), put in the pinned place of the private home (no setting file: the hash is checked). None: the fake, by the setting.
     pub(super) fn start_with(name: &str, real: Option<&Path>) -> Rig {
         Rig::start_full(name, real, None)
     }
@@ -49,28 +49,26 @@ impl Rig {
             std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
         let engine_exe = match real {
-            None if seam.is_some() => dir.join(".local/share/lico/browser/v0.2.6/obscura"),
+            None if seam.is_some() => dir.join(".local/share/lico/browser").join(lico_engine::dir_name()).join("moli"),
             None => {
                 let fake = std::env::var("LICO_FAKE_ENGINE").unwrap_or_else(|_| panic!("LICO_FAKE_ENGINE must name the fake engine (cargo xtask system sets it); a system test never skips"));
-                std::fs::copy(&fake, engine.join("obscura")).unwrap();
-                std::fs::set_permissions(engine.join("obscura"), std::fs::Permissions::from_mode(0o700)).unwrap();
+                std::fs::copy(&fake, engine.join("moli")).unwrap();
+                std::fs::set_permissions(engine.join("moli"), std::fs::Permissions::from_mode(0o700)).unwrap();
                 std::fs::write(state.join("browser.json"), json!({"engine_dir": engine.to_str().unwrap()}).to_string()).unwrap();
                 std::fs::set_permissions(state.join("browser.json"), std::fs::Permissions::from_mode(0o600)).unwrap();
-                engine.join("obscura")
+                engine.join("moli")
             }
             Some(from) => {
-                let pinned = dir.join(".local/share/lico/browser/v0.2.6");
+                let pinned = dir.join(".local/share/lico/browser").join(lico_engine::dir_name());
                 let mut at = dir.clone();
                 for part in pinned.strip_prefix(&dir).unwrap().components() {
                     at.push(part);
                     std::fs::create_dir_all(&at).unwrap();
                     std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o700)).unwrap();
                 }
-                for name in ["obscura", "obscura-worker"] {
-                    std::fs::copy(from.join(name), pinned.join(name)).unwrap();
-                    std::fs::set_permissions(pinned.join(name), std::fs::Permissions::from_mode(0o700)).unwrap();
-                }
-                pinned.join("obscura")
+                std::fs::copy(from.join("moli"), pinned.join("moli")).unwrap();
+                std::fs::set_permissions(pinned.join("moli"), std::fs::Permissions::from_mode(0o700)).unwrap();
+                pinned.join("moli")
             }
         };
         let socket = dir.join("host.sock").to_string_lossy().into_owned();
@@ -345,6 +343,12 @@ fn browser_engine_ends_with_the_last_tab_and_never_starts_without_one() {
     rig.wait(15, "the page after the restart", || Some(()).filter(|_| rig.tab(&d)["has_frame"] == json!(true)));
     assert_eq!(rig.engines().len(), 1);
     assert_ne!(rig.engines(), pids, "a new process");
+    // the new engine's events belong to the new tab, never to the failed tab of the engine that died: an engine that starts its session numbers again (Moli does, MEASURED in M20: the
+    // first tab after a restart stayed "loading" for ever because the dead tab took its load event) gives the new tab the same session name as the dead one's
+    let t = rig.wait(15, "the new tab to finish loading", || Some(rig.tab(&d)).filter(|t| t["phase"] == json!("ready")));
+    assert_eq!((t["title"].clone(), t["url"].clone()), (json!("A fake page"), json!("https://four.test/")), "{t}");
+    let dead = rig.tab(&c);
+    assert_eq!((dead["phase"].clone(), dead["url"].clone()), (json!("failed"), json!("https://three.test/")), "the dead tab stays as it was: {dead}");
     // the number of tabs is capped
     for i in 0..6 {
         rig.open(&format!("https://more{i}.test/"));
@@ -521,20 +525,23 @@ fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
     let _ = IGNORED;
     use super::installer::tests::{serve, Reply};
     use std::sync::atomic::Ordering;
-    // a release of the test: the fake engine and a worker file in an archive made by tar, served by a local fake server that answers when the test says so
+    // a release of the test in the shape of Moli's: the fake engine, a readme and a licence file inside the archive's own folder, made by tar, served by a local fake server that
+    // answers when the test says so
     let work = std::env::temp_dir().join(format!("lico_browser_install_{}", crate::core::random_hex(6)));
     let src = work.join("src");
-    std::fs::create_dir_all(&src).unwrap();
-    std::fs::copy(std::env::var("LICO_FAKE_ENGINE").expect("LICO_FAKE_ENGINE"), src.join("obscura")).unwrap();
-    std::fs::write(src.join("obscura-worker"), b"#!/bin/sh\n").unwrap();
+    let root = src.join(lico_engine::ARCHIVE_ROOT);
+    std::fs::create_dir_all(root.join("licenses")).unwrap();
+    std::fs::copy(std::env::var("LICO_FAKE_ENGINE").expect("LICO_FAKE_ENGINE"), root.join("moli")).unwrap();
+    std::fs::write(root.join("README.md"), b"a readme\n").unwrap();
+    std::fs::write(root.join("licenses/NOTICE.txt"), b"a notice\n").unwrap();
     let archive = work.join("a.tar.gz");
-    assert!(Command::new("tar").arg("-czf").arg(&archive).arg("-C").arg(&src).args(["obscura", "obscura-worker"]).status().unwrap().success());
+    assert!(Command::new("tar").arg("-czf").arg(&archive).arg("-C").arg(&src).arg(lico_engine::ARCHIVE_ROOT).status().unwrap().success());
     let bytes = std::fs::read(&archive).unwrap();
     let hex = |p: &Path| super::sha256::hex_of(std::fs::File::open(p).unwrap()).unwrap();
     let (gate, held) = std::sync::mpsc::channel();
     let server = serve(Reply::Held(bytes.clone(), held));
     let seam = work.join("seam.json");
-    std::fs::write(&seam, json!({"url": server.url, "archive_sha256": hex(&archive), "engine_sha256": hex(&src.join("obscura")), "worker_sha256": hex(&src.join("obscura-worker")), "max_archive": 64 << 20}).to_string()).unwrap();
+    std::fs::write(&seam, json!({"url": server.url, "archive_sha256": hex(&archive), "engine_sha256": hex(&root.join("moli")), "max_archive": 64 << 20}).to_string()).unwrap();
     let rig = Rig::start_full("install", None, Some(&seam));
     let binary = std::env::var("LICO_BIN").unwrap();
     // the command line: it says it is installing, waits, and ends when the tab has an engine
@@ -545,7 +552,7 @@ fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
     assert!(said.contains("installing the browser engine: about") && said.contains("MB from 127.0.0.1:") && said.contains(&hex(&archive)[..12]), "{said}");
     let tab = rig.tab("b1");
     assert_eq!(tab["phase"], json!("installing"), "{tab}");
-    assert!(rig.engines().is_empty() && !pinned_dir(&rig).join("obscura").exists(), "no engine and nothing installed while the download has not come");
+    assert!(rig.engines().is_empty() && !pinned_dir(&rig).join("moli").exists(), "no engine and nothing installed while the download has not come");
     gate.send(()).unwrap();
     let mut out = String::new();
     cli.stdout.take().unwrap().read_to_string(&mut out).unwrap();
@@ -559,11 +566,11 @@ fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
     assert_eq!(tab["unpinned"], json!(false), "the engine in the pinned place is the one whose hash was checked: {tab}");
     assert_eq!(server.hits.load(Ordering::SeqCst), 1, "one download");
     let dir = pinned_dir(&rig);
-    for name in ["obscura", "obscura-worker"] {
-        assert_eq!(std::fs::metadata(dir.join(name)).unwrap().permissions().mode() & 0o777, 0o700, "{name}");
-    }
+    assert_eq!(std::fs::metadata(dir.join("moli")).unwrap().permissions().mode() & 0o777, 0o700);
+    let inside: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    assert_eq!(inside, ["moli"], "only the one file of the archive is written, not the readme or the licences");
     let parent: Vec<_> = std::fs::read_dir(dir.parent().unwrap()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
-    assert_eq!(parent, ["v0.2.6"], "no staging folder and no archive is left");
+    assert_eq!(parent, [lico_engine::dir_name()], "no staging folder and no archive is left");
     // closing the tab ends the engine; a tab opened again uses the installed engine and asks the server for nothing
     assert_eq!(rig.call(json!({"op": "browser.close", "tab": "b1"}))["engine_stopped"], json!(true));
     let again = rig.open("https://pages.test/again");
@@ -575,50 +582,56 @@ fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
 
 #[test]
 #[ignore = "a system test of tests/system_tests.toml: run by `cargo xtask system` with LICO_BIN and LICO_FAKE_ENGINE set"]
-fn browser_engine_is_stealthy_only_when_the_owner_says_so_and_never_for_this_machines_own_services() {
+fn browser_engine_is_started_in_the_shape_of_moli_and_the_old_stealth_setting_is_ignored() {
     let _ = IGNORED;
-    // off by default: no `--stealth`, and the page is told the honest user-agent
-    let rig = Rig::start("stealth_off");
+    // the engine is started as Moli is (the fake exits when its TMPDIR is not writable or its FONTCONFIG_FILE is not readable, so a ready tab proves both); the page is told the
+    // honest user-agent; the list names the engine and says that its socket has no password
+    let rig = Rig::start("moli_shape");
     let id = rig.open("https://pages.test/start");
-    let t = rig.wait(15, "the page of the default engine", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
-    assert_eq!(t["stealth"], json!(false), "{t}");
+    let t = rig.wait(15, "the page of the engine", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
+    assert!(t.get("stealth").is_none(), "the tab no longer has a stealth state: {t}");
     let argv = rig.engine_files("argv.log");
-    assert!(argv.len() == 1 && argv[0].starts_with("serve --port ") && !argv[0].contains("--stealth"), "{argv:?}");
+    assert_eq!(argv.len(), 1, "{argv:?}");
+    let line = argv[0].trim();
+    assert!(line.starts_with("serve --host 127.0.0.1 --port "), "{line}");
+    assert!(line.contains(" --layout --resource --screencast-interval-ms 100"), "{line}");
+    assert!(line.ends_with(" --log-level warn"), "{line}");
+    assert!(!line.contains("stealth") && !line.contains("--proxy") && !line.contains("--token"), "no argument of the old engine: {line}");
+    let has_ca = super::profile::CA_BUNDLES.iter().any(|p| Path::new(p).is_file());
+    assert_eq!(line.contains(" --ca-cert /"), has_ca, "the system's CA bundle is passed when the machine has one: {line}");
     let ua = rig.engine_files("ua.log");
-    assert!(ua.len() == 1 && ua[0].contains("Lico/") && ua[0].contains("Obscura/"), "the honest user-agent is sent: {ua:?}");
-    assert_eq!(rig.call(json!({"op": "browser.list"}))["engines"][0]["stealth"], json!(false));
+    assert!(ua.len() == 1 && ua[0].contains("Lico/") && ua[0].contains("Moli/"), "the honest user-agent is sent: {ua:?}");
+    let list = rig.call(json!({"op": "browser.list"}));
+    assert_eq!(list["engine"], json!(lico_engine::label()), "{list}");
+    assert_eq!((list["engines"][0]["socket_password"].clone(), list["engines"][0].get("stealth").cloned()), (json!(false), None), "{list}");
+    // the engine for this machine's own services is started the same way, a second one
+    let reply = rig.call(json!({"op": "browser.open", "url": "http://127.0.0.1:9/", "local": true}));
+    assert_eq!(reply["ok"], json!(1), "{reply}");
+    let local = reply["tab"].as_str().unwrap().to_string();
+    rig.wait(15, "the page of the local engine", || Some(rig.tab(&local)).filter(|t| t["phase"] == json!("ready") || t["notice"].is_string()));
+    let argv = rig.engine_files("argv.log");
+    assert!(argv.len() == 2 && argv.iter().all(|a| a.starts_with("serve --host 127.0.0.1 --port ")), "{argv:?}");
     drop(rig);
-    // the owner's `{"stealth": true}`: the engine gets `--stealth`, no user-agent is set over the engine's own, the tab and the list say so; the engine for this machine's own services
-    // does not get it
-    let rig = Rig::start("stealth_on");
+    // a setting file of 0.6.2 that still says `"stealth": true` is read and ignored: the engine is the ordinary one, started the same way, and the page gets the honest user-agent
+    let rig = Rig::start("stealth_ignored");
     let setting = rig.dir.join("state/browser.json");
     std::fs::write(&setting, json!({"engine_dir": rig.dir.join("engine").to_str().unwrap(), "stealth": true}).to_string()).unwrap();
     std::fs::set_permissions(&setting, std::fs::Permissions::from_mode(0o600)).unwrap();
     let id = rig.open("https://pages.test/start");
-    let t = rig.wait(15, "the page of the stealth engine", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
-    assert_eq!(t["stealth"], json!(true), "{t}");
+    rig.wait(15, "the page with an old setting", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
     let argv = rig.engine_files("argv.log");
-    assert!(argv.len() == 1 && argv[0].contains("--stealth"), "{argv:?}");
-    assert!(rig.engine_files("ua.log").is_empty(), "with stealth the engine's own identity stays: no user-agent override");
-    let reply = rig.call(json!({"op": "browser.open", "url": "http://127.0.0.1:9/", "local": true}));
-    assert_eq!(reply["ok"], json!(1), "{reply}");
-    let local = reply["tab"].as_str().unwrap().to_string();
-    let t = rig.wait(15, "the page of the local engine", || Some(rig.tab(&local)).filter(|t| t["phase"] == json!("ready") || t["notice"].is_string()));
-    assert_eq!(t["stealth"], json!(false), "the tab for this machine's own services is never stealthy: {t}");
-    let argv = rig.engine_files("argv.log");
-    assert!(argv.len() == 2 && argv.iter().filter(|a| a.contains("--stealth")).count() == 1, "only the ordinary engine got it: {argv:?}");
-    let list = rig.call(json!({"op": "browser.list"}));
-    assert_eq!((list["engines"][0]["stealth"].clone(), list["engines"][1]["stealth"].clone()), (json!(true), json!(false)), "{list}");
-    // a setting file that anyone else can read says nothing: stealth stays off
+    assert!(argv.len() == 1 && !argv[0].contains("stealth"), "{argv:?}");
+    assert_eq!(rig.engine_files("ua.log").len(), 1, "the user-agent is still set");
     drop(rig);
-    let rig = Rig::start("stealth_ignored");
+    // a setting file that anyone else can read is refused as a whole, as before
+    let rig = Rig::start("setting_readable");
     let setting = rig.dir.join("state/browser.json");
-    std::fs::write(&setting, json!({"engine_dir": rig.dir.join("engine").to_str().unwrap(), "stealth": true}).to_string()).unwrap();
+    std::fs::write(&setting, json!({"engine_dir": rig.dir.join("engine").to_str().unwrap()}).to_string()).unwrap();
     std::fs::set_permissions(&setting, std::fs::Permissions::from_mode(0o644)).unwrap();
     let reply = rig.call(json!({"op": "browser.open", "url": "https://pages.test/start"}));
-    assert_eq!(reply["error"], json!("engine_setting"), "a readable setting is refused as a whole, as before: {reply}");
+    assert_eq!(reply["error"], json!("engine_setting"), "a readable setting is refused as a whole: {reply}");
 }
 
 fn pinned_dir(rig: &Rig) -> PathBuf {
-    rig.dir.join(".local/share/lico/browser/v0.2.6")
+    rig.dir.join(".local/share/lico/browser").join(lico_engine::dir_name())
 }

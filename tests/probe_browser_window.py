@@ -59,14 +59,13 @@ def hwm_mib(pid: int) -> float:
 
 def pinned_engine(w: ProductWindow) -> None:
     src = Path(os.environ["LICO_REAL_ENGINE_DIR"])
-    dest = Path(w.directory) / "home" / ".local" / "share" / "lico" / "browser" / "v0.2.6"
+    dest = Path(w.directory) / "home" / ".local" / "share" / "lico" / "browser" / "moli-v1.1.25"
     at = Path(w.directory) / "home"
     for part in dest.relative_to(at).parts:
         at = at / part
         at.mkdir(mode=0o700, exist_ok=True)
-    for name in ("obscura", "obscura-worker"):
-        shutil.copy(src / name, dest / name)
-        (dest / name).chmod(0o700)
+    shutil.copy(src / "moli", dest / "moli")
+    (dest / "moli").chmod(0o700)
 
 
 def measure(scale: str, geometry: str, resize_to: tuple[int, int] | None, tag: str, out: list[str]) -> None:

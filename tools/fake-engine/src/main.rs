@@ -1,7 +1,9 @@
-//! A test double for the browser engine (M17-P06): `lico-fake-engine serve --port N [--font-dir D] [--proxy URL]`. It needs `OBSCURA_CDP_TOKEN` (the bearer token it requires), uses
-//! `OBSCURA_PROXY` (credentials in the URL) like the real engine does, listens on the loopback port it was given and answers the CDP calls a tab makes. A page is a fake frame
-//! (a PNG of a shade that changes with each navigation); an `http://` address is fetched once through the proxy, so that the host's fetch guard sees what a real engine would
-//! send. `Browser.close` ends the process. It prints nothing and reads no file. It exists only for the system tests of the host adapter.
+//! A test double for the browser engine, in the shape of Moli (M17-P06, carried to Moli in M20): `lico-fake-engine serve --host 127.0.0.1 --port N [--layout] [--resource]
+//! [--screencast-interval-ms N] [--ca-cert PATH] [--log-level L]`. Like Moli it needs a writable `TMPDIR` and a readable `FONTCONFIG_FILE`, takes its proxy from `HTTP_PROXY`
+//! (credentials in the URL), has NO token of its own, listens on the loopback port it was given and answers the CDP calls a tab makes at a socket path made at each start
+//! (`/devtools/browser/<id>`, told by `GET /json/version`; an upgrade anywhere else is a 404). A page is a fake frame (a PNG of a shade that changes with each navigation);
+//! an `http://` address is fetched once through the proxy, so that the host's fetch guard sees what a real engine would send. `Browser.close` ends the process. It prints
+//! nothing; it writes only the logs the tests read, in its `HOME`. It exists only for the system tests of the host adapter.
 
 use lico_cdp_fake::{Answer, Call, Fake, Script};
 use serde_json::{json, Value};
@@ -43,7 +45,7 @@ fn screencast(n: u64, shade: u8) -> Value {
     lico_cdp_fake::screencast_frame(n, &base64(&frame_png(shade)), 96, 64)
 }
 
-/// What a real engine does with `OBSCURA_PROXY` for a plain `http://` page: one absolute-form request with the credentials of the proxy URL; the answer is ignored (a refused
+/// What a real engine does with `HTTP_PROXY` for a plain `http://` page: one absolute-form request with the credentials of the proxy URL; the answer is ignored (a refused
 /// fetch is a blank page, no error: measured).
 fn fetch_through_proxy(proxy: &str, url: &str) {
     let Some(rest) = proxy.strip_prefix("http://") else { return };
@@ -57,24 +59,51 @@ fn fetch_through_proxy(proxy: &str, url: &str) {
     let _ = s.take(64 * 1024).read_to_end(&mut sink);
 }
 
+/// What Moli needs of its environment, and exits 3 when it is missing: a writable `TMPDIR` and a readable `FONTCONFIG_FILE` (the host writes both inside the fence).
+fn check_environment() {
+    let tmp = std::env::var("TMPDIR").unwrap_or_else(|_| std::process::exit(3));
+    let probe = format!("{tmp}/fake-engine-{}", std::process::id());
+    if std::fs::write(&probe, b"x").is_err() {
+        std::process::exit(3);
+    }
+    let _ = std::fs::remove_file(&probe);
+    let fonts = std::env::var("FONTCONFIG_FILE").unwrap_or_else(|_| std::process::exit(3));
+    if std::fs::read(&fonts).is_err() {
+        std::process::exit(3);
+    }
+}
+
+/// An id for the socket path, made at each start (letters, digits and dashes, like the real one).
+fn start_id() -> String {
+    let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(1);
+    format!("{:08x}-{:04x}-{:012x}", (ns >> 32) as u32, std::process::id() & 0xffff, ns & 0xffff_ffff_ffff)
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let host_ok = args.windows(2).any(|w| w[0] == "--host" && w[1] == "127.0.0.1");
     let port: u16 = args.windows(2).find(|w| w[0] == "--port").and_then(|w| w[1].parse().ok()).filter(|p| *p != 0).unwrap_or_else(|| {
-        eprintln!("usage: lico-fake-engine serve --port N");
+        eprintln!("usage: lico-fake-engine serve --host 127.0.0.1 --port N");
         std::process::exit(2)
     });
-    let token = std::env::var("OBSCURA_CDP_TOKEN").unwrap_or_else(|_| std::process::exit(3));
-    let proxy = std::env::var("OBSCURA_PROXY").ok();
+    if args.first().map(String::as_str) != Some("serve") || !host_ok {
+        eprintln!("usage: lico-fake-engine serve --host 127.0.0.1 --port N");
+        std::process::exit(2);
+    }
+    check_environment();
+    let proxy = std::env::var("HTTP_PROXY").ok();
+    let id = start_id();
+    let socket_path = format!("/devtools/browser/{id}");
     let counter = std::sync::Arc::new(AtomicU64::new(1));
     let (c1, c2, c3, c4) = (counter.clone(), counter.clone(), counter.clone(), counter.clone());
     let targets = AtomicU64::new(1);
     let home = std::env::var("HOME").ok();
-    // what the host started it with, for the tests of the owner's settings (stealth): one line of arguments in its scratch folder
+    // what the host started it with, for the tests of the arguments: one line of arguments in its scratch folder
     if let Some(h) = &home {
         let _ = std::fs::write(format!("{h}/argv.log"), format!("{}\n", args.join(" ")));
     }
     let script = Script::new()
-        .token(&token)
+        .socket_path(&socket_path)
         .observe(move |call: &Call| {
             // what the person did reaches the engine: one line each, with the time it arrived (nanoseconds since the epoch), for the tests that measure how long it took
             if call.method == "Emulation.setUserAgentOverride" {
@@ -94,7 +123,7 @@ fn main() {
             }
         })
         .idle(Duration::from_secs(3600))
-        .http("/json/version", 200, &json!({"Browser": "Chrome/145.0.0.0", "webSocketDebuggerUrl": format!("ws://127.0.0.1:{port}/devtools/browser")}).to_string())
+        .http("/json/version", 200, &json!({"Browser": "Chrome/145.0.0.0", "webSocketDebuggerUrl": format!("ws://127.0.0.1:{port}{socket_path}")}).to_string())
         .on("Browser.getVersion", Answer::result(json!({"product": "Chrome/145.0.0.0", "userAgent": "fake"})))
         .on_fn("Target.createTarget", move |_| Answer::result(json!({"targetId": format!("page-{}", targets.fetch_add(1, Ordering::SeqCst))})))
         .on_fn("Target.attachToTarget", |call: &Call| Answer::result(json!({"sessionId": format!("S-{}", call.params["targetId"].as_str().unwrap_or("page-0"))})))

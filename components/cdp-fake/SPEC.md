@@ -1,4 +1,4 @@
-# lico-cdp-fake 0.2.0 — specification
+# lico-cdp-fake 0.3.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages: `{id, method, params, sessionId}` calls, `{id, result}` or `{id, error: {code, message}}` replies, `{method, params, sessionId}` events; the error code `-32601` for an unknown method), **PROPOSED** (the screencast frame event in the Chrome shape: the engine may differ; re-fitted after the measurement of M17-P03).
 
@@ -13,7 +13,7 @@ A scripted fake of a CDP endpoint for tests: it listens on `127.0.0.1` with an e
 | `Fake::start(Script) -> io::Result<Fake>`, `addr()`, `calls() -> Vec<Call>`, `heads() -> Vec<Seen>`, `stop(self)` | listens on `127.0.0.1:0`; `stop` (and drop) ends the accept loop and every connection |
 | `Call { method, params, session_id }` | one call that arrived, in order, answered by a rule or not |
 | `Seen { method, path }`, `header(name)`, `authorization()` | one head that arrived (a refused one too); `Debug` shows the names of the headers and hides the values of `Authorization`, `Proxy-Authorization` and `Cookie` |
-| `Script::new().token(&str)`, `.http(path, status, body)`, `.on(method, Answer)`, `.times(n, method, Answer)`, `.idle(Duration)`, `.max_message(n)` | rules in order: the first rule for the method that is not used up answers; no rule is the error `-32601` with the method in its message; the last two are for tests of the fake's own limits |
+| `Script::new().token(&str)`, `.http(path, status, body)`, `.socket_path(path)`, `.on(method, Answer)`, `.times(n, method, Answer)`, `.idle(Duration)`, `.max_message(n)` | `socket_path` (0.3.0): the upgrade is accepted at that whole path only (no query) and a 404 anywhere else, as an engine that makes its socket path at each start; rules in order: the first rule for the method that is not used up answers; no rule is the error `-32601` with the method in its message; the last two are for tests of the fake's own limits |
 | `Answer::result(Value)`, `::error(code, message)`, `::silent()`, `::close()`, `.event(method, params)`, `.event_in(session, method, params)`, `.after(ms)` | a reply, a CDP error, no reply, the end of the connection without a close frame; events are sent after the reply in the order given; `after` delays the reply |
 | `screencast_frame(frame_id, data_b64, width, height) -> Value` | the params of a `Page.screencastFrame` event: `data`, `sessionId` (the number to acknowledge) and `metadata` (**PROPOSED** shape) |
 
@@ -38,4 +38,4 @@ A reply carries the `sessionId` of the call it answers (none if the call had non
 
 ## Versioning and budget
 
-`0.2.0` (M17-P06, mail 150): `start_at` and `Script::observe(f)`, a function that runs for every call before its reply, and `Script::on_fn(method, f)`, a rule whose answer is built from the call, both used by the fake engine program; `0.1.1`: the cap follows `lico-ws 0.2.0` (4 MiB); `0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.3.0` (M20-P01): `Script::socket_path(path)`, for the fake engine in Moli's shape (its socket path is `/devtools/browser/<id>`, made at each start and told by the discovery page), so that a host that assumes a path fails its system test; `0.2.0` (M17-P06, mail 150): `start_at` and `Script::observe(f)`, a function that runs for every call before its reply, and `Script::on_fn(method, f)`, a rule whose answer is built from the call, both used by the fake engine program; `0.1.1`: the cap follows `lico-ws 0.2.0` (4 MiB); `0.1.0` while the shapes have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.

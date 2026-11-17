@@ -7,7 +7,7 @@ use super::installer::{self, Source};
 use super::supervisor::{self, Cmd, Engine, Entry, Hub, Setup};
 use crate::driver::{Opaque, Ops};
 use lico_browser_view::{EngineEvent, Phase, Tab};
-use lico_engine_pack::{self as pack, Failure};
+use lico_engine::{self as pack, Failure};
 use serde_json::{json, Map, Value};
 use std::io::Write;
 use std::path::PathBuf;
@@ -146,7 +146,7 @@ impl Browser {
     }
 
     fn absent_fields(dir: &std::path::Path) -> Value {
-        json!({"release": RELEASE, "download": ARCHIVE_URL, "archive_sha256": ARCHIVE_SHA256, "engine_sha256": ENGINE_SHA256, "directory": dir.to_string_lossy(), "put": "extract the archive and put the files obscura and obscura-worker in the directory"})
+        json!({"release": RELEASE, "download": ARCHIVE_URL, "archive_sha256": ARCHIVE_SHA256, "engine_sha256": ENGINE_SHA256, "directory": dir.to_string_lossy(), "put": "take the file moli out of the archive's folder and put it in the directory", "engine": pack::label()})
     }
 
     /// Makes sure the engine of class `index` runs (starting it, or replacing one that ended by itself: the restart), and says what a new tab of it must know. An engine that
@@ -165,13 +165,12 @@ impl Browser {
                 Some(at) => Where { state_dir: state_dir.clone(), ..at.clone() },
                 None => Where::of_process(state_dir.clone()).ok_or("engine_failed")?,
             };
-            match engine::locate(&at, &engine::Pins { engine: &self.source.engine_sha256, worker: &self.source.worker_sha256 }) {
+            match engine::locate(&at, &engine::Pins { engine: &self.source.engine_sha256 }) {
                 Ok(located) => {
                     let font = fonts::find_on_this_machine();
                     prepared.font_missing = font.is_none();
                     let release = if located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() };
-                    let stealth = !local && engine::stealth_on(&state_dir);
-                    let setup = Setup { epoch: self.epoch, index, local, stealth, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
+                    let setup = Setup { epoch: self.epoch, index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
                     match supervisor::start(setup) {
                         Ok(e) => engines[index] = Some(e),
                         Err(e) => return Err(e.0),
@@ -326,7 +325,7 @@ impl Browser {
         let mut row = obj(json!({
             "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "local": entry.local,
             "viewport": [w, h], "viewport_capped": entry.tab.viewport_capped(), "has_frame": entry.tab.kept_bytes() > 0, "dropped_frames": entry.tab.dropped_frames(),
-            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "stealth": entry.stealth, "frame_seq": entry.tab.frame_seq(), "shown": entry.tab.shown(),
+            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "frame_seq": entry.tab.frame_seq(), "shown": entry.tab.shown(),
         }));
         match entry.tab.phase() {
             Phase::Starting => row.insert("phase".into(), json!("starting")),
@@ -361,9 +360,9 @@ impl Browser {
         let status: Vec<Value> = engines
             .iter()
             .enumerate()
-            .map(|(i, e)| json!({"local": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "stealth": e.as_ref().is_some_and(|e| e.stealth), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
+            .map(|(i, e)| json!({"local": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "socket_password": false, "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
             .collect();
-        Ok(obj(json!({"tabs": tabs, "engines": status, "max_tabs": MAX_TABS})))
+        Ok(obj(json!({"tabs": tabs, "engines": status, "engine": pack::label(), "max_tabs": MAX_TABS})))
     }
 
     fn close(&self, request: &Map<String, Value>) -> Reply {
@@ -495,6 +494,14 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn the_tabs_help_names_the_size_and_the_engine_of_the_pin() {
+        // `lico-browser-view` does not know the pin; this is where the two meet (M20): the help says the size the install says, and names the engine the list names
+        let help = lico_browser_view::Tab::new().help_lines().join("\n");
+        assert!(help.contains(&format!("about {} MB", pack::size_mb())), "{help}");
+        assert!(help.contains("Moli engine") && pack::label().starts_with("Moli "), "{help}");
+    }
+
+    #[test]
     fn the_four_operations_accept_exactly_their_fields_and_refuse_unknown_ones() {
         assert!(valid("browser.open", &req(json!({"op": "browser.open", "url": "https://a.test/"}))));
         assert!(valid("browser.open", &req(json!({"op": "browser.open", "v": 1, "id": "x", "url": "https://a.test/", "local": true}))));
@@ -569,8 +576,8 @@ pub(super) mod tests {
         let (home, browser, shared) = world("absent");
         let reply = browser.call(&shared, "browser.open", &req(json!({"op": "browser.open", "url": "https://a.test/"}))).unwrap();
         assert_eq!(reply["phase"], json!("absent"));
-        assert_eq!((reply["release"].clone(), reply["download"].clone(), reply["archive_sha256"].clone(), reply["engine_sha256"].clone()), (json!("v0.2.6"), json!(ARCHIVE_URL), json!(ARCHIVE_SHA256), json!(ENGINE_SHA256)));
-        assert_eq!(reply["directory"], json!(home.join(".local/share/lico/browser/v0.2.6").to_string_lossy()), "where to put it");
+        assert_eq!((reply["release"].clone(), reply["download"].clone(), reply["archive_sha256"].clone(), reply["engine_sha256"].clone()), (json!("v1.1.25"), json!(ARCHIVE_URL), json!(ARCHIVE_SHA256), json!(ENGINE_SHA256)));
+        assert_eq!(reply["directory"], json!(home.join(".local/share/lico/browser/moli-v1.1.25").to_string_lossy()), "where to put it");
         let listed = browser.call(&shared, "browser.list", &req(json!({"op": "browser.list"}))).unwrap();
         let tab = &listed["tabs"][0];
         assert_eq!((tab["phase"].clone(), tab["expected_sha256"].clone(), tab["download"].clone()), (json!("absent"), json!(ENGINE_SHA256), json!(ARCHIVE_URL)));
@@ -586,17 +593,15 @@ pub(super) mod tests {
         let (home, browser, shared) = world("refused");
         let open = |b: &Browser| b.call(&shared, "browser.open", &req(json!({"op": "browser.open", "url": "https://a.test/"})));
         // a file that is not the release: the hash does not match
-        let dir = home.join(".local/share/lico/browser/v0.2.6");
+        let dir = home.join(".local/share/lico/browser/moli-v1.1.25");
         std::fs::create_dir_all(&dir).unwrap();
         let mut at = home.clone();
         for part in dir.strip_prefix(&home).unwrap().components() {
             at.push(part);
             std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o700)).unwrap();
         }
-        for name in ["obscura", "obscura-worker"] {
-            std::fs::write(dir.join(name), b"not the release").unwrap();
-            std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o700)).unwrap();
-        }
+        std::fs::write(dir.join("moli"), b"not the release").unwrap();
+        std::fs::set_permissions(dir.join("moli"), std::fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(open(&browser), Err("engine_not_pinned"));
         // a directory that others can write
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o777)).unwrap();

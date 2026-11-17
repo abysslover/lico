@@ -1,13 +1,13 @@
 //! The engine installs itself (M17-P10; requested by the owner in the chat, 2026-11-17, the spec wording approved by the lead, to be confirmed by the owner). Only the pinned
 //! archive from the pinned URL is fetched, by the system `curl` as a helper process (Lico has no HTTP or TLS code and no new dependency); what makes it safe is not the channel
-//! but the pinned SHA-256, checked on the open file. The archive is listed by the system `tar` and the listing is judged by the pure part (`lico-engine-pack`): exactly the
-//! two named regular files. Both files are hashed again, get their modes, and the folder is moved to its place with one atomic rename. Everything happens in a fresh `0700` staging
+//! but the pinned SHA-256, checked on the open file. The archive is listed by the system `tar` and the listing is judged by the pure part (`lico-engine`): every entry inside the
+//! archive's own folder, nothing unsafe, the engine once. Only that one member is unpacked; it is hashed again, gets its mode, and the folder is moved to its place with one atomic rename. Everything happens in a fresh `0700` staging
 //! folder beside the destination that is removed on every way out. No environment variable, file or argument changes the URL or the hashes (`Source::pinned` is the only source
 //! of a product build); the tests build a `Source` of their own.
 
 use super::engine::{check_chain, Problem, Where};
 use super::sha256;
-use lico_engine_pack::{self as pack, Failure};
+use lico_engine::{self as pack, Failure};
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
@@ -29,7 +29,6 @@ pub struct Source {
     pub proto: &'static str,
     pub archive_sha256: String,
     pub engine_sha256: String,
-    pub worker_sha256: String,
     pub max_archive: u64,
     pub max_seconds: u32,
     /// The program to run in place of the one found as `curl` (None: look for it).
@@ -45,7 +44,6 @@ impl Source {
             proto: "=https",
             archive_sha256: pack::ARCHIVE_SHA256.to_string(),
             engine_sha256: pack::ENGINE_SHA256.to_string(),
-            worker_sha256: pack::WORKER_SHA256.to_string(),
             max_archive: pack::MAX_ARCHIVE_BYTES,
             max_seconds: MAX_SECONDS,
             fetcher: None,
@@ -76,7 +74,6 @@ pub fn source_of_process() -> Source {
             proto: "=http",
             archive_sha256: text("archive_sha256")?,
             engine_sha256: text("engine_sha256")?,
-            worker_sha256: text("worker_sha256")?,
             max_archive: v.get("max_archive").and_then(|x| x.as_u64()).unwrap_or(1 << 20),
             max_seconds: 30,
             fetcher: None,
@@ -231,28 +228,31 @@ pub fn install(at: &Where, src: &Source) -> Result<(), Failure> {
     if !status.success() {
         return Err(Failure::Cannot("the archive could not be read by tar"));
     }
-    pack::check_listing(&String::from_utf8_lossy(&out))?;
+    let members = pack::check_listing(&String::from_utf8_lossy(&out))?;
 
-    // 4. the unpacking into a folder of the staging folder
+    // 4. the unpacking of the one member into a folder of the staging folder (the archive's own folder is stripped: the file lands as `moli`)
     let payload = staging.0.join("payload");
     std::fs::DirBuilder::new().mode(0o700).create(&payload).map_err(|e| io_failure(&e))?;
     let mut extract = Command::new(&tar);
-    extract.args(["-xzf", "-", "--no-same-owner", "--no-same-permissions", "-C"]).arg(&payload);
+    extract.args(["-xzf", "-", "--no-same-owner", "--no-same-permissions", "--strip-components=1", "-C"]).arg(&payload).arg("--").args(&members);
     let (status, _, err) = run_tool(extract, Some(&mut archive), 1024)?;
     if !status.success() {
         return Err(if err.contains("No space left") { Failure::NoSpace } else { Failure::Cannot("tar could not unpack the archive") });
     }
 
-    // 5. the two files, hashed again through their own descriptors, and their modes
-    for (name, pinned) in [(pack::ENGINE_FILE, &src.engine_sha256), (pack::WORKER_FILE, &src.worker_sha256)] {
-        let mut file = open_plain(&payload.join(name))?;
-        if !pack::verdict(&digest_of(&mut file)?, pinned) {
-            return Err(Failure::HashMismatch);
-        }
-        if file.metadata().map_err(|e| io_failure(&e))?.uid() != unsafe { getuid() } {
-            return Err(Failure::Cannot("the unpacked file is not this user's"));
-        }
-        file.set_permissions(std::fs::Permissions::from_mode(0o700)).map_err(|e| io_failure(&e))?;
+    // 5. the engine file, hashed again through its own descriptor, and its mode
+    let mut file = open_plain(&payload.join(pack::ENGINE_FILE))?;
+    if !pack::verdict(&digest_of(&mut file)?, &src.engine_sha256) {
+        return Err(Failure::HashMismatch);
+    }
+    if file.metadata().map_err(|e| io_failure(&e))?.uid() != unsafe { getuid() } {
+        return Err(Failure::Cannot("the unpacked file is not this user's"));
+    }
+    file.set_permissions(std::fs::Permissions::from_mode(0o700)).map_err(|e| io_failure(&e))?;
+    // nothing else is in the folder: the one member was named to tar, and a second entry would be a surprise worth refusing
+    let entries = std::fs::read_dir(&payload).map_err(|e| io_failure(&e))?.count();
+    if entries != 1 {
+        return Err(Failure::Entry("more than the engine was unpacked".into()));
     }
     std::fs::set_permissions(&payload, std::fs::Permissions::from_mode(0o700)).map_err(|e| io_failure(&e))?;
 

@@ -626,7 +626,7 @@ dependencies = [
  "lico-browser-view",
  "lico-cdp",
  "lico-convo",
- "lico-engine-pack",
+ "lico-engine",
  "lico-frame",
  "lico-llm-fake",
  "lico-llm-http",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "lico-browser-view"
-version = "0.7.1"
+version = "0.7.2"
 dependencies = [
  "lico-frame",
  "lico-png",
@@ -662,7 +662,7 @@ dependencies = [
 
 [[package]]
 name = "lico-cdp-fake"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lico-ws",
  "serde_json",
@@ -677,7 +677,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lico-engine-pack"
+name = "lico-engine"
 version = "0.1.0"
 
 [[package]]

@@ -27,20 +27,23 @@ SEAM_BIN = os.environ["LICO_SEAM_BIN"]
 captures.LICO = Path(SEAM_BIN)   # the window process too is the seam build (the default is the plain build in private/build/host_hostd)
 FAKE = os.environ["LICO_FAKE_ENGINE_BIN"]
 SCREENS = Path(os.environ["LICO_P10_SCREENS"])
+ARCHIVE_ROOT = "moli-v1.1.25-x86_64-unknown-linux-gnu"
 
 
 def release(work: Path, wrong_hash: bool):
     """A fake release server whose answer waits for `gate`; returns (seam file, gate)."""
     src = work / "src"
     src.mkdir()
-    shutil.copy(FAKE, src / "obscura")
-    (src / "obscura-worker").write_bytes(b"#!/bin/sh\n")
-    for f in src.iterdir():
+    folder = src / ARCHIVE_ROOT   # a release in the shape of Moli's: the engine, a readme and a licence file inside the archive's own folder
+    (folder / "licenses").mkdir(parents=True)
+    shutil.copy(FAKE, folder / "moli")
+    (folder / "README.md").write_bytes(b"a readme\n")
+    (folder / "licenses" / "NOTICE.txt").write_bytes(b"a notice\n")
+    for f in (folder / "moli", folder / "README.md", folder / "licenses" / "NOTICE.txt"):
         f.chmod(0o755)
     archive = work / "a.tar.gz"
     with tarfile.open(archive, "w:gz") as t:
-        t.add(src / "obscura", "obscura")
-        t.add(src / "obscura-worker", "obscura-worker")
+        t.add(folder, ARCHIVE_ROOT)
     digest = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     gate = threading.Event()
 
@@ -59,7 +62,7 @@ def release(work: Path, wrong_hash: bool):
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     seam = work / "seam.json"
-    seam.write_text(json.dumps({"url": f"http://127.0.0.1:{server.server_port}/a.tar.gz", "archive_sha256": "0" * 64 if wrong_hash else digest(archive), "engine_sha256": digest(src / "obscura"), "worker_sha256": digest(src / "obscura-worker"), "max_archive": 64 << 20}))
+    seam.write_text(json.dumps({"url": f"http://127.0.0.1:{server.server_port}/a.tar.gz", "archive_sha256": "0" * 64 if wrong_hash else digest(archive), "engine_sha256": digest(folder / "moli"), "max_archive": 64 << 20}))
     return seam, gate
 
 

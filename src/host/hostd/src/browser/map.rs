@@ -6,10 +6,28 @@ use lico_cdp::{cmd, method, Button, Event, ImageFormat, KeyKind, MouseKind};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// The user-agent a page is told: Lico and the engine with its version, claiming no Chrome version (mail 147 item 5). The page may still see a Windows `platform` and `vendor`
-/// because the engine decides those (MEASURED, P03). `engine` is the pinned release's number, or `unpinned`.
+/// The user-agent a page is told: Lico and the engine with its version, claiming no Chrome version (mail 147 item 5). `engine` is the pinned release's number, or `unpinned`.
 pub fn user_agent(lico_version: &str, engine: &str) -> String {
-    format!("Mozilla/5.0 (X11; Linux x86_64) Lico/{lico_version} Obscura/{engine}")
+    format!("Mozilla/5.0 (X11; Linux x86_64) Lico/{lico_version} Moli/{engine}")
+}
+
+/// The most of the discovery page's answer that is read.
+pub const DISCOVERY_MAX: usize = 16 << 10;
+
+/// The path of the engine's browser socket from the answer of its discovery page (`GET /json/version`): a whole HTTP response whose status is 200 and whose JSON body (sent whole or in one
+/// chunk) holds `webSocketDebuggerUrl` as `ws://HOST/devtools/browser/ID`, ID being letters, digits and hyphens. Only the path is taken: the host connects to the loopback port it told
+/// the engine to bind, whatever host the page names. Anything else is `None`.
+pub fn socket_path(response: &str) -> Option<String> {
+    let (head, body) = response.split_once("\r\n\r\n")?;
+    if !(head.starts_with("HTTP/1.1 200") || head.starts_with("HTTP/1.0 200")) {
+        return None;
+    }
+    let (open, close) = (body.find('{')?, body.rfind('}')?);
+    let v: Value = serde_json::from_str(body.get(open..=close)?).ok()?;
+    let rest = v.get("webSocketDebuggerUrl")?.as_str()?.strip_prefix("ws://")?;
+    let path = &rest[rest.find('/')?..];
+    let id = path.strip_prefix("/devtools/browser/")?;
+    (!id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')).then(|| path.to_string())
 }
 
 pub struct Wire {
@@ -138,10 +156,61 @@ mod tests {
 
     #[test]
     fn the_user_agent_names_lico_and_the_engine_and_claims_no_chrome() {
-        let ua = user_agent("0.5.0", "0.2.6");
-        assert_eq!(ua, "Mozilla/5.0 (X11; Linux x86_64) Lico/0.5.0 Obscura/0.2.6");
-        assert!(!ua.contains("Chrome") && !ua.contains("Windows") && !ua.contains("Safari"));
-        assert!(user_agent("0.5.0", "unpinned").ends_with("Obscura/unpinned"));
+        let ua = user_agent("0.7.0", "1.1.25");
+        assert_eq!(ua, "Mozilla/5.0 (X11; Linux x86_64) Lico/0.7.0 Moli/1.1.25");
+        assert!(!ua.contains("Chrome") && !ua.contains("Windows") && !ua.contains("Safari") && !ua.contains("Obscura"));
+        assert!(user_agent("0.7.0", "unpinned").ends_with("Moli/unpinned"));
+    }
+
+    const ID: &str = "4f8a1c2e-1111-2222-3333-444455556666";
+
+    fn answer(body: &str) -> String {
+        format!("HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{body}")
+    }
+
+    fn page(url: &str) -> String {
+        answer(&format!("{{\"Browser\":\"Moli/1.1.25\",\"webSocketDebuggerUrl\":\"{url}\"}}"))
+    }
+
+    #[test]
+    fn the_socket_path_is_the_one_the_discovery_page_gives_whole_or_in_a_chunk() {
+        let want = Some(format!("/devtools/browser/{ID}"));
+        assert_eq!(socket_path(&page(&format!("ws://127.0.0.1:41000/devtools/browser/{ID}"))), want);
+        assert_eq!(socket_path(&page(&format!("ws://localhost:9/devtools/browser/{ID}"))), want, "the host the page names is not used");
+        let body = format!("{{\"webSocketDebuggerUrl\":\"ws://x/devtools/browser/{ID}\"}}");
+        let chunked = format!("HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n{:x}\r\n{body}\r\n0\r\n\r\n", body.len());
+        assert_eq!(socket_path(&chunked), want);
+        assert_eq!(socket_path(&format!("HTTP/1.0 200 OK\r\n\r\n{body}")), want);
+    }
+
+    #[test]
+    fn anything_else_on_the_discovery_page_is_no_socket() {
+        let id = |s: &str| page(&format!("ws://127.0.0.1:1/devtools/browser/{s}"));
+        for (what, response) in [
+            ("not 200", format!("HTTP/1.1 404 Not Found\r\n\r\n{{\"webSocketDebuggerUrl\":\"ws://h/devtools/browser/{ID}\"}}")),
+            ("no end of headers", "HTTP/1.1 200 OK\r\n{}".to_string()),
+            ("nothing", String::new()),
+            ("no JSON", answer("hello")),
+            ("braces the wrong way round", answer("} {")),
+            ("no key", answer("{\"Browser\":\"x\"}")),
+            ("key is not text", answer("{\"webSocketDebuggerUrl\": 5}")),
+            ("https scheme", page(&format!("https://h/devtools/browser/{ID}"))),
+            ("wss scheme", page(&format!("wss://h/devtools/browser/{ID}"))),
+            ("no path", page("ws://h")),
+            ("the fixed path with no id", page("ws://h/devtools/browser")),
+            ("an empty id", id("")),
+            ("a page socket", page(&format!("ws://h/devtools/page/{ID}"))),
+            ("another path", page("ws://h/evil")),
+            ("dots in the id", id("..")),
+            ("a slash in the id", id("a/b")),
+            ("a query", id("a?b=c")),
+            ("a percent", id("a%2e")),
+            ("a space", id("a b")),
+            ("an id that is too long", id(&"a".repeat(65))),
+        ] {
+            assert_eq!(socket_path(&response), None, "{what}");
+        }
+        assert_eq!(socket_path(&id(&"a".repeat(64))), Some(format!("/devtools/browser/{}", "a".repeat(64))), "an id of exactly the longest allowed");
     }
 
     #[test]

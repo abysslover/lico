@@ -1,10 +1,10 @@
-//! The ignored probe of the whole chain with the REAL engine (M17-P06; MEASURED, not a test of a rule). It needs an extracted release of the engine (`LICO_REAL_ENGINE_DIR`, the
-//! two files of the pinned release: the host checks their hash, so nothing else runs), the real `lico` binary (`LICO_BIN`) and an empty output directory (`LICO_PROBE_OUT`):
+//! The ignored probe of the whole chain with the REAL engine (M17-P06, carried to Moli in M20; MEASURED, not a test of a rule). It needs an extracted release of the engine (`LICO_REAL_ENGINE_DIR`,
+//! the one `moli` file of the pinned release: the host checks its hash, so nothing else runs), the real `lico` binary (`LICO_BIN`) and an empty output directory (`LICO_PROBE_OUT`):
 //!
 //!     LICO_BIN=... LICO_REAL_ENGINE_DIR=/abs/dir LICO_PROBE_OUT=/abs/empty/dir cargo test --release -p lico --bin lico browser::real_probe -- --ignored --nocapture
 //!
 //! A fixture server on loopback is the only origin (no real site, no real name lookup: the name `localhost` is answered by the guard's own resolver). What the probe records is
-//! in `LICO_PROBE_OUT/p06_probe.txt`. Nothing secret is printed: the engine's token is read from its own process only to ask its discovery page, and is never written.
+//! in `LICO_PROBE_OUT/p06_probe.txt`. Nothing secret is printed (the engine has no token of its own: its socket has no password, which the tab says).
 
 use super::system_tests::Rig;
 use serde_json::{json, Value};
@@ -71,16 +71,14 @@ fn descriptors(pid: u32) -> Vec<String> {
     v
 }
 
-/// The discovery page of the engine, asked with the token that only the engine's process and the host have (read from the process, never printed).
+/// The discovery page of the engine (it needs no token).
 fn discovery(pid: u32) -> String {
     let cmdline = std::fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
     let args: Vec<String> = cmdline.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
     let port = args.windows(2).find(|w| w[0] == "--port").map(|w| w[1].clone()).unwrap_or_default();
-    let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
-    let token = environ.split(|b| *b == 0).filter_map(|e| std::str::from_utf8(e).ok()?.strip_prefix("OBSCURA_CDP_TOKEN=").map(str::to_string)).next().unwrap_or_default();
     let Ok(mut s) = std::net::TcpStream::connect(format!("127.0.0.1:{port}")) else { return "no connection".into() };
     let _ = s.set_read_timeout(Some(Duration::from_secs(3)));
-    let _ = write!(s, "GET /json/version HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n");
+    let _ = write!(s, "GET /json/version HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     let mut text = String::new();
     let _ = s.read_to_string(&mut text);
     text.split("\r\n\r\n").nth(1).unwrap_or("").chars().take(400).collect()
@@ -123,7 +121,8 @@ fn real_engine_probe() {
     note(&mut out, format!("discovery /json/version: {}", discovery(pid)));
     let fds = descriptors(pid);
     note(&mut out, format!("engine descriptors above 2 ({}): {}", fds.iter().filter(|d| !d.starts_with(['0', '1', '2']) || d.len() > 2 && !d[..2].starts_with(':')).count(), fds.join(" ")));
-    assert!(!fds.iter().any(|d| d.contains("obscura") || d.contains("host.sock")), "the file that was run and the host's socket are not open in the engine: {fds:?}");
+    // the file that was run is named `moli` exactly (the engine's own scratch folder has `moli-storage-...` in its name: that is not the file)
+    assert!(!fds.iter().any(|d| d.rsplit(['/', ':']).next() == Some("moli") || d.contains("host.sock")), "the file that was run and the host's socket are not open in the engine: {fds:?}");
     note(&mut out, format!("limits of the engine: data {} open files {}", limit_of(pid, "Max data size"), limit_of(pid, "Max open files")));
     note(&mut out, format!("host with one engine and one tab: rss {} KiB, threads {}; engine rss {} KiB", rss_kib(host), rig.threads(), rss_kib(pid)));
 
@@ -195,9 +194,10 @@ fn real_engine_probe() {
     let mut lags: Vec<f64> = Vec::new();
     for i in 0..50 {
         let sent_ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-        let _ = ask(json!({"kind": "move", "x": 200 + i, "y": 100}));
+        // over the input element (x 10 to 310, y 10 to 50): Moli, MEASURED in M20, gives a move to the element under the pointer and none to a page whose body is empty there
+        let _ = ask(json!({"kind": "move", "x": 100 + i, "y": 30}));
         std::thread::sleep(Duration::from_millis(60));
-        if let Some(e) = stamped.lock().unwrap().iter().find(|e| e.1 == format!("/m?x={}", 200 + i)) {
+        if let Some(e) = stamped.lock().unwrap().iter().find(|e| e.1 == format!("/m?x={}", 100 + i)) {
             lags.push((e.0 as f64 - sent_ns as f64) / 1e6);
         }
     }

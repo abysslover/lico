@@ -83,9 +83,9 @@ measured_mib = "28.9"
 measured_seconds = "0.5"
 
 [[test]]
-name = "browser_engine_stealth_by_the_owners_setting"
-path = "browser::system_tests::browser_engine_is_stealthy_only_when_the_owner_says_so_and_never_for_this_machines_own_services"
-why = "needs the real host binary and a process that records its own arguments: the engine is started with `--stealth` only when the owner-only setting says so and never for the engine of this machine's own services, no user-agent is set over the engine's own then, and the tab and the list say so; a setting readable by others is refused as before"
+name = "browser_engine_is_started_in_the_shape_of_moli"
+path = "browser::system_tests::browser_engine_is_started_in_the_shape_of_moli_and_the_old_stealth_setting_is_ignored"
+why = "needs the real host binary and a process that records its own arguments and environment checks: the engine is started as Moli is (`serve --host --port --layout --resource --screencast-interval-ms 100 [--ca-cert] --log-level warn`, a writable TMPDIR and a readable fontconfig file, the proxy in HTTP_PROXY, the socket path from the discovery page), the page gets the honest user-agent, the list names the engine and says its socket has no password, the engine for this machine's own services is started the same way, a setting of 0.6.2 that says `stealth` is read and ignored and a setting readable by others is refused as before"
 mib = 512
 seconds = 60
 measured_mib = "24.9"

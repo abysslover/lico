@@ -12,7 +12,8 @@ SEAM_BUILD = Path(__file__).resolve().parent.parent / "private" / "build" / "sys
 def test_the_plain_build_has_no_install_seam_and_pins_an_https_release_address():
     data = Path(LICO).read_bytes()
     assert SEAM_NAME not in data, "the install seam must not be in the plain build"
-    assert b"https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.6/obscura-x86_64-linux.tar.gz" in data
+    assert b"https://github.com/lexmount/moli/releases/download/v1.1.25/moli-x86_64-unknown-linux-gnu.tar.gz" in data
+    assert b"obscura" not in data.lower(), "the engine that was abolished (M20) is not named in the binary"
 
 
 def test_the_check_can_tell_a_build_with_the_seam():

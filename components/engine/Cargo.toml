@@ -1,0 +1,18 @@
+[package]
+name = "lico-engine"
+version = "0.1.0"
+edition = "2021"
+description = "The browser engine as one record Lico versions itself: the pinned upstream (Moli), Lico's own version and contract number, the ledger of Lico's patches, and the pure decisions of installing it (the pins, the check of an archive's listing, the verdict on a hash, the failures with their words, curl's exit codes)."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.lico]
+purpose = "The browser engine as one record: the pinned upstream release (URL, SHA-256 of the archive and of the engine file, size caps), Lico's own version, contract number and patch ledger, and the pure decisions of installing it: whether an archive's listing holds the engine once and nothing unsafe, whether a hash is the pinned one, what each failure says, whether it is a security notice, and what curl's exit codes mean."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }

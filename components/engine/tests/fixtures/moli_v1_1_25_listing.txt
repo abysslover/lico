@@ -1,0 +1,11 @@
+drwxr-xr-x root/root         0 2026-11-15 18:29 moli-v1.1.25-x86_64-unknown-linux-gnu/
+-rw-r--r-- root/root     11357 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/LICENSE-APACHE
+-rw-r--r-- root/root      1074 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/LICENSE-MIT
+-rw-r--r-- root/root     17788 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/README.md
+-rw-r--r-- root/root      3640 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/RELEASING.md
+-rw-r--r-- root/root         7 2026-11-15 18:29 moli-v1.1.25-x86_64-unknown-linux-gnu/VERSION
+-rw-r--r-- root/root       100 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/license-metadata.json
+drwxr-xr-x root/root         0 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/licenses/
+-rw-r--r-- root/root      1536 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/licenses/Chromium-BSD-3-Clause.txt
+-rw-r--r-- root/root        89 2026-11-15 18:14 moli-v1.1.25-x86_64-unknown-linux-gnu/licenses/Selenium-NOTICE.txt
+-rwxr-xr-x root/root 112357968 2026-11-15 18:29 moli-v1.1.25-x86_64-unknown-linux-gnu/moli

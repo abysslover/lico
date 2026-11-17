@@ -257,3 +257,21 @@ fn a_dynamic_rule_builds_its_answer_from_the_call_and_obeys_its_count_rules_like
     assert_eq!(reply["id"], json!(2));
     assert_eq!(next_json(&mut c)["params"]["frame"]["url"], json!("http://b.test/"), "the answer is built again for each call");
 }
+
+#[test]
+fn a_socket_path_makes_the_upgrade_possible_at_that_path_only_and_a_plain_answer_stays_by_path() {
+    // an engine whose socket path is made at each start (Moli's `/devtools/browser/<id>`): a client that assumes a path is refused
+    let fake = Fake::start(Script::new().socket_path("/devtools/browser/abc-123").http("/json/version", 200, "{}").on("Browser.getVersion", Answer::result(json!({"product": "Fake/1"})))).unwrap();
+    let connect_at = |path: &str| connect(&Request { addr: fake.addr(), path, headers: &[] }, &fast());
+    assert_eq!(connect_at("/devtools/browser").err(), Some(Error::Refused(404)));
+    assert_eq!(connect_at("/devtools/browser/abc-1234").err(), Some(Error::Refused(404)), "the whole path, not a prefix");
+    assert_eq!(connect_at("/").err(), Some(Error::Refused(404)));
+    let mut c = connect_at("/devtools/browser/abc-123").unwrap();
+    assert_eq!(call(&mut c, 1, "Browser.getVersion", json!({}), None)["result"]["product"], "Fake/1");
+    assert_eq!(connect_at("/devtools/browser/abc-123?x=1").err(), Some(Error::Refused(404)), "a query is not the path");
+    assert_eq!(http_get(fake.addr(), "/json/version", None).0, 200, "a plain answer is by its own path");
+    assert_eq!(fake.heads().len(), 6, "every head is recorded, the refused too");
+    // without the setting every path upgrades, as before
+    let any = Fake::start(Script::new()).unwrap();
+    assert!(connect(&Request { addr: any.addr(), path: "/anything", headers: &[] }, &fast()).is_ok());
+}

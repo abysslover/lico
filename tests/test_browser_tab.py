@@ -23,16 +23,15 @@ def shot(w: ProductWindow, name: str) -> None:
         w.png(SCREENS / name)
 
 
-def fake_engine(w: ProductWindow, stealth: bool = False) -> None:
-    """The fake engine in a folder of the private home, named by the owner-only setting of the state folder (the host's state folder is `state/lico`); `stealth` adds the owner's
-    `{"stealth": true}` to the same setting."""
+def fake_engine(w: ProductWindow) -> None:
+    """The fake engine, in the shape of Moli, in a folder of the private home, named by the owner-only setting of the state folder (the host's state folder is `state/lico`)."""
     home, state = Path(w.directory) / "home", Path(w.directory) / "state" / "lico"
     engine = home / "engine"
     engine.mkdir(mode=0o700, parents=True, exist_ok=True)
-    shutil.copy(HOSTD_DIR / "lico-fake-engine", engine / "obscura")
-    (engine / "obscura").chmod(0o700)
+    shutil.copy(HOSTD_DIR / "lico-fake-engine", engine / "moli")
+    (engine / "moli").chmod(0o700)
     setting = state / "browser.json"
-    setting.write_text(json.dumps({"engine_dir": str(engine), **({"stealth": True} if stealth else {})}))
+    setting.write_text(json.dumps({"engine_dir": str(engine)}))
     setting.chmod(0o600)
 
 
@@ -89,7 +88,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         w.key("F1")                                            # F1 over a page: the help lines, with the new sentences
         h = wait_for(lambda: (b := browser(w)) and b["help"] and b["help_lines"] and b)
         text = " ".join(h["help_lines"])
-        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "may show as boxes", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "draws no cursor", "contenteditable", "Google search"]:
+        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "Moli engine", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"]:
             assert needle in text, (needle, text)
         shot(w, "10_f1_help_over_a_page.png")
         w.key("F1")
@@ -147,19 +146,20 @@ def test_a_local_tab_says_so_and_refusals_say_why():
         assert len(conn.call(op="browser.list")["tabs"]) == 2
 
 
-def test_a_tab_says_when_the_owner_s_stealth_setting_is_on_and_not_otherwise():
-    with ProductWindow(host_binary=LICO, before_window=lambda w: fake_engine(w, stealth=True)) as w:
+def test_the_header_says_nothing_of_a_stealth_setting_even_when_an_old_setting_file_names_one():
+    """The engine of the tab has no stealth switch (M20, Moli); a 0.6.2 setting file that still says it is read and ignored, and the header never says it."""
+    def old_setting(w: ProductWindow) -> None:
+        fake_engine(w)
+        setting = Path(w.directory) / "state" / "lico" / "browser.json"
+        setting.write_text(json.dumps({"engine_dir": str(Path(w.directory) / "home" / "engine"), "stealth": True}))
+        setting.chmod(0o600)
+
+    with ProductWindow(host_binary=LICO, before_window=old_setting) as w:
         tab = open_tab(w, "https://pages.test/start")
         painted(w, tab)
-        b = wait_for(lambda: (b := browser(w)) and "stealth on" in (b["header"] or "") and b)
-        assert "the page sees the engine's own identity" in b["header"] and "stealth" not in b["header"].replace("stealth on (your setting): the page sees the engine's own identity", ""), b["header"]
+        assert "stealth" not in (browser(w)["header"] or ""), "the header says nothing of it"
         row = next(t for t in Conn(w.socket).call(op="browser.list")["tabs"] if t["tab"] == tab)
-        assert row["stealth"] is True, row
-        shot(w, "14_stealth_on_in_the_header.png")
-    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
-        tab = open_tab(w, "https://pages.test/start")
-        painted(w, tab)
-        assert "stealth" not in (browser(w)["header"] or ""), "by default the header says nothing of it"
+        assert "stealth" not in row, row
 
 
 def no_auto_install(w: ProductWindow) -> None:
@@ -172,9 +172,9 @@ def no_auto_install(w: ProductWindow) -> None:
 def test_an_engine_that_is_not_installed_shows_where_to_get_it_and_where_to_put_it():
     with ProductWindow(host_binary=LICO, before_window=no_auto_install) as w:
         open_tab(w, "https://pages.test/start")
-        b = wait_for(lambda: (b := browser(w)) and ".local/share/lico/browser/v0.2.6" in (b["header"] or "") and b)
+        b = wait_for(lambda: (b := browser(w)) and ".local/share/lico/browser/moli-v1.1.25" in (b["header"] or "") and b)
         h = b["header"]
-        assert "the engine is not installed; by hand: download" in h and "https://github.com/h4ckf0r0day/obscura/releases/download/v0.2.6/" in h and "eed986e478c5ec5439f531f2d7fb6b0e36a356f1df7a6c44a8e8fd4f2486bd76" in h, h
+        assert "the engine is not installed; by hand: download" in h and "https://github.com/lexmount/moli/releases/download/v1.1.25/moli-x86_64-unknown-linux-gnu.tar.gz" in h and "04c73204626054c9ec0064f7fc00abb0dcfa7f8b9c3ec9df5de8e2afc301087f" in h, h
         shot(w, "5_absent_engine.png")
 
 

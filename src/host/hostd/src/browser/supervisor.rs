@@ -51,8 +51,6 @@ pub struct Entry {
     pub target: Option<String>,
     pub session: Option<String>,
     pub local: bool,
-    /// The engine this tab runs in was started with `--stealth` (the owner's setting; set when the engine opens the tab's page).
-    pub stealth: bool,
     /// Grows with every change the person can see (a frame, a phase, a title, an address, a notice): what `browser.watch` waits on.
     pub change: u64,
     /// The number of the newest watch of this tab: a newer watch supersedes the older one, so that at most one waits.
@@ -61,7 +59,7 @@ pub struct Entry {
 
 impl Entry {
     pub fn new(id: String, tab: Tab, engine: usize, local: bool) -> Entry {
-        Entry { id, tab, engine, target: None, session: None, local, stealth: false, change: 1, watch_gen: 0 }
+        Entry { id, tab, engine, target: None, session: None, local, change: 1, watch_gen: 0 }
     }
 }
 
@@ -103,8 +101,6 @@ pub struct Engine {
     join: Option<JoinHandle<()>>,
     pub dead: Arc<AtomicBool>,
     pub unpinned: bool,
-    /// Started with `--stealth` (the owner's setting; never the engine for this machine's own services).
-    pub stealth: bool,
     /// What the engine says its product is (`Browser.getVersion`), cleaned: information for the person, never used to decide anything.
     pub reported: Arc<Mutex<String>>,
     /// What the fetch guard has served: connections accepted and refused (counts only).
@@ -157,8 +153,6 @@ pub struct Setup {
     pub epoch: Instant,
     pub index: usize,
     pub local: bool,
-    /// The owner's `{"stealth": true}` and not the engine for this machine's own services: the engine is started with `--stealth` and the page keeps the identity the engine gives it.
-    pub stealth: bool,
     pub located: Located,
     pub font_dir: Option<PathBuf>,
     pub state_dir: PathBuf,
@@ -240,7 +234,6 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
     let reported = Arc::new(Mutex::new(String::new()));
     let guard_counts = Arc::new(Mutex::new((0u64, 0u64)));
     let unpinned = setup.located.unpinned;
-    let stealth = setup.stealth && !setup.local;
     let (d2, r2, g2) = (dead.clone(), reported.clone(), guard_counts.clone());
     let tx2 = tx.clone();
     let join = thread::Builder::new()
@@ -251,7 +244,7 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
         })
         .map_err(|_| StartError("engine_failed"))?;
     match ready_rx.recv_timeout(READY_WAIT) {
-        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, stealth, reported, guard: guard_counts }),
+        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, reported, guard: guard_counts }),
         Ok(Err(why)) => {
             let _ = join.join();
             Err(StartError(why))
@@ -287,12 +280,7 @@ fn run(setup: Setup, rx: Receiver<Cmd>, tx: Sender<Cmd>, ready: Sender<Result<()
             return;
         }
     };
-    log(match (setup.located.unpinned, setup.stealth && !setup.local) {
-        (true, true) => "engine started (not the pinned release, stealth)",
-        (true, false) => "engine started (not the pinned release)",
-        (false, true) => "engine started (stealth)",
-        (false, false) => "engine started",
-    });
+    log(if setup.located.unpinned { "engine started (not the pinned release)" } else { "engine started" });
     // the reader: it blocks in the socket and hands each message to the command thread; it makes no call
     let rtx = tx.clone();
     let reading = thread::Builder::new().name("lico-browser-reader".into()).spawn(move || {
@@ -328,19 +316,45 @@ fn run(setup: Setup, rx: Receiver<Cmd>, tx: Sender<Cmd>, ready: Sender<Result<()
         Some(code) => log(&format!("engine ended, exit code {code}")),
         None => log("engine ended"),
     }
-    if crashed {
+    {
         let mut tabs = setup.hub.tabs.lock().unwrap();
         for e in tabs.iter_mut().filter(|e| e.engine == setup.index) {
-            e.tab.engine_event(EngineEvent::Crashed);
-            setup.hub.touch(e);
+            // the page and the session names belong to the engine that ended: an engine that starts its session numbers again (Moli does, MEASURED in M20) would give a new tab the name
+            // of this dead one's, and the new tab's events would go to the dead tab
+            e.target = None;
+            e.session = None;
+            if crashed {
+                e.tab.engine_event(EngineEvent::Crashed);
+                setup.hub.touch(e);
+            }
         }
     }
 }
 
+/// The path of the engine's browser socket, from its discovery page (`GET /json/version`): one plain request to the loopback port the engine was told to bind, a bounded answer, and the
+/// pure part (`map::socket_path`) judges it. `None` while the engine is not up yet or says something else.
+pub(super) fn discover_path(addr: SocketAddr) -> Option<String> {
+    use std::io::{Read, Write};
+    let mut s = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500)).ok()?;
+    s.set_read_timeout(Some(Duration::from_millis(800))).ok()?;
+    s.write_all(b"GET /json/version HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
+    let mut body = Vec::new();
+    let _ = (&mut s).take(map::DISCOVERY_MAX as u64).read_to_end(&mut body);
+    map::socket_path(&String::from_utf8_lossy(&body))
+}
+
 fn bring_up(setup: &Setup, gtx: Sender<Cmd>) -> Result<(Running, Reader), &'static str> {
     let scratch = scratch_dir(&setup.state_dir).map_err(|_| "engine_failed")?;
+    // the engine's font library reads a file of the host's making (it has no option for a font directory, and the system's own configuration is outside the fence)
+    if std::fs::write(profile::fontconfig_path(&scratch), profile::fontconfig_file(setup.font_dir.as_deref(), &profile::font_cache_dir(&scratch))).is_err() {
+        let _ = std::fs::remove_dir_all(&scratch);
+        return Err("engine_failed");
+    }
+    let ca_bundle = profile::find_ca_bundle(&|p| std::fs::metadata(p).is_ok_and(|m| m.is_file()));
+    if ca_bundle.is_none() {
+        log("no bundle of certificate authorities was found: secure sites cannot be checked");
+    }
     let guard_token = crate::core::random_hex(16);
-    let cdp_token = crate::core::random_hex(16);
     let observe: Arc<dyn Fn(&lico_proxy::Event) + Send + Sync> = Arc::new(move |e| {
         let refused = if let EventKind::Refused(status) = e.kind { Some(Refused { status, host: e.host.clone(), port: e.port, why: why_of(e.why) }) } else { None };
         let _ = gtx.send(Cmd::Guard(refused));
@@ -366,7 +380,7 @@ fn bring_up(setup: &Setup, gtx: Sender<Cmd>) -> Result<(Running, Reader), &'stat
         let Ok(cdp_port) = free_port() else { break };
         super::reserved::add(cdp_port);
         mine.push(cdp_port);
-        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, cdp_token: &cdp_token, proxy_url: &proxy_url, local: setup.local, stealth: setup.stealth };
+        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, proxy_url: &proxy_url, ca_bundle: ca_bundle.as_deref() };
         let conf = profile::confinement(&params, &system);
         let mut cmd = match lico_sandbox::confine_fd(&setup.located.file, &conf) {
             Ok(c) => c,
@@ -386,11 +400,15 @@ fn bring_up(setup: &Setup, gtx: Sender<Cmd>) -> Result<(Running, Reader), &'stat
         let addr = SocketAddr::from(([127, 0, 0, 1], cdp_port));
         let end = Instant::now() + CONNECT_WAIT;
         loop {
-            let limits = Limits { idle: QUIET, ..Limits::default() };
-            match link(addr, "/devtools/browser", Some(&cdp_token), &limits) {
+            // the socket's path is the engine's to give, per start: asked of the discovery page, never assumed (engine contract, point 2)
+            let linked = discover_path(addr).ok_or(()).and_then(|path| {
+                let limits = Limits { idle: QUIET, ..Limits::default() };
+                link(addr, &path, None, &limits).map_err(|_| ())
+            });
+            match linked {
                 Ok((reader, caller)) => return Ok((Running { caller, child, guard: Some(guard), scratch, ports: mine }, reader)),
-                Err(_) if child.try_wait().ok().flatten().is_some() || Instant::now() >= end => break,
-                Err(_) => thread::sleep(Duration::from_millis(50)),
+                Err(()) if child.try_wait().ok().flatten().is_some() || Instant::now() >= end => break,
+                Err(()) => thread::sleep(Duration::from_millis(50)),
             }
         }
         kill_group(&mut child);
@@ -490,18 +508,12 @@ fn open_tab(setup: &Setup, caller: &Caller, id: &str) {
         });
         return;
     };
-    let stealth = setup.stealth && !setup.local;
     with_entry(setup, id, |e| {
         e.target = Some(target);
         e.session = Some(session.clone());
-        e.stealth = stealth;
     });
-    // the page is told the honest user-agent; with the owner's stealth the engine's own consistent identity stays (an honest name beside a stealthy fingerprint would be the one
-    // thing that is inconsistent)
-    let mut calls = vec![("Page.enable", json!({})), ("Runtime.enable", json!({}))];
-    if !stealth {
-        calls.push(("Emulation.setUserAgentOverride", json!({"userAgent": map::user_agent(&setup.lico_version, &setup.release)})));
-    }
+    // the page is told the honest user-agent
+    let calls = [("Page.enable", json!({})), ("Runtime.enable", json!({})), ("Emulation.setUserAgentOverride", json!({"userAgent": map::user_agent(&setup.lico_version, &setup.release)}))];
     for (method, params) in calls {
         let _ = caller.call(method, params, Some(&session), CALL);
     }

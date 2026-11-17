@@ -57,7 +57,7 @@ fn a_tab_opened_with_no_engine_is_installing_and_a_wrong_hash_ends_it_as_a_secur
     let (home, browser, shared) = world_with("flow_mismatch", Some(src));
     let reply = open(&browser, &shared).unwrap();
     assert_eq!(reply["phase"], json!("installing"));
-    assert_eq!((reply["size_mb"].clone(), reply["sha256_start"].clone()), (json!(72), json!("000000000000")));
+    assert_eq!((reply["size_mb"].clone(), reply["sha256_start"].clone()), (json!(lico_engine::size_mb()), json!("000000000000")));
     assert!(reply["source"].as_str().unwrap().starts_with("127.0.0.1:"), "the source is named");
     assert!(reply.get("download").is_none(), "no question and no manual steps while it installs");
     let row = done(&browser, &shared, "b1");
@@ -90,7 +90,7 @@ fn two_tabs_opened_together_install_once_and_a_tab_opened_later_is_a_new_attempt
     let second = open(&browser, &shared).unwrap();
     assert_eq!((first["phase"].clone(), second["phase"].clone()), (json!("installing"), json!("installing")));
     let listed = rows(&browser, &shared);
-    assert!(listed.iter().all(|r| r["phase"] == json!("installing") && r["size_mb"] == json!(72)), "the list says installing: {listed:?}");
+    assert!(listed.iter().all(|r| r["phase"] == json!("installing") && r["size_mb"] == json!(lico_engine::size_mb())), "the list says installing: {listed:?}");
     std::fs::write(&gate, b"go").unwrap();
     for tab in ["b1", "b2"] {
         let row = done(&browser, &shared, tab);
@@ -114,19 +114,16 @@ fn an_engine_that_is_already_there_costs_no_request_and_no_install() {
     let server = serve(Reply::Body(fake.bytes.clone()));
     let src = source_for(&fake, &server.url);
     let (home, browser, shared) = world_with("flow_there", Some(src));
-    let dir = home.join(".local/share/lico/browser/v0.2.6");
+    let dir = home.join(".local/share/lico/browser/moli-v1.1.25");
     let mut at = home.clone();
     for part in dir.strip_prefix(&home).unwrap().components() {
         at.push(part);
         std::fs::create_dir_all(&at).unwrap();
         std::fs::set_permissions(&at, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
-    // the files whose hashes are the source's pins (a shell script is not an engine: what happens after the check is not this test's business)
-    std::fs::write(dir.join("obscura"), b"#!/bin/sh\necho engine\n").unwrap();
-    std::fs::write(dir.join("obscura-worker"), b"#!/bin/sh\necho worker\n").unwrap();
-    for n in ["obscura", "obscura-worker"] {
-        std::fs::set_permissions(dir.join(n), std::fs::Permissions::from_mode(0o700)).unwrap();
-    }
+    // the file whose hash is the source's pin (a shell script is not an engine: what happens after the check is not this test's business)
+    std::fs::write(dir.join("moli"), b"#!/bin/sh\necho engine\n").unwrap();
+    std::fs::set_permissions(dir.join("moli"), std::fs::Permissions::from_mode(0o700)).unwrap();
     let r = open(&browser, &shared);
     assert_eq!(server.hits.load(Ordering::SeqCst), 0, "no request to the release server");
     if let Ok(reply) = r {

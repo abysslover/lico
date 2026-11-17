@@ -21,7 +21,7 @@ pub(in crate::browser) struct Server {
 
 pub(in crate::browser) fn serve(reply: Reply) -> Server {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let url = format!("http://{}/obscura-x86_64-linux.tar.gz", listener.local_addr().unwrap());
+    let url = format!("http://{}/moli-x86_64-unknown-linux-gnu.tar.gz", listener.local_addr().unwrap());
     let hits = Arc::new(AtomicUsize::new(0));
     let counter = hits.clone();
     std::thread::spawn(move || {
@@ -63,28 +63,35 @@ pub(in crate::browser) struct Fake {
     pub bytes: Vec<u8>,
     pub archive_sha: String,
     pub engine_sha: String,
-    pub worker_sha: String,
 }
 
-/// An archive of the two files made by tar; `extra` runs in the folder that is archived before it is (to add a link, a pipe...); `tar_args` are the tar options.
-pub(in crate::browser) fn archive(name: &str, tar_args: &[&str], names: &[&str], extra: &dyn Fn(&Path)) -> Fake {
+/// The names of files inside the archive's own folder, as a listing would show them.
+pub(in crate::browser) fn inroot(names: &[&str]) -> Vec<String> {
+    names.iter().map(|n| format!("{}/{n}", lico_engine::ARCHIVE_ROOT)).collect()
+}
+
+/// An archive like the release's, made by tar: the archive's own folder with a `moli` file, a readme and a licence in a folder; `extra` runs in the folder that is archived (the one that
+/// holds the archive's own folder) before it is, to add a link, a pipe...; `tar_args` are the tar options and `names` what is archived (paths below the folder that is archived).
+pub(in crate::browser) fn archive(name: &str, tar_args: &[&str], names: &[String], extra: &dyn Fn(&Path)) -> Fake {
     let dir = scratch(name);
     let src = dir.join("src");
-    std::fs::create_dir_all(&src).unwrap();
-    std::fs::write(src.join("obscura"), b"#!/bin/sh\necho engine\n").unwrap();
-    std::fs::write(src.join("obscura-worker"), b"#!/bin/sh\necho worker\n").unwrap();
+    let root = src.join(lico_engine::ARCHIVE_ROOT);
+    std::fs::create_dir_all(root.join("licenses")).unwrap();
+    std::fs::write(root.join("moli"), b"#!/bin/sh\necho engine\n").unwrap();
+    std::fs::write(root.join("README.md"), b"a readme\n").unwrap();
+    std::fs::write(root.join("licenses/NOTICE.txt"), b"a notice\n").unwrap();
     extra(&src);
     let out = dir.join("a.tar.gz");
     let status = Command::new("tar").args(["-czf"]).arg(&out).args(tar_args).arg("-C").arg(&src).args(names).status().unwrap();
     assert!(status.success());
     let bytes = std::fs::read(&out).unwrap();
-    let fake = Fake { archive_sha: digest(&bytes), engine_sha: digest(&std::fs::read(src.join("obscura")).unwrap()), worker_sha: digest(&std::fs::read(src.join("obscura-worker")).unwrap()), bytes };
+    let fake = Fake { archive_sha: digest(&bytes), engine_sha: digest(&std::fs::read(root.join("moli")).unwrap()), bytes };
     let _ = std::fs::remove_dir_all(&dir);
     fake
 }
 
 pub(in crate::browser) fn good(name: &str) -> Fake {
-    archive(name, &[], &["obscura", "obscura-worker"], &|_| {})
+    archive(name, &[], &inroot(&["moli", "README.md", "licenses/NOTICE.txt"]), &|_| {})
 }
 
 pub(in crate::browser) fn source_for(fake: &Fake, url: &str) -> Source {
@@ -93,7 +100,6 @@ pub(in crate::browser) fn source_for(fake: &Fake, url: &str) -> Source {
         proto: "=http",
         archive_sha256: fake.archive_sha.clone(),
         engine_sha256: fake.engine_sha.clone(),
-        worker_sha256: fake.worker_sha.clone(),
         max_archive: 1 << 20,
         max_seconds: 20,
         fetcher: None,
@@ -112,26 +118,26 @@ fn nothing_left(at: &Where) {
 #[test]
 fn the_product_source_is_the_pinned_release_over_https_and_nothing_else_reaches_it() {
     let s = Source::pinned();
-    assert_eq!(s.url, lico_engine_pack::ARCHIVE_URL);
+    assert_eq!(s.url, lico_engine::ARCHIVE_URL);
     assert!(s.url.starts_with("https://") && s.proto == "=https");
-    assert_eq!((s.archive_sha256.as_str(), s.engine_sha256.as_str(), s.worker_sha256.as_str()), (lico_engine_pack::ARCHIVE_SHA256, lico_engine_pack::ENGINE_SHA256, lico_engine_pack::WORKER_SHA256));
+    assert_eq!((s.archive_sha256.as_str(), s.engine_sha256.as_str()), (lico_engine::ARCHIVE_SHA256, lico_engine::ENGINE_SHA256));
     assert!(s.fetcher.is_none() && s.search.is_none(), "the product looks for curl and tar on the PATH and takes no program from anywhere else");
 }
 
 #[test]
-fn a_good_archive_installs_with_the_modes_and_leaves_nothing_else() {
+fn a_good_archive_installs_only_the_engine_with_its_mode_and_leaves_nothing_else() {
     let home = scratch("good");
     let at = where_in(&home);
     let fake = good("good_a");
     let server = serve(Reply::Body(fake.bytes.clone()));
     install(&at, &source_for(&fake, &server.url)).unwrap();
     let dest = at.pinned_dir();
-    for name in ["obscura", "obscura-worker"] {
-        assert_eq!(std::fs::metadata(dest.join(name)).unwrap().permissions().mode() & 0o777, 0o700, "{name}");
-    }
+    assert_eq!(std::fs::metadata(dest.join("moli")).unwrap().permissions().mode() & 0o777, 0o700);
     assert_eq!(std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777, 0o700);
+    let inside: Vec<_> = std::fs::read_dir(&dest).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(inside, [std::ffi::OsString::from("moli")], "the readme and the licence of the archive are judged, not written");
     let parent: Vec<_> = std::fs::read_dir(dest.parent().unwrap()).unwrap().flatten().map(|e| e.file_name()).collect();
-    assert_eq!(parent, [std::ffi::OsString::from("v0.2.6")], "only the destination: no staging folder, no archive");
+    assert_eq!(parent, [std::ffi::OsString::from("moli-v1.1.25")], "only the destination: no staging folder, no archive");
     assert_eq!(server.hits.load(Ordering::SeqCst), 1);
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -148,9 +154,9 @@ fn a_file_that_is_not_the_pinned_archive_is_a_security_failure_and_nothing_stays
     assert_eq!(err, Failure::HashMismatch);
     assert!(err.security());
     nothing_left(&at);
-    // the right archive but a pin that is not the one of a file in it: the second check
+    // the right archive but a pin that is not the one of the file in it: the second check
     let mut src = source_for(&fake, &server.url);
-    src.worker_sha256 = "1".repeat(64);
+    src.engine_sha256 = "1".repeat(64);
     assert_eq!(install(&at, &src).unwrap_err(), Failure::HashMismatch);
     nothing_left(&at);
     let _ = std::fs::remove_dir_all(&home);
@@ -205,15 +211,22 @@ fn a_full_disk_is_said_so_and_nothing_stays() {
 }
 
 #[test]
-fn an_archive_with_a_path_out_a_link_or_a_pipe_is_refused_before_anything_is_unpacked() {
+fn an_archive_with_a_path_out_a_link_a_pipe_a_stranger_or_no_engine_is_refused_before_anything_is_unpacked() {
     let home = scratch("entries");
     let at = where_in(&home);
+    let with = |extra: &str| -> Vec<String> {
+        let mut v = inroot(&["moli"]);
+        v.push(extra.to_string());
+        v
+    };
     let cases: Vec<(&str, Fake)> = vec![
-        ("dotdot", archive("e1", &["--transform", "s,^,../,"], &["obscura", "obscura-worker"], &|_| {})),
-        ("absolute", archive("e2", &["-P", "--transform", "s,^,/tmp/lico_never_written_,"], &["obscura", "obscura-worker"], &|_| {})),
-        ("link", archive("e3", &[], &["obscura", "obscura-worker", "escape"], &|d| std::os::unix::fs::symlink("/etc/passwd", d.join("escape")).unwrap())),
-        ("pipe", archive("e4", &[], &["obscura", "obscura-worker", "pipe"], &|d| assert!(Command::new("mkfifo").arg(d.join("pipe")).status().unwrap().success()))),
-        ("stranger", archive("e5", &[], &["obscura", "obscura-worker", "extra"], &|d| std::fs::write(d.join("extra"), b"x").unwrap())),
+        ("dotdot", archive("e1", &["--transform", "s,^,../,"], &inroot(&["moli"]), &|_| {})),
+        ("absolute", archive("e2", &["-P", "--transform", "s,^,/tmp/lico_never_written_,"], &inroot(&["moli"]), &|_| {})),
+        ("link", archive("e3", &[], &with("escape"), &|d| std::os::unix::fs::symlink("/etc/passwd", d.join("escape")).unwrap())),
+        ("pipe", archive("e4", &[], &with("pipe"), &|d| assert!(Command::new("mkfifo").arg(d.join("pipe")).status().unwrap().success()))),
+        ("stranger outside the archive's folder", archive("e5", &[], &with("extra"), &|d| std::fs::write(d.join("extra"), b"x").unwrap())),
+        ("the engine twice", archive("e6", &[], &inroot(&["moli", "moli"]), &|_| {})),
+        ("no engine", archive("e7", &[], &inroot(&["README.md"]), &|_| {})),
     ];
     for (what, fake) in cases {
         let server = serve(Reply::Body(fake.bytes.clone()));
@@ -221,7 +234,7 @@ fn an_archive_with_a_path_out_a_link_or_a_pipe_is_refused_before_anything_is_unp
         assert!(matches!(err, Failure::Entry(_)) && err.security(), "{what}: {err:?}");
         nothing_left(&at);
     }
-    assert!(!Path::new("/tmp/lico_never_written_obscura").exists());
+    assert!(!Path::new(&format!("/tmp/lico_never_written_{}", lico_engine::ARCHIVE_ROOT)).exists());
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -247,7 +260,7 @@ fn a_size_over_the_cap_is_refused_even_when_curl_could_not_know_it_and_a_second_
     std::fs::create_dir_all(&dest).unwrap();
     std::fs::write(dest.join("stray"), b"x").unwrap();
     assert!(install(&at, &src).is_err(), "a folder that is there without the engine in it is not an install");
-    std::fs::write(dest.join("obscura"), b"x").unwrap();
+    std::fs::write(dest.join("moli"), b"x").unwrap();
     assert!(install(&at, &src).is_ok(), "the other installer finished first");
     let _ = std::fs::remove_dir_all(&home);
 }

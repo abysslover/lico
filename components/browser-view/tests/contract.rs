@@ -535,8 +535,11 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes", "installs the browser engine by itself", "you are not asked", "install it by hand", "draws no cursor", "ring marks your last click", "contenteditable", "Google search", "html.duckduckgo.com/html/?q=WORDS", "stealth is your setting"] {
+    for needle in ["Lico", "Moli engine", "Windows platform", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "installs the browser engine by itself", "you are not asked", "install it by hand", "ring marks your last click", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
+    }
+    for gone in ["Obscura", "stealth", "boxes", "contenteditable", "draws no cursor"] {
+        assert!(!all.contains(gone), "the help no longer says {gone:?} (it was said of another engine): {all}");
     }
     assert!(!all.contains(LOCAL_NOTE), "an ordinary tab does not carry the local sentence");
     assert!(help.iter().all(|l| l.chars().count() <= 120 && !l.is_empty()), "short lines: {help:?}");

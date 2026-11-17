@@ -1,45 +1,49 @@
 {
-  "component": "lico-engine-pack",
+  "component": "lico-engine",
   "cost": {
     "budget": {
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.6,
-    "peak_mib": 0.0,
-    "wall_s": 0.0
+    "compile_s": 0.1,
+    "peak_mib": 1.7,
+    "wall_s": 0.07
   },
   "date": "2026-11-17",
-  "hash": "8df1d665a6b2a1484b94015a74ab04eb25072bfce7db785780a94b2bd893b89b",
+  "hash": "359a94309a3c94857b95dd9756353e00522e192bc741fb28401089783dc145a7",
   "inputs": {
     "dependencies": [],
     "externals": [],
     "files": [
       [
         "Cargo.toml",
-        "b99fd51f4becf54351f4693d99af55712fde2f919f67d9112158425a18418261"
+        "fed1aa4eb635b9961033cb5c67da7ac8ddeccc1ef8b8c556b119aa493e3d730a"
       ],
       [
         "SPEC.md",
-        "c03e23562dc770f42cf8d9063ee0042d73045ea7e7f65b35877e25479f8f0cad"
+        "062d5cec3c896692a5968a2c299b75cd6e2d5b883f7e1e33fc306f11d83843b7"
       ],
       [
         "src/lib.rs",
-        "4d3eda585f35a43e82ed5aa53829af732fffda13db06518e853542ccbdb675ef"
+        "92d62f3e3e9c3c5df4c1cf2f62f7464ead6e8918d675ff522f4c19cb0a364921"
       ],
       [
         "tests/contract.rs",
-        "bd3fb60370ad809024fcb2579acc948665f1c3347e95cd1b579693a74173a02c"
+        "4aff1b885f200cc3a08a101bd69e098f04028eff13b11d82199aa8ca383dc3fa"
+      ],
+      [
+        "tests/fixtures/moli_v1_1_25_listing.txt",
+        "139c89f468a292165223679b5bdedce4ad1766ea5d885d1d4077b98bc67da69b"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 6,
+    "count": 9,
     "failed": 0,
     "ignored": 0,
-    "passed": 6
+    "passed": 9
   },
   "tool": "lico-xtask 0.1.0",
   "version": "0.1.0"

@@ -1,4 +1,4 @@
-//! The adapter `browser/` (M17-P06): a browser tab with no window yet. The host starts the engine (Obscura, pinned release, hash-checked) only when a tab asks, behind `lico-sandbox`
+//! The adapter `browser/` (M17-P06): a browser tab with no window yet. The host starts the engine (Moli, pinned release, hash-checked) only when a tab asks, behind `lico-sandbox`
 //! and the fetch guard `lico-proxy`, drives it with `lico-cdp`, keeps one `lico-browser-view` model per tab, and ends the engine with the last tab. It plugs in through the driver
 //! port (`driver::register_ops`) and is registered once, from the root; no hub names it.
 

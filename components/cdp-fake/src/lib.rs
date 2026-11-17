@@ -89,6 +89,7 @@ struct Plain {
 #[derive(Default)]
 pub struct Script {
     token: Option<String>,
+    socket_path: Option<String>,
     rules: Vec<Rule>,
     plain: Vec<Plain>,
     idle: Option<Duration>,
@@ -105,6 +106,12 @@ impl Script {
     /// Every head must carry `Authorization: Bearer TOKEN`, else the fake answers 401 (before any upgrade).
     pub fn token(mut self, token: &str) -> Script {
         self.token = Some(token.to_string());
+        self
+    }
+    /// The WebSocket upgrade is accepted at this path only (the whole path, no query); an upgrade anywhere else is a 404. An engine that makes its socket path at each start
+    /// (Moli: `/devtools/browser/<id>`) is faked this way, so that a client that assumes the path fails. Without it every path upgrades.
+    pub fn socket_path(mut self, path: &str) -> Script {
+        self.socket_path = Some(path.to_string());
         self
     }
     pub fn http(mut self, path: &str, status: u16, body: &str) -> Script {
@@ -172,6 +179,7 @@ impl std::fmt::Debug for Seen {
 
 struct State {
     token: Option<String>,
+    socket_path: Option<String>,
     rules: Mutex<Vec<Rule>>,
     plain: Vec<Plain>,
     idle: Duration,
@@ -205,6 +213,7 @@ impl Fake {
         let addr = listener.local_addr()?;
         let state = Arc::new(State {
             token: script.token,
+            socket_path: script.socket_path,
             rules: Mutex::new(script.rules),
             plain: script.plain,
             idle: script.idle.unwrap_or(CONNECTION_IDLE),
@@ -308,6 +317,12 @@ fn serve(mut stream: TcpStream, st: &Arc<State>) {
             None => reply_plain(&mut stream, 404, ""),
         }
         return;
+    }
+    if let Some(only) = &st.socket_path {
+        if head.path != *only {
+            reply_plain(&mut stream, 404, "");
+            return;
+        }
     }
     let Ok(mut conn) = accept(stream, &head, &limits) else { return };
     conn.set_read_timeout(Some(st.idle));
