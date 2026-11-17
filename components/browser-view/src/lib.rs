@@ -224,6 +224,8 @@ pub enum Phase {
     Loading,
     /// The engine is not installed: what the tab shows is the expected hash and the pinned release.
     Absent { expected_sha256: String, release: String },
+    /// The engine is being installed (the tab opened it with no engine there): the size in MB, the source host and the first 12 characters of the pinned SHA-256.
+    Installing { size_mb: u32, source: String, hash12: String },
     Failed(String),
 }
 
@@ -296,6 +298,12 @@ pub enum EngineEvent {
     TargetGone,
     Crashed,
     Missing { expected_sha256: String, release: String },
+    /// The engine is being installed by Lico (no question was asked: the person opened a tab).
+    Installing { size_mb: u32, source: String, hash12: String },
+    /// The engine is there and is being started (after an install).
+    Starting,
+    /// The install ended without a usable engine: the plain reason, whether it is a security notice (a hash that is not the pinned one, an archive entry refused).
+    InstallFailed { why: String, security: bool, expected_sha256: String, release: String },
     NoFontFound,
     /// The fetch guard refused or could not complete a fetch for this page (a status of its own: 403, 502, 504) of `host`. The engine shows a blank page and no error.
     FetchRefused { status: u16, host: String, port: u16, why: Refusal },
@@ -411,6 +419,8 @@ impl Tab {
             "Korean is typed with the input method: the address row shows the composition.",
             "The page gets the finished text only. Korean typed in a page's input fields may show as boxes:",
             "that is the engine's own drawing of form controls; the text the page holds is right.",
+            "The first tab installs the browser engine by itself (about 72 MB, checked by SHA-256): you are not asked.",
+            "If the install fails the header says why and how to install it by hand.",
             "To look at a real site yourself: lico browser open https://SITE",
         ] {
             v.push(line.to_string());
@@ -575,7 +585,7 @@ impl Tab {
         self.push_history(&url);
         self.url = url.clone();
         self.address.set_text(&url);
-        if self.phase == Phase::Starting {
+        if self.phase == Phase::Starting || matches!(self.phase, Phase::Installing { .. }) {
             self.pending_url = Some(url);
             return Ok(Vec::new());
         }
@@ -688,6 +698,21 @@ impl Tab {
             }
             EngineEvent::Missing { expected_sha256, release } => {
                 self.phase = Phase::Absent { expected_sha256, release };
+                Vec::new()
+            }
+            EngineEvent::Installing { size_mb, source, hash12 } => {
+                self.phase = Phase::Installing { size_mb, source: clean(&source, MAX_NOTICE_HOST), hash12: clean(&hash12, 12) };
+                Vec::new()
+            }
+            EngineEvent::Starting => {
+                self.phase = Phase::Starting;
+                Vec::new()
+            }
+            EngineEvent::InstallFailed { why, security, expected_sha256, release } => {
+                self.phase = Phase::Absent { expected_sha256, release };
+                self.pending_url = None;
+                let line = format!("{}the engine could not be installed: {why}", if security { "SECURITY: " } else { "" });
+                self.notice = Some(clean(&line, MAX_NOTICE));
                 Vec::new()
             }
             EngineEvent::NoFontFound => {

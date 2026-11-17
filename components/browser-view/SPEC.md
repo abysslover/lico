@@ -41,13 +41,13 @@ The display-free model of one browser tab. It is driven with the person's intent
 4. **No first frame, one screenshot:** after `show`, if no frame or screenshot has arrived within `FALLBACK_AFTER_MS`, `tick` returns `CaptureScreenshot` once; a new `show` starts the wait again.
 5. **History:** at most `MAX_HISTORY` entries, the oldest dropped; a new address after a back drops what was forward; the same address twice in a row is one entry; back and forward move an index and answer `Navigate` (the model keeps its own history, the engine's is not used); what the engine reports (`Navigated`, a link the person clicked) is added.
 6. **Nothing a page says is trusted:** the address and the title the engine reports are cleaned before they are kept; an address typed by the person is parsed by the rules above; an engine report does not overwrite what the person is typing in the address row while it has the focus.
-7. **Absent, failed, starting:** with the engine `Absent` or `Failed` no effect is produced for an address, a pointer, a key or a text; an address typed while `Starting` is kept and navigated when `Started` arrives.
+7. **Absent, failed, starting, installing:** with the engine `Absent` or `Failed` no effect is produced for an address, a pointer, a key or a text; an address typed while `Starting` or `Installing` is kept and navigated when `Started` arrives.
 8. **Commit-only Korean in the page:** `text` sends committed text (control characters removed, at most `MAX_INSERT`); a pre-edit lives in the address field only; keys and text go to the page only while it has the focus, the pointer always reaches the page inside the viewport.
 9. No thread, no file, no environment variable, no clock, no socket, no `unsafe`.
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
@@ -68,3 +68,9 @@ The display-free model of one browser tab. It is driven with the person's intent
 ## The help text (0.5.1, M17-P09, mail 153)
 
 `help_lines()` also says that F1 shows and hides the help, that a refused or failed load shows a notice in the header and not an error page, and that Korean typed in a page's input fields may show as boxes (the engine's own drawing of form controls: MEASURED in P08, the text the page holds is right).
+
+## The install states (0.6.0, M17-P10, mail 155)
+
+Requested by the owner in the chat, 2026-11-17 (the engine installs itself when a tab is opened); the spec wording approved by the lead, to be confirmed by the owner. `Phase::Installing { size_mb, source, hash12 }` and `EngineEvent::Installing` (the tab says so, asks no question, produces no effect and takes no pointer, key or text; an address given meanwhile is kept for `Started`), `EngineEvent::Starting` (the engine is there and is being started), `EngineEvent::InstallFailed { why, security, expected_sha256, release }` (the phase becomes `Absent`, the pending address is dropped, and the notice is "the engine could not be installed: WHY", with "SECURITY: " in front for a hash that is not the pinned one or an archive entry that was refused; cleaned and cut like any notice). The model does not know a URL or a hash it could change: the adapter passes the pinned ones.
+
+`help_lines()` also says that the first tab installs the browser engine by itself from its pinned release (about 72 MB, checked by SHA-256) without asking, and that a failed install is explained in the header with the way to install by hand.

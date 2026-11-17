@@ -535,7 +535,7 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes"] {
+    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes", "installs the browser engine by itself", "you are not asked", "install it by hand"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
     }
     assert!(!all.contains(LOCAL_NOTE), "an ordinary tab does not carry the local sentence");
@@ -561,4 +561,59 @@ fn the_newest_compressed_frame_and_its_number_are_readable_without_decoding_and_
     assert_eq!((t.frame_seq(), t.newest_frame()), (2, Some(&b[..])), "a hidden tab keeps its newest compressed frame");
     t.engine_event(EngineEvent::Frame { id: 3, png: vec![0; MAX_FRAME_BYTES + 1] });
     assert_eq!(t.frame_seq(), 2, "a frame over the cap is not kept and does not change the number");
+}
+
+// ---- 0.6.0: the engine installs itself when a tab is opened (M17-P10) -------------------------------------------------------------------------
+
+fn installing() -> Tab {
+    let mut t = Tab::new();
+    t.engine_event(EngineEvent::Installing { size_mb: 72, source: "github.com".into(), hash12: "eed986e4d3a1".into() });
+    t
+}
+
+#[test]
+fn a_tab_installing_the_engine_says_the_size_the_source_and_the_start_of_the_pinned_hash() {
+    let t = installing();
+    assert_eq!(t.phase(), &Phase::Installing { size_mb: 72, source: "github.com".into(), hash12: "eed986e4d3a1".into() });
+    assert!(!t.loading() && t.notice().is_none());
+    let mut t = installing();
+    assert_eq!(t.show((800, 600), 0), vec![], "nothing can be asked of an engine that is not there yet");
+    assert_eq!(t.resize((900, 700)), vec![]);
+    assert_eq!(t.mouse(MouseKind::Pressed, 10, 10, Button::Left, 1, 0.0), None);
+    assert_eq!(t.key(KeyKind::Down, "a", "KeyA", "a"), None);
+    assert_eq!(t.text("가"), None);
+    assert_eq!(t.reload(), vec![]);
+    assert_eq!(t.back(), vec![]);
+}
+
+#[test]
+fn an_address_asked_for_while_installing_is_navigated_when_the_engine_has_started() {
+    let mut t = installing();
+    assert_eq!(t.submit_address("example.com"), Ok(vec![]));
+    assert_eq!(t.phase(), &Phase::Installing { size_mb: 72, source: "github.com".into(), hash12: "eed986e4d3a1".into() }, "the install goes on");
+    t.engine_event(EngineEvent::Starting);
+    assert_eq!(t.phase(), &Phase::Starting, "the engine is there and is being started");
+    let fx = t.engine_event(EngineEvent::Started);
+    assert_eq!(fx, vec![Effect::Navigate("https://example.com".into())]);
+    assert_eq!(t.phase(), &Phase::Loading);
+    let mut t = installing();
+    t.submit_address("example.com").unwrap();
+    let fx = t.engine_event(EngineEvent::Started);
+    assert_eq!(fx, vec![Effect::Navigate("https://example.com".into())], "also when the host goes straight to Started");
+}
+
+#[test]
+fn a_failed_install_leaves_the_tab_absent_with_the_reason_as_its_notice_and_marks_a_security_notice() {
+    let mut t = installing();
+    t.engine_event(EngineEvent::InstallFailed { why: "there is no network".into(), security: false, expected_sha256: "ab".repeat(32), release: "v0.2.6".into() });
+    assert_eq!(t.phase(), &Phase::Absent { expected_sha256: "ab".repeat(32), release: "v0.2.6".into() });
+    assert_eq!(t.notice(), Some("the engine could not be installed: there is no network"));
+    assert_eq!(t.submit_address("example.com"), Ok(vec![]), "nothing to navigate with an engine that is absent");
+    let mut t = installing();
+    t.engine_event(EngineEvent::InstallFailed { why: "the file does not have the pinned hash".into(), security: true, expected_sha256: "ab".repeat(32), release: "v0.2.6".into() });
+    assert_eq!(t.notice(), Some("SECURITY: the engine could not be installed: the file does not have the pinned hash"));
+    let mut t = installing();
+    t.engine_event(EngineEvent::InstallFailed { why: "x\u{1b}[31m".repeat(400), security: false, expected_sha256: "ab".repeat(32), release: "v0.2.6".into() });
+    let n = t.notice().unwrap();
+    assert!(n.chars().count() <= MAX_NOTICE && !n.contains('\u{1b}'), "the reason is cleaned and cut like any other notice");
 }
