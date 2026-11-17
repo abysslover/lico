@@ -150,7 +150,7 @@ def test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_
             begin(conn, sid, made["generation"], "quiet:900")
             wait_for(lambda: status_of(conn, sid).get("activity") == "working", timeout=30)
             assert conn.call(op="status")["memory_limits"]["stall_min"] == 1
-            time.sleep(68)                                  # a working turn with no activity for over a minute
+            time.sleep(63)                                  # a working turn with no activity for over a minute
             assert status_of(conn, sid).get("activity") == "working"
             w.click(*centre(tab_rect(w, sid)))
             time.sleep(1.5)

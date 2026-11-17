@@ -43,3 +43,5 @@
 5. Decide the figure in the session row (private memory as now, or the tree's RSS as the owner's words say: one line in `gui/memrow.rs` `cell` and the hint test in `memrow.rs`).
 
 - 158.1: the `status` row of the protocol document names `memory_limits` (with `stall_min`). 158.2: Slice D committed as above.
+
+- 158.4: whole suite after Slice D on `45c4a2b`: 572 of 572 passed, peak 1,760.6 MiB, BUT 181.6 s against the cold-run limit of 180 s (exit 3): the stalled window test needs 60 s of real quiet (stall time is whole minutes). I shortened its wait from 68 to 63 s (not re-run as a whole: the money ended); the lead must run the suite again and, if it is still over, make `stall_min` accept seconds in `memory.json` (a `stall_s` key would let the test use 3 s) or move the test to the acceptance group.
