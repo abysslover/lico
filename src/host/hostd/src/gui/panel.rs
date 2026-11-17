@@ -769,6 +769,8 @@ mod admin_ui;
 pub(super) mod cardview;
 #[path = "confirm.rs"]
 pub(super) mod confirm;
+#[path = "memask.rs"]
+pub(super) mod memask;
 #[path = "files_host.rs"]
 mod files_host;
 #[path = "files_render.rs"]

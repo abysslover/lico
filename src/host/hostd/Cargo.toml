@@ -38,6 +38,7 @@ lico-sandbox = { path = "../../../components/sandbox" }
 lico-proxy = { path = "../../../components/proxy" }
 lico-browser-view = { path = "../../../components/browser-view" }
 lico-engine-pack = { path = "../../../components/engine-pack" }
+lico-memguard = { path = "../../../components/memguard" }
 lico-frame = { path = "../../../components/frame" }
 
 [dev-dependencies]

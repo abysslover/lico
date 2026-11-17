@@ -11,8 +11,6 @@ use crate::gui::controls::{Action, Controls, Rect};
 use crate::gui::App;
 use crate::memory::Figure;
 
-const AMBER_KB: u64 = 1 << 20; // 1 GiB
-const RED_KB: u64 = 2 << 20; // 2 GiB
 const NAME_COLS: usize = 24; // the longest name the hint sentence repeats
 const FLOOR_COLS: usize = 6; // the shortest it is cut to, so that the figures and the caveats stay in view
 
@@ -54,18 +52,23 @@ pub fn long(kb: u64) -> String {
     }
 }
 
-/// The colour of a figure: the row's own below 1 GiB, amber from 1 GiB, red from 2 GiB.
-pub fn ink(kb: u64, normal: Color) -> Color {
-    match kb {
-        k if k >= RED_KB => Color::rgb(0xF0, 0x70, 0x70),
-        k if k >= AMBER_KB => Color::rgb(0xE8, 0xB4, 0x50),
-        _ => normal,
+/// The level of a session for the memory guard: its largest single process against the warning level and the limit (400 and 500 MB unless the owner's setting says otherwise).
+pub fn level(row: &Row) -> lico_memguard::Level {
+    lico_memguard::Limits::default().level(row.max_rss_kb)
+}
+
+/// The colour of a figure: the row's own below the warning level, orange from it, red from the limit.
+pub fn ink(level: lico_memguard::Level, normal: Color) -> Color {
+    match level {
+        lico_memguard::Level::Red => Color::rgb(0xF0, 0x70, 0x70),
+        lico_memguard::Level::Orange => Color::rgb(0xF0, 0x98, 0x40),
+        lico_memguard::Level::Ok => normal,
     }
 }
 
 /// The figure of a row, none while the host has not given one (a session that is not running holds nothing).
 pub fn cell(row: &Row) -> Option<Cell> {
-    (row.memory_kb > 0).then(|| Cell { text: short(row.memory_kb), ink: ink(row.memory_kb, Color::rgb(0x9A, 0xA4, 0xB0)) })
+    (row.memory_kb > 0).then(|| Cell { text: short(row.rss_kb.max(row.memory_kb)), ink: ink(level(row), Color::rgb(0x9A, 0xA4, 0xB0)) })
 }
 
 /// The row's text with its figure: what tells the list that it has to be drawn again.
@@ -166,11 +169,20 @@ mod tests {
     }
 
     #[test]
-    fn the_colour_turns_amber_at_1_gib_and_red_at_2_gib_and_a_session_without_a_figure_has_none() {
+    fn the_colour_turns_orange_at_400_mb_and_red_at_500_mb_by_the_largest_process_and_a_session_without_a_figure_has_none() {
         let normal = Color::rgb(1, 2, 3);
-        let at = |kb| ink(kb, normal);
-        assert_eq!(at(AMBER_KB - 1), normal);
-        assert!(at(AMBER_KB) != normal && at(AMBER_KB) != at(RED_KB) && at(RED_KB - 1) == at(AMBER_KB) && at(RED_KB * 5) == at(RED_KB));
+        let at = |kb| {
+            let r = Row { max_rss_kb: kb, ..row(5000, 9000, 2) };
+            cell(&r).unwrap().ink
+        };
+        let orange = at(400 * 1024);
+        let red = at(500 * 1024);
+        assert_ne!(at(400 * 1024 - 1), orange);
+        assert!(orange != red && at(500 * 1024 - 1) == orange && at(u64::MAX) == red);
+        assert_ne!(at(0), orange, "a small process keeps the row's own colour");
+        assert_eq!(ink(lico_memguard::Level::Ok, normal), normal);
+        let many_small = Row { max_rss_kb: 100 * 1024, rss_kb: 900 * 1024, memory_kb: 800 * 1024, ..row(0, 0, 9) };
+        assert_eq!(level(&many_small), lico_memguard::Level::Ok, "the sum of many small processes is not the colour: the largest one is");
         assert!(cell(&row(0, 0, 0)).is_none() && cell(&row(5000, 9000, 2)).is_some());
         assert_ne!(sig("x", &cell(&row(5000, 9000, 2))), sig("x", &None), "a new figure redraws the list");
     }

@@ -45,6 +45,7 @@ pub struct Row {
     pub worktree_exists: bool,     // whether `<workspace_root>/worktrees/<session>` is still on disk
     pub memory_kb: u64,     // what the agent and all its descendants hold of their own (RssAnon + RssShmem), 0 until the host says
     pub rss_kb: u64,        // the same processes' VmRSS
+    pub max_rss_kb: u64,    // the VmRSS of the largest single process of the tree: what the colour follows (the memory guard)
     pub processes: u32,
     pub weekly_remaining_pct: Option<u8>, // observed 7d allowance remaining (0..=100), None when unreported
     pub short_remaining_pct: Option<u8>,  // observed short-window (e.g. 5h) allowance remaining, None when unreported
@@ -158,7 +159,7 @@ impl Row {
             worktree_branch: clean(entry["worktree"]["branch"].as_str().unwrap_or("")),
             worktree_repo: clean(entry["worktree"]["repo"].as_str().unwrap_or("")),
             worktree_exists: entry["worktree"]["exists"].as_bool().unwrap_or(false),
-            memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,
+            memory_kb: entry["memory"]["private_kb"].as_u64().unwrap_or(0), rss_kb: entry["memory"]["rss_kb"].as_u64().unwrap_or(0), max_rss_kb: entry["memory"]["max_rss_kb"].as_u64().unwrap_or(0), processes: entry["memory"]["processes"].as_u64().unwrap_or(0) as u32,
             weekly_remaining_pct: entry["account_usage"]["weekly_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
             short_remaining_pct: entry["account_usage"]["short_remaining_pct"].as_u64().map(|n| n.min(100) as u8),
             weekly_resets_at: entry["account_usage"]["weekly_resets_at"].as_u64().filter(|&n| n > 0),

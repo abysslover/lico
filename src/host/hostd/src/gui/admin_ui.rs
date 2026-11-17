@@ -194,6 +194,7 @@ impl App {
             p.provider = provider;
             p.account = current_account;
             p.ask = Some(Ask {
+                mb: 0,
                 act: Act::Rename,
                 session,
                 generation,

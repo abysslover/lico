@@ -20,7 +20,7 @@
 
 1. [x] `lico-memguard` 0.1.0 with tests first; mutants 12 of 12 killed.
 2. [x] `max_rss_kb` in the host's figure and status (`memory.max_rss_kb`); `closed_by` on `session.close` (`by`, a side table in `guard.rs`, shown in status, cleared by `session.resume`; not kept across a host restart: gap); protocol row.
-3. [ ] Window: colour, `mem` line, the click message and its two buttons; screenshots in `private/scratch/202611/20261117/m19_p01_screens/`.
+3. [~] Window: DONE in code: the session figure's colour by `memory.max_rss_kb` with `lico_memguard::Limits` (orange 400, red 500; the old 1 and 2 GiB rule is gone; the figure shown is the tree's RSS), the click question on a red session once for each red episode (`gui/memask.rs`, `Act::MemoryResume` in `gui/confirm.rs`: Y = `session.close` with `by: guard` then `session.resume`, N = cancel), unit tests. NOT done: the bottom `mem` line colour, the settings file for other limits (`Limits::default()` is used), the window test on the virtual display with a session that really holds over 500 MB and the PNG screenshots.
 4. [ ] Slice B: the auto-close (global and per-session switch, idle only, loop guard, the line "memory N MB: closed and resumed automatically").
 5. [ ] Slice C: the machine line, the warning before a new session, the warning to the main agent.
 6. [ ] Slice D: "last activity N min ago".
@@ -29,6 +29,7 @@
 ## State for the lead
 
 - **Built and verified**: step 1 (component `lico-memguard`, `components/memguard`, 7 contract tests, 12 of 12 mutants killed, receipt recorded by `cargo xtask test lico-memguard --record`); step 2 (host unit tests `cargo test --offline -p lico --bin lico -- guard memory ipc`: 10 pass). The host crate does NOT use `lico-memguard` yet (it will in step 3).
-- **Next**: step 3, the window (colour by `memory.max_rss_kb`, the click message, the two buttons: close with `by: guard`, then resume), using `lico_memguard::Limits`, `Episodes::ask` and `ResumeQueue`.
+- Step 3 code is in (see its line above); unit tests `cargo test --offline -p lico --bin lico -- memask confirm memrow panel` pass (98).
+- **Next**: the window test with PNG screenshots (a stand-in provider program on `path_prefix` that allocates over 500 MB, see `tests/test_browser_tab.py` for the `ProductWindow` pattern), then slice B (auto-close: `lico_memguard::Idle`, `LoopGuard`, `ResumeQueue` with the 20 s gap, in a host thread woken by the status refresh, no timer), then C and D. `ResumeQueue` is not used by the host yet.
 - **Commands**: `cargo test --offline -p lico-memguard`; `cargo xtask test lico-memguard --record`; `cargo xtask check`; host tests `cargo test --offline -p lico --bin lico memory`; heavy jobs go through `pri-heavy --label lico --`; window tests `PYTHONPATH=src:. private/venv/bin/python -m pytest -q tests/test_<name>.py` (rebuild the plain binary first with `python -m lico_measure.suite run <file>`; the window process is `private/build/host_hostd/release/lico`, set `lico_measure.captures.LICO` to test another build).
 - **Known gaps / decisions**: see "Design"; the main-agent rule is decided here but not built; nothing of Slice B to D exists; the whole-suite margin was 94.7 MiB at P10 (keep new tests lean).

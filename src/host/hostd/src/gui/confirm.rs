@@ -21,6 +21,8 @@ pub enum Act {
     Close,
     CloseTab,
     Delete,
+    /// The memory guard's question on a red session: end it and resume it in one step (M19-P01).
+    MemoryResume,
 }
 
 /// The session an action is about, as the window knew it when the action was asked for. The host checks the generation again.
@@ -36,6 +38,8 @@ pub struct Ask {
     pub worktree_repo: String,
     pub worktree_exists: bool,
     pub dirty_confirm: bool,
+    /// For `MemoryResume`: the largest process of the session in MB, as the question says it.
+    pub mb: u64,
 }
 
 fn why(error: &str) -> String {
@@ -57,6 +61,8 @@ impl App {
             (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete, _) => None,
             (Act::Close, Some("disconnected")) => Some("the session is already closed"),
             (Act::Close, Some(_)) => Some("the session has ended"),
+            (Act::MemoryResume, Some("running")) => None,
+            (Act::MemoryResume, Some(_)) => Some("the session is not running"),
         }
     }
 
@@ -90,9 +96,11 @@ impl App {
             return;
         }
         let double = matches!(&self.ui.clicked, Some((at, last)) if *last == id && at.elapsed() < DOUBLE_CLICK);
-        self.ui.clicked = if double { None } else { Some((std::time::Instant::now(), id)) };
+        self.ui.clicked = if double { None } else { Some((std::time::Instant::now(), id.clone())) };
         if double {
             self.run_cmd(Cmd::Rename);
+        } else {
+            self.memory_question(&id);
         }
     }
 
@@ -126,8 +134,9 @@ impl App {
             cwd: row.cwd.clone(),
             worktree_branch: row.worktree_branch.clone(),
             worktree_repo: row.worktree_repo.clone(),
-            worktree_exists: row.worktree_exists,
+            worktree_exists: row.worktree_exists && act != Act::MemoryResume, // the question has one answer: the worktree is kept
             dirty_confirm: false,
+            mb: row.max_rss_kb / 1024,
         };
         if matches!(act, Act::Close | Act::CloseTab) && !ask.working && !ask.worktree_exists {
             let prefix = if act == Act::CloseTab { "Close tab" } else { "Close session" };
@@ -153,6 +162,7 @@ impl App {
             Act::Close => json!({"op": "session.close", "session": ask.session, "generation": ask.generation}),
             Act::CloseTab => json!({"op": "session.close", "session": ask.session, "generation": ask.generation, "hide_tab": true}),
             Act::Delete => json!({"op": "session.purge", "session": ask.session, "generation": ask.generation}),
+            Act::MemoryResume => return self.memory_resume(ask),
         };
         if let Some(policy) = worktree {
             request["worktree"] = json!(policy);
@@ -198,6 +208,7 @@ impl App {
             (Act::CloseTab, Some("keep")) => "Tab closed (worktree kept). Conversation stays in Chats.".into(),
             (Act::CloseTab, _) => "Tab closed. Conversation stays in Chats.".into(),
             (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
+            (Act::MemoryResume, _) => String::new(),
             (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
             (Act::Delete, _) => "Session deleted.".into(),
         })
@@ -349,6 +360,9 @@ impl App {
     pub(crate) fn ask_view(&self, p: &Panel) -> (String, Vec<String>) {
         let Some(ask) = p.ask.as_ref() else { return (String::new(), Vec::new()) };
         let named = format!("\"{}\"", ask.title);
+        if ask.act == Act::MemoryResume {
+            return super::memask::view(ask);
+        }
         if ask.act != Act::Rename && ask.worktree_exists {
             let verb = match ask.act {
                 Act::Close => "close session",
@@ -391,6 +405,7 @@ impl App {
         match ask.act {
             Act::Rename => ("Rename session".into(), vec![format!("Type the new name of {named} and press Enter."), "An empty name takes the name away. At most 60 characters.".into(), "The host keeps the name: other windows and the command line show it too.".into()]),
             Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Chats / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
+            Act::MemoryResume => super::memask::view(ask),
             Act::Delete => {
                 let running = if ask.working { "A turn is running: it is stopped first." } else { "Its process, if any, is stopped first." };
                 ("Delete session".into(), vec![format!("Delete {named}? This cannot be undone."), format!("{running} Its record is removed for good."), folder, String::new(), "Y  delete it".into(), "N  keep it".into()])
