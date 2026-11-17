@@ -259,7 +259,7 @@ pub fn info(session: &str) -> Option<(String, Figure)> {
             if matches!(e.child.try_wait(), Ok(None)) {
                 let pid = e.child.id();
                 let (private_kb, rss_kb) = std::fs::read_to_string(format!("/proc/{pid}/status")).map_or((0, 0), |t| memory::split(&t));
-                Some((e.display.clone(), Figure { private_kb, rss_kb, processes: 1 }))
+                Some((e.display.clone(), Figure { private_kb, rss_kb, max_rss_kb: rss_kb, processes: 1 }))
             } else {
                 dead = map.remove(session);
                 None

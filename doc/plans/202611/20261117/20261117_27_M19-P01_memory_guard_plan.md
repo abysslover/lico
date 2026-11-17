@@ -19,7 +19,7 @@
 ## Steps
 
 1. [x] `lico-memguard` 0.1.0 with tests first; mutants 12 of 12 killed.
-2. [ ] `max_rss_kb` in the host's figure and status; `closed_by` on `session.close`; protocol rows.
+2. [x] `max_rss_kb` in the host's figure and status (`memory.max_rss_kb`); `closed_by` on `session.close` (`by`, a side table in `guard.rs`, shown in status, cleared by `session.resume`; not kept across a host restart: gap); protocol row.
 3. [ ] Window: colour, `mem` line, the click message and its two buttons; screenshots in `private/scratch/202611/20261117/m19_p01_screens/`.
 4. [ ] Slice B: the auto-close (global and per-session switch, idle only, loop guard, the line "memory N MB: closed and resumed automatically").
 5. [ ] Slice C: the machine line, the warning before a new session, the warning to the main agent.
@@ -28,7 +28,7 @@
 
 ## State for the lead
 
-- **Built and verified**: step 1 (component `lico-memguard`, `components/memguard`, 7 contract tests, 12 of 12 mutants killed, receipt recorded by `cargo xtask test lico-memguard --record`). Nothing else yet.
-- **Next**: step 2, as in the list above.
+- **Built and verified**: step 1 (component `lico-memguard`, `components/memguard`, 7 contract tests, 12 of 12 mutants killed, receipt recorded by `cargo xtask test lico-memguard --record`); step 2 (host unit tests `cargo test --offline -p lico --bin lico -- guard memory ipc`: 10 pass). The host crate does NOT use `lico-memguard` yet (it will in step 3).
+- **Next**: step 3, the window (colour by `memory.max_rss_kb`, the click message, the two buttons: close with `by: guard`, then resume), using `lico_memguard::Limits`, `Episodes::ask` and `ResumeQueue`.
 - **Commands**: `cargo test --offline -p lico-memguard`; `cargo xtask test lico-memguard --record`; `cargo xtask check`; host tests `cargo test --offline -p lico --bin lico memory`; heavy jobs go through `pri-heavy --label lico --`; window tests `PYTHONPATH=src:. private/venv/bin/python -m pytest -q tests/test_<name>.py` (rebuild the plain binary first with `python -m lico_measure.suite run <file>`; the window process is `private/build/host_hostd/release/lico`, set `lico_measure.captures.LICO` to test another build).
 - **Known gaps / decisions**: see "Design"; the main-agent rule is decided here but not built; nothing of Slice B to D exists; the whole-suite margin was 94.7 MiB at P10 (keep new tests lean).

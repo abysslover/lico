@@ -114,7 +114,7 @@ impl Look {
     /// A status reply: the host's figure, and this window's own (read every third time; one small file).
     pub fn read(&mut self, status: &Value) {
         let kb = |k: &str| status["host_memory"][k].as_u64().unwrap_or(0);
-        self.host = Figure { private_kb: kb("private_kb"), rss_kb: kb("rss_kb"), processes: 1 };
+        self.host = Figure { private_kb: kb("private_kb"), rss_kb: kb("rss_kb"), max_rss_kb: kb("rss_kb"), processes: 1 };
         if self.reads % 3 == 0 {
             self.window = crate::memory::own();
         }

@@ -163,6 +163,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.close" | "session.purge", "worktree") => matches!(value.as_str(), Some("keep" | "remove")),
             ("session.close" | "session.purge", "force_dirty") => value.is_boolean(),
             ("session.close", "hide_tab") => value.is_boolean(),
+            ("session.close", "by") => matches!(value.as_str(), Some("person" | "guard")),
             ("session.create" | "session.rename", "name") => matches!(value, Value::String(s) if crate::folders::valid_name(s)),
             ("session.create", "model") => matches!(value, Value::String(s) if crate::folders::valid_model(s)),
             ("session.create", "effort") => matches!(value, Value::String(s) if crate::folders::valid_effort(s)),
@@ -291,16 +292,28 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "status" => core::status(shared),
         "session.list" => core::session_list(shared),
         "resources" => core::resources(shared),
-        "session.resume" => core::session_resume(shared, session, generation.unwrap_or(0)),
+        "session.resume" => {
+            let r = core::session_resume(shared, session, generation.unwrap_or(0));
+            if r.is_ok() {
+                crate::guard::clear(session);
+            }
+            r
+        }
         "session.purge" => core::session_purge_with(shared, session, generation.unwrap_or(0), request.get("worktree").and_then(Value::as_str), request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false)),
-        "session.close" => crate::lifecycle::session_close_opts(
-            shared,
-            session,
-            generation.unwrap_or(0),
-            request.get("worktree").and_then(Value::as_str),
-            request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false),
-            request.get("hide_tab").and_then(Value::as_bool).unwrap_or(false),
-        ),
+        "session.close" => {
+            let r = crate::lifecycle::session_close_opts(
+                shared,
+                session,
+                generation.unwrap_or(0),
+                request.get("worktree").and_then(Value::as_str),
+                request.get("force_dirty").and_then(Value::as_bool).unwrap_or(false),
+                request.get("hide_tab").and_then(Value::as_bool).unwrap_or(false),
+            );
+            if r.is_ok() {
+                crate::guard::record(session, request.get("by").and_then(Value::as_str));
+            }
+            r
+        }
         "session.create" => crate::new_session::session_create(
             shared,
             text(request, "kind"),

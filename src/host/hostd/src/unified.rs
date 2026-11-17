@@ -43,6 +43,7 @@ mod ipc;
 mod keyring;
 mod leads;
 mod llm;
+mod guard;
 mod lifecycle;
 mod local;
 mod lines;

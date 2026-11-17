@@ -55,6 +55,8 @@ fn one_page() -> usize {
 pub struct Figure {
     pub private_kb: u64,
     pub rss_kb: u64,
+    /// The VmRSS of the largest single process of the tree: what the memory guard's colour follows.
+    pub max_rss_kb: u64,
     pub processes: u32,
 }
 
@@ -80,7 +82,7 @@ pub fn split(status: &str) -> (u64, u64) {
 /// The figure of this very process (the host's, or the window's): one small read.
 pub fn own() -> Figure {
     let (private_kb, rss_kb) = fs::read_to_string("/proc/self/status").map_or((0, 0), |t| split(&t));
-    Figure { private_kb, rss_kb, processes: 1 }
+    Figure { private_kb, rss_kb, max_rss_kb: rss_kb, processes: 1 }
 }
 
 /// Pin glibc's `M_MMAP_THRESHOLD` (`-3`) to `128 KiB` so large transient buffers (`>= 128 KiB`: pasted PNGs, INCR chunks, base64 payloads, file handoffs)
@@ -112,7 +114,7 @@ pub fn trim_heap() {
 }
 
 pub fn json_of(f: &Figure) -> Value {
-    json!({"private_kb": f.private_kb, "rss_kb": f.rss_kb, "processes": f.processes})
+    json!({"private_kb": f.private_kb, "rss_kb": f.rss_kb, "max_rss_kb": f.max_rss_kb, "processes": f.processes})
 }
 
 fn parent_of(pid: u32) -> Option<u32> {
@@ -174,6 +176,7 @@ fn walk_with(roots: &[u32], files: bool) -> BTreeMap<u32, Figure> {
             if let Ok(text) = fs::read_to_string(format!("/proc/{pid}/status")) {
                 let (private, rss) = split(&text);
                 (figure.private_kb, figure.rss_kb, figure.processes) = (figure.private_kb + private, figure.rss_kb + rss, figure.processes + 1);
+                figure.max_rss_kb = figure.max_rss_kb.max(rss);
             }
             stack.extend(kids(pid));
         }
@@ -218,6 +221,9 @@ pub fn annotate(entry: &mut Value, s: &Session) {
     if let Some((ref disp, _)) = vd {
         entry["virtual_display"] = json!(disp);
     }
+    if let Some(by) = crate::guard::closed_by(&s.id) {
+        entry["closed_by"] = json!(by);
+    }
     if s.state != State::Running || s.agent_pid == 0 {
         return;
     }
@@ -230,6 +236,7 @@ pub fn annotate(entry: &mut Value, s: &Session) {
         if let Some((_, vf)) = vd {
             f.private_kb += vf.private_kb;
             f.rss_kb += vf.rss_kb;
+            f.max_rss_kb = f.max_rss_kb.max(vf.max_rss_kb);
             f.processes += vf.processes;
         }
         entry["memory"] = json_of(&f);
@@ -330,5 +337,18 @@ mod tests {
         trim_heap();
         let after = own().private_kb;
         assert!(peak.saturating_sub(after) >= 2000, "expected >= 2000 kB reclaimed across worker thread: baseline={baseline} kB, peak={peak} kB, after={after} kB");
+    }
+
+    #[test]
+    fn the_figure_also_names_the_largest_single_process_of_the_tree() {
+        let mut child = std::process::Command::new("sleep").arg("5").spawn().unwrap();
+        let me = std::process::id();
+        let found = walk(&[me]);
+        let f = found.get(&me).copied().expect("this process is walked");
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(f.processes >= 2, "this process and its child: {f:?}");
+        assert!(f.max_rss_kb > 0 && f.max_rss_kb < f.rss_kb, "the largest is one of the processes, the sum is more: {f:?}");
+        assert!(f.max_rss_kb >= own().rss_kb / 2, "this test process is the larger one: {f:?}");
     }
 }
