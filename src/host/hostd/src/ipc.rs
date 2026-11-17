@@ -292,7 +292,7 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "status" => {
             let r = core::status(shared);
             if let Ok(reply) = &r {
-                crate::guard::tick(shared, reply);
+                crate::lifecycle::guard_tick(shared, reply);
             }
             r
         }

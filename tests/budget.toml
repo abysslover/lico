@@ -8,4 +8,4 @@ peak_rss_mib = 2048     # all workers together (resident sets of the whole proce
 [[allow]]
 test = "tests/test_memory_guard_window.py::test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched"
 seconds = 45
-why = "the guard acts only when something looks at the status and the host measures a session's memory at most every three seconds: a session must first hold its memory, be seen red, be closed and be resumed (measured 34.7 s)"
+reason = "the guard acts only when something looks at the status and the host measures a session's memory at most every three seconds: a session must first hold its memory, be seen red, be closed and be resumed (measured 34.7 s)"

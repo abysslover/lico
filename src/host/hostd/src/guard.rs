@@ -3,12 +3,11 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 use lico_memguard::{ClosedBy, Episodes, Idle, Level, Limits, LoopGuard, ResumeQueue};
 use serde_json::Value;
 
-use crate::core::Shared;
 
 static CLOSED_BY: Mutex<BTreeMap<String, &'static str>> = Mutex::new(BTreeMap::new());
 
@@ -168,44 +167,40 @@ fn plan(entries: &[Value], cfg: &Config, st: &mut State, now: u64) -> Vec<(Strin
     out
 }
 
-/// Called after each `status` reply (no timer of its own: the guard acts when something looks): closes the red idle sessions that qualify, and resumes one guard-closed session when the gap
-/// since the last resume has passed.
-pub fn tick(shared: &Arc<Shared>, reply: &serde_json::Map<String, Value>) {
-    let Some(entries) = reply.get("sessions").and_then(Value::as_array) else { return };
-    let state_dir = shared.cfg.registry_dir.parent().map(Path::to_path_buf).unwrap_or_default();
-    let cfg = read_config(&state_dir);
+/// What to do now after a `status` reply (computed here, done by the hubs: this module names no hub, so it stays out of the cycle of the hubs).
+pub struct Step {
+    pub now: u64,
+    /// The running sessions to close with `by: guard`: (id, generation, keep the worktree).
+    pub close: Vec<(String, i64, bool)>,
+    /// A guard-closed session whose turn has come to be resumed (one at a time, the gap since the last resume has passed).
+    pub resume: Option<String>,
+    /// A warning for the main agent: (the main agent's session, the text).
+    pub warn: Option<(String, String)>,
+}
+
+pub fn step(state_dir: &Path, entries: &[Value]) -> Step {
+    let cfg = read_config(state_dir);
     let now = now_ms();
     let machine = meminfo();
-    let (to_close, resume, warning) = {
-        let mut g = STATE.lock().unwrap();
-        let st = g.get_or_insert_with(State::default);
-        let q = st.queue.get_or_insert_with(|| ResumeQueue::new(RESUME_GAP_MS));
-        let resume = q.next(now);
-        (plan(entries, &cfg, st, now), resume, plan_warning(entries, &cfg, st, now, machine))
-    };
-    if let Some((main, text)) = warning {
-        let _ = crate::core::input(shared, &main, None, &format!("guard-{now}"), &text, crate::session::Origin::Host, None);
-    }
-    for (id, generation) in to_close {
-        let worktree = entries.iter().find(|e| e["session"] == id.as_str()).and_then(|e| (!e["worktree"].is_null()).then_some("keep"));
-        if crate::lifecycle::session_close_opts(shared, &id, generation, worktree, false, false).is_ok() {
-            record(&id, Some("guard"));
-            let mut g = STATE.lock().unwrap();
-            let st = g.get_or_insert_with(State::default);
-            st.loops.closed(&id, now);
-            st.queue.get_or_insert_with(|| ResumeQueue::new(RESUME_GAP_MS)).push(&id, ClosedBy::Guard);
-        }
-    }
-    if let Some(id) = resume {
-        // only a session the guard closed is queued; if the person took it up meanwhile it runs already and the host refuses
-        if closed_by(&id) == Some("guard") {
-            if let Some(found) = crate::core::find(shared, &id) {
-                let generation = found.lock().unwrap().generation as i64;
-                let _ = crate::core::session_resume(shared, &id, generation);
-            }
-            clear(&id);
-        }
-    }
+    let mut g = STATE.lock().unwrap();
+    let st = g.get_or_insert_with(State::default);
+    let resume = st.queue.get_or_insert_with(|| ResumeQueue::new(RESUME_GAP_MS)).next(now);
+    let close = plan(entries, &cfg, st, now).into_iter().map(|(id, generation)| {
+        let keep = entries.iter().find(|e| e["session"] == id.as_str()).is_some_and(|e| !e["worktree"].is_null());
+        (id, generation, keep)
+    });
+    let close: Vec<(String, i64, bool)> = close.collect();
+    let warn = plan_warning(entries, &cfg, st, now, machine);
+    Step { now, close, resume, warn }
+}
+
+/// The hub closed `id` for the guard: remember who, count it for the loop guard and queue it for its resume.
+pub fn closed_ok(id: &str, now: u64) {
+    record(id, Some("guard"));
+    let mut g = STATE.lock().unwrap();
+    let st = g.get_or_insert_with(State::default);
+    st.loops.closed(id, now);
+    st.queue.get_or_insert_with(|| ResumeQueue::new(RESUME_GAP_MS)).push(id, ClosedBy::Guard);
 }
 
 #[cfg(test)]

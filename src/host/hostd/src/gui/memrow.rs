@@ -85,7 +85,7 @@ pub fn ink(level: lico_memguard::Level, normal: Color) -> Color {
 
 /// The figure of a row, none while the host has not given one (a session that is not running holds nothing).
 pub fn cell(row: &Row) -> Option<Cell> {
-    (row.memory_kb > 0).then(|| Cell { text: short(row.rss_kb.max(row.memory_kb)), ink: ink(level(row), Color::rgb(0x9A, 0xA4, 0xB0)) })
+    (row.memory_kb > 0).then(|| Cell { text: short(row.memory_kb), ink: ink(level(row), Color::rgb(0x9A, 0xA4, 0xB0)) })
 }
 
 /// The row's text with its figure: what tells the list that it has to be drawn again.

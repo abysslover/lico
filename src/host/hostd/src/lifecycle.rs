@@ -62,3 +62,30 @@ pub fn session_close_opts(
     }
     Ok(obj(json!({"session": id, "generation": out_gen})))
 }
+
+/// After each `status` reply: what the memory guard decided (the memory guard's module is a leaf; the hub calls are made here). Closes the red idle sessions that qualify (when the owner switched the
+/// auto-close on), resumes one guard-closed session when its turn has come, and warns the main agent.
+pub fn guard_tick(shared: &Arc<Shared>, reply: &serde_json::Map<String, serde_json::Value>) {
+    let Some(entries) = reply.get("sessions").and_then(serde_json::Value::as_array) else { return };
+    let Some(state_dir) = shared.cfg.registry_dir.parent() else { return };
+    let step = crate::guard::step(state_dir, entries);
+    if let Some((main, text)) = step.warn {
+        let _ = crate::core::input(shared, &main, None, &format!("guard-{}", step.now), &text, crate::session::Origin::Host, None);
+    }
+    for (id, generation, keep_worktree) in step.close {
+        if session_close_opts(shared, &id, generation, keep_worktree.then_some("keep"), false, false).is_ok() {
+            crate::guard::closed_ok(&id, step.now);
+        }
+    }
+    if let Some(id) = step.resume {
+        // only a session the guard closed is queued; one the person took up meanwhile runs already and the host refuses
+        if crate::guard::closed_by(&id) == Some("guard") {
+            if let Some(found) = find(shared, &id) {
+                let generation = found.lock().unwrap().generation as i64;
+                let _ = crate::core::session_resume(shared, &id, generation);
+            }
+            crate::guard::clear(&id);
+        }
+    }
+}
+
