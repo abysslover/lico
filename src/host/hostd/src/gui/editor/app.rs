@@ -164,6 +164,9 @@ impl App {
         if !self.paste_allowed() {
             return;
         }
+        if self.browser_paste(&result) {
+            return;
+        }
         if self.ui.panel.is_none() {
             return self.box_paste(result);
         }

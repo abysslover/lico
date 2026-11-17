@@ -30,7 +30,7 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 | M17-P05 | `lico-proxy` (the fetch guard) and the second measurement (does the engine honour `--proxy`) | [Plan](../../../plans/202611/20261117/20261117_17_M17-P05_lico_proxy_and_second_measurement_plan.md) | [Measurement note](../../../reports/202611/20261117/20261117_18_M17-P05_second_measurement_note.md) | implemented; waits for the lead's fence profile |
 | M17-P06 | the host adapter `browser/`, CLI and HTTP parity, system tests | [Plan and result](../../../plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md) | done | adapter, `lico browser`, two system tests, real-engine probe measured; the localhost opt-in has no effect with this engine (question to the lead) |
 | M17-P07 | the tab kind in the window | [Plan and result](../../../plans/202611/20261117/20261117_20_M17-P07_window_tab_plan.md) | done | tab bar, `+B`/`+BL`, page painted, address row, states, help; real engine measured in the window; scale-2 peak 50.4 MiB |
-| M17-P08 | input | sketch (mail 147) | | after P07 |
+| M17-P08 | no timers; mouse, wheel, keys, text, paste | [Plan and result](../../../plans/202611/20261117/20261117_21_M17-P08_input_and_no_timers_plan.md) | done | wake-ups 60 a second to 0.8; command p95 0.22 ms (fake) and 7.5 ms (real, upper bound); Korean typed into a real page |
 | M17-P09 | verification and the release `0.5.0` | sketch (mail 147) | | after P08 |
 
 ## Cost

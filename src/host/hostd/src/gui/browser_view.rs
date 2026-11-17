@@ -5,6 +5,7 @@
 //! Nothing polls: the next watch is sent after the paint of the frame that the last one brought, so a frame newer than the painter can use is never sent; at most one `show` or
 //! `resize` is in flight and the newest size wins. A new tab is made on the person's own action only (the `+B` buttons, the Session menu): never from a page or a link.
 
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
@@ -26,6 +27,8 @@ pub(crate) enum BrowserJob {
     Done,
     List,
     Watch { tab: String },
+    /// The answer to one input of the person (the next one is sent after it).
+    Input,
 }
 
 type Inbox = Arc<Mutex<Option<(u64, Vec<u8>)>>>;
@@ -48,6 +51,8 @@ pub(crate) struct BTab {
     pub painted: u64,
     /// The address last put in the address row for this tab: the row follows the page only when the page's address CHANGED (a row the person cleared stays clear).
     pub put_url: String,
+    /// The page was not there (starting, absent, failed) at the last look: the focus goes to it when it comes up.
+    pub waiting: bool,
 }
 
 #[derive(Default)]
@@ -61,6 +66,11 @@ pub(crate) struct BrowserState {
     pub listed: bool,
     pub help: bool,
     pub last_pixel: u32,
+    /// The keys and the text go to the page (a click on the page, a new tab) or to the address row (a click on it, Ctrl+L, a prompt).
+    pub page_focus: bool,
+    /// The person's input waits here, in order: one request is in flight and a mouse move that is not yet sent is replaced by the newer one.
+    pub queue: VecDeque<Value>,
+    pub input_inflight: bool,
 }
 
 /// The caption of a browser tab in the tab bar.
@@ -145,6 +155,7 @@ impl App {
         self.ui.browser.active = None;
         self.browser_enter("browser:new");
         self.ui.browser.prompt = Some(local);
+        self.ui.browser.page_focus = false;
         self.ui.browser.help = true;
         self.ui.flash = None;
         self.browser_list();
@@ -166,6 +177,8 @@ impl App {
             }
         }
         self.ui.browser.help = false;
+        self.ui.browser.queue.clear();
+        self.ui.browser.page_focus = true;
         if let Some(t) = self.browser_tab(id) {
             t.rearm = true;
         }
@@ -216,7 +229,10 @@ impl App {
                 }
                 self.browser_call(request, 30, BrowserJob::Open { local });
             }
-            (None, Some(tab)) => self.browser_call(json!({"op": "browser.go", "tab": tab, "address": text}), 30, BrowserJob::Go { tab }),
+            (None, Some(tab)) => {
+                self.ui.browser.page_focus = true; // the page is where the person goes next
+                self.browser_call(json!({"op": "browser.go", "tab": tab, "address": text}), 30, BrowserJob::Go { tab })
+            }
             _ => {}
         }
         self.dirty = true;
@@ -250,7 +266,7 @@ impl App {
                     return;
                 }
                 let id = reply["tab"].as_str().unwrap_or("").to_string();
-                self.ui.browser.tabs.push(BTab { id: id.clone(), local, row: reply.clone(), seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: true, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new() });
+                self.ui.browser.tabs.push(BTab { id: id.clone(), local, row: reply.clone(), seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: true, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new(), waiting: false });
                 self.ui.browser.prompt = None;
                 self.browser_activate(&id);
             }
@@ -274,6 +290,10 @@ impl App {
                 self.dirty = true; // the reconcile after the next frame may send a newer size
             }
             BrowserJob::Done => {}
+            BrowserJob::Input => {
+                self.ui.browser.input_inflight = false;
+                self.browser_pump();
+            }
             BrowserJob::List => {
                 if !ok {
                     return;
@@ -283,7 +303,7 @@ impl App {
                     let id = row["tab"].as_str().unwrap_or("").to_string();
                     if !id.is_empty() && !known.contains(&id) {
                         let local = row["local"] == json!(true);
-                        self.ui.browser.tabs.push(BTab { id, local, row: row.clone(), seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: false, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new() });
+                        self.ui.browser.tabs.push(BTab { id, local, row: row.clone(), seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: false, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new(), waiting: false });
                     }
                 }
                 self.ui.browser.listed = true;
@@ -345,6 +365,19 @@ impl App {
         let area = ((rect[2].max(64)) as u32, (rect[3].max(64)) as u32);
         let socket = self.socket.clone();
         let proxy = self.ui.proxy.clone();
+        // a page that is not there (starting, absent, failed) has no focus: the keys go to the address row, where the next address is typed; when it comes up the page has them
+        let mut focus = self.ui.browser.page_focus;
+        if let Some(t) = active.as_ref().and_then(|id| self.ui.browser.tabs.iter_mut().find(|t| &t.id == id)) {
+            if matches!(t.row["phase"].as_str(), Some("ready" | "loading")) {
+                if std::mem::take(&mut t.waiting) {
+                    focus = true;
+                }
+            } else {
+                t.waiting = true;
+                focus = false;
+            }
+        }
+        self.ui.browser.page_focus = focus;
         let mut calls: Vec<(Value, BrowserJob)> = Vec::new();
         let mut watches: Vec<(String, u64, u64)> = Vec::new();
         for t in &mut self.ui.browser.tabs {
@@ -440,6 +473,13 @@ impl App {
         tab.help_lines()
     }
 
+    /// Places the page area (`x`, the header's bottom, the prompt's top) and paints the frame in it.
+    pub(crate) fn browser_paint(&mut self, buf: &mut [u32], width: usize, height: usize, place: (f32, f32, f32)) {
+        let r = page_rect(place.0, place.1, place.2, width);
+        self.ui.browser.rect = [r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32];
+        self.draw_browser_frame(buf, width, height);
+    }
+
     /// Paints the shown tab's frame 1:1 at the top left of `rect` (or the help, when there is no frame yet or F1 is pressed), decoding it first when a newer one came.
     pub(crate) fn draw_browser_frame(&mut self, buf: &mut [u32], width: usize, height: usize) {
         if !self.browser_active() {
@@ -476,41 +516,187 @@ impl App {
         self.ui.browser.last_pixel = first;
     }
 
-    /// The keys of the browser view that are Lico's own: they are never sent to the page.
+    /// The person's input for the page waits in a queue and goes one request at a time, in order; a mouse move that has not been sent yet is replaced by the newer one.
+    fn browser_push(&mut self, request: Value) {
+        let q = &mut self.ui.browser.queue;
+        if request["kind"] == json!("move") && q.back().is_some_and(|r| r["kind"] == json!("move")) {
+            q.pop_back();
+        }
+        if q.len() < 64 {
+            q.push_back(request);
+        }
+        self.browser_pump();
+    }
+
+    fn browser_pump(&mut self) {
+        if self.ui.browser.input_inflight || self.socket.is_empty() {
+            return;
+        }
+        if let Some(request) = self.ui.browser.queue.pop_front() {
+            self.ui.browser.input_inflight = true;
+            self.browser_call(request, 8, BrowserJob::Input);
+        }
+    }
+
+    /// Whether the person's keys and text go to the page now: the page has the focus and is the shown tab.
+    fn browser_to_page(&self) -> Option<String> {
+        if self.browser_active() && self.ui.browser.page_focus { self.ui.browser.active.clone() } else { None }
+    }
+
+    /// The pointer as a point of the page, when it is inside the page area.
+    fn browser_point(&self) -> Option<(i32, i32)> {
+        let [x0, y0, w, h] = self.ui.browser.rect;
+        let (x, y) = (self.ui.mouse.0 as i32, self.ui.mouse.1 as i32);
+        self.browser_active().then_some(()).and(self.ui.browser.active.as_ref())?;
+        (x >= x0 && y >= y0 && x < x0 + w && y < y0 + h).then_some((x - x0, y - y0))
+    }
+
+    /// The pointer moved (not a consumer: the window's own hover goes on).
+    pub(crate) fn browser_move(&mut self) {
+        if let (Some(tab), Some((x, y))) = (self.browser_active().then(|| self.ui.browser.active.clone()).flatten(), self.browser_point()) {
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "move", "x": x, "y": y}));
+        }
+    }
+
+    fn browser_button_event(&mut self, pressed: bool, button: &str) -> bool {
+        let (Some(tab), Some((x, y))) = (self.ui.browser.active.clone(), self.browser_point()) else {
+            if pressed && self.browser_active() && self.ed.contains(self.ui.mouse.0 as f32, self.ui.mouse.1 as f32) {
+                self.ui.browser.page_focus = false; // a click on the address row
+            }
+            return false;
+        };
+        if pressed {
+            self.ui.browser.page_focus = true;
+        }
+        self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": if pressed { "down" } else { "up" }, "x": x, "y": y, "button": button, "clicks": 1}));
+        true
+    }
+
+    pub(crate) fn browser_mouse_button(&mut self, pressed: bool) -> bool {
+        self.browser_button_event(pressed, "left")
+    }
+
+    pub(crate) fn browser_other_button(&mut self, state: winit::event::ElementState, button: winit::event::MouseButton) -> bool {
+        let name = match button {
+            winit::event::MouseButton::Right => "right",
+            winit::event::MouseButton::Middle => "middle",
+            _ => return false,
+        };
+        self.browser_button_event(state == winit::event::ElementState::Pressed, name)
+    }
+
+    pub(crate) fn browser_wheel(&mut self, delta: &winit::event::MouseScrollDelta) -> bool {
+        let (Some(tab), Some((x, y))) = (self.ui.browser.active.clone(), self.browser_point()) else { return false };
+        let dy = match delta {
+            winit::event::MouseScrollDelta::LineDelta(_, y) => -(*y as f64) * 100.0,
+            winit::event::MouseScrollDelta::PixelDelta(p) => -p.y,
+        };
+        if dy != 0.0 {
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "wheel", "x": x, "y": y, "delta": dy.clamp(-10_000.0, 10_000.0)}));
+        }
+        true
+    }
+
+    /// Text that the input method committed: for the page when the page has the focus (the composition itself is shown in the address row only).
+    pub(crate) fn browser_commit(&mut self, text: &str) -> bool {
+        let Some(tab) = self.browser_to_page() else { return false };
+        if !text.is_empty() {
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "text", "text": text}));
+        }
+        true
+    }
+
+    /// The text of the person's own Ctrl+V, for the page: as committed text, at most one insert long.
+    pub(crate) fn browser_paste(&mut self, result: &Result<String, &'static str>) -> bool {
+        let Some(tab) = self.browser_to_page() else { return false };
+        match result {
+            Ok(text) => {
+                let t: String = text.chars().filter(|c| !c.is_control()).take(lico_browser_view::MAX_INSERT).collect();
+                if !t.is_empty() {
+                    self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "text", "text": t}));
+                }
+            }
+            Err(_) => self.ui.flash = Some("Nothing to paste.".into()),
+        }
+        self.dirty = true;
+        true
+    }
+
+    /// The keys of the browser view. Lico's own never reach the page: anything with Ctrl, Alt or the logo key, the function keys, Escape, and the address row's keys; the plain keys
+    /// of the person go to the page when it has the focus (printable text as text, the editing and moving keys as key events).
     pub(crate) fn browser_hotkey(&mut self, event: &KeyEvent) -> bool {
         use winit::keyboard::{Key, NamedKey};
-        if !self.browser_active() || event.repeat || self.ui.browser.active.is_none() {
+        if !self.browser_active() || self.ui.browser.active.is_none() {
             return false;
         }
         let tab = self.ui.browser.active.clone().unwrap_or_default();
-        let alt = self.ui.mods.alt_key();
-        let nav = match &event.logical_key {
-            Key::Named(NamedKey::ArrowLeft) if alt => Some("back"),
-            Key::Named(NamedKey::ArrowRight) if alt => Some("forward"),
-            Key::Named(NamedKey::F5) => Some("reload"),
+        let (alt, ctrl) = (self.ui.mods.alt_key(), self.ui.mods.control_key());
+        if !event.repeat {
+            let nav = match &event.logical_key {
+                Key::Named(NamedKey::ArrowLeft) if alt => Some("back"),
+                Key::Named(NamedKey::ArrowRight) if alt => Some("forward"),
+                Key::Named(NamedKey::F5) => Some("reload"),
+                _ => None,
+            };
+            if let Some(action) = nav {
+                self.browser_call(json!({"op": "browser.nav", "tab": tab, "action": action}), 8, BrowserJob::Done);
+                return true;
+            }
+            if matches!(&event.logical_key, Key::Named(NamedKey::F1)) {
+                self.ui.browser.help = !self.ui.browser.help;
+                self.dirty = true;
+                return true;
+            }
+            if ctrl && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("w")) {
+                self.browser_close_ui(&tab);
+                return true;
+            }
+            if ctrl && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("l")) {
+                self.ui.browser.page_focus = false; // the address row takes the keys
+                self.dirty = true;
+                return true;
+            }
+        }
+        if !self.ui.browser.page_focus || ctrl || alt || self.ui.mods.super_key() || self.preedit_active() {
+            return false;
+        }
+        let named = match &event.logical_key {
+            Key::Named(NamedKey::Enter) => Some(("Enter", "Enter")),
+            Key::Named(NamedKey::Backspace) => Some(("Backspace", "Backspace")),
+            Key::Named(NamedKey::Delete) => Some(("Delete", "Delete")),
+            Key::Named(NamedKey::Tab) => Some(("Tab", "Tab")),
+            Key::Named(NamedKey::ArrowLeft) => Some(("ArrowLeft", "ArrowLeft")),
+            Key::Named(NamedKey::ArrowRight) => Some(("ArrowRight", "ArrowRight")),
+            Key::Named(NamedKey::ArrowUp) => Some(("ArrowUp", "ArrowUp")),
+            Key::Named(NamedKey::ArrowDown) => Some(("ArrowDown", "ArrowDown")),
+            Key::Named(NamedKey::Home) => Some(("Home", "Home")),
+            Key::Named(NamedKey::End) => Some(("End", "End")),
+            Key::Named(NamedKey::PageUp) => Some(("PageUp", "PageUp")),
+            Key::Named(NamedKey::PageDown) => Some(("PageDown", "PageDown")),
             _ => None,
         };
-        if let Some(action) = nav {
-            self.browser_call(json!({"op": "browser.nav", "tab": tab, "action": action}), 8, BrowserJob::Done);
+        if let Some((key, code)) = named {
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "key_down", "key": key, "code": code}));
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "key_up", "key": key, "code": code}));
             return true;
         }
-        if matches!(&event.logical_key, Key::Named(NamedKey::F1)) {
-            self.ui.browser.help = !self.ui.browser.help;
-            self.dirty = true;
-            return true;
-        }
-        if self.ui.mods.control_key() && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("w")) {
-            self.browser_close_ui(&tab);
+        if let Some(text) = event.text.as_ref().filter(|t| !t.is_empty() && !t.chars().any(char::is_control)) {
+            let text = text.to_string();
+            self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": "text", "text": text}));
             return true;
         }
         false
+    }
+
+    fn preedit_active(&self) -> bool {
+        !self.preedit.is_empty()
     }
 
     /// For the `ui` command on standard input: what a test reads.
     pub(crate) fn browser_json(&self) -> Value {
         let b = &self.ui.browser;
         json!({
-            "active": b.active, "prompt": b.prompt, "rect": b.rect, "shown": self.browser_active(), "help": b.help, "last_pixel": b.last_pixel, "listed": b.listed,
+            "active": b.active, "prompt": b.prompt, "page_focus": b.page_focus, "queued": b.queue.len(), "rect": b.rect, "shown": self.browser_active(), "help": b.help, "last_pixel": b.last_pixel, "listed": b.listed,
             "header": self.browser_header(),
             "help_lines": if b.help && self.browser_active() { self.browser_help_lines() } else { Vec::new() },
             "tabs": b.tabs.iter().map(|t| json!({
@@ -533,7 +719,7 @@ mod tests {
     use std::os::unix::net::UnixListener;
 
     fn tab(row: Value, local: bool) -> BTab {
-        BTab { id: "b1".into(), local, row, seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: false, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new() }
+        BTab { id: "b1".into(), local, row, seq: 0, frame_seq: 0, png: Vec::new(), image: None, decoded_seq: 0, watching: false, rearm: false, sent: None, inflight: false, inbox: Arc::default(), painted: 0, put_url: String::new(), waiting: false }
     }
 
     #[test]

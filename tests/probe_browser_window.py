@@ -25,13 +25,19 @@ from tests.test_codex_adapter import wait_for
 PAGE = "<html><head><meta charset='utf-8'><title>한글 시험 페이지</title></head><body style='font-size:28px'><h1>안녕하세요 Lico</h1><p>브라우저 탭의 한글 글꼴 시험입니다.</p><p>The page is a fixture of the test.</p></body></html>".encode()
 
 
+INPUT_PAGE = "<html><head><meta charset='utf-8'><title>input</title></head><body style='margin:0;font-size:24px'><input id='f' style='position:absolute;left:10px;top:10px;width:420px;height:44px;font-size:28px;font-family:NanumGothic,sans-serif'><script>document.getElementById('f').addEventListener('input',function(e){fetch('/v?x='+encodeURIComponent(e.target.value))});</script></body></html>".encode()
+SEEN: list[str] = []
+
+
 class Fixture(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        SEEN.append(self.path)
+        body = INPUT_PAGE if self.path.startswith("/input") else PAGE
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(PAGE)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(PAGE)
+        self.wfile.write(body)
 
     def log_message(self, *args):
         pass
@@ -102,3 +108,38 @@ def test_probe():
         measure(*args, out)
         note.write_text("\n".join(out) + "\n")
         print(out[-1])
+
+
+def test_typing_korean_into_a_real_page():
+    """The person clicks the page's input and composes Korean with the input method: the page receives the committed text (its own input events are seen by the fixture)."""
+    import urllib.parse
+
+    from lico_measure.ime import SENTENCE_KEYS, SENTENCE_TEXT
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Fixture)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    port = server.server_address[1]
+    SEEN.clear()
+    out = []
+    try:
+        with ProductWindow(host_binary=LICO, before_window=pinned_engine, ime=True) as w:
+            tab = open_tab(w, f"http://localhost:{port}/input", local=True)
+            end = time.time() + 25
+            while time.time() < end and not any(x["decoded"] for x in browser(w)["tabs"]):
+                time.sleep(0.2)
+            time.sleep(1.0)
+            x, y, _, _ = browser(w)["rect"]
+            w.click(x + 60, y + 30)                                  # the page's input
+            time.sleep(0.5)
+            w.key("shift+space")
+            time.sleep(0.3)
+            w.key("--delay", "60", *SENTENCE_KEYS)
+            time.sleep(2.0)
+            values = [urllib.parse.unquote(p.split("x=", 1)[1]) for p in SEEN if p.startswith("/v?x=")]
+            out.append(f"Korean typed into the page's input with the input method: the page's input events {len(values)}, the last value {values[-1] if values else None!r} (the sentence is {SENTENCE_TEXT!r})")
+            shot(w, "9_real_page_korean_typed.png")
+    finally:
+        server.shutdown()
+    Path(os.environ["LICO_PROBE_OUT"], "p08_window_typing.txt").write_text("\n".join(out) + "\n")
+    print(out[0])
+    assert values and values[-1].strip() == SENTENCE_TEXT.strip(), values[-3:]

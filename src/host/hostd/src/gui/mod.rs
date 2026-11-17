@@ -641,6 +641,10 @@ impl ApplicationHandler<Ev> for App {
                         self.stale_pending = false; // the old composition finishing (whatever its text), not new typing
                         emit_ime("ignored", &text);
                     }
+                    Ime::Commit(text) if self.browser_commit(&text) => {
+                        emit_ime("commit", &text); // for the page: the address row keeps its own text
+                        self.preedit.clear();
+                    }
                     Ime::Commit(text) => {
                         if self.ui.enabled && self.ui.search.open && self.ui.panel.is_none() {
                             self.preedit.clear();

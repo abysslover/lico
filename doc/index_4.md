@@ -135,7 +135,8 @@
 | [M17-P05 plan](plans/202611/20261117/20261117_17_M17-P05_lico_proxy_and_second_measurement_plan.md) | `lico-proxy` (the fetch guard) and the second measurement of the engine |
 | [M17-P05 measurement note](reports/202611/20261117/20261117_18_M17-P05_second_measurement_note.md) | The engine behind the fetch guard: it honours the proxy and sends credentials, does no lookup of its own, and the fence needs the guard port only |
 | [M17-P06 plan and result](plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md) | The host adapter `browser/`: supervisor, fence profile, engine hash, operations, tests, and the measured result with the real engine |
-| [M17-P07 plan](plans/202611/20261117/20261117_20_M17-P07_window_tab_plan.md) | The browser tab in the window: how frames reach it, the address row, states, help, the `+` entries, memory, tests |
+| [M17-P07 plan and result](plans/202611/20261117/20261117_20_M17-P07_window_tab_plan.md) | The browser tab in the window: how frames reach it, the address row, states, help, the `+` entries, memory, tests |
+| [M17-P08 plan and result](plans/202611/20261117/20261117_21_M17-P08_input_and_no_timers_plan.md) | No timers in the browser threads, and the person's input (mouse, wheel, keys, committed text, paste) |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |
 | [Component rules](product/202611/20261114/00001_component_rules/component_rules.md) | Versioned components, explicit dependencies and contracts, tests that stay inside their component, test receipts and per-component budgets; approved by the owner and in force from 2026-11-14 |

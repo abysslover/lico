@@ -357,6 +357,7 @@ impl App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
+                self.browser_move();
                 self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
@@ -406,22 +407,24 @@ impl App {
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarCallEntry(..) | Action::SidebarCallClose(..) | Action::SidebarCallStartPeer(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
+                            None if self.browser_mouse_button(true) => {}
                             None if self.ed_mouse_press(x, y) => {}
                             None => self.main_mouse_press(x, y),
                         }
                     }
                     self.dirty = true;
-                } else {
+                } else if !self.browser_mouse_button(false) {
                     self.main_mouse_release();
                 }
                 true
             }
-            WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
+            WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.browser_other_button(*state, *button) || self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
                     MouseScrollDelta::PixelDelta(p) => (p.y / (self.line_h() * self.ui.scale.max(1.0)) as f64) as isize,
                 };
+                if self.browser_wheel(delta) { return true; }
                 if !self.files_wheel(lines) && !self.sidebar_wheel(lines) { self.scroll_by(lines); }
                 true
             }
@@ -960,11 +963,7 @@ impl App {
         self.draw_path_bar(&mut buf, width, height, bar_y_f, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
         self.draw_global_quota_summary(&mut buf, width, height, hint_y, 4.0 * s + hint_w);
         if self.browser_active() {
-            let header_bottom = frame.lines.first().map_or(chat_top + lh, |l| l.bottom);
-            let prompt_top = frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(hint_y_f, |l| l.top);
-            let r = super::browser_view::page_rect(list_w as f32 + 4.0 * s, header_bottom, prompt_top, width);
-            self.ui.browser.rect = [r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32];
-            self.draw_browser_frame(&mut buf, width, height);
+            self.browser_paint(&mut buf, width, height, (list_w as f32 + 4.0 * s, frame.lines.first().map_or(chat_top + lh, |l| l.bottom), frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(hint_y_f, |l| l.top)));
         }
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);

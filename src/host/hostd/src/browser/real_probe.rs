@@ -14,32 +14,35 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const INPUT_PAGE: &str = "<html><head><meta charset='utf-8'><title>input</title></head><body style='margin:0'><input id='f' style='position:absolute;left:10px;top:10px;width:300px;height:40px;font-size:24px' autofocus><script>var n=0;document.getElementById('f').addEventListener('input',function(e){fetch('/v?x='+encodeURIComponent(e.target.value))});document.addEventListener('mousemove',function(e){fetch('/m?x='+e.clientX)});document.addEventListener('wheel',function(e){fetch('/w?d='+e.deltaY)});document.addEventListener('mousedown',function(e){fetch('/d?x='+e.clientX+'&y='+e.clientY)});</script></body></html>";
 const PAGE: &str = "<html><head><title>Lico probe page</title></head><body><h1>안녕하세요 Lico</h1><p>a page of the fixture</p></body></html>";
 // allocates far more than the data limit if it can
 const HOG: &str = "<html><head><title>before</title></head><body><script>var a=[];try{for(var i=0;i<400;i++){a.push(new Array(4000000).fill(i));}}catch(e){}document.title='allocated '+a.length;</script></body></html>";
 
-fn fixture() -> (u16, Arc<Mutex<Vec<String>>>) {
+fn fixture() -> (u16, Arc<Mutex<Vec<String>>>, Arc<Mutex<Vec<(u128, String)>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
     let seen = Arc::new(Mutex::new(Vec::new()));
-    let s2 = seen.clone();
+    let stamped: Arc<Mutex<Vec<(u128, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let (s2, t2) = (seen.clone(), stamped.clone());
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let seen = s2.clone();
+            let (seen, stamped) = (s2.clone(), t2.clone());
             std::thread::spawn(move || {
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
                 let mut buf = [0u8; 4096];
                 let n = stream.read(&mut buf).unwrap_or(0);
                 let head = String::from_utf8_lossy(&buf[..n]).to_string();
                 let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                stamped.lock().unwrap().push((std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0), path.clone()));
                 seen.lock().unwrap().push(path.clone());
-                let body = if path.starts_with("/hog") { HOG } else { PAGE };
+                let body = if path.starts_with("/hog") { HOG } else if path.starts_with("/input") { INPUT_PAGE } else { PAGE };
                 let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
             });
         }
     });
-    (port, seen)
+    (port, seen, stamped)
 }
 
 fn clock_ticks_of(pid: u32) -> u64 {
@@ -94,7 +97,7 @@ fn real_engine_probe() {
     let engine_dir = PathBuf::from(std::env::var("LICO_REAL_ENGINE_DIR").expect("LICO_REAL_ENGINE_DIR"));
     let out_dir = PathBuf::from(std::env::var("LICO_PROBE_OUT").expect("LICO_PROBE_OUT"));
     let mut out: Vec<String> = Vec::new();
-    let (port, seen) = fixture();
+    let (port, seen, stamped) = fixture();
     let rig = Rig::start_with("real", Some(&engine_dir));
     let host = rig.child.id();
     std::thread::sleep(Duration::from_millis(500));
@@ -156,6 +159,54 @@ fn real_engine_probe() {
     let again = rig.open(&format!("http://localhost:{port}/after"));
     let ok = rig.wait(30, "a page after the allocating one", || Some(rig.tab(&again)).filter(|t| t["has_frame"] == json!(true)));
     note(&mut out, format!("a page after it: phase {} frames {}", ok["phase"], ok["has_frame"]));
+
+    // input with the REAL engine, seen by the page itself: a click at the input, Korean text, an editing key, a wheel step, and how long a mouse move takes to show up as the page's own
+    // request at the fixture (the command's way into the engine, the page's handler and the guard: an UPPER bound of the time a command takes)
+    let input_open = rig.call(json!({"op": "browser.open", "url": format!("http://localhost:{port}/input"), "local": true}));
+    let it = input_open["tab"].as_str().unwrap_or("b1").to_string();
+    let end = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < end && !(rig.tab(&it)["has_frame"] == json!(true) && rig.tab(&it)["phase"] == json!("ready")) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    note(&mut out, format!("the input page tab after waiting: {} (open reply {})", rig.tab(&it), input_open));
+    std::thread::sleep(Duration::from_millis(500));
+    let ask = |v: Value| {
+        let mut v = v;
+        v["op"] = json!("browser.input");
+        v["tab"] = json!(it);
+        rig.call(v)
+    };
+    let v1 = ask(json!({"kind": "down", "x": 50, "y": 30, "button": "left", "clicks": 1}));
+    let v2 = ask(json!({"kind": "up", "x": 50, "y": 30, "button": "left", "clicks": 1}));
+    std::thread::sleep(Duration::from_millis(600));
+    note(&mut out, format!("a click: sent {} and {}; the page saw a mousedown at {:?}", v1["sent"], v2["sent"], stamped.lock().unwrap().iter().find(|e| e.1.starts_with("/d?")).map(|e| e.1.clone())));
+    let t = ask(json!({"kind": "text", "text": "안녕하세요"}));
+    std::thread::sleep(Duration::from_millis(800));
+    let values: Vec<String> = stamped.lock().unwrap().iter().filter(|e| e.1.starts_with("/v?x=")).map(|e| e.1.clone()).collect();
+    note(&mut out, format!("committed Korean text: sent {}; the page's input events after it: {} (the last: {:?})", t["sent"], values.len(), values.last()));
+    let _ = ask(json!({"kind": "key_down", "key": "Backspace", "code": "Backspace"}));
+    let _ = ask(json!({"kind": "key_up", "key": "Backspace", "code": "Backspace"}));
+    std::thread::sleep(Duration::from_millis(500));
+    let after: Vec<String> = stamped.lock().unwrap().iter().filter(|e| e.1.starts_with("/v?x=")).map(|e| e.1.clone()).collect();
+    note(&mut out, format!("a Backspace key: the page's input events {} -> {} (the last: {:?})", values.len(), after.len(), after.last()));
+    let _ = ask(json!({"kind": "wheel", "x": 100, "y": 100, "delta": 120.0}));
+    std::thread::sleep(Duration::from_millis(500));
+    note(&mut out, format!("a wheel step: the page saw {:?}", stamped.lock().unwrap().iter().find(|e| e.1.starts_with("/w?")).map(|e| e.1.clone())));
+    let mut lags: Vec<f64> = Vec::new();
+    for i in 0..50 {
+        let sent_ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let _ = ask(json!({"kind": "move", "x": 200 + i, "y": 100}));
+        std::thread::sleep(Duration::from_millis(60));
+        if let Some(e) = stamped.lock().unwrap().iter().find(|e| e.1 == format!("/m?x={}", 200 + i)) {
+            lags.push((e.0 as f64 - sent_ns as f64) / 1e6);
+        }
+    }
+    lags.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    if !lags.is_empty() {
+        note(&mut out, format!("a mouse move to the page's own request at the fixture, {} of 50 seen: p50 {:.1} ms, p95 {:.1} ms, worst {:.1} ms", lags.len(), lags[lags.len() / 2], lags[lags.len() * 95 / 100], lags[lags.len() - 1]));
+    } else {
+        note(&mut out, "no mouse move was seen by the page".to_string());
+    }
 
     // end: close everything, nothing is left
     for t in rig.tabs() {
