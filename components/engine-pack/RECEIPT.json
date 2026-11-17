@@ -1,0 +1,46 @@
+{
+  "component": "lico-engine-pack",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 0.6,
+    "peak_mib": 0.0,
+    "wall_s": 0.0
+  },
+  "date": "2026-11-17",
+  "hash": "8df1d665a6b2a1484b94015a74ab04eb25072bfce7db785780a94b2bd893b89b",
+  "inputs": {
+    "dependencies": [],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "b99fd51f4becf54351f4693d99af55712fde2f919f67d9112158425a18418261"
+      ],
+      [
+        "SPEC.md",
+        "c03e23562dc770f42cf8d9063ee0042d73045ea7e7f65b35877e25479f8f0cad"
+      ],
+      [
+        "src/lib.rs",
+        "4d3eda585f35a43e82ed5aa53829af732fffda13db06518e853542ccbdb675ef"
+      ],
+      [
+        "tests/contract.rs",
+        "bd3fb60370ad809024fcb2579acc948665f1c3347e95cd1b579693a74173a02c"
+      ]
+    ],
+    "lock": "",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 6,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 6
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}

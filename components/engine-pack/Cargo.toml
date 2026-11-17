@@ -1,0 +1,18 @@
+[package]
+name = "lico-engine-pack"
+version = "0.1.0"
+edition = "2021"
+description = "The pinned browser engine release as data and the pure decisions of installing it: the pins, the check of an archive's listing, the verdict on a hash, the failures with their words, and curl's exit codes."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.lico]
+purpose = "The pinned browser engine release (URL, SHA-256 of the archive and of its two files, size caps) and the pure decisions of installing it: whether an archive's listing holds exactly the two named regular files, whether a hash is the pinned one, what each failure says, whether it is a security notice, and what curl's exit codes mean."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }
