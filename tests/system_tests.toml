@@ -81,3 +81,10 @@ mib = 512
 seconds = 60
 measured_mib = "29.4"
 measured_seconds = "0.5"
+
+[[test]]
+name = "browser_engine_stealth_by_the_owners_setting"
+path = "browser::system_tests::browser_engine_is_stealthy_only_when_the_owner_says_so_and_never_for_this_machines_own_services"
+why = "needs the real host binary and a process that records its own arguments: the engine is started with `--stealth` only when the owner-only setting says so and never for the engine of this machine's own services, no user-agent is set over the engine's own then, and the tab and the list say so; a setting readable by others is refused as before"
+mib = 512
+seconds = 60

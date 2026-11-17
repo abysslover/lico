@@ -495,6 +495,9 @@ impl App {
         if t.row["unpinned"] == json!(true) {
             h = format!("{h} | running an engine that is not the pinned release");
         }
+        if t.row["stealth"] == json!(true) {
+            h = format!("{h} | stealth on (your setting): the page sees the engine's own identity");
+        }
         if t.local {
             h = format!("{h} | {}", lico_browser_view::LOCAL_NOTE);
         }

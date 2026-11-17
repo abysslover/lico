@@ -30,6 +30,8 @@ pub struct Params<'a> {
     /// The engine is the one for tabs the person opened for this machine's own services: it alone gets the engine's private-network variable (its own check would refuse the
     /// loopback addresses before they reach the guard; the guard, which then allows loopback ONLY, and the fence are the enforcement).
     pub local: bool,
+    /// The owner turned stealth on (`{"stealth": true}` in the setting file) and this is not the engine for this machine's own services: the engine gets `--stealth` (M17-P12).
+    pub stealth: bool,
 }
 
 pub fn existing_system_dirs() -> Vec<PathBuf> {
@@ -63,12 +65,16 @@ pub fn confinement(p: &Params<'_>, system_dirs: &[PathBuf]) -> Confinement {
     }
 }
 
-/// The engine's arguments: `serve --port N` and the font directory. The token and the proxy go by the environment, never by an argument (a command line is readable by others).
+/// The engine's arguments: `serve --port N`, the font directory and, when the owner chose it, `--stealth`. The token and the proxy go by the environment, never by an argument (a
+/// command line is readable by others). The engine for this machine's own services never gets `--stealth`.
 pub fn args(p: &Params<'_>) -> Vec<String> {
     let mut a = vec!["serve".to_string(), "--port".to_string(), p.cdp_port.to_string()];
     if let Some(f) = p.font_dir {
         a.push("--font-dir".into());
         a.push(f.to_string_lossy().into_owned());
+    }
+    if p.stealth && !p.local {
+        a.push("--stealth".into());
     }
     a
 }
@@ -78,7 +84,7 @@ mod tests {
     use super::*;
 
     fn params<'a>(font: Option<&'a Path>) -> Params<'a> {
-        Params { engine_dir: Path::new("/home/u/.local/share/lico/browser/v0.2.6"), font_dir: font, scratch: Path::new("/state/browser/scratch-1"), cdp_port: 41000, guard_port: 42000, cdp_token: "CDPTOKEN", proxy_url: "http://lico:GUARDTOKEN@127.0.0.1:42000", local: false }
+        Params { engine_dir: Path::new("/home/u/.local/share/lico/browser/v0.2.6"), font_dir: font, scratch: Path::new("/state/browser/scratch-1"), cdp_port: 41000, guard_port: 42000, cdp_token: "CDPTOKEN", proxy_url: "http://lico:GUARDTOKEN@127.0.0.1:42000", local: false, stealth: false }
     }
 
     fn system() -> Vec<PathBuf> {
@@ -120,6 +126,17 @@ mod tests {
         assert_eq!(c.read.len(), 2);
         assert_eq!(args(&params(None)), ["serve", "--port", "41000"]);
         assert_eq!(args(&params(Some(Path::new("/f")))), ["serve", "--port", "41000", "--font-dir", "/f"]);
+    }
+
+    #[test]
+    fn stealth_is_an_argument_only_when_the_owner_chose_it_and_never_for_the_local_engine() {
+        assert!(!args(&params(None)).iter().any(|a| a == "--stealth"), "off by default");
+        assert_eq!(args(&Params { stealth: true, ..params(None) }), ["serve", "--port", "41000", "--stealth"]);
+        assert_eq!(args(&Params { stealth: true, ..params(Some(Path::new("/f"))) }), ["serve", "--port", "41000", "--font-dir", "/f", "--stealth"]);
+        assert!(!args(&Params { stealth: true, local: true, ..params(None) }).iter().any(|a| a == "--stealth"), "the engine for this machine's own services is never stealthy");
+        // the fence is the same with it: stealth changes what the page sees, not what the engine may reach
+        let (a, b) = (confinement(&params(None), &system()), confinement(&Params { stealth: true, ..params(None) }, &system()));
+        assert_eq!((a.read_exec, a.read, a.read_write, a.connect_ports, a.bind_ports, a.env), (b.read_exec, b.read, b.read_write, b.connect_ports, b.bind_ports, b.env));
     }
 
     #[test]

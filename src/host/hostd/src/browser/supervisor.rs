@@ -51,6 +51,8 @@ pub struct Entry {
     pub target: Option<String>,
     pub session: Option<String>,
     pub local: bool,
+    /// The engine this tab runs in was started with `--stealth` (the owner's setting; set when the engine opens the tab's page).
+    pub stealth: bool,
     /// Grows with every change the person can see (a frame, a phase, a title, an address, a notice): what `browser.watch` waits on.
     pub change: u64,
     /// The number of the newest watch of this tab: a newer watch supersedes the older one, so that at most one waits.
@@ -59,7 +61,7 @@ pub struct Entry {
 
 impl Entry {
     pub fn new(id: String, tab: Tab, engine: usize, local: bool) -> Entry {
-        Entry { id, tab, engine, target: None, session: None, local, change: 1, watch_gen: 0 }
+        Entry { id, tab, engine, target: None, session: None, local, stealth: false, change: 1, watch_gen: 0 }
     }
 }
 
@@ -101,6 +103,8 @@ pub struct Engine {
     join: Option<JoinHandle<()>>,
     pub dead: Arc<AtomicBool>,
     pub unpinned: bool,
+    /// Started with `--stealth` (the owner's setting; never the engine for this machine's own services).
+    pub stealth: bool,
     /// What the engine says its product is (`Browser.getVersion`), cleaned: information for the person, never used to decide anything.
     pub reported: Arc<Mutex<String>>,
     /// What the fetch guard has served: connections accepted and refused (counts only).
@@ -153,6 +157,8 @@ pub struct Setup {
     pub epoch: Instant,
     pub index: usize,
     pub local: bool,
+    /// The owner's `{"stealth": true}` and not the engine for this machine's own services: the engine is started with `--stealth` and the page keeps the identity the engine gives it.
+    pub stealth: bool,
     pub located: Located,
     pub font_dir: Option<PathBuf>,
     pub state_dir: PathBuf,
@@ -185,15 +191,18 @@ fn scratch_dir(state_dir: &Path) -> std::io::Result<PathBuf> {
     let mut b = std::fs::DirBuilder::new();
     b.recursive(true).mode(0o700);
     b.create(&parent)?;
-    // what an earlier host that was killed left behind: no engine of ours runs when the first one starts
+    // what an earlier host that was killed left behind: the folders of OTHER processes (the name holds the host's process number). The folder of an engine of this host that still
+    // runs is not touched: the engine for this machine's own services starts while the ordinary one runs.
+    let mine = format!("scratch-{}-", std::process::id());
     if let Ok(read) = std::fs::read_dir(&parent) {
         for e in read.filter_map(|e| e.ok()) {
-            if e.file_name().to_string_lossy().starts_with("scratch-") {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("scratch-") && !name.starts_with(&mine) {
                 let _ = std::fs::remove_dir_all(e.path());
             }
         }
     }
-    let dir = parent.join(format!("scratch-{}", crate::core::random_hex(6)));
+    let dir = parent.join(format!("{mine}{}", crate::core::random_hex(6)));
     let mut b = std::fs::DirBuilder::new();
     b.mode(0o700);
     b.create(&dir)?;
@@ -231,6 +240,7 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
     let reported = Arc::new(Mutex::new(String::new()));
     let guard_counts = Arc::new(Mutex::new((0u64, 0u64)));
     let unpinned = setup.located.unpinned;
+    let stealth = setup.stealth && !setup.local;
     let (d2, r2, g2) = (dead.clone(), reported.clone(), guard_counts.clone());
     let tx2 = tx.clone();
     let join = thread::Builder::new()
@@ -241,7 +251,7 @@ pub fn start(setup: Setup) -> Result<Engine, StartError> {
         })
         .map_err(|_| StartError("engine_failed"))?;
     match ready_rx.recv_timeout(READY_WAIT) {
-        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, reported, guard: guard_counts }),
+        Ok(Ok(())) => Ok(Engine { tx, join: Some(join), dead, unpinned, stealth, reported, guard: guard_counts }),
         Ok(Err(why)) => {
             let _ = join.join();
             Err(StartError(why))
@@ -277,7 +287,12 @@ fn run(setup: Setup, rx: Receiver<Cmd>, tx: Sender<Cmd>, ready: Sender<Result<()
             return;
         }
     };
-    log(if setup.located.unpinned { "engine started (not the pinned release)" } else { "engine started" });
+    log(match (setup.located.unpinned, setup.stealth && !setup.local) {
+        (true, true) => "engine started (not the pinned release, stealth)",
+        (true, false) => "engine started (not the pinned release)",
+        (false, true) => "engine started (stealth)",
+        (false, false) => "engine started",
+    });
     // the reader: it blocks in the socket and hands each message to the command thread; it makes no call
     let rtx = tx.clone();
     let reading = thread::Builder::new().name("lico-browser-reader".into()).spawn(move || {
@@ -351,7 +366,7 @@ fn bring_up(setup: &Setup, gtx: Sender<Cmd>) -> Result<(Running, Reader), &'stat
         let Ok(cdp_port) = free_port() else { break };
         super::reserved::add(cdp_port);
         mine.push(cdp_port);
-        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, cdp_token: &cdp_token, proxy_url: &proxy_url, local: setup.local };
+        let params = Params { engine_dir: &setup.located.dir, font_dir: setup.font_dir.as_deref(), scratch: &scratch, cdp_port, guard_port, cdp_token: &cdp_token, proxy_url: &proxy_url, local: setup.local, stealth: setup.stealth };
         let conf = profile::confinement(&params, &system);
         let mut cmd = match lico_sandbox::confine_fd(&setup.located.file, &conf) {
             Ok(c) => c,
@@ -475,12 +490,19 @@ fn open_tab(setup: &Setup, caller: &Caller, id: &str) {
         });
         return;
     };
+    let stealth = setup.stealth && !setup.local;
     with_entry(setup, id, |e| {
         e.target = Some(target);
         e.session = Some(session.clone());
+        e.stealth = stealth;
     });
-    let ua = map::user_agent(&setup.lico_version, &setup.release);
-    for (method, params) in [("Page.enable", json!({})), ("Runtime.enable", json!({})), ("Emulation.setUserAgentOverride", json!({"userAgent": ua}))] {
+    // the page is told the honest user-agent; with the owner's stealth the engine's own consistent identity stays (an honest name beside a stealthy fingerprint would be the one
+    // thing that is inconsistent)
+    let mut calls = vec![("Page.enable", json!({})), ("Runtime.enable", json!({}))];
+    if !stealth {
+        calls.push(("Emulation.setUserAgentOverride", json!({"userAgent": map::user_agent(&setup.lico_version, &setup.release)})));
+    }
+    for (method, params) in calls {
         let _ = caller.call(method, params, Some(&session), CALL);
     }
     deliver(setup, caller, id, EngineEvent::Started);

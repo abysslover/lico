@@ -175,6 +175,12 @@ impl Rig {
             .collect()
     }
 
+    /// The files `name` that the fake engines wrote in their scratch folders, one string for each engine that wrote one.
+    fn engine_files(&self, name: &str) -> Vec<String> {
+        let Ok(dirs) = std::fs::read_dir(self.dir.join("state/browser")) else { return Vec::new() };
+        dirs.filter_map(|d| d.ok()).filter_map(|d| std::fs::read_to_string(d.path().join(name)).ok()).collect()
+    }
+
     pub(super) fn scratch_dirs(&self) -> usize {
         std::fs::read_dir(self.dir.join("state/browser")).map(|r| r.filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("scratch-")).count()).unwrap_or(0)
     }
@@ -565,6 +571,52 @@ fn browser_engine_installs_itself_when_a_tab_is_opened_and_runs() {
     assert_eq!(server.hits.load(Ordering::SeqCst), 1, "the second open made no request");
     assert_eq!(rig.engines().len(), 1);
     let _ = std::fs::remove_dir_all(&work);
+}
+
+#[test]
+#[ignore = "a system test of tests/system_tests.toml: run by `cargo xtask system` with LICO_BIN and LICO_FAKE_ENGINE set"]
+fn browser_engine_is_stealthy_only_when_the_owner_says_so_and_never_for_this_machines_own_services() {
+    let _ = IGNORED;
+    // off by default: no `--stealth`, and the page is told the honest user-agent
+    let rig = Rig::start("stealth_off");
+    let id = rig.open("https://pages.test/start");
+    let t = rig.wait(15, "the page of the default engine", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
+    assert_eq!(t["stealth"], json!(false), "{t}");
+    let argv = rig.engine_files("argv.log");
+    assert!(argv.len() == 1 && argv[0].starts_with("serve --port ") && !argv[0].contains("--stealth"), "{argv:?}");
+    let ua = rig.engine_files("ua.log");
+    assert!(ua.len() == 1 && ua[0].contains("Lico/") && ua[0].contains("Obscura/"), "the honest user-agent is sent: {ua:?}");
+    assert_eq!(rig.call(json!({"op": "browser.list"}))["engines"][0]["stealth"], json!(false));
+    drop(rig);
+    // the owner's `{"stealth": true}`: the engine gets `--stealth`, no user-agent is set over the engine's own, the tab and the list say so; the engine for this machine's own services
+    // does not get it
+    let rig = Rig::start("stealth_on");
+    let setting = rig.dir.join("state/browser.json");
+    std::fs::write(&setting, json!({"engine_dir": rig.dir.join("engine").to_str().unwrap(), "stealth": true}).to_string()).unwrap();
+    std::fs::set_permissions(&setting, std::fs::Permissions::from_mode(0o600)).unwrap();
+    let id = rig.open("https://pages.test/start");
+    let t = rig.wait(15, "the page of the stealth engine", || Some(rig.tab(&id)).filter(|t| t["phase"] == json!("ready")));
+    assert_eq!(t["stealth"], json!(true), "{t}");
+    let argv = rig.engine_files("argv.log");
+    assert!(argv.len() == 1 && argv[0].contains("--stealth"), "{argv:?}");
+    assert!(rig.engine_files("ua.log").is_empty(), "with stealth the engine's own identity stays: no user-agent override");
+    let reply = rig.call(json!({"op": "browser.open", "url": "http://127.0.0.1:9/", "local": true}));
+    assert_eq!(reply["ok"], json!(1), "{reply}");
+    let local = reply["tab"].as_str().unwrap().to_string();
+    let t = rig.wait(15, "the page of the local engine", || Some(rig.tab(&local)).filter(|t| t["phase"] == json!("ready") || t["notice"].is_string()));
+    assert_eq!(t["stealth"], json!(false), "the tab for this machine's own services is never stealthy: {t}");
+    let argv = rig.engine_files("argv.log");
+    assert!(argv.len() == 2 && argv.iter().filter(|a| a.contains("--stealth")).count() == 1, "only the ordinary engine got it: {argv:?}");
+    let list = rig.call(json!({"op": "browser.list"}));
+    assert_eq!((list["engines"][0]["stealth"].clone(), list["engines"][1]["stealth"].clone()), (json!(true), json!(false)), "{list}");
+    // a setting file that anyone else can read says nothing: stealth stays off
+    drop(rig);
+    let rig = Rig::start("stealth_ignored");
+    let setting = rig.dir.join("state/browser.json");
+    std::fs::write(&setting, json!({"engine_dir": rig.dir.join("engine").to_str().unwrap(), "stealth": true}).to_string()).unwrap();
+    std::fs::set_permissions(&setting, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let reply = rig.call(json!({"op": "browser.open", "url": "https://pages.test/start"}));
+    assert_eq!(reply["error"], json!("engine_setting"), "a readable setting is refused as a whole, as before: {reply}");
 }
 
 fn pinned_dir(rig: &Rig) -> PathBuf {

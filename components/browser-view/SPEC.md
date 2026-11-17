@@ -47,7 +47,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.7.1` adds two help sentences (M17-P12); `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
@@ -85,3 +85,7 @@ Why: the engine draws no caret and no focus ring, so a page with the keys looked
 - `help_lines()` also says that the engine draws no cursor (the header says where typing goes, a ring marks the last click), that contenteditable boxes take no typing while `<input>` and `<textarea>` do, and that some sites, Google search among them, refuse this engine and show their own block page.
 
 The mark and the crosshair pointer over the page are the window's own drawing and cost nothing in the engine; Lico passes nothing to the engine for them. While the page has the keys the composition of the input method is shown in the header ("composing: ..."), not in the address row. Added in M17-P11 (the lead, under the owner's delegation).
+
+## The help of the owner's stealth setting (0.7.1, M17-P12)
+
+`help_lines()` also says that a search that works in this engine is `https://html.duckduckgo.com/html/?q=WORDS` (MEASURED in M17-P12) and that stealth is the owner's setting, off by default. The component knows nothing else of stealth: the setting, the engine argument and the header text belong to the host adapter (BROW-05).

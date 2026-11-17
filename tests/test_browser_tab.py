@@ -23,15 +23,16 @@ def shot(w: ProductWindow, name: str) -> None:
         w.png(SCREENS / name)
 
 
-def fake_engine(w: ProductWindow) -> None:
-    """The fake engine in a folder of the private home, named by the owner-only setting of the state folder (the host's state folder is `state/lico`)."""
+def fake_engine(w: ProductWindow, stealth: bool = False) -> None:
+    """The fake engine in a folder of the private home, named by the owner-only setting of the state folder (the host's state folder is `state/lico`); `stealth` adds the owner's
+    `{"stealth": true}` to the same setting."""
     home, state = Path(w.directory) / "home", Path(w.directory) / "state" / "lico"
     engine = home / "engine"
     engine.mkdir(mode=0o700, parents=True, exist_ok=True)
     shutil.copy(HOSTD_DIR / "lico-fake-engine", engine / "obscura")
     (engine / "obscura").chmod(0o700)
     setting = state / "browser.json"
-    setting.write_text(json.dumps({"engine_dir": str(engine)}))
+    setting.write_text(json.dumps({"engine_dir": str(engine), **({"stealth": True} if stealth else {})}))
     setting.chmod(0o600)
 
 
@@ -144,6 +145,21 @@ def test_a_local_tab_says_so_and_refusals_say_why():
         assert "this tab can reach services" not in b["header"], "an ordinary tab does not carry the local sentence"
         shot(w, "4_port_refusal.png")
         assert len(conn.call(op="browser.list")["tabs"]) == 2
+
+
+def test_a_tab_says_when_the_owner_s_stealth_setting_is_on_and_not_otherwise():
+    with ProductWindow(host_binary=LICO, before_window=lambda w: fake_engine(w, stealth=True)) as w:
+        tab = open_tab(w, "https://pages.test/start")
+        painted(w, tab)
+        b = wait_for(lambda: (b := browser(w)) and "stealth on" in (b["header"] or "") and b)
+        assert "the page sees the engine's own identity" in b["header"] and "stealth" not in b["header"].replace("stealth on (your setting): the page sees the engine's own identity", ""), b["header"]
+        row = next(t for t in Conn(w.socket).call(op="browser.list")["tabs"] if t["tab"] == tab)
+        assert row["stealth"] is True, row
+        shot(w, "14_stealth_on_in_the_header.png")
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        tab = open_tab(w, "https://pages.test/start")
+        painted(w, tab)
+        assert "stealth" not in (browser(w)["header"] or ""), "by default the header says nothing of it"
 
 
 def no_auto_install(w: ProductWindow) -> None:

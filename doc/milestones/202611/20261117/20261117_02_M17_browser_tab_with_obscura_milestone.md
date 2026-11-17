@@ -44,3 +44,5 @@ The M17 cost table is in the P09 report (section 8): about `54` USD counted agai
 
 
 Estimate for P01: 5 to 9 USD (reading, one measurement, the report). The front-end limit is 235; the counter since mail 137 stood at about 33.9 USD when this note was written.
+
+Update 2026-11-17 (M17-P12): the Phase 0 sentence "Lico uses and exposes no anti-detect feature" was not the owner's; the owner corrected it in the chat: Lico may use the engine's stealth mode, and may not. It is the owner's option, off by default (`{"stealth": true}` in the owner-only `browser.json`); see BROW-05 and the [M17-P12 report](../../../reports/202611/20261117/20261117_30_M17-P12_stealth_as_the_owners_option_and_0_6_2_report.md).

@@ -170,7 +170,8 @@ impl Browser {
                     let font = fonts::find_on_this_machine();
                     prepared.font_missing = font.is_none();
                     let release = if located.unpinned { "unpinned".to_string() } else { RELEASE.trim_start_matches('v').to_string() };
-                    let setup = Setup { epoch: self.epoch, index, local, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
+                    let stealth = !local && engine::stealth_on(&state_dir);
+                    let setup = Setup { epoch: self.epoch, index, local, stealth, located, font_dir: font, state_dir, hub: self.hub.clone(), lico_version: env!("CARGO_PKG_VERSION").to_string(), release };
                     match supervisor::start(setup) {
                         Ok(e) => engines[index] = Some(e),
                         Err(e) => return Err(e.0),
@@ -325,7 +326,7 @@ impl Browser {
         let mut row = obj(json!({
             "tab": entry.id, "url": entry.tab.url(), "title": entry.tab.title(), "loading": entry.tab.loading(), "local": entry.local,
             "viewport": [w, h], "viewport_capped": entry.tab.viewport_capped(), "has_frame": entry.tab.kept_bytes() > 0, "dropped_frames": entry.tab.dropped_frames(),
-            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "frame_seq": entry.tab.frame_seq(), "shown": entry.tab.shown(),
+            "no_font": entry.tab.no_font(), "unpinned": entry.tab.unpinned(), "stealth": entry.stealth, "frame_seq": entry.tab.frame_seq(), "shown": entry.tab.shown(),
         }));
         match entry.tab.phase() {
             Phase::Starting => row.insert("phase".into(), json!("starting")),
@@ -360,7 +361,7 @@ impl Browser {
         let status: Vec<Value> = engines
             .iter()
             .enumerate()
-            .map(|(i, e)| json!({"local": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
+            .map(|(i, e)| json!({"local": i == 1, "running": e.as_ref().is_some_and(|e| !e.finished()), "unpinned": e.as_ref().is_some_and(|e| e.unpinned), "stealth": e.as_ref().is_some_and(|e| e.stealth), "guard_accepted": e.as_ref().map(|e| e.guard.lock().unwrap().0).unwrap_or(0), "guard_refused": e.as_ref().map(|e| e.guard.lock().unwrap().1).unwrap_or(0), "reported": e.as_ref().map(|e| e.reported.lock().unwrap().clone()).unwrap_or_default()}))
             .collect();
         Ok(obj(json!({"tabs": tabs, "engines": status, "max_tabs": MAX_TABS})))
     }

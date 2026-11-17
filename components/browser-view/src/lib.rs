@@ -458,6 +458,7 @@ impl Tab {
             "The engine draws no cursor: the header says where typing goes, and a ring marks your last click.",
             "Text boxes made with contenteditable take no typing; <input> and <textarea> do.",
             "Some sites, Google search among them, refuse this engine and show their own block page.",
+            "A search that works here: https://html.duckduckgo.com/html/?q=WORDS (stealth is your setting, off by default).",
             "The first tab installs the browser engine by itself (about 72 MB, checked by SHA-256): you are not asked.",
             "If the install fails the header says why and how to install it by hand.",
             "To look at a real site yourself: lico browser open https://SITE",

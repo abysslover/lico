@@ -166,8 +166,8 @@ pub fn read_setting(state_dir: &Path) -> Result<Option<PathBuf>, Problem> {
     std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text).map_err(|_| Problem::Setting("the engine setting cannot be read"))?;
     let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| Problem::Setting("the engine setting is not JSON"))?;
     let Some(dir) = value.get("engine_dir").and_then(|v| v.as_str()) else {
-        // a setting that only says `auto_install` names no engine
-        return if value.get("auto_install").is_some() { Ok(None) } else { Err(Problem::Setting("the engine setting has no engine_dir")) };
+        // a setting that only says `auto_install` or `stealth` names no engine
+        return if value.get("auto_install").is_some() || value.get("stealth").is_some() { Ok(None) } else { Err(Problem::Setting("the engine setting has no engine_dir")) };
     };
     let dir = PathBuf::from(dir);
     if !dir.is_absolute() || dir.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir)) {
@@ -176,16 +176,28 @@ pub fn read_setting(state_dir: &Path) -> Result<Option<PathBuf>, Problem> {
     Ok(Some(dir))
 }
 
-/// Whether the owner turned the self-install off (`{"auto_install": false}` in the owner-only setting file; nothing else turns it on or off, and a missing or unreadable file leaves it on).
-pub fn auto_install_off(state_dir: &Path) -> bool {
-    let Ok(file) = OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_CLOEXEC).open(state_dir.join(SETTING_FILE)) else { return false };
-    let Ok(m) = file.metadata() else { return false };
+/// One flag of the owner's setting file: `Some(b)` when the file is a plain owner-only file of this user, is JSON and holds `name` as a boolean; `None` otherwise (a missing, damaged
+/// or group- or world-readable file says nothing).
+fn setting_flag(state_dir: &Path, name: &str) -> Option<bool> {
+    let file = OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_CLOEXEC).open(state_dir.join(SETTING_FILE)).ok()?;
+    let m = file.metadata().ok()?;
     if !m.is_file() || !mine(&m) || m.permissions().mode() & 0o077 != 0 {
-        return false;
+        return None;
     }
     let mut text = String::new();
     let _ = std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text);
-    serde_json::from_str::<serde_json::Value>(&text).ok().is_some_and(|v| v.get("auto_install") == Some(&serde_json::Value::Bool(false)))
+    serde_json::from_str::<serde_json::Value>(&text).ok()?.get(name)?.as_bool()
+}
+
+/// Whether the owner turned the self-install off (`{"auto_install": false}` in the owner-only setting file; nothing else turns it on or off, and a missing or unreadable file leaves it on).
+pub fn auto_install_off(state_dir: &Path) -> bool {
+    setting_flag(state_dir, "auto_install") == Some(false)
+}
+
+/// Whether the owner turned the engine's stealth mode on (`{"stealth": true}` in the owner-only setting file; the default is off, and a missing, damaged or group- or world-readable
+/// file leaves it off). The owner's own choice (the chat, 2026-11-17): Lico may use it, and does not unless this says so.
+pub fn stealth_on(state_dir: &Path) -> bool {
+    setting_flag(state_dir, "stealth") == Some(true)
 }
 
 /// Finds the engine to run: the owner's setting if there is one (unpinned), else the pinned release.
@@ -335,6 +347,32 @@ mod tests {
         std::fs::rename(dir.parent().unwrap(), &moved).unwrap();
         symlink(&moved, dir.parent().unwrap()).unwrap();
         assert!(matches!(open_pinned(&h, &dir, &pins), Err(Problem::Unsafe(_))), "a link in place of a directory on the way");
+    }
+
+    #[test]
+    fn stealth_is_off_unless_the_owner_only_setting_says_true() {
+        let h = home("stealth");
+        let state = h.join("state");
+        std::fs::create_dir_all(&state).unwrap();
+        assert!(!stealth_on(&state), "no file: off");
+        for (content, mode, on, why) in [
+            ("{\"stealth\": true}", 0o600, true, "owner-only and true"),
+            ("{\"stealth\": true, \"auto_install\": false}", 0o600, true, "with another flag"),
+            ("{\"stealth\": false}", 0o600, false, "false"),
+            ("{\"stealth\": \"yes\"}", 0o600, false, "not a boolean"),
+            ("{}", 0o600, false, "not there"),
+            ("not json", 0o600, false, "not JSON"),
+            ("{\"stealth\": true}", 0o640, false, "group-readable: ignored"),
+            ("{\"stealth\": true}", 0o644, false, "world-readable: ignored"),
+        ] {
+            put(&state, SETTING_FILE, content.as_bytes(), mode);
+            assert_eq!(stealth_on(&state), on, "{why}");
+        }
+        put(&state, SETTING_FILE, b"{\"stealth\": true}", 0o600);
+        assert_eq!(read_setting(&state).unwrap(), None, "a setting that only says stealth names no engine");
+        assert!(!auto_install_off(&state), "stealth does not touch the self-install");
+        put(&state, SETTING_FILE, b"{\"auto_install\": false}", 0o600);
+        assert!(!stealth_on(&state) && auto_install_off(&state), "and the self-install does not touch stealth");
     }
 
     #[test]

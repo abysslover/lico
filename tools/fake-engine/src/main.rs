@@ -69,10 +69,21 @@ fn main() {
     let (c1, c2, c3, c4) = (counter.clone(), counter.clone(), counter.clone(), counter.clone());
     let targets = AtomicU64::new(1);
     let home = std::env::var("HOME").ok();
+    // what the host started it with, for the tests of the owner's settings (stealth): one line of arguments in its scratch folder
+    if let Some(h) = &home {
+        let _ = std::fs::write(format!("{h}/argv.log"), format!("{}\n", args.join(" ")));
+    }
     let script = Script::new()
         .token(&token)
         .observe(move |call: &Call| {
             // what the person did reaches the engine: one line each, with the time it arrived (nanoseconds since the epoch), for the tests that measure how long it took
+            if call.method == "Emulation.setUserAgentOverride" {
+                if let Some(h) = &home {
+                    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(format!("{h}/ua.log")) {
+                        let _ = writeln!(f, "{}", call.params);
+                    }
+                }
+            }
             if call.method.starts_with("Input.") {
                 if let Some(h) = &home {
                     let ns = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
