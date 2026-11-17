@@ -1,0 +1,18 @@
+[package]
+name = "lico-memguard"
+version = "0.1.0"
+edition = "2021"
+description = "The memory guard's pure decisions: levels, episodes, who closed a session, the resume queue with a gap, the loop guard, the idle test and the warning text."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.lico]
+purpose = "The memory guard's decisions with no clock, no /proc and no display: the orange and red levels of a session (the largest single process of its tree), the machine level against available memory, a question or a warning once for each red episode, who closed a session, the one-at-a-time resume queue with a gap, the loop guard of the auto-close, the idle test and the fixed text of the warning to the main agent."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }

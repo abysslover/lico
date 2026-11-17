@@ -2,7 +2,8 @@
 # Profiles are read from here only: they are the ones the program has always been built with.
 [workspace]
 resolver = "2"
-members = ["components/convo", "components/ws", "components/proxy", "components/engine-pack", "components/browser-view", "components/frame", "components/sandbox", "components/cdp", "components/cdp-fake", "components/llm-fake", "components/llm-http", "components/llm-wire", "components/toolloop", "components/png", "src/host/hostd", "tools/xtask", "tools/fake-engine"]
+members = ["components/convo", "components/ws", "components/proxy", "components/engine-pack",
+    "components/memguard", "components/browser-view", "components/frame", "components/sandbox", "components/cdp", "components/cdp-fake", "components/llm-fake", "components/llm-http", "components/llm-wire", "components/toolloop", "components/png", "src/host/hostd", "tools/xtask", "tools/fake-engine"]
 
 [profile.release]
 opt-level = 2
