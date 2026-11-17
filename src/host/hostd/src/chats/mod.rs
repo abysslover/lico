@@ -4,6 +4,7 @@
 
 mod latest;
 mod live;
+mod newest;
 mod others;
 mod seed;
 mod turns;
@@ -366,10 +367,19 @@ pub(super) fn unbound_codex_home() -> Option<PathBuf> {
     p.is_absolute().then_some(p)
 }
 
+/// Which chats a request asks for: those of one folder, those of the host's workspace root (Anon), or every one of them (`all`, `M22-P01`).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(super) enum Scope {
+    Folder,
+    Global,
+    All,
+}
+
 /// Everything `session.chats` found for a request, sorted newest first and not yet cut to a page.
 pub(super) struct Collected {
     pub(super) items: Vec<ChatItem>,
-    pub(super) is_global: bool,
+    pub(super) scope: Scope,
+    pub(super) truncated: bool, // `all` only: older records of a home were left unread (`newest.rs`)
     pub(super) canon_cwd: Option<String>,
     pub(super) ssh_host: Option<String>,
     pub(super) offset: usize,
@@ -381,11 +391,12 @@ pub(super) struct Collected {
 pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<Collected, &'static str> {
     let cwd_raw = request.get("cwd").and_then(Value::as_str).filter(|s| !s.is_empty());
     let global_flag = request.get("global").and_then(Value::as_bool).unwrap_or(false);
-    if cwd_raw.is_some() && global_flag {
-        return Err("bad_request");
-    }
-    let is_global = cwd_raw.is_none();
+    let all_flag = request.get("all").and_then(Value::as_bool).unwrap_or(false);
     let ssh_host_opt = request.get("ssh_host").and_then(Value::as_str).filter(|s| !s.is_empty());
+    if (cwd_raw.is_some() && global_flag) || (all_flag && (cwd_raw.is_some() || global_flag || ssh_host_opt.is_some())) {
+        return Err("bad_request"); // one scope at a time; `all` is this machine's (a remote home is listed per host)
+    }
+    let scope = if all_flag { Scope::All } else if cwd_raw.is_some() { Scope::Folder } else { Scope::Global };
     let account_filter = request.get("account").and_then(Value::as_str).filter(|s| !s.is_empty());
     let query_norm = request
         .get("query")
@@ -482,6 +493,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
 
     let mut merged: HashMap<(String, String, String), ChatItem> = HashMap::new();
     let canon_cwd: Option<String>;
+    let mut truncated = false;
 
     if let Some(host) = ssh_host_opt {
         let remote_accts: Vec<(String, String, String)> = all_accounts
@@ -502,12 +514,36 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
         };
         let ws_root = std::fs::canonicalize(&shared.cfg.workspace_root).unwrap_or_else(|_| shared.cfg.workspace_root.clone());
         let ws_prefix = norm_path(&ws_root.to_string_lossy()).to_string();
-        let match_cwd = |c: &str| -> bool {
+        let in_workspace = |c: &str| -> bool {
             let nc = norm_path(c);
+            nc == ws_prefix || nc.starts_with(&format!("{ws_prefix}/"))
+        };
+        // where a record belongs: its folder, or Anon (no folder) when it was made in the workspace root; a folder scope has its folder, the Anon scope none
+        let place = |rec_cwd: String| -> (Option<String>, bool) {
+            match scope {
+                Scope::Global => (None, true),
+                Scope::Folder => (Some(rec_cwd), false),
+                Scope::All if in_workspace(&rec_cwd) => (None, true),
+                Scope::All => (Some(rec_cwd), false),
+            }
+        };
+        let match_cwd = |c: &str| -> bool {
             if let Some(ref target) = canon_cwd {
-                nc == target
+                norm_path(c) == target
             } else {
-                nc == ws_prefix || nc.starts_with(&format!("{ws_prefix}/"))
+                in_workspace(c)
+            }
+        };
+        // one home, read whole for `all` (the newest records only: `newest.rs`) and for one folder or Anon by the folder test
+        let mut read_home = |provider: &str, home: &Path| -> Vec<Scanned> {
+            if scope == Scope::All {
+                let read = if provider == "claude" { newest::claude_home(home, newest::ALL_SCAN_MAX) } else { newest::codex_home(home, newest::ALL_SCAN_MAX) };
+                truncated |= read.left_out;
+                read.found
+            } else if provider == "claude" {
+                scan_claude_home(home, &match_cwd)
+            } else {
+                scan_codex_home(home, &match_cwd)
             }
         };
 
@@ -516,12 +552,9 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                 continue;
             }
             let Some(phome) = homes_map.get(&acc.id) else { continue };
-            let recs = if acc.provider == "claude" {
-                scan_claude_home(phome, &match_cwd)
-            } else {
-                scan_codex_home(phome, &match_cwd)
-            };
+            let recs = read_home(&acc.provider, phome);
             for (sid, rec_cwd, title, mtime, file) in recs {
+                let (item_cwd, item_global) = place(rec_cwd);
                 let key = (acc.provider.clone(), acc.id.clone(), sid.clone());
                 merged.insert(
                     key,
@@ -531,8 +564,8 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                         account: Some(acc.id.clone()),
                         account_label: Some(acc.label.clone()),
                         ssh_host: None,
-                        cwd: if is_global { None } else { Some(rec_cwd) },
-                        global: is_global,
+                        cwd: item_cwd,
+                        global: item_global,
                         title,
                         updated_at: mtime,
                         open_session: None,
@@ -552,8 +585,9 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             }
             let (Some(nhome), Some(nid)) = (crate::native::home(shared, provider), crate::native::id_of(provider)) else { continue };
             let nlabel = crate::native::label(shared, provider);
-            let found = if provider == "claude" { scan_claude_home(&nhome, &match_cwd) } else { scan_codex_home(&nhome, &match_cwd) };
+            let found = read_home(provider, &nhome);
             for (sid, rec_cwd, title, mtime, file) in found {
+                let (item_cwd, item_global) = place(rec_cwd);
                 let key = (provider.to_string(), nid.to_string(), sid.clone());
                 merged.entry(key).or_insert(ChatItem {
                     provider: provider.into(),
@@ -561,8 +595,8 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                     account: Some(nid.to_string()),
                     account_label: Some(nlabel.clone()),
                     ssh_host: None,
-                    cwd: if is_global { None } else { Some(rec_cwd) },
-                    global: is_global,
+                    cwd: item_cwd,
+                    global: item_global,
                     title,
                     updated_at: mtime,
                     open_session: None,
@@ -577,12 +611,10 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
     }
 
     for cand in host_candidates {
-        let scope_ok = if is_global {
-            cand.global
-        } else if let (Some(ref want), Some(ref got)) = (&canon_cwd, &cand.cwd) {
-            paths_eq(want, got)
-        } else {
-            false
+        let scope_ok = match scope {
+            Scope::All => true,
+            Scope::Global => cand.global,
+            Scope::Folder => matches!((&canon_cwd, &cand.cwd), (Some(want), Some(got)) if paths_eq(want, got)),
         };
         if !scope_ok {
             continue;
@@ -600,7 +632,11 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
                 existing.open_state = cand.open_state;
             })
             .or_insert(ChatItem {
-                cwd: if is_global { None } else { canon_cwd.clone().or(cand.cwd) },
+                cwd: match scope {
+                    Scope::Global => None,
+                    Scope::Folder => canon_cwd.clone().or(cand.cwd),
+                    Scope::All => cand.cwd, // an open session keeps its own folder (none for Anon)
+                },
                 ..cand
             });
     }
@@ -637,13 +673,13 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
             .then_with(|| a.account.cmp(&b.account))
     });
 
-    Ok(Collected { items: all_items, is_global, canon_cwd, ssh_host: ssh_host_opt.map(str::to_string), offset, limit })
+    Ok(Collected { items: all_items, scope, truncated, canon_cwd, ssh_host: ssh_host_opt.map(str::to_string), offset, limit })
 }
 
 /// `session.chats`: enumerate all `claude` and `codex` conversations matching `cwd` or `global`
 /// across local or `[ssh: <host>]` accounts with full `offset` / `limit` / `total` pagination.
 pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
-    let Collected { mut items, is_global, canon_cwd, ssh_host, offset, limit } = collect(shared, request)?;
+    let Collected { mut items, scope, truncated, canon_cwd, ssh_host, offset, limit } = collect(shared, request)?;
     let total = items.len();
     let end = offset.saturating_add(limit).min(total);
     let page = if offset < total { &mut items[offset..end] } else { &mut [] };
@@ -657,7 +693,7 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
         _ => None,
     };
     let mut reply = obj(json!({
-        "scope": if is_global { "global" } else { "folder" },
+        "scope": match scope { Scope::Global => "global", Scope::Folder => "folder", Scope::All => "all" },
         "cwd": canon_cwd,
         "ssh_host": ssh_host,
         "total": total,
@@ -668,6 +704,9 @@ pub fn session_chats(shared: &Shared, request: &Map<String, Value>) -> Reply {
     }));
     if let Some(hint) = hint {
         reply.insert("others".into(), hint);
+    }
+    if scope == Scope::All {
+        reply.insert("truncated".into(), json!(truncated)); // older records of a home were left unread: a short list is not the whole
     }
     Ok(reply)
 }

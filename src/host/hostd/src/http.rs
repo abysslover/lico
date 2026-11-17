@@ -324,7 +324,7 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
             let qmap = query_map(&request.query).map_err(bad)?;
             if qmap
                 .keys()
-                .any(|k| !matches!(k.as_str(), "cwd" | "global" | "recorded" | "others" | "ssh_host" | "account" | "q" | "query" | "offset" | "limit"))
+                .any(|k| !matches!(k.as_str(), "cwd" | "global" | "all" | "recorded" | "others" | "ssh_host" | "account" | "q" | "query" | "offset" | "limit"))
             {
                 return Err(bad("bad_request"));
             }
@@ -340,6 +340,14 @@ fn route(shared: &Arc<Shared>, request: &Request) -> Result<Map<String, Value>, 
                     _ => return Err(bad("bad_request")),
                 };
                 req.insert("global".into(), json!(flag));
+            }
+            if let Some(a) = qmap.get("all").and_then(Value::as_str) {
+                let flag = match a {
+                    "1" | "true" => true,
+                    "0" | "false" => false,
+                    _ => return Err(bad("bad_request")),
+                };
+                req.insert("all".into(), json!(flag));
             }
             if let Some(r) = qmap.get("recorded").and_then(Value::as_str) {
                 let flag = match r {

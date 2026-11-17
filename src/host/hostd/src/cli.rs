@@ -23,8 +23,8 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   local-key set ADDRESS:PORT     store the key of a model server in the OS keyring (the key on standard input)\n\
   local-key clear ADDRESS:PORT   remove it\n\
   chat latest [--cwd DIR] [--ssh-host HOST] [--account ID]   the latest chat of a folder and account that has a saved transcript (the first item of `chat list --recorded`)\n\
-  chat [list] [--cwd DIR | --global] [--ssh-host HOST] [--account ID] [--query TEXT] [--recorded] [--others] [--offset N] [--limit N]\n\
-                 list the Claude and Codex chats (earlier conversations) with full offset/limit pagination\n\
+  chat [list] [--cwd DIR | --global | --all] [--ssh-host HOST] [--account ID] [--query TEXT] [--recorded] [--others] [--offset N] [--limit N]\n\
+                 list the Claude and Codex chats (earlier conversations) with full offset/limit pagination; --all: every folder and Anon in one list, newest first (this machine only)\n\
   llm discover [--ssh-host HOST] [--all-users]\n\
                  find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
   browser open URL [--local] | list | close ID | shot ID FILE\n\
@@ -288,12 +288,14 @@ pub fn run(args: Vec<String>) {
             let rest = if latest || rest.first() == Some(&"list") { &rest[1..] } else { rest };
             let mut request = json!({"op": "session.chats"});
             let mut is_global = false;
+            let mut is_all = false;
             let mut cwd_opt: Option<String> = None;
             let mut ssh_host: Option<String> = None;
             let mut idx = 0;
             while idx < rest.len() {
                 match rest[idx] {
                     "--global" => is_global = true,
+                    "--all" => is_all = true,
                     "--recorded" => request["recorded"] = json!(true),
                     "--others" => request["others"] = json!(true),
                     "--cwd" => {
@@ -328,10 +330,12 @@ pub fn run(args: Vec<String>) {
                 }
                 idx += 1;
             }
-            if is_global && cwd_opt.is_some() {
+            if (is_global && cwd_opt.is_some()) || (is_all && (is_global || cwd_opt.is_some() || ssh_host.is_some() || latest)) {
                 die(1, USAGE);
             }
-            if is_global {
+            if is_all {
+                request["all"] = json!(true);
+            } else if is_global {
                 request["global"] = json!(true);
             } else if let Some(raw) = cwd_opt {
                 if ssh_host.is_some() || raw == "~" || raw.starts_with("~/") || raw.starts_with('/') {

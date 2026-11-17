@@ -216,7 +216,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("session.search", "query") => crate::search::valid_query(value),
             ("session.search", "limit") => in_range(value, 1, crate::search::MAX_LIMIT as i64),
             ("session.chats", "cwd") => matches!(value, Value::String(s) if crate::folders::valid_path_shape(s)),
-            ("session.chats", "global") => value.is_boolean(),
+            ("session.chats", "global" | "all") => value.is_boolean(),
             ("session.chats", "ssh_host") => matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("session.chats", "account") => valid_request_id(value),
             ("session.chats", "query") => crate::chats::valid_query(value),
@@ -255,6 +255,9 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             .iter()
             .any(|k| request.contains_key(*k)))
         && !(op == "session.chats" && request.contains_key("cwd") && request.get("global") == Some(&Value::Bool(true)))
+        && !(op == "session.chats"
+            && request.get("all") == Some(&Value::Bool(true))
+            && (request.contains_key("cwd") || request.get("global") == Some(&Value::Bool(true)) || matches!(request.get("ssh_host"), Some(Value::String(_)))))
 }
 
 /// A text write has `text` and no `path`; a picture write has `path` and no `text`.
