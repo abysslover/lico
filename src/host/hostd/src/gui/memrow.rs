@@ -72,6 +72,26 @@ pub fn total_ink(plain: Color) -> Color {
 /// The warning level and the limit in MB the host sent (the defaults until it does).
 static WARN_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(400);
 static LIMIT_MB: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(500);
+static STALL_MIN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(lico_memguard::DEFAULT_STALL_MIN);
+
+/// Minutes without activity after which a working session is stalled (what the host sent; 0: off).
+pub fn stall_min() -> u64 {
+    STALL_MIN.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Seconds since the session's last activity at `now`.
+pub fn quiet_secs(row: &Row, now: u64) -> u64 {
+    now.saturating_sub(row.last_active_at)
+}
+
+/// A working session with no activity for the set time.
+pub fn stalled(row: &Row, now: u64) -> bool {
+    row.last_active_at > 0 && lico_memguard::stalled(row.activity == "working", quiet_secs(row, now), stall_min())
+}
 
 pub fn limits() -> lico_memguard::Limits {
     lico_memguard::Limits { warn_mb: WARN_MB.load(std::sync::atomic::Ordering::Relaxed), limit_mb: LIMIT_MB.load(std::sync::atomic::Ordering::Relaxed) }
@@ -80,6 +100,9 @@ pub fn limits() -> lico_memguard::Limits {
 /// Takes the limits of a `status` reply when they are usable.
 pub fn set_limits(status: &Value) {
     let l = lico_memguard::Limits { warn_mb: status["memory_limits"]["warn_mb"].as_u64().unwrap_or(0), limit_mb: status["memory_limits"]["limit_mb"].as_u64().unwrap_or(0) };
+    if let Some(m) = status["memory_limits"]["stall_min"].as_u64() {
+        STALL_MIN.store(m, std::sync::atomic::Ordering::Relaxed);
+    }
     if l.valid() {
         WARN_MB.store(l.warn_mb, std::sync::atomic::Ordering::Relaxed);
         LIMIT_MB.store(l.limit_mb, std::sync::atomic::Ordering::Relaxed);
@@ -102,7 +125,7 @@ pub fn ink(level: lico_memguard::Level, normal: Color) -> Color {
 
 /// The figure of a row, none while the host has not given one (a session that is not running holds nothing).
 pub fn cell(row: &Row) -> Option<Cell> {
-    (row.memory_kb > 0).then(|| Cell { text: short(row.memory_kb), ink: ink(level(row), Color::rgb(0x9A, 0xA4, 0xB0)) })
+    (row.memory_kb > 0).then(|| Cell { text: short(row.memory_kb), ink: ink(if stalled(row, now_secs()) { level(row).max(lico_memguard::Level::Orange) } else { level(row) }, Color::rgb(0x9A, 0xA4, 0xB0)) })
 }
 
 /// The row's text with its figure: what tells the list that it has to be drawn again.
@@ -145,7 +168,8 @@ pub fn sentence(row: &Row, cols: usize) -> Option<String> {
     let room = cols.saturating_sub(rest.chars().count()).clamp(FLOOR_COLS, NAME_COLS); // the name gives way, the figures and the caveats do not
     let name = row.name();
     let name = if name.chars().count() > room { name.chars().take(room - 1).chain(['…']).collect() } else { name };
-    Some(format!("{name}{rest}").chars().take(cols).collect())
+    let quiet = if row.last_active_at > 0 && row.activity == "working" { format!("; {}", lico_memguard::quiet_text(quiet_secs(row, now_secs()))) } else { String::new() };
+    Some(format!("{name}{rest}{quiet}").chars().take(cols).collect())
 }
 
 impl Look {
@@ -230,6 +254,20 @@ mod tests {
         assert_eq!((at(&[10, 399]), at(&[10, 450]), at(&[450, 10, 500]), at(&[])), (Fine, Orange, Red, Fine));
         let plain = Color::rgb(1, 2, 3);
         assert!(ink(Orange, plain) != plain && ink(Red, plain) != ink(Orange, plain));
+    }
+
+    #[test]
+    fn a_working_session_with_no_activity_for_ten_minutes_is_stalled_and_the_hint_says_when_it_last_did_something() {
+        let now = 1_000_000;
+        let working = |ago: u64| Row { activity: "working".into(), last_active_at: now - ago, ..row(350 * 1024, 700 * 1024, 2) };
+        assert!(!stalled(&working(599), now) && stalled(&working(600), now) && stalled(&working(3 * 3600 + 1800), now));
+        let idle = Row { activity: "idle".into(), last_active_at: now - 7200, ..row(1, 1, 1) };
+        assert!(!stalled(&idle, now), "an idle session waits for the person");
+        assert!(!stalled(&Row { activity: "working".into(), last_active_at: 0, ..row(1, 1, 1) }, now), "no time known: not stalled");
+        assert_eq!(quiet_secs(&working(125), now), 125);
+        let hint = sentence(&Row { last_active_at: now_secs().saturating_sub(5 * 60), ..working(0) }, 300).unwrap();
+        assert!(hint.contains("; last activity 5 min ago"), "{hint}");
+        assert!(!sentence(&Row { activity: "idle".into(), last_active_at: 5, ..row(350 * 1024, 700 * 1024, 2) }, 300).unwrap().contains("last activity"), "only a working session says it");
     }
 
     #[test]
