@@ -52,6 +52,23 @@ pub fn long(kb: u64) -> String {
     }
 }
 
+/// The worst level among the rows at the last `total` call (0 ok, 1 orange, 2 red): the colour of the line under the list.
+static WORST: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The worst level among the rows.
+pub fn worst(rows: &[Row]) -> lico_memguard::Level {
+    rows.iter().map(level).max().unwrap_or(lico_memguard::Level::Ok)
+}
+
+/// The colour of the total line: orange or red when a session is, else `plain`.
+pub fn total_ink(plain: Color) -> Color {
+    match WORST.load(std::sync::atomic::Ordering::Relaxed) {
+        2 => ink(lico_memguard::Level::Red, plain),
+        1 => ink(lico_memguard::Level::Orange, plain),
+        _ => plain,
+    }
+}
+
 /// The level of a session for the memory guard: its largest single process against the warning level and the limit (400 and 500 MB unless the owner's setting says otherwise).
 pub fn level(row: &Row) -> lico_memguard::Level {
     lico_memguard::Limits::default().level(row.max_rss_kb)
@@ -87,6 +104,7 @@ pub fn draw(controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache
 
 /// The line under the list: the running sessions together, the host and this window.
 pub fn total(rows: &[Row], look: &Look) -> String {
+    WORST.store(worst(rows) as u8, std::sync::atomic::Ordering::Relaxed); // the line is drawn after this call in the same frame, by four callers that each pass their own plain colour
     let sessions: u64 = rows.iter().map(|r| r.memory_kb).sum();
     let host = if look.host.private_kb > 0 { format!("  host {}", short(look.host.private_kb)) } else { String::new() };
     format!("mem sessions {}{host}  window {}", short(sessions), short(look.window.private_kb)) // at most 39 columns: what the list is wide enough for
@@ -96,7 +114,7 @@ pub fn total(rows: &[Row], look: &Look) -> String {
 #[allow(clippy::too_many_arguments)]
 pub fn draw_total(controls: &mut Controls, fs: &mut FontSystem, swash: &mut SwashCache, buf: &mut [u32], width: usize, height: usize, at: [f32; 4], text: &str, ink: Color) {
     if at[1] >= at[3] {
-        controls.text(fs, swash, buf, width, height, at[0], at[1], at[2] as i32, text, ink);
+        controls.text(fs, swash, buf, width, height, at[0], at[1], at[2] as i32, text, total_ink(ink));
     }
 }
 
@@ -185,6 +203,15 @@ mod tests {
         assert_eq!(level(&many_small), lico_memguard::Level::Ok, "the sum of many small processes is not the colour: the largest one is");
         assert!(cell(&row(0, 0, 0)).is_none() && cell(&row(5000, 9000, 2)).is_some());
         assert_ne!(sig("x", &cell(&row(5000, 9000, 2))), sig("x", &None), "a new figure redraws the list");
+    }
+
+    #[test]
+    fn the_total_line_takes_the_level_of_the_worst_session() {
+        use lico_memguard::Level::{Ok as Fine, Orange, Red};
+        let at = |kb: &[u64]| worst(&kb.iter().map(|k| Row { max_rss_kb: *k * 1024, ..row(10, 10, 1) }).collect::<Vec<_>>());
+        assert_eq!((at(&[10, 399]), at(&[10, 450]), at(&[450, 10, 500]), at(&[])), (Fine, Orange, Red, Fine));
+        let plain = Color::rgb(1, 2, 3);
+        assert!(ink(Orange, plain) != plain && ink(Red, plain) != ink(Orange, plain));
     }
 
     #[test]
