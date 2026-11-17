@@ -1,7 +1,7 @@
-# M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, A Browser That Feels Like One
+# M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: proposed (2026-11-18); the owner's words are the source, the decisions below are the lead's and wait for the owner's yes or change in the chat
-- Version: 1.0.0
+- Status: planned (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 is done, P02 is next
+- Version: 2.0.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -9,59 +9,67 @@
 
 ## Goal
 
-"Simple is best." Every feature added so far made the window harder to read. This milestone takes things away until a person can find a past session, its folder and a page in two clicks, and does not add a feature.
+"Simple is best." Every feature added so far made the window harder to read. This milestone takes things away until a person can find a past session, its folder and a page in two clicks, and does not add a feature the person did not ask for. **Nothing may make the window wait**: what a list shows is ready before it is asked for.
 
 ## The owner's words (the source, in the chat, 2026-11-18)
 
 1. The click ring is not needed: with Moli the text cursor is visible.
-2. Remove the concept called Global. Think of it as ONE virtual working directory (shown with a virtual path), for quick throwaway work ("Anon").
+2. Remove the concept called Global. Think of it as ONE virtual working directory, shown with a virtual path.
 3. The Chats tab shows every past Lico session, newest first. A click goes at once to that session's working directory.
 4. The left side has two tabs only: Directories and Chats. Calls are not shown to the person; they are seen only between the agents that talk to each other.
 5. The full directory path is still not seen. It belongs at the very bottom, just above the `Ctrl+N` line.
-6. The menu bar in one line.
+6. The menu bar simpler.
 7. At the start the window is in Global and shows the earlier sessions and browsers (the owner's observation; it stays).
 8. In the browser tab the URL is shown very long. It belongs at the TOP, cut when too long, and the person can go to another address from it.
 9. The first "open a browser" should look like a browser, not an explanation text.
 10. These are small experiments. **The next experiment is a terminal** (M23): run an agent in a terminal and have it come into Lico.
 
+## The owner's answers (the chat, 2026-11-18, after the plan)
+
+- **The virtual directory is `Home`, its path is `lico://home`** (not `Anon`).
+- **The top is the menu bar and, under it, a toolbar that controls almost everything.** Only what is really needed is a button; the rest is in the menus. The buttons: **New session** (the plain icon), **New Home session** (a house icon), **Open browser** (the browser button), **Open terminal** (a terminal icon). What they open appears in the chat area.
+- **The browser's address bar takes a search too, for now**: words that are not an address are searched.
+- **A browser page opened before can be opened again.**
+- **Chats also lists what was opened outside Lico, with Claude or Codex themselves; this is on by default** (the setting that includes the provider's own home is ON unless the person turns it off).
+- **Performance** (a message sent while the lead worked): listing everything may need performance work and a background index. Experiment, think it through, and leave no delay.
+
 ## What the code does today (read 2026-11-18)
 
-- **Left side:** three tabs (`sidebar_tabs.rs`: Directories, Chats, Calls). Directories has a `Global (general)` row above the path row; the active scope is `global_scope`, kept in the history and bookmarks (`sidebar_nav.rs`, a `global` field on each entry). Chats lists the chats of ONE scope, the folder shown or Global (`sidebar_chats.rs`, `session.chats` with `cwd` or `global`); a click resumes the chat but does not move the Directories tab to the chat's folder.
-- **Global on the wire:** `session.chats` takes `cwd` or `global` (the host's workspace root), `session.create` takes the scope `global`, the CLI has `--global`, the REST list has `global=`, the tool `create` takes `global`; the tab bar has `+G`, the menu has `New Global session` (`Ctrl+Shift+N`), the New chat form refuses Global without a folder.
-- **Calls:** a sidebar tab of call rooms (`sidebar_calls.rs`), a room is a tab beside the sessions' tabs. The operations (`call.*`, REST `/v1/calls`, the agents' tools) are the agents' own and do not change.
-- **The path:** the path bar (M14) IS the last row of the window (`ui.rs`: path bar last, the hint line above it). It is EMPTY in Global (no selection path, no session path), which is where the owner starts, and it sits under the hint line, not over it.
+- **Left side:** three tabs (`sidebar_tabs.rs`: Directories, Chats, Calls). Directories has a `Global (general)` row above the path row; the active scope is `global_scope`, kept in the history and bookmarks (`sidebar_nav.rs`). Chats lists the chats of ONE scope; a click resumes the chat but does not move Directories to its folder.
+- **Global on the wire:** `session.chats` `cwd` or `global`, `session.create` scope `global`, CLI `--global`, REST `global=`, the tool `create` `global`; the tab bar has `+G`, the menu `New Global session`.
+- **Calls:** a sidebar tab (`sidebar_calls.rs`); a room is a tab beside the sessions. The operations (`call.*`, REST `/v1/calls`, the agents' tools) are the agents' own.
+- **The path:** the path bar (M14) IS the last row (path last, the hint line above it), and EMPTY in Global, where the owner starts.
 - **The top:** two rows (`File Session View Help`, then a toolbar of nine buttons that changes with the panel), and a third row of session tabs with `+ +B +BL +G`.
-- **Browser tab:** the address is the input line at the BOTTOM (the whole URL), the header says where typing goes, a new tab shows the help text (about 14 lines, `F1`), the click ring is `browser_cues.rs` and `lico-browser-view` (`click_mark`, BROW-09).
+- **Browser tab:** the address is the input line at the BOTTOM (the whole URL); the header says where typing goes; a new tab shows about 14 lines of help; the click ring is `browser_cues.rs` and `lico-browser-view` (BROW-09).
+- **Chats cost (measured 2026-11-18 on this machine's own homes, timing only):** the first call 147 ms, a repeat 19 ms, the second page 79 ms (the turn counts read whole transcripts). A real defect showed: a home with many other files (Codex keeps 2,415 files for 50 chats) fills the listing, so only 153 of the chats were found and `truncated` was true. Only `.jsonl` may count.
 
 ## Decisions (the lead's, to be confirmed)
 
-- **The virtual directory is `Anon`, its path is `lico://anon`.** The word Global leaves the window (rows, buttons, menus, header, hints, help). It stays on the wire where a CLI, REST or tool contract names it (`global`, `--global`), because removing it breaks callers and the parity tests for no gain to the person; the window never shows it. A chat of the host's workspace root is an Anon chat.
-- **Chats lists every past session of this host, newest first** (one list: the folder, Anon, ssh hosts are one more column of the card, not another scope). The host answers with a new scope of `session.chats` (`all`), so the CLI and REST see the same list. A click opens the chat and moves Directories to its folder (or to Anon).
-- **Calls leave the sidebar, not Lico.** A room that two sessions share is shown as a small `⇄` mark on the session's card and tab; a click on it opens the room as today. The agents' tools and the REST and CLI calls do not change.
-- **The bottom is: path row, then the key-hint row** (`Ctrl+N` ...). The path row always has text: the folder, `lico://anon` in Anon, the row under the pointer when there is one.
-- **The top is ONE row:** the four menu titles and the five actions people use (`+ New`, `Files`, `Close`, `Mode`, `Find`) on the same line; the rest are in the menus only. The session tabs row keeps `+` and `+B` (`+BL` and `+G` go into the `+` menu entries).
-- **The browser tab has an address bar at the top** (`‹ ›  ⟳  address`): the address is cut in the MIDDLE when long (the host name and the end stay), the whole address shows when the bar has the keys, Enter goes. A new tab is an EMPTY page with the bar focused and a one-line placeholder; the explanation is on `F1` only. The click ring and its words go (BROW-09 is removed in `lico-browser-view`, the component's version and its specification change). A search box that guesses a search engine is NOT added: that is a choice of a service, the owner's call.
+- **The window never says Global.** The wire keeps `global` (a CLI, REST or tool contract names it); a chat of the host's workspace root is a Home chat, its path `lico://home`.
+- **Chats is one list of everything opened before, newest first:** sessions (Lico's own and the provider's own home), later also browser pages (a small mark tells the kind). A click on a session opens it and moves Directories to its folder (or to Home); a click on a page opens it in a browser tab.
+- **A chat index in the host, not a scan per call.** A snapshot of every record of every home (path, size, modification time, folder, title, turn count) is built when the host starts, kept fresh by comparing sizes and times (no record is opened again unless it changed), and read by every scope of `session.chats`. A call reads memory. The lead measures first (cold disk, warm, one changed record, 5,000 records), and the budget is: a page in under 5 ms warm, the first build under 1 s in the background, no call waits for a build. Phase P02.
+- **Calls leave the sidebar, not Lico.** A room two sessions share shows as a small `⇄` mark on the session's card and tab; a click opens the room. The agents' tools and the REST and CLI calls do not change.
+- **The bottom is: path row, then the key-hint row.** The path row always has text: the folder, `lico://home` in Home, the row under the pointer when there is one.
+- **The top is the menu bar and a toolbar of four icon buttons** (the terminal's appears with M23, so that no button is shown that does nothing); the session tabs row loses `+ +B +BL +G`. Every other action stays in the menus.
+- **The browser tab has an address bar at the top** (`‹ ›  ⟳  address`): cut in the MIDDLE when long (the host name and the end stay), the whole address when the bar has the keys, Enter goes. Text that is not an address is a search with the engine of the setting `browser_search` (a URL with `%s`); the default engine is chosen by one measured probe in P05 (three requests, to find one the engine can use). A new tab is an EMPTY page with the bar focused; the explanation is on `F1`. The click ring goes (BROW-09 is removed in `lico-browser-view`).
+- **Browser pages are remembered** (address, title, time; at most 100, in the host's state directory, mode 0600, never for a tab opened `--local`, cleared by a menu entry), listed in Chats and reopened by a click; "Reopen closed tab" is in the menu.
+- **The provider's own home is included by default.** The setting `native_claude` / `native_codex` has `ask` today (the New chat dialog asks); the default becomes `on`. A person who chose `off` keeps `off`.
 
 ## Phases (each: a plan, a branch of its own, tests first, green-only commits)
 
 | Phase | Subject | Plan and state | Status |
 |---|---|---|---|
-| M22-P01 | host: `session.chats` scope `all` (every past session, newest first, one list), CLI and REST, bounded cost | [Plan](../../../plans/202611/20261118/20261118_03_M22-P01_chats_of_all_sessions_plan.md) | planned |
-| M22-P02 | window: two left tabs, Anon as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | in the P01 plan's follow-up list; written when P01 is done | planned |
-| M22-P03 | window: path row above the hint row and never empty, one-line top bar, the tab bar's buttons | written when P02 is done | planned |
-| M22-P04 | browser tab: address bar at the top, an empty first page, the click ring removed | written when P03 is done | planned |
-| M22-P05 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P04 is done | planned |
+| M22-P01 | host: `session.chats` scope `all` (every past session, newest first, one list), CLI and REST | [Plan](../../../plans/202611/20261118/20261118_03_M22-P01_chats_of_all_sessions_plan.md) | done (`0900c95`) |
+| M22-P02 | host: the chat index (background, incremental, every scope reads it), `.jsonl` only, the provider's own home on by default, the performance experiments | [Plan](../../../plans/202611/20261118/20261118_04_M22-P02_chat_index_plan.md) | planned |
+| M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | written when P02 is done | planned |
+| M22-P04 | window: the toolbar of four icon buttons, the menus, the path row above the hint row and never empty, the tab row | written when P03 is done | planned |
+| M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
+| M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
 ## What this milestone does not do
 
-- It does not add a feature. Where a thing can be taken out, it is.
+- It does not add a feature beyond what the owner asked for in the chat.
 - It does not rename or remove an operation on the wire, in the CLI, in REST or in the agents' tools.
 - It does not delete a past session or a call room; only what the window shows changes.
 - It does not push, open a pull request or merge; each needs the owner's explicit yes after a dry run.
-- It does not start the terminal ([M23](20261118_02_M23_terminal_agents_milestone.md)).
-
-## Owner's call (the lead proceeds with the defaults above unless told otherwise)
-
-1. The name `Anon` and the path `lico://anon` (or another word).
-2. The five buttons kept on the top line.
-3. Whether the Chats tab also lists sessions the provider's own default home holds (the M11 native home), which Lico did not open. Default: only what Lico opened, plus the native home when the owner has turned it on, as today.
+- It does not start the terminal ([M23](20261118_02_M23_terminal_agents_milestone.md)); the terminal's button comes with it.
