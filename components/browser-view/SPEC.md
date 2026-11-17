@@ -1,4 +1,4 @@
-# lico-browser-view 0.5.1 — specification
+# lico-browser-view 0.7.3 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -27,7 +27,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 | `MAX_HISTORY` | 100 | a person's back and forward, not an archive (the lead's figure) |
 | `MAX_URL` | 2048 | a real address is a few hundred characters; browsers stop near 2,000 |
 | `MAX_TITLE` | 200 characters | a tab label is short; the rest of a long title is not shown |
-| `MAX_FRAME_BYTES` | 4 MiB | the cap of `lico-ws` and `lico-frame`; the largest frame the engine sent was 69,612 bytes |
+| `MAX_FRAME_BYTES` | 4 MiB | the cap of `lico-ws` and `lico-frame`; the first engine's largest frame was 69,612 bytes; Moli's PNG frame of a 1920 x 1200 page is 3.77 MB and its JPEG (quality 90) 132 KB |
 | `MAX_VIEWPORT_W` x `MAX_VIEWPORT_H` | 1920 x 1200 | bounds one decoded picture to 9.2 MB in Lico's process (the owner's rule: Lico's own memory counts) |
 | `MIN_VIEWPORT` | 64 | a page cannot be laid out in less |
 | `FALLBACK_AFTER_MS` | 500 | a still page sends its one frame at once, so half a second without a frame is a slow moment: one screenshot is asked for |
@@ -47,7 +47,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.7.1` adds two help sentences (M17-P12); `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.7.3` (M20-P02) says in the comments that a `Frame` holds a JPEG or a PNG (the host asks Moli for JPEG; the field keeps the name `png`) and gives the sizes behind the cap; `0.7.1` adds two help sentences (M17-P12); `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 

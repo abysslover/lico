@@ -5,16 +5,16 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.3,
-    "peak_mib": 64.9,
-    "wall_s": 0.53
+    "compile_s": 1.3,
+    "peak_mib": 62.8,
+    "wall_s": 0.4
   },
   "date": "2026-11-17",
-  "hash": "09e6dc67c892c2b66cf2ebebc82e9cbf64b74017295f2f128e84061c92c326a6",
+  "hash": "0de951034031b143a2fec14b3118561ef03b294cef4af497cea1a7b692e81e6d",
   "inputs": {
     "dependencies": [
       {
-        "hash": "dee8cb1034a598d17e7b429126a76f04ffbbbd9afe888e7c272da59f46e7f5a2",
+        "hash": "37e71de46cf7eeea1d6f00352056a4631be811a2298763d6655030df1aefc8b4",
         "name": "lico-cdp (dev)"
       },
       {

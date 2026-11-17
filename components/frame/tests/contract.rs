@@ -244,8 +244,8 @@ fn err(png: &[u8]) -> Error {
 
 #[test]
 fn what_is_not_a_png_or_is_cut_is_an_error() {
-    assert_eq!(err(b""), Error::NotPng);
-    assert_eq!(err(b"GIF89a not a png at all"), Error::NotPng);
+    assert_eq!(err(b""), Error::NotAnImage);
+    assert_eq!(err(b"GIF89a not a png at all"), Error::NotAnImage);
     let good = png_from(2, 2, 8, 6, &[], &zlib_stored(&scanlines(&[vec![0; 8], vec![0; 8]], 4, &|_| 0)));
     for cut in [8, 12, 20, 33, good.len() - 13, good.len() - 1] {
         assert!(matches!(err(&good[..cut]), Error::Truncated | Error::Chunk(_)), "cut at {cut}: {:?}", err(&good[..cut]));
@@ -253,7 +253,7 @@ fn what_is_not_a_png_or_is_cut_is_an_error() {
     let mut after = good.clone();
     after.extend(b"junk");
     assert!(matches!(err(&after), Error::Chunk(_)), "bytes after IEND");
-    assert!(matches!(header(&good[..10]), Err(Error::Truncated) | Err(Error::NotPng)));
+    assert!(matches!(header(&good[..10]), Err(Error::Truncated) | Err(Error::NotAnImage)));
 }
 
 #[test]

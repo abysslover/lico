@@ -312,8 +312,12 @@ pub mod cmd {
         json!({"sessionId": frame_id})
     }
 
-    pub fn capture_screenshot(f: ImageFormat) -> Value {
-        json!({"format": format(f)})
+    /// `quality` (1 to 100) is for JPEG only: the protocol has no quality for PNG, so a PNG asks for the format alone.
+    pub fn capture_screenshot(f: ImageFormat, quality: u32) -> Value {
+        match f {
+            ImageFormat::Png => json!({"format": "png"}),
+            ImageFormat::Jpeg => json!({"format": "jpeg", "quality": quality}),
+        }
     }
 
     /// `delta` is the vertical wheel movement (the horizontal one is 0).

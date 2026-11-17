@@ -1,8 +1,8 @@
 [package]
 name = "lico-frame"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "A bounded PNG decoder for the frames of a browser tab: 8 and 16 bit colour types 0, 2, 3, 4 and 6, no interlacing, chunk CRCs and the zlib checksum checked, the output size checked before anything is allocated."
+description = "A bounded decoder of PNG and baseline JPEG for the frames of a browser tab: PNG colour types 0, 2, 3, 4 and 6 at 8 and 16 bits, no interlacing; JPEG baseline and extended sequential, grey or YCbCr, any plain sampling, restart intervals; every size checked from the header before anything is allocated."
 publish = false
 
 [lib]
@@ -15,7 +15,7 @@ path = "src/lib.rs"
 lico-png = { path = "../png" }
 
 [package.metadata.lico]
-purpose = "A bounded PNG decoder for the frames of a browser tab: the colour types 0, 2, 3, 4 and 6 at 8 and 16 bits, no interlacing, every chunk CRC and the zlib checksum checked, and the size of the output checked from the header before anything is allocated."
+purpose = "A bounded decoder of PNG and baseline JPEG for the frames of a browser tab: PNG colour types 0, 2, 3, 4 and 6 at 8 and 16 bits (every chunk CRC and the zlib checksum checked); JPEG baseline and extended sequential Huffman, grey or YCbCr, the pixels of libjpeg; and the size of the output checked from the header before anything is allocated."
 spec = "SPEC.md"
 depends = []
 external = []

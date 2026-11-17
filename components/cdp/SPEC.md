@@ -1,4 +1,4 @@
-# lico-cdp 0.2.0 — specification
+# lico-cdp 0.3.0 — specification
 
 Written with the P02 plan (M17-P02); approved by the lead under the owner's delegation (the owner away), mail 145. Marks: **KNOWN FROM DOCUMENTATION** (the shape of CDP messages and the names and parameters of the commands, from Chrome's public protocol reference), **PROPOSED** (a choice made here that the first measurement of the engine may change; a command the engine lacks is found by that measurement, not guessed here).
 
@@ -18,7 +18,7 @@ A synchronous CDP client over one WebSocket on this machine: a call is sent with
 | `Error { Remote { code, message }, Timeout, Cancelled, Closed, TooBig, Protocol(&'static str), Ws(lico_ws::Error) }` | a CDP error reply is `Remote` and the connection goes on; the others about the connection are described below |
 | `method::*` | the names: `NAVIGATE`, `SET_VIEWPORT`, `START_SCREENCAST`, `SCREENCAST_ACK`, `SCREENCAST_FRAME` (the event), `CAPTURE_SCREENSHOT`, `MOUSE`, `KEY`, `INSERT_TEXT`, `CREATE_TARGET`, `ATTACH` |
 | `ImageFormat { Png, Jpeg }`, `MouseKind { Pressed, Released, Moved, Wheel }`, `Button { None, Left, Middle, Right }`, `KeyKind { Down, Up, Char }` | the words of the builders, as types so that a typo cannot compile |
-| `cmd::navigate(url)`, `set_viewport(w, h, scale)`, `start_screencast(format, quality, max_w, max_h, every_nth)`, `screencast_ack(frame_id)`, `capture_screenshot(format)`, `mouse(kind, x, y, button, clicks, delta)`, `key(kind, key, code, text)`, `insert_text(text)`, `create_target(url)`, `attach(target_id)` | pure builders of the `params`; `delta` is the vertical wheel movement; an empty `text` is left out; `attach` asks for a flat session |
+| `cmd::navigate(url)`, `set_viewport(w, h, scale)`, `start_screencast(format, quality, max_w, max_h, every_nth)`, `screencast_ack(frame_id)`, `capture_screenshot(format, quality)`, `mouse(kind, x, y, button, clicks, delta)`, `key(kind, key, code, text)`, `insert_text(text)`, `create_target(url)`, `attach(target_id)` | pure builders of the `params` (`quality` of a screenshot goes out for a JPEG only); `delta` is the vertical wheel movement; an empty `text` is left out; `attach` asks for a flat session |
 
 ## The limits (named constants, with their reasons)
 
@@ -40,7 +40,7 @@ A synchronous CDP client over one WebSocket on this machine: a call is sent with
 
 ## Versioning and budget
 
-`0.2.0` adds the link; `0.1.1`: the default cap follows `lico-ws 0.2.0`; `0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
+`0.3.0` (M20-P02): `capture_screenshot` takes the quality of a JPEG (the tab asks for JPEG now: see the notes of `lico-frame 0.2.0`); `0.2.0` adds the link; `0.1.1`: the default cap follows `lico-ws 0.2.0`; `0.1.0` while the commands have not met the engine; semantic after. Budget: the default 256 MiB and 30 s.
 
 ## The link (0.2.0, M17-P08, mail 152)
 

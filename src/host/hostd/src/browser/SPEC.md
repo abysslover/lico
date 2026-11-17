@@ -1,6 +1,6 @@
 # The browser adapter (`browser/`) — specification
 
-Version 2.0.0 (M20-P01: the engine is Moli, held by the component `lico-engine`; 1.0.0 was M17-P06 with Obscura). Plan and approvals: `doc/plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md` (approved by the lead under the owner's delegation, mails 149 and 150). **MEASURED** facts about the engine are in the two measurement notes of M17; marks below say what is proved by a test of this crate.
+Version 2.1.0 (M20-P02: the engine is asked for JPEG frames and shots, quality 90, and `lico-frame` 0.2.0 reads them; 2.0.0 was M20-P01: the engine is Moli, held by the component `lico-engine`; 1.0.0 was M17-P06 with Obscura). Plan and approvals: `doc/plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md` (approved by the lead under the owner's delegation, mails 149 and 150). **MEASURED** facts about the engine are in the two measurement notes of M17; marks below say what is proved by a test of this crate.
 
 ## What it is
 
@@ -13,11 +13,13 @@ A browser tab with no window yet. The host starts the engine (Moli, a pinned rel
 | `browser.open` | `url` (http or https), optional `local` (`lico browser open URL --local`: an explicit act of the person, off by default, never taken from a page or a link: this tab may reach this machine's own services and no other site) | `tab` (`b1`, `b2`, ...), `phase`; `phase` `absent` with `release`, `download`, `archive_sha256`, `engine_sha256`, `directory`, `put` when the engine is not installed. Errors: `bad_request`, `tab_limit`, `engine_unsafe`, `engine_not_pinned`, `engine_setting`, `engine_unreadable`, `engine_fence`, `engine_failed` |
 | `browser.list` | none | `tabs` (tab, url, title, phase, loading, notice, viewport, has_frame, local, unpinned, ...), `engines` (one per network class: running, unpinned, what the engine says it is), `max_tabs` |
 | `browser.close` | `tab` | `closed`, `engine_stopped` (true when it was the last tab of that engine); `unknown_tab` |
-| `browser.shot` | `tab`, absolute `path` | the newest frame decoded by `lico-frame` and written again by `lico-png` to a NEW file of mode 0600 (never over a file); `width`, `height`; waits up to 3 s for a first frame; errors `no_frame`, `exists`, `bad_request`, `write_failed`, `unknown_tab` |
+| `browser.shot` | `tab`, absolute `path` | the newest frame decoded by `lico-frame` (a JPEG, or a PNG) and written again by `lico-png` to a NEW file of mode 0600, a PNG whatever the engine sent (never over a file); `width`, `height`; waits up to 3 s for a first frame; errors `no_frame`, `exists`, `bad_request`, `write_failed`, `unknown_tab` |
 
 ## Limits
 
 At most **8 tabs** (`MAX_TABS`) in all: each is a page in the engine; on Lico's side a tab holds at most one compressed frame (4 MiB cap, so 32 MiB for eight, COMPUTED) and, while it is painted, one decoded picture (9.2 MB at the largest size). At most **two engines**: one for ordinary tabs (the guard allows public addresses only) and one for tabs opened with `local` (see below); each has its own guard. A tab opened from the command line is shown at 1024 x 768 so that it has a screencast.
+
+**Frames (2.1.0, M20-P02).** The screencast and the shot are asked of the engine as JPEG at quality 90 (`map::JPEG_QUALITY`; Moli's encoder keeps all the chroma from quality 90): MEASURED with Moli 1.1.25 on one page, 1920 x 1200: JPEG 131,842 bytes and a decode of 6.0 ms, PNG 3,773,168 bytes (the cap of a frame is 4 MiB) and 46.9 ms. `lico-frame` 0.2.0 reads both, so a PNG from another engine is still shown; `browser.shot` writes a PNG whatever the engine sent. The key of the watch reply that carries the frame is still `png` (the same binary writes and reads it); it holds the frame as sent. The test double makes JPEG or PNG as the last `Page.startScreencast` asked and logs what it was asked (`frame.log`), and a system test checks both.
 
 ## The engine file
 

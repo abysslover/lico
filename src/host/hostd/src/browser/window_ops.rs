@@ -238,6 +238,7 @@ impl Browser {
                 let mut r = obj(json!({"seq": seq, "tab": row}));
                 if let Some((n, bytes)) = frame {
                     r.insert("frame_seq".into(), json!(n));
+                    // the key keeps its first name; the bytes are the frame as the engine sent it (JPEG now, PNG when a test double sends one)
                     r.insert("png".into(), json!(map::base64_encode(&bytes)));
                 }
                 r

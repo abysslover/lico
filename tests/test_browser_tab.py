@@ -77,7 +77,8 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         tab = wait_for(lambda: browser(w)["active"])
         t = painted(w, tab)
         b = browser(w)
-        assert b["last_pixel"] & 0xFF == 0x5A and (b["last_pixel"] >> 24) == 0xFF, f"the first pixel of the fake's frame is painted at the page area: {b['last_pixel']:#x}"
+        # the fake's frame is a JPEG (the engine is asked for JPEG, M20-P02): its blue (90) comes back to within the rounding of YCbCr
+        assert abs((b["last_pixel"] & 0xFF) - 0x5A) <= 4 and (b["last_pixel"] >> 24) == 0xFF, f"the first pixel of the fake's frame is painted at the page area: {b['last_pixel']:#x}"
         assert b["rect"][2] > 400 and b["rect"][3] > 200 and b["rect"][0] > 0, b["rect"]
         wait_for(lambda: "A fake page" in (browser(w)["header"] or ""))
         assert "ready" in browser(w)["header"]

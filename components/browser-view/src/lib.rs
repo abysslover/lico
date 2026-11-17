@@ -10,7 +10,7 @@ pub const MAX_HISTORY: usize = 100;
 pub const MAX_URL: usize = 2048;
 /// The longest title shown (characters): a tab label is short; the rest of a long title is not shown.
 pub const MAX_TITLE: usize = 200;
-/// The largest compressed frame kept: the cap of `lico-ws` and `lico-frame` (the largest frame the engine sent was 69,612 bytes).
+/// The largest compressed frame kept: the cap of `lico-ws` and `lico-frame`. The first engine's largest frame was 69,612 bytes; Moli's PNG frame of a 1920 x 1200 page is 3.77 MB, just under it (M20-P01), which is why the host asks Moli for JPEG (the same page: 132 KB, M20-P02).
 pub const MAX_FRAME_BYTES: usize = 4 * 1024 * 1024;
 /// The largest page viewport: it bounds one decoded picture to 9.2 MB of memory in Lico's process.
 pub const MAX_VIEWPORT_W: u32 = 1920;
@@ -328,6 +328,7 @@ pub enum EngineEvent {
     LoadStarted,
     LoadFinished,
     Title(String),
+    /// A frame of the screencast, as the engine sent it: JPEG (what the host asks for since M20-P02) or PNG; `lico_frame::decode` tells which. The field keeps its first name.
     Frame { id: u64, png: Vec<u8> },
     /// A screenshot taken because no frame came (it has no number to acknowledge).
     Screenshot(Vec<u8>),

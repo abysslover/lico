@@ -37,6 +37,8 @@ pub struct Wire {
 }
 
 const SHORT: Duration = Duration::from_secs(5);
+/// The quality of the frames and shots asked of the engine, which sends JPEG (M20-P02): Moli's PNG frames are 20 to 30 times larger (3.8 MB for a 1920 x 1200 page, against the 4 MiB cap of a frame) and slow to decode; at 90 the encoder keeps all the chroma (4:4:4), so thin coloured text stays sharp, and the same page is 132 KB.
+pub const JPEG_QUALITY: u32 = 90;
 /// A navigation may take as long as the engine allows itself (its own deadline is 30 s); the call gives up a little sooner so that one slow page does not hold the tabs of an engine.
 const NAVIGATION: Duration = Duration::from_secs(20);
 
@@ -44,10 +46,10 @@ const NAVIGATION: Duration = Duration::from_secs(20);
 pub fn wire_of(effect: &Effect, viewport: (u32, u32)) -> Wire {
     let (method, params, timeout) = match effect {
         Effect::SetViewport { width, height } => (method::SET_VIEWPORT, cmd::set_viewport(*width, *height, 1.0), SHORT),
-        Effect::StartScreencast => (method::START_SCREENCAST, cmd::start_screencast(ImageFormat::Png, 100, viewport.0, viewport.1, 1), SHORT),
+        Effect::StartScreencast => (method::START_SCREENCAST, cmd::start_screencast(ImageFormat::Jpeg, JPEG_QUALITY, viewport.0, viewport.1, 1), SHORT),
         Effect::StopScreencast => ("Page.stopScreencast", json!({}), SHORT),
         Effect::Ack(id) => (method::SCREENCAST_ACK, cmd::screencast_ack(*id), SHORT),
-        Effect::CaptureScreenshot => (method::CAPTURE_SCREENSHOT, cmd::capture_screenshot(ImageFormat::Png), SHORT),
+        Effect::CaptureScreenshot => (method::CAPTURE_SCREENSHOT, cmd::capture_screenshot(ImageFormat::Jpeg, JPEG_QUALITY), SHORT),
         Effect::Navigate(url) => (method::NAVIGATE, cmd::navigate(url), NAVIGATION),
         Effect::Reload => ("Page.reload", json!({}), NAVIGATION),
         Effect::Mouse { kind, x, y, button, clicks, delta } => (method::MOUSE, cmd::mouse(mouse_kind(*kind), *x, *y, button_of(*button), *clicks, *delta), SHORT),
@@ -220,11 +222,11 @@ mod tests {
         assert_eq!(w(Effect::Navigate("https://a.test/".into())).params, json!({"url": "https://a.test/"}));
         assert_eq!(w(Effect::SetViewport { width: 800, height: 600 }).params["width"], json!(800));
         let s = w(Effect::StartScreencast);
-        assert_eq!((s.method, s.params["format"].clone(), s.params["maxWidth"].clone(), s.params["everyNthFrame"].clone()), ("Page.startScreencast", json!("png"), json!(800), json!(1)), "PNG only, never larger than the tab");
+        assert_eq!((s.method, s.params["format"].clone(), s.params["quality"].clone(), s.params["maxWidth"].clone(), s.params["everyNthFrame"].clone()), ("Page.startScreencast", json!("jpeg"), json!(90), json!(800), json!(1)), "JPEG at quality 90, never larger than the tab");
         assert_eq!(w(Effect::Ack(7)).params, json!({"sessionId": 7}));
         assert_eq!(w(Effect::StopScreencast).method, "Page.stopScreencast");
         assert_eq!(w(Effect::Reload).method, "Page.reload");
-        assert_eq!(w(Effect::CaptureScreenshot).params, json!({"format": "png"}));
+        assert_eq!(w(Effect::CaptureScreenshot).params, json!({"format": "jpeg", "quality": 90}));
         assert_eq!(w(Effect::InsertText("안녕".into())).params, json!({"text": "안녕"}));
         let m = w(Effect::Mouse { kind: VMouse::Pressed, x: 1.0, y: 2.0, button: VButton::Left, clicks: 1, delta: 0.0 });
         assert_eq!((m.method, m.params["type"].clone(), m.params["button"].clone()), ("Input.dispatchMouseEvent", json!("mousePressed"), json!("left")));

@@ -271,7 +271,8 @@ fn the_builders_make_the_parameters_the_commands_take() {
     assert_eq!(cmd::start_screencast(ImageFormat::Jpeg, 80, 1200, 800, 1), json!({"format": "jpeg", "quality": 80, "maxWidth": 1200, "maxHeight": 800, "everyNthFrame": 1}));
     assert_eq!(cmd::start_screencast(ImageFormat::Png, 100, 640, 480, 2)["format"], "png");
     assert_eq!(cmd::screencast_ack(7), json!({"sessionId": 7}));
-    assert_eq!(cmd::capture_screenshot(ImageFormat::Png), json!({"format": "png"}));
+    assert_eq!(cmd::capture_screenshot(ImageFormat::Png, 90), json!({"format": "png"}), "the protocol has no quality for a PNG");
+    assert_eq!(cmd::capture_screenshot(ImageFormat::Jpeg, 90), json!({"format": "jpeg", "quality": 90}));
     assert_eq!(cmd::mouse(MouseKind::Pressed, 10.5, 20.0, Button::Left, 1, 0.0), json!({"type": "mousePressed", "x": 10.5, "y": 20.0, "button": "left", "clickCount": 1, "deltaX": 0.0, "deltaY": 0.0}));
     assert_eq!(cmd::mouse(MouseKind::Wheel, 5.0, 6.0, Button::None, 0, 120.0)["deltaY"], 120.0);
     assert_eq!(cmd::mouse(MouseKind::Moved, 1.0, 2.0, Button::None, 0, 0.0)["type"], "mouseMoved");

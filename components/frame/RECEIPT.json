@@ -6,11 +6,11 @@
       "seconds": 30
     },
     "compile_s": 0.7,
-    "peak_mib": 3.4,
-    "wall_s": 0.52
+    "peak_mib": 8.8,
+    "wall_s": 2.46
   },
-  "date": "2026-11-16",
-  "hash": "a73e4980339ebfa1631a88b9fa12861bb0e65e780dd5efefe18578b5cb5ce22d",
+  "date": "2026-11-17",
+  "hash": "8b4685d7b8a69f239f65259071b8e00af404065547349f0b671e14c856cf417b",
   "inputs": {
     "dependencies": [
       {
@@ -22,54 +22,134 @@
     "files": [
       [
         "Cargo.toml",
-        "7e19b8189376f557af8afcc8adeff45edc106246732a4e1dbf98d390d2475423"
+        "2e26a65141e04b6a6372a12218ffc6f6e6f04c01b414929af45be1070f3a344e"
       ],
       [
         "SPEC.md",
-        "9e81abc14567e0a2fa3ef6d151cc499388df05cd878da3599e33e9cb9ccbd374"
+        "c5dc87ede7f7395fe9e30e40c41edd051d005fbb966b5cc15ffa4ea91c92689c"
+      ],
+      [
+        "src/huffman.rs",
+        "73c637e37ae08c5fde8698d4ac1f1897ab82937f211ef2b73aee2d56753c5025"
+      ],
+      [
+        "src/idct.rs",
+        "3ec4e2b07ac89643a9a87202bdb92cfd02bc5f4cc48b966f71c1f88c4785f5f6"
       ],
       [
         "src/inflate.rs",
         "dfdbdd90e73160e50f8c8756ffd179ec3988b4a0afa5f311dee3e431c68339ad"
       ],
       [
+        "src/jpeg.rs",
+        "c521708e4063364fa7fda3a43f6387b6a75480da353be6cbb5e81e4f7f329680"
+      ],
+      [
         "src/lib.rs",
-        "ac42b7cbb2b3af54633ee333cd3ffddb5de6ced0756482caff48961c407f3da1"
+        "3b4d2b50418692551830267cc7c23148235389440031ed9af47acb797257e093"
       ],
       [
         "src/png.rs",
-        "a09318b61df55f20fc947b67b322ecd9973316ffebb239545b6dff4b40bb8d55"
+        "b6833cb9fe100bab7e0d8e6e0ff01b51190d533d322b96c61324f3f19e13c838"
       ],
       [
         "src/tests.rs",
         "fd337b2c0fb219f215ce2cfcb02dda600a54af225e5c7aa745b5f1188fc7bf6e"
       ],
       [
+        "src/tests_jpeg.rs",
+        "024682439d0e65df9ab5ccc3efaec745edd44fd6c39dfaf8a1c98fa90af86dc5"
+      ],
+      [
         "tests/contract.rs",
-        "ea36d6784f9c75e2e6890015a1e4b38f5f2cc4eb1c821687a210220fcf315e4a"
+        "a19507a81686b5ae0452ec1ae171691bd2e8ee11a69faf37531c49274eb43405"
+      ],
+      [
+        "tests/fixtures/arithmetic_61x37.jpg",
+        "223789e9d7266699013d332ab1493d171a68f1081a49ab740ba7efe7edde359d"
       ],
       [
         "tests/fixtures/far_distance_zlib9.bin",
         "0846a988c56f09cb7666845e5fa6cd9a6cda7a7e5a710eef285e790b8a37fabb"
       ],
       [
+        "tests/fixtures/grey_61x37.jpg",
+        "2ce2a2bde57097aa1b16a66b89e88b3172a53337810d16c4f14954522733a96e"
+      ],
+      [
+        "tests/fixtures/grey_8x8.jpg",
+        "922c45be247ba595930ac628d411a6ccd35f1275cc35b53989e924fa77e09f7c"
+      ],
+      [
+        "tests/fixtures/make_jpeg_fixtures.sh",
+        "3d81b151e3427590f1270b8f7d6ae1ce4e020d069d3e7a163fe19d94afb39d2a"
+      ],
+      [
+        "tests/fixtures/moli_320x200_q60_420.jpg",
+        "7826b009f51ea42ca6b9456ea40fcadb807d9fd25ec5f5a16a47964f242d2018"
+      ],
+      [
+        "tests/fixtures/moli_320x200_q90_444.jpg",
+        "4a0720e5451bfe6e2d8be2629674e979d913a65ce705c2d6fe1913a477749424"
+      ],
+      [
+        "tests/fixtures/odd_61x37_420.jpg",
+        "04d18524a11e6ffdc76d5da63943cf25584d8af7c7c393331ca1e8d06594df26"
+      ],
+      [
+        "tests/fixtures/odd_61x37_422.jpg",
+        "418286f1df4182e38be9ed4ef9ebc5fcf4ed079775a131e0193bcd25dae2021b"
+      ],
+      [
+        "tests/fixtures/odd_61x37_440.jpg",
+        "acac5b5a2de5334615d8f748e7d2ad85a57b468459ffcece091cd10b945d8760"
+      ],
+      [
+        "tests/fixtures/odd_61x37_444.jpg",
+        "a912e3adb7d9701ad048db1710a1a6b66a9a128b01d4ae67ca7aca977174ddc0"
+      ],
+      [
+        "tests/fixtures/one_pixel.jpg",
+        "83f061b5a7236a965b217311cd8ed14b159feb70eb7061f0017dbb26cbf84a54"
+      ],
+      [
+        "tests/fixtures/optimized_61x37_420.jpg",
+        "ab8eb35838904554a8a1b95a15a3f782326ff09eb0a76ee8cd19d357fd6ce8bf"
+      ],
+      [
+        "tests/fixtures/progressive_61x37.jpg",
+        "268bcd92cf843a48d095767a5d77d42e746c211da1a220d63b844cd360fc80d7"
+      ],
+      [
+        "tests/fixtures/restart_blocks_96x48_444.jpg",
+        "34f54eb74b11fdbeb84e8f2cb9707c4fbb72e43ce1cbdf68627b1398955440c3"
+      ],
+      [
+        "tests/fixtures/restart_rows_96x48_420.jpg",
+        "350cf44c7a9dc9f957433484105822b7126c4110ea21cb3adba330ae107bf15e"
+      ],
+      [
         "tests/fixtures/rgba_48x32_zlib9.bin",
         "52e3054c99143c6fd423c5b0d20b5da554048ea40f91a25c88cd1d2edec7e549"
       ],
       [
+        "tests/jpeg.rs",
+        "28b2efdd9bd72e44fdc9919b7e40421fd7227de7fa9086e08318347d5fd87a24"
+      ],
+      [
         "tests/real_frames.rs",
-        "e63b0d57e2ab0c768a9361d410889a2a1488520de27fea61574b0975f518beba"
+        "cd7dbd34ccc9428c8cdd9335a1a23011187d2eb7d1c5070789966f6b7f27deb0"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 28,
+    "count": 78,
     "failed": 0,
     "ignored": 1,
-    "passed": 27
+    "passed": 77
   },
   "tool": "lico-xtask 0.1.0",
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

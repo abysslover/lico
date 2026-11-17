@@ -237,16 +237,22 @@ fn browser_tab_opens_and_paints_a_fake_frame() {
     let tab = rig.wait(15, "the first page", || Some(rig.tab(&first)).filter(|t| t["has_frame"] == json!(true) && t["title"] == json!("A fake page") && t["phase"] == json!("ready")));
     assert_eq!((tab["url"].as_str(), tab["unpinned"].clone(), tab["local"].clone()), (Some("https://pages.test/start"), json!(true), json!(false)), "{tab}");
     assert_eq!(tab["viewport"], json!([1024, 768]));
-    // a picture of the page: the frame of the fake, written again by lico-png to a new owner-only file
+    // the engine was asked for a JPEG screencast at quality 90 (M20-P02: Moli's PNG frames are 20 to 30 times larger)
+    let asked = rig.engine_files("frame.log").concat();
+    assert!(asked.contains(r#"Page.startScreencast {"everyNthFrame":1,"format":"jpeg","maxHeight":768,"maxWidth":1024,"quality":90}"#), "{asked}");
+    // a picture of the page: the newest frame of the fake (a JPEG), decoded and written as a PNG by lico-png to a new owner-only file
     let shot = rig.dir.join("shot.png");
     let reply = rig.call(json!({"op": "browser.shot", "tab": first, "path": shot.to_str().unwrap()}));
     assert_eq!((reply["ok"].clone(), reply["width"].clone(), reply["height"].clone()), (json!(1), json!(96), json!(64)), "{reply}");
     assert_eq!(std::fs::metadata(&shot).unwrap().permissions().mode() & 0o777, 0o600);
     let bytes = std::fs::read(&shot).unwrap();
+    assert_eq!(lico_frame::format(&bytes), Some(lico_frame::Format::Png), "the file is a PNG, whatever the engine sent");
     let image = lico_frame::decode(&bytes, &lico_frame::Limits::default()).expect("the picture is a PNG that decodes");
     let p = image.pixels[0];
-    let (r, g, b) = ((p >> 16) as u8, (p >> 8) as u8, p as u8);
-    assert!(b == 90 && r as u16 + g as u16 == 200 && r % 40 == 0, "the pixels are the fake's: {r} {g} {b}");
+    let (r, g, b) = ((p >> 16 & 255) as i32, (p >> 8 & 255) as i32, (p & 255) as i32);
+    // the fake's colour is (shade, 200 - shade, 90) with a shade that is a multiple of 40; a JPEG gives it back to within the rounding of YCbCr
+    assert!((b - 90).abs() <= 4 && (r + g - 200).abs() <= 6 && ((r + 20) % 40 - 20).abs() <= 4, "the pixels are the fake's: {r} {g} {b}");
+    // (the shot is the newest frame the tab holds: `Page.captureScreenshot` is asked only when no frame came, and its parameters are tested in `map.rs`)
     assert_eq!(rig.call(json!({"op": "browser.shot", "tab": first, "path": shot.to_str().unwrap()}))["error"], json!("exists"), "never over an existing file");
     // what the guard saw reaches the person: an address that is not public is refused by the guard, and the tab says so (no network, no lookup: a literal address)
     let second = rig.open("http://203.0.113.5/");
@@ -395,12 +401,13 @@ fn browser_watch_hands_the_window_the_newest_frame_and_nothing_polls() {
     // twenty frames came at once: the host acknowledged all, kept the newest compressed one and counted the rest
     let row = rig.wait(15, "the burst of frames", || Some(rig.tab(&tab)).filter(|t| t["frame_seq"].as_u64().unwrap_or(0) >= 20));
     assert!(row["dropped_frames"].as_u64().unwrap() >= 15, "the frames nobody painted are dropped in the host and counted: {row}");
-    // a window that asks now gets the newest one only, as text, and it is a PNG that decodes
+    // a window that asks now gets the newest one only, as text, and it is a JPEG that decodes (the frame of the fake is what the engine was asked for)
     let first = read_answer(send_watch(&rig.socket, &tab, 0, 0), 10).expect("an answer");
     let newest = row["frame_seq"].as_u64().unwrap();
     assert_eq!(first["frame_seq"].as_u64(), Some(newest), "{}", first.to_string().chars().take(200).collect::<String>());
     let png = super::map::base64_decode(first["png"].as_str().unwrap()).expect("base64");
-    let image = lico_frame::decode(&png, &lico_frame::Limits::default()).expect("a PNG");
+    assert_eq!(lico_frame::format(&png), Some(lico_frame::Format::Jpeg));
+    let image = lico_frame::decode(&png, &lico_frame::Limits::default()).expect("a JPEG");
     assert_eq!((image.width, image.height), (96, 64));
     let seq = first["seq"].as_u64().unwrap();
     // asking again with what it has: the call waits (nothing changed), it does not poll and does not answer

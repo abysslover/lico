@@ -1,9 +1,9 @@
 //! The PNG container (chunks, header, palette), the filters and the conversion to pixels.
 
 use crate::inflate;
-use crate::{Error, Header, Image, Limits, MAX_CHUNKS};
+use crate::{Error, Format, Header, Image, Limits, MAX_CHUNKS};
 
-const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+pub(crate) const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
 
 const fn crc_table() -> [u32; 256] {
     let mut t = [0u32; 256];
@@ -65,7 +65,7 @@ fn channels(colour: u8) -> usize {
 
 fn read_header(png: &[u8]) -> Result<(Header, usize), Error> {
     if png.len() < 8 || png[..8] != SIGNATURE {
-        return Err(Error::NotPng);
+        return Err(Error::NotAnImage);
     }
     let (c, next) = chunk_at(png, 8)?;
     if &c.kind != b"IHDR" || c.data.len() != 13 {
@@ -98,7 +98,7 @@ fn read_header(png: &[u8]) -> Result<(Header, usize), Error> {
     if depth < 8 {
         return Err(Error::Unsupported("bit depths below 8"));
     }
-    Ok((Header { width, height, colour, depth }, next))
+    Ok((Header { width, height, colour, depth, format: Format::Png }, next))
 }
 
 pub(crate) fn header(png: &[u8]) -> Result<Header, Error> {

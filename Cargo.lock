@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "lico-browser-view"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "lico-frame",
  "lico-png",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "lico-cdp"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "lico-cdp-fake",
  "lico-ws",
@@ -691,7 +691,7 @@ dependencies = [
 
 [[package]]
 name = "lico-frame"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lico-png",
 ]
