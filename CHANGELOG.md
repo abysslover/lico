@@ -9,6 +9,16 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.5.0 — 2026-11-17 (`M17`)
+
+- **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P09 report](doc/reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md)); recorded as approved by the lead under the owner's delegation, to be confirmed by the owner.
+- **Measured resources**: idle window `25.54..26.07` / `36.67..37.01 MiB` (`+0.3..0.8` over `0.4.0`), host `8.28..8.52 MiB`, `10 -> 100` hidden growth `-0.06..+0.27 MiB`, one shown browser tab at the default size `26.2` (scale 1) and `39.4 MiB` (peak `44.1`, scale 2), cold 565-test suite `136.9..141.4 s` and `1,508..1,785.8 MiB` on the last code (three more runs on the commit before: `140.1..152.2 s`, up to `1,897.2 MiB`, margin `150.8 MiB`), binary `10,505,744` bytes (`+5.67 %`), two clean clones identical.
+- **Highlights**:
+  - **A browser tab.** `lico browser open URL [--local]`, `list`, `close`, `shot`, and `+B` / `+BL` in the window, with the Obscura engine (a pinned release the person installs; its SHA-256 is checked from the open file and that file is run; Lico never downloads it). The engine runs only while a tab is open, in a Landlock fence, behind a fetch guard of Lico's own that allows public addresses on ports 80, 443, 8080 and 8443 only. A tab for this machine's own services (`--local`) reaches loopback addresses and nothing else. The user-agent names Lico and the engine; no stealth switch is passed. Mouse, wheel, keys, committed text (Korean included) and paste reach a page from the person only; F1 shows the help.
+  - **Seven components and a tool**: `lico-ws`, `lico-cdp` (with a link whose reader blocks and whose callers write at once), `lico-cdp-fake`, `lico-sandbox` (runs the open, hashed file), `lico-frame` (a PNG decoder), `lico-browser-view` (the display-free tab model), `lico-proxy` (the fetch guard), and `tools/fake-engine`; an operations port keeps the adapter out of the 48-module cycle (still `48`); eight system tests on the short list.
+  - **Nothing wakes while a still page is shown** (host wake-ups `0.8` a second against `60`, host CPU `0.00..0.01 s` in 60 s).
+  - **Known limits**: the page may still see a Windows platform; Korean in a page's form control is drawn as boxes by the engine (the value is right); a refusal after the load event is not told to the tab; the first real-site check is the owner's.
+
 ## 0.4.0 — 2026-11-17 (`M16`)
 
 - **Milestone**: [M16 Retire the prototypes, and a found Local LLM server as its own session kind](doc/milestones/202611/20261117/20261117_01_M16_retire_prototypes_and_local_llm_session_milestone.md) ([M16-P08 report](doc/reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md)); on phase branches `phase/M16-P01-...` to `phase/M16-P08-...`, not yet merged

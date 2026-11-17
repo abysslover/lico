@@ -1,10 +1,14 @@
-# Owner end-to-end guide (`lico 0.4.0`)
+# Owner end-to-end guide (`lico 0.5.0`)
 
 Version: 1.9.1
 
 This guide is for the account owner administering Lico on Linux. Lico never reads a provider's login files and never stores a provider secret in plaintext; application-owned credentials live only in the OS keyring (`lico cred`, failing closed when the store is locked or missing), and each account owns a private directory (`0700`) that the provider itself populates when you sign in. A live provider session may incur provider usage charges.
 
 State lives in `$XDG_STATE_HOME/lico` (or `~/.local/state/lico`), and the local owner-only socket defaults to `$XDG_RUNTIME_DIR/lico/host.sock`. Everything ships in one self-contained executable (`lico`): `lico gui` opens the administrator window, `lico host` runs the background session host, `lico --version` prints the build identity, and `lico licenses` prints third-party notices.
+
+## Browser tab (`lico 0.5.0`, M17)
+
+A browser tab shows a page with the Obscura engine, a program you install yourself (Lico never downloads it): put the files `obscura` and `obscura-worker` of release `v0.2.6` in `~/.local/share/lico/browser/v0.2.6` (directories and files yours and not writable by others; the SHA-256 values and the steps are in the [M17-P09 report](reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md), section 6). Then `lico browser open https://SITE`, `lico browser list`, `lico browser shot b1 FILE`, `lico browser close b1`, or `+B` in the window (`+BL` for a tab that may reach services on this machine only, and nothing else). `F1` shows the help; `Ctrl+L` goes to the address row, `Alt+Left`, `Alt+Right` and `F5` go back, forward and reload, `Ctrl+W` closes. The engine runs only while a tab is open. Known limits: the page may still see a Windows platform; Korean in a page's form field may show as boxes.
 
 ## Administrator window (`lico gui`)
 

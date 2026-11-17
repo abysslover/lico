@@ -1,6 +1,6 @@
 # M17 — A Browser in a Tab, with the Obscura Engine (Phase 0)
 
-- Status: P01 (Phase 0, read-only) implemented, its plan approved by the lead under the owner's delegation (the owner away); later phases are sketches until the report is decided
+- Status: **all nine phases P01 to P09 implemented** (`lico 0.5.0`, commit `46ab705`); every approval was given by the LEAD under the owner's delegation (the owner away) and is to be confirmed by the owner; the milestone waits for the lead's close and the owner's G3 and G4 (nothing here is accepted by the owner)
 - Version: 1.0.0
 - Approved: not yet (G1 for the milestone waits for the Phase 0 report)
 - Project: Lico
@@ -31,8 +31,15 @@ Lico's own side keeps its rules: the component rules 1.0.1 (new code is new comp
 | M17-P06 | the host adapter `browser/`, CLI and HTTP parity, system tests | [Plan and result](../../../plans/202611/20261117/20261117_19_M17-P06_browser_host_adapter_plan.md) | done | adapter, `lico browser`, two system tests, real-engine probe measured; the localhost opt-in has no effect with this engine (question to the lead) |
 | M17-P07 | the tab kind in the window | [Plan and result](../../../plans/202611/20261117/20261117_20_M17-P07_window_tab_plan.md) | done | tab bar, `+B`/`+BL`, page painted, address row, states, help; real engine measured in the window; scale-2 peak 50.4 MiB |
 | M17-P08 | no timers; mouse, wheel, keys, text, paste | [Plan and result](../../../plans/202611/20261117/20261117_21_M17-P08_input_and_no_timers_plan.md) | done | wake-ups 60 a second to 0.8; command p95 0.22 ms (fake) and 7.5 ms (real, upper bound); Korean typed into a real page |
-| M17-P09 | verification and the release `0.5.0` | sketch (mail 147) | | after P08 |
+| M17-P09 | verification and the release `0.5.0` | [Report](../../../reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md) | done | six counted cold runs green (565 tests), two clean clones identical, installed, smoke-tested with the real engine; the scale-2 peak `44.1 MiB`; the owner's list and the first real-site check in the report |
+
+## The owner's first real-site check
+
+Written out in the [P09 report](../../../reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md), section 6: install the pinned engine (the release URL, the SHA-256 values, the folder `~/.local/share/lico/browser/v0.2.6` and its modes), then `lico browser open https://SITE`; what to expect and the known limits. No test touches a real site.
 
 ## Cost
+
+The M17 cost table is in the P09 report (section 8): about `54` USD counted against the Phase 0 estimate of about `30`.
+
 
 Estimate for P01: 5 to 9 USD (reading, one measurement, the report). The front-end limit is 235; the counter since mail 137 stood at about 33.9 USD when this note was written.
