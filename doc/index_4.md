@@ -140,6 +140,8 @@
 | [M17-P09 report](reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md) | Verification and the release `lico 0.5.0`: measured acceptance, the smoke test with the real engine, the owner's first real-site check, the cost table, the owner's list |
 | [M18-P01 plan](plans/202611/20261117/20261117_23_M18-P01_remote_lico_host_phase0_plan.md) | Phase 0 for the remote lico host: a report only |
 | [M18-P01 report](reports/202611/20261117/20261117_24_M18-P01_remote_lico_host_phase0_report.md) | The remote lico host: today, the transport, the install with the owner's approval per host, credentials, components, phases, cost and the owner's questions |
+| [M17-P10 report](reports/202611/20261117/20261117_26_M17-P10_engine_auto_install_and_0_5_1_report.md) | The engine installs itself when a tab is opened (requested by the owner), release `lico 0.5.1`: the design, the mutants, the one real install measured, the window pictures, the curl sandbox as it is, the owner's real-home check |
+| [M17-P10 plan](plans/202611/20261117/20261117_25_M17-P10_engine_auto_install_plan.md) | The plan note of the patch (the way, the three causes to stop, the stop rule) |
 | [M18 milestone](milestones/202611/20261117/20261117_03_M18_remote_lico_host_milestone.md) | The remote lico host (Phase 0 done) |
 | [M16-P08 report](reports/202611/20261117/20261117_11_M16-P08_verification_and_0_4_0_report.md) | Measured acceptance of `lico 0.4.0`: three counted runs, idle, hidden growth, two acceptances, the known red, what is left over |
 | [M16-P07 plan](plans/202611/20261117/20261117_09_M16-P07_local_session_gui_plan.md) | The window for the local session (proposed; waits for the lead's answer) |

@@ -9,6 +9,15 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.5.1 — 2026-11-17 (`M17-P10`)
+
+- **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P10 report](doc/reports/202611/20261117/20261117_26_M17-P10_engine_auto_install_and_0_5_1_report.md)); release commit `1592da5`, `10,722,312` bytes (`+216,568`, `+2.06 %` over `0.5.0`), two clean clones identical (`164a14e0...ae23`).
+- **Highlights**:
+  - **The engine installs itself when a tab is opened** (requested by the owner in the chat, 2026-11-17; the spec wording approved by the lead, to be confirmed by the owner). With no engine installed the tab says "installing the browser engine" with the size, the source and the start of the pinned SHA-256, asks nothing, then starts the engine and loads the page; `lico browser open` waits and says so; `lico browser list` shows `installing`. Only the pinned archive from the pinned address is fetched, by the system `curl` (no TLS and no dependency in Lico), checked against its pinned SHA-256 on the open file, listed and unpacked by the system `tar`, both files checked again, one atomic rename; nothing is left on a failure, a wrong hash is shown as a security notice, the manual way is the fallback. Measured once with the real archive in a private home: installed in `5.28 s`, first painted frame `5.55 s`, host `7.5` and window `22.7 MiB` during the install, nothing left; the second open downloads nothing. curl is not run under the sandbox (said in the report).
+  - A new pure component `lico-engine-pack`; `lico-browser-view` `0.6.0`; mutants `9/10` (the tenth equivalent), `6/6` and `3/3` killed.
+  - `lico browser open --local` is what the help says now (it said `--localhost`); a test keeps the help and the parser the same.
+- **Known limits**: curl is not fenced; the download alone was not timed; the last suite run had its build step skipped; the whole-suite margin in the run with its build was `94.7 MiB`.
+
 ## 0.5.0 — 2026-11-17 (`M17`)
 
 - **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P09 report](doc/reports/202611/20261117/20261117_22_M17-P09_verification_and_0_5_0_report.md)); recorded as approved by the lead under the owner's delegation, to be confirmed by the owner.
