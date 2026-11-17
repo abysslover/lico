@@ -9,6 +9,10 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## Unreleased — M19-P01 (the memory guard; the release 0.6.0 is not made yet)
+
+- **Highlights** (requested by the owner in the chat, 2026-11-17; the spec wording approved by the lead, to be confirmed by the owner): the session list colours a session's memory by its largest process (orange from 400 MB, red from 500 MB; the old 1 and 2 GiB rule is gone) and the line under the list takes the worst colour; a click on a red session asks once whether to end and resume it; `session.close` takes `by` (`person` or `guard`) and `status` shows `closed_by`; `memory.max_rss_kb`; the optional auto-close (off by default) and the warning to the main agent, both set in an owner-only `memory.json`; the new pure component `lico-memguard`. Not built yet: the machine line in the window, the warning before a new session is created, the grace time before an auto-close, the line "memory N MB: closed and resumed automatically", slice D. See the plan note (State for the lead).
+
 ## 0.5.1 — 2026-11-17 (`M17-P10`)
 
 - **Milestone**: [M17 A browser tab with the Obscura engine](doc/milestones/202611/20261117/20261117_02_M17_browser_tab_with_obscura_milestone.md) ([M17-P10 report](doc/reports/202611/20261117/20261117_26_M17-P10_engine_auto_install_and_0_5_1_report.md)); release commit `1592da5`, `10,722,312` bytes (`+216,568`, `+2.06 %` over `0.5.0`), two clean clones identical (`164a14e0...ae23`).

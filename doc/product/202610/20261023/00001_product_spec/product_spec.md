@@ -110,6 +110,18 @@ Required account tests: A/B concurrent login and request routing, independent re
 | LLM-07 | The host runs the tool loop: only the tools the host offers can be called, with the approvals every session has (the tools that need none run at once, every other tool leaves its card and ends the turn until the person decides); at most 8 rounds, 4 calls an answer, 16 calls and 10 minutes for one message of the person; a reply that is cut or fails runs no call. |
 | LLM-08 | A local session has no access to files or a shell; a tool for either needs its own requirement and the person's approvals first. |
 
+### Memory guard
+
+Requested by the owner in the chat, 2026-11-17; the spec wording approved by the lead, to be confirmed by the owner.
+
+| ID | Requirement |
+|---|---|
+| MEM-01 | Each running session's memory is measured as VmRSS from `/proc` over the whole process tree of its agent (its subagents and tools included); the figure shown in the session list is the tree total, and the colour follows the largest single process of the tree: orange from 400 MB, red from 500 MB (the defaults; the owner may set both in an owner-only `memory.json`). RSS counts shared library and file pages in every process that maps them. The memory is read only while a window or a client looks at the status: nothing wakes when nobody looks. |
+| MEM-02 | A click on a red session (not orange) asks once for each red episode: "this session uses N MB (limit 500). End it and continue? The conversation resumes; tool jobs that were running are lost.", with end-and-resume or cancel; cancel opens the session as usual. End-and-resume is `session.close` then `session.resume` in one step; a session with no conversation to come back to is refused before anything is ended. |
+| MEM-03 | Who closed a session is recorded (`closed_by`: `person` or `guard`) until it is resumed. Only a session the guard closed is ever resumed by the guard; nothing revives a session the person closed. Resumes by the guard go one at a time, 20 seconds apart. |
+| MEM-04 | The auto-close is OFF unless the owner's `memory.json` says `"auto_close": true`; a session may be left out (`auto_close_off`). A red session is closed and resumed automatically only at an idle moment (no turn running, no approval pending, no input from the person for 30 seconds); a session that is red again twice in ten minutes is only warned about. |
+| MEM-05 | The main agent (the session the owner names as `main_agent` in `memory.json`) is warned by a fixed message that carries numbers, the session id, a cleaned and capped session name and the exact commands `lico session close ID` and `lico session resume ID`, once for each red episode of a session and once for each red episode of the machine (available memory under 10 percent), only at an idle moment of the main agent; ON unless `"warn_main": false`. Nothing an agent wrote is put into the message but the capped, cleaned name. |
+
 ### Browser tab
 
 *Recorded in M17-P09 as approved by the LEAD under the owner's delegation (the owner away); to be confirmed by the owner.*
