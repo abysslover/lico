@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use lico_memguard::{ClosedBy, Idle, Level, Limits, LoopGuard, ResumeQueue};
+use lico_memguard::{ClosedBy, Episodes, Idle, Level, Limits, LoopGuard, ResumeQueue};
 use serde_json::Value;
 
 use crate::core::Shared;
@@ -42,11 +42,14 @@ pub struct Config {
     pub limits: Limits,
     pub auto_close: bool,
     pub auto_close_off: Vec<String>,
+    /// The warning to the main agent (ON by default, one switch) and the session the person marked as the main agent (`main_agent`).
+    pub warn_main: bool,
+    pub main_agent: Option<String>,
 }
 
 impl Default for Config {
     fn default() -> Config {
-        Config { limits: Limits::default(), auto_close: false, auto_close_off: Vec::new() }
+        Config { limits: Limits::default(), auto_close: false, auto_close_off: Vec::new(), warn_main: true, main_agent: None }
     }
 }
 
@@ -58,6 +61,8 @@ pub fn parse_config(text: &str) -> Config {
         c.limits = limits;
     }
     c.auto_close = v["auto_close"].as_bool() == Some(true);
+    c.warn_main = v["warn_main"].as_bool() != Some(false);
+    c.main_agent = v["main_agent"].as_str().filter(|s| !s.is_empty() && s.len() <= 64).map(str::to_string);
     c.auto_close_off = v["auto_close_off"].as_array().into_iter().flatten().filter_map(|s| s.as_str().map(str::to_string)).take(64).collect();
     c
 }
@@ -81,6 +86,7 @@ struct State {
     queue: Option<ResumeQueue>,
     loops: LoopGuard,
     typed: BTreeMap<String, u64>,
+    episodes: Episodes,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -92,6 +98,54 @@ fn now_ms() -> u64 {
 /// The person sent input to a session (the idle test must not close it while they are typing).
 pub fn note_input(session: &str) {
     STATE.lock().unwrap().get_or_insert_with(State::default).typed.insert(session.to_string(), now_ms());
+}
+
+/// The warning for the main agent now, if there is one: (the main agent's session, the text). Only at an idle moment of the main agent (no turn, no approval, the person not typing), once for
+/// each red episode of a session (an episode is used up only when its warning is sent) and once for each red episode of the machine; one warning at a time.
+fn plan_warning(entries: &[Value], cfg: &Config, st: &mut State, now: u64, machine: Option<(u64, u64)>) -> Option<(String, String)> {
+    let main = cfg.main_agent.as_deref()?;
+    let level_of = |e: &Value| cfg.limits.level(e["memory"]["max_rss_kb"].as_u64().unwrap_or(0));
+    for e in entries {
+        if let Some(id) = e["session"].as_str() {
+            if level_of(e) != Level::Red {
+                st.episodes.warn_main(id, Level::Ok); // the episode of this session ended
+            }
+        }
+    }
+    let machine_level = machine.map_or(Level::Ok, |(avail, total)| lico_memguard::machine_level(avail, total));
+    if machine_level != Level::Red {
+        st.episodes.warn_main("\u{0}machine", Level::Ok);
+    }
+    if !cfg.warn_main {
+        return None;
+    }
+    let me = entries.iter().find(|e| e["session"] == main)?;
+    let typing = st.typed.get(main).is_some_and(|t| now.saturating_sub(*t) < TYPING_QUIET_MS);
+    let idle = Idle { turn_running: me["activity"] != "idle", approval_pending: me["approvals"].as_array().is_some_and(|a| !a.is_empty()), person_typing: typing };
+    if me["state"] != "running" || !idle.ok() {
+        return None;
+    }
+    for e in entries {
+        let Some(id) = e["session"].as_str() else { continue };
+        if id != main && e["state"] == "running" && level_of(e) == Level::Red && st.episodes.warn_main(id, Level::Red) {
+            let kb = e["memory"]["max_rss_kb"].as_u64().unwrap_or(0);
+            return Some((main.to_string(), lico_memguard::warning_text(id, e["name"].as_str().unwrap_or(""), kb / 1024, cfg.limits.limit_mb)));
+        }
+    }
+    if let (Level::Red, Some((avail, total))) = (machine_level, machine) {
+        if st.episodes.warn_main("\u{0}machine", Level::Red) {
+            let running = entries.iter().filter(|e| e["state"] == "running").count() as u32;
+            return Some((main.to_string(), lico_memguard::machine_warning_text(running, (avail.saturating_mul(100) / total.max(1)) as u32, avail / 1024)));
+        }
+    }
+    None
+}
+
+/// `MemAvailable` and `MemTotal` of this machine in kB.
+fn meminfo() -> Option<(u64, u64)> {
+    let text = std::fs::read_to_string("/proc/meminfo").ok()?;
+    let get = |k: &str| text.lines().find_map(|l| l.strip_prefix(k)?.split_whitespace().next()?.parse::<u64>().ok());
+    Some((get("MemAvailable:")?, get("MemTotal:")?))
 }
 
 /// The running sessions to close and resume now: red by the largest process, auto-close on for them, idle (no turn, no approval, the person not typing), and not stopped by the loop guard.
@@ -121,13 +175,17 @@ pub fn tick(shared: &Arc<Shared>, reply: &serde_json::Map<String, Value>) {
     let state_dir = shared.cfg.registry_dir.parent().map(Path::to_path_buf).unwrap_or_default();
     let cfg = read_config(&state_dir);
     let now = now_ms();
-    let (to_close, resume) = {
+    let machine = meminfo();
+    let (to_close, resume, warning) = {
         let mut g = STATE.lock().unwrap();
         let st = g.get_or_insert_with(State::default);
         let q = st.queue.get_or_insert_with(|| ResumeQueue::new(RESUME_GAP_MS));
         let resume = q.next(now);
-        (plan(entries, &cfg, st, now), resume)
+        (plan(entries, &cfg, st, now), resume, plan_warning(entries, &cfg, st, now, machine))
     };
+    if let Some((main, text)) = warning {
+        let _ = crate::core::input(shared, &main, None, &format!("guard-{now}"), &text, crate::session::Origin::Host, None);
+    }
     for (id, generation) in to_close {
         let worktree = entries.iter().find(|e| e["session"] == id.as_str()).and_then(|e| (!e["worktree"].is_null()).then_some("keep"));
         if crate::lifecycle::session_close_opts(shared, &id, generation, worktree, false, false).is_ok() {
@@ -178,6 +236,45 @@ mod tests {
 
     fn entry(id: &str, kb: u64, activity: &str, approvals: usize) -> Value {
         serde_json::json!({"session": id, "generation": 3, "state": "running", "activity": activity, "approvals": vec![1; approvals], "memory": {"max_rss_kb": kb}})
+    }
+
+    #[test]
+    fn the_main_agent_is_warned_once_for_each_red_episode_only_when_it_is_idle_and_never_with_a_name_it_did_not_get_cleaned() {
+        let cfg = Config { main_agent: Some("main".into()), ..Config::default() };
+        let mut st = State::default();
+        let t = 5_000_000;
+        let mut heavy = entry("w1", 520 * 1024, "working", 0);
+        heavy["name"] = serde_json::json!("builder\u{1b}[31m");
+        let mut all = vec![entry("main", 50 * 1024, "idle", 0), heavy];
+        let (id, text) = plan_warning(&all, &cfg, &mut st, t, None).expect("a warning");
+        assert_eq!(id, "main");
+        assert!(text.contains("w1") && text.contains("520 MB") && text.contains("lico session close w1") && !text.contains('\u{1b}'), "{text}");
+        assert!(plan_warning(&all, &cfg, &mut st, t, None).is_none(), "once for the episode");
+        all[1] = entry("w1", 100 * 1024, "working", 0);
+        assert!(plan_warning(&all, &cfg, &mut st, t, None).is_none());
+        all[1] = entry("w1", 520 * 1024, "working", 0);
+        assert!(plan_warning(&all, &cfg, &mut st, t, None).is_some(), "a new episode after it left red");
+        // not while the main agent works, asks or is typed to; the episode is kept for later
+        let mut st = State::default();
+        for busy in [entry("main", 1, "working", 0), entry("main", 1, "idle", 1)] {
+            all[0] = busy;
+            assert!(plan_warning(&all, &cfg, &mut st, t, None).is_none());
+        }
+        all[0] = entry("main", 1, "idle", 0);
+        st.typed.insert("main".into(), t - 1_000);
+        assert!(plan_warning(&all, &cfg, &mut st, t, None).is_none(), "the person is typing to the main agent");
+        assert!(plan_warning(&all, &cfg, &mut st, t + 40_000, None).is_some(), "later, at an idle moment, it is still sent");
+        // switched off, or no main agent marked
+        assert!(plan_warning(&all, &Config { warn_main: false, ..cfg.clone() }, &mut State::default(), t, None).is_none());
+        assert!(plan_warning(&all, &Config::default(), &mut State::default(), t, None).is_none());
+        // the machine
+        let quiet = vec![entry("main", 1, "idle", 0)];
+        let total = 20 * 1024 * 1024;
+        let mut st = State::default();
+        assert!(plan_warning(&quiet, &cfg, &mut st, t, Some((total / 4, total))).is_none());
+        let (_, text) = plan_warning(&quiet, &cfg, &mut st, t, Some((total / 20, total))).expect("the machine is red");
+        assert!(text.contains("1 sessions") && text.contains("5 percent"), "{text}");
+        assert!(plan_warning(&quiet, &cfg, &mut st, t, Some((total / 20, total))).is_none(), "once for the episode");
     }
 
     #[test]
