@@ -30,6 +30,42 @@ const MAX_NOTICE_HOST: usize = 253;
 pub const LOCAL_NOTE: &str = "this tab can reach services on this machine and no other site";
 pub const UNPINNED_NOTICE: &str = "running an engine that is not the pinned release";
 
+/// The radius and the thickness (pixels) of the ring that marks where the person last clicked on the page (0.7.0).
+pub const MARK_RADIUS: i32 = 9;
+pub const MARK_THICKNESS: i32 = 2;
+
+/// What the header says about where the person's typing goes (0.7.0): the engine draws no caret, so the window says it.
+pub fn keys_hint(focus: Focus) -> &'static str {
+    match focus {
+        Focus::Page => "typing goes to the page (Ctrl+L: address)",
+        Focus::Address => "typing goes to the address row (click the page to type in it)",
+    }
+}
+
+/// Whether the address row takes the page's new address (0.7.0): the page's address changed and has a value, and the row is empty or still shows the page's last address
+/// (the person has not edited it). A row the person has edited, or cleared and left, is theirs.
+pub fn follows_page(row: &str, last_put: &str, page_url: &str) -> bool {
+    !page_url.is_empty() && page_url != last_put && (row.is_empty() || row == last_put)
+}
+
+/// The points (offsets from the click) of a ring of `radius` pixels and `thickness` pixels, the point itself left free (0.7.0); nothing for a radius or a thickness of 0 or less.
+pub fn click_mark(radius: i32, thickness: i32) -> Vec<(i32, i32)> {
+    if radius <= 0 || thickness <= 0 {
+        return Vec::new();
+    }
+    let inner = (radius - thickness).max(0);
+    let mut out = Vec::new();
+    for y in -radius..=radius {
+        for x in -radius..=radius {
+            let d = x * x + y * y;
+            if d > inner * inner && d <= radius * radius + radius {
+                out.push((x, y));
+            }
+        }
+    }
+    out
+}
+
 // ---- text from outside -----------------------------------------------------------------------------------------------------------------------------
 
 fn hidden_format_char(c: char) -> bool {
@@ -416,9 +452,12 @@ impl Tab {
             "Addresses on this computer or a private network are refused, by number and as localhost.",
             "To reach this machine's own services, open a tab for them from the + menu.",
             "A tab opened with the command line appears here at the next list (the + menu, or window focus).",
-            "Korean is typed with the input method: the address row shows the composition.",
+            "Korean is typed with the input method: the composition shows in the header (page) or in the address row.",
             "The page gets the finished text only. Korean typed in a page's input fields may show as boxes:",
             "that is the engine's own drawing of form controls; the text the page holds is right.",
+            "The engine draws no cursor: the header says where typing goes, and a ring marks your last click.",
+            "Text boxes made with contenteditable take no typing; <input> and <textarea> do.",
+            "Some sites, Google search among them, refuse this engine and show their own block page.",
             "The first tab installs the browser engine by itself (about 72 MB, checked by SHA-256): you are not asked.",
             "If the install fails the header says why and how to install it by hand.",
             "To look at a real site yourself: lico browser open https://SITE",

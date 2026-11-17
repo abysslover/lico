@@ -358,6 +358,7 @@ impl App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
                 self.browser_move();
+                self.browser_pointer();
                 self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;

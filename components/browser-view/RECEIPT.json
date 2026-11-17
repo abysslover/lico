@@ -5,12 +5,12 @@
       "mib": 256,
       "seconds": 30
     },
-    "compile_s": 0.6,
-    "peak_mib": 9.1,
+    "compile_s": 1.9,
+    "peak_mib": 9.4,
     "wall_s": 0.06
   },
   "date": "2026-11-17",
-  "hash": "10795ef2427229e56e30da98386c08d4854cc69919c0fb074432a379930dd9f4",
+  "hash": "86cde228162998b3bcb3823c3f52e89fd58e263159af1ff743f6f0872aa1b8ef",
   "inputs": {
     "dependencies": [
       {
@@ -26,30 +26,30 @@
     "files": [
       [
         "Cargo.toml",
-        "ef882f68fd994595536d3039b277330f39f69b878dc735bbe8ff1227a5a44687"
+        "634513cd7f9c7584b1a09d249dc1f468cd858d212406a950c514a93c79a61a77"
       ],
       [
         "SPEC.md",
-        "631b959bd9723f3dd7474005e7d904505c142426da9a3f9effb02728f340a8ac"
+        "76412904bd76a8d7f0078aa851636ec20bf941067e7b074ca81cc54e54879ab0"
       ],
       [
         "src/lib.rs",
-        "a899d1f80c978e0c3b596644cd82e27e2aa47e04f758348bd0150e3ff29c9d90"
+        "2b655ebf56268b06cb13dc9e7559c42c6d1ad913e277e27fc2883a319fffc389"
       ],
       [
         "tests/contract.rs",
-        "179bbf9afe22443344692f063648428c6919079f7496daff21891ec74a1e8d83"
+        "43b5766ce3c57fd1987c2296ac093c66653b0febacdc6ddf3665de66b6225cf7"
       ]
     ],
     "lock": "",
     "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
   },
   "result": {
-    "count": 36,
+    "count": 39,
     "failed": 0,
     "ignored": 0,
-    "passed": 36
+    "passed": 39
   },
   "tool": "lico-xtask 0.1.0",
-  "version": "0.6.0"
+  "version": "0.7.0"
 }

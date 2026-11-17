@@ -88,7 +88,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         w.key("F1")                                            # F1 over a page: the help lines, with the new sentences
         h = wait_for(lambda: (b := browser(w)) and b["help"] and b["help_lines"] and b)
         text = " ".join(h["help_lines"])
-        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "may show as boxes", "Windows platform", "next list", "localhost", "lico browser open https://SITE"]:
+        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "may show as boxes", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "draws no cursor", "contenteditable", "Google search"]:
             assert needle in text, (needle, text)
         shot(w, "10_f1_help_over_a_page.png")
         w.key("F1")
@@ -104,6 +104,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         frames = painted(w, tab)["frame_seq"]
         w.key("alt+Left")
         wait_for(lambda: any(r["url"] == "https://pages.test/start" for r in conn.call(op="browser.list")["tabs"]))
+        wait_for(lambda: "pages.test/start" in w.ui()["input"] and "pages.test/two" not in w.ui()["input"])   # M17-P11: the row that was not edited follows the page
         w.key("F5")
         wait_for(lambda: painted(w, tab)["frame_seq"] > frames)
         # a refused address is said at once in the window's own line, and nothing reaches the host's tab
@@ -230,6 +231,43 @@ def test_the_persons_input_reaches_the_page_and_lico_s_own_keys_do_not():
         shot(w, "8_page_has_the_focus.png")
 
 
+MARK_COLOUR = 0xFFE8590C
+
+
+def test_the_header_says_where_typing_goes_and_a_click_leaves_a_mark_and_the_pointer_changes_over_the_page():
+    """M17-P11 (the owner could not tell that the page took the keys: the engine draws no caret): the header says where typing goes, the last click on the page is marked with a
+    ring that goes when the keys leave the page or the page moves on, and the pointer is a crosshair over the page."""
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        conn = Conn(w.socket)
+        tab = open_tab(w, "https://pages.test/start")
+        painted(w, tab)
+        wait_for(lambda: browser(w)["page_focus"])
+        assert "typing goes to the page (Ctrl+L: address)" in browser(w)["header"], browser(w)["header"]
+        assert browser(w)["mark"] is None, "no click yet: no mark"
+        w.click(*page_point(w, 120, 90))
+        b = wait_for(lambda: (b := browser(w)) and b["mark"] == [120, 90] and b["mark_pixel"] == MARK_COLOUR and b)
+        shot(w, "11_click_mark_and_typing_hint.png")
+        w.move(*page_point(w, 200, 150))
+        wait_for(lambda: browser(w)["pointer"] == "crosshair")
+        w.move(30, 300)                                          # over the side list
+        wait_for(lambda: browser(w)["pointer"] == "default")
+        # the keys leave the page: the header says so and the mark goes
+        w.key("ctrl+l")
+        b = wait_for(lambda: (b := browser(w)) and not b["page_focus"] and b)
+        assert "typing goes to the address row (click the page to type in it)" in b["header"] and b["mark"] is None, b["header"]
+        shot(w, "13_typing_goes_to_the_address_row.png")
+        # a click gives them back and marks the point; the page moving on (back) takes the mark away
+        w.key("ctrl+u")
+        w.type_text("https://pages.test/two")
+        w.key("Return")
+        wait_for(lambda: any(r["url"] == "https://pages.test/two" for r in conn.call(op="browser.list")["tabs"]))
+        w.click(*page_point(w, 60, 70))
+        wait_for(lambda: browser(w)["mark"] == [60, 70])
+        w.key("alt+Left")
+        wait_for(lambda: any(r["url"] == "https://pages.test/start" for r in conn.call(op="browser.list")["tabs"]))
+        wait_for(lambda: browser(w)["mark"] is None)
+
+
 def test_korean_committed_in_a_page_reaches_it_as_text_and_the_address_row_keeps_its_own():
     from lico_measure.ime import SENTENCE_KEYS, SENTENCE_TEXT
 
@@ -242,7 +280,11 @@ def test_korean_committed_in_a_page_reaches_it_as_text_and_the_address_row_keeps
         time.sleep(0.5)
         w.key("shift+space")                                   # the engine starts in Latin mode: its trigger key switches to Hangul
         time.sleep(0.3)
-        w.key("--delay", "60", *SENTENCE_KEYS)
+        w.key("--delay", "60", *SENTENCE_KEYS[:6])             # a half composed word: M17-P11: the header shows it (the address row's brackets stay empty while the page has the keys: the picture 12)
+        h = wait_for(lambda: (h := browser(w)["header"]) and "composing: " in h and h)
+        assert h.split("composing: ")[1].split(" |")[0].strip() != "", h
+        shot(w, "12_composing_in_the_header.png")
+        w.key("--delay", "60", *SENTENCE_KEYS[6:])
         wait_for(lambda: "".join(p["text"] for m, p in input_log(w) if m == "Input.insertText").endswith("한글 "))
         sent = "".join(p["text"] for m, p in input_log(w) if m == "Input.insertText")
         assert sent == SENTENCE_TEXT, sent

@@ -47,7 +47,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
@@ -74,3 +74,14 @@ The display-free model of one browser tab. It is driven with the person's intent
 Requested by the owner in the chat, 2026-11-17 (the engine installs itself when a tab is opened); the spec wording approved by the lead, to be confirmed by the owner. `Phase::Installing { size_mb, source, hash12 }` and `EngineEvent::Installing` (the tab says so, asks no question, produces no effect and takes no pointer, key or text; an address given meanwhile is kept for `Started`), `EngineEvent::Starting` (the engine is there and is being started), `EngineEvent::InstallFailed { why, security, expected_sha256, release }` (the phase becomes `Absent`, the pending address is dropped, and the notice is "the engine could not be installed: WHY", with "SECURITY: " in front for a hash that is not the pinned one or an archive entry that was refused; cleaned and cut like any notice). The model does not know a URL or a hash it could change: the adapter passes the pinned ones.
 
 `help_lines()` also says that the first tab installs the browser engine by itself from its pinned release (about 72 MB, checked by SHA-256) without asking, and that a failed install is explained in the header with the way to install by hand.
+
+## The cues of a live page (0.7.0, M17-P11)
+
+Why: the engine draws no caret and no focus ring, so a page with the keys looked like a picture ("it feels like only a picture", the owner, 2026-11-17), and the address row kept the first address after a link. All four helpers are pure.
+
+- `keys_hint(Focus) -> &'static str`: "typing goes to the page (Ctrl+L: address)" or "typing goes to the address row (click the page to type in it)"; the window puts it in the header of a ready or loading tab.
+- `follows_page(row, last_put, page_url) -> bool`: the address row takes the page's address when that address is not empty, differs from the last one put in the row, and the row is empty or still holds the last one put (the person has not edited it); a row the person edited or cleared is never overwritten.
+- `click_mark(radius, thickness) -> Vec<(i32, i32)>`: the points of a ring around (0, 0) with `MARK_RADIUS` 9 and `MARK_THICKNESS` 2 as the window's values; the point itself is never in it (an empty list for a radius or thickness of 0 or less). The window draws it at the last click inside the page, only while the page has the keys, and drops it when the page's address changes, on Ctrl+L, on an address Go and on a new tab.
+- `help_lines()` also says that the engine draws no cursor (the header says where typing goes, a ring marks the last click), that contenteditable boxes take no typing while `<input>` and `<textarea>` do, and that some sites, Google search among them, refuse this engine and show their own block page.
+
+The mark and the crosshair pointer over the page are the window's own drawing and cost nothing in the engine; Lico passes nothing to the engine for them. While the page has the keys the composition of the input method is shown in the header ("composing: ..."), not in the address row. Added in M17-P11 (the lead, under the owner's delegation).

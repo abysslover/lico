@@ -28,7 +28,8 @@ impl App {
         if self.code_entry() {
             line(format!("> {}", self.shown_input()))
         } else if self.ui.panel.is_some() || !self.has_prompt_target() || self.browser_active() {
-            line(format!("> {}[{}]", self.ed.text(), self.preedit)) // the address row is one line, with the composition in it
+            let preedit = if self.browser_page_has_the_keys() { "" } else { self.preedit.as_str() }; // the page's composition is shown in the header (M17-P11)
+            line(format!("> {}[{}]", self.ed.text(), preedit)) // the address row is one line, with the composition in it
         } else {
             self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
         }

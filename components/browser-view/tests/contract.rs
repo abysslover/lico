@@ -535,7 +535,7 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes", "installs the browser engine by itself", "you are not asked", "install it by hand"] {
+    for needle in ["Lico", "Obscura", "Windows", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "may show as boxes", "installs the browser engine by itself", "you are not asked", "install it by hand", "draws no cursor", "ring marks your last click", "contenteditable", "Google search"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
     }
     assert!(!all.contains(LOCAL_NOTE), "an ordinary tab does not carry the local sentence");
@@ -616,4 +616,45 @@ fn a_failed_install_leaves_the_tab_absent_with_the_reason_as_its_notice_and_mark
     t.engine_event(EngineEvent::InstallFailed { why: "x\u{1b}[31m".repeat(400), security: false, expected_sha256: "ab".repeat(32), release: "v0.2.6".into() });
     let n = t.notice().unwrap();
     assert!(n.chars().count() <= MAX_NOTICE && !n.contains('\u{1b}'), "the reason is cleaned and cut like any other notice");
+}
+
+// ---- the cues of a live page (0.7.0, M17-P11) --------------------------------------------------------------------------------------------------------
+
+#[test]
+fn the_header_says_where_the_keys_go() {
+    assert_eq!(keys_hint(Focus::Page), "typing goes to the page (Ctrl+L: address)");
+    assert_eq!(keys_hint(Focus::Address), "typing goes to the address row (click the page to type in it)");
+    assert_ne!(keys_hint(Focus::Page), keys_hint(Focus::Address));
+}
+
+#[test]
+fn the_address_row_follows_a_new_page_address_unless_the_person_has_edited_it() {
+    let (a, b) = ("https://a.test/", "https://b.test/x");
+    assert!(follows_page("", a, b), "a row that is empty takes the new address");
+    assert!(follows_page(a, a, b), "a row that still shows the last address of the page (not edited) follows the page");
+    assert!(!follows_page("https://a.test/typed", a, b), "a row the person has edited is theirs");
+    assert!(!follows_page("", a, a), "the same address is no change");
+    assert!(!follows_page(a, a, ""), "a page with no address changes nothing");
+    assert!(follows_page("", "", b), "the first address of a tab");
+}
+
+#[test]
+fn the_click_mark_is_a_ring_around_the_point_and_never_covers_the_point() {
+    let ring = click_mark(MARK_RADIUS, MARK_THICKNESS);
+    assert!(!ring.is_empty() && ring.len() < 200, "a few dozen points: {}", ring.len());
+    assert!(!ring.contains(&(0, 0)), "the point itself stays visible");
+    for p in [(MARK_RADIUS, 0), (-MARK_RADIUS, 0), (0, MARK_RADIUS), (0, -MARK_RADIUS)] {
+        assert!(ring.contains(&p), "{p:?}");
+    }
+    assert!(!ring.contains(&(MARK_RADIUS / 2, 0)) && !ring.contains(&(MARK_RADIUS + MARK_THICKNESS, 0)), "inside and outside the ring are not part of it");
+    assert!(ring.iter().all(|&(x, y)| x.abs() <= MARK_RADIUS + 1 && y.abs() <= MARK_RADIUS + 1), "within the radius and a pixel");
+    assert!(ring.iter().all(|&(x, y)| ring.contains(&(-x, -y)) && ring.contains(&(y, x))), "the ring is symmetric");
+    assert!(click_mark(0, 1).is_empty() && click_mark(5, 0).is_empty(), "no radius or no thickness: nothing to draw");
+    // the exact shape of the window's ring: 144 points; the first point inside the ring (7,0) is not part of it, the last ones (9,1) and (9,3) are
+    assert_eq!(ring.len(), 144, "the ring of the window");
+    assert!(!ring.contains(&(7, 0)) && ring.contains(&(8, 0)) && ring.contains(&(9, 1)) && ring.contains(&(9, 3)) && !ring.contains(&(10, 0)), "the edges of the ring");
+    // a thickness bigger than the radius is a filled disc without its centre
+    let disc = click_mark(2, 5);
+    assert_eq!(disc.len(), 20, "{disc:?}");
+    assert!(disc.contains(&(0, 1)) && !disc.contains(&(0, 0)) && !disc.contains(&(0, 3)));
 }
