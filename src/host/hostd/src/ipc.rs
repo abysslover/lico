@@ -289,7 +289,13 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
     let result = match op {
         "hello" => core::hello(shared),
         "capabilities" => crate::admin::capabilities(shared),
-        "status" => core::status(shared),
+        "status" => {
+            let r = core::status(shared);
+            if let Ok(reply) = &r {
+                crate::guard::tick(shared, reply);
+            }
+            r
+        }
         "session.list" => core::session_list(shared),
         "resources" => core::resources(shared),
         "session.resume" => {
@@ -342,7 +348,10 @@ pub(crate) fn dispatch_request(shared: &Arc<Shared>, op: &str, request: &Map<Str
         "account.remove" => core::account_remove(shared, text(request, "account"), text(request, "sessions")),
         "account.credential" => core::account_credential(shared, text(request, "account"), text(request, "credential_ref")),
         "snapshot" => core::snapshot(shared, session, generation),
-        "input" => crate::pasted::with_cleanup(shared, request.get("attachment").and_then(Value::as_str), |attachment| core::input(shared, session, Some(generation.unwrap_or(0)), text(request, "request_id"), text(request, "text"), crate::session::Origin::Person, attachment)),
+        "input" => {
+            crate::guard::note_input(session);
+            crate::pasted::with_cleanup(shared, request.get("attachment").and_then(Value::as_str), |attachment| core::input(shared, session, Some(generation.unwrap_or(0)), text(request, "request_id"), text(request, "text"), crate::session::Origin::Person, attachment))
+        }
         "transfer.send" if text(request, "kind") == "conversation" => crate::transfer::hand_over(shared, text(request, "from"), text(request, "to")),
         "transfer.send" => crate::transfer::send(shared, request.get("from").and_then(Value::as_str), text(request, "to"), text(request, "kind"), text(request, "text"), crate::transfer::By::Person),
         "input.status" => core::input_status(shared, session, text(request, "request_id")),

@@ -27,13 +27,17 @@ def holding(mib):
     return directory_cm
 
 
-def run(mib, check):
+def run(mib, check, auto_close=False):
     with private_dir() as directory:
         args, _ = claude_args(directory)
         made = {}
 
         def session(w):
             made["sid"], made["generation"] = new_claude(Conn(w.socket), name="heavy")
+            if auto_close:   # the owner's switch: `memory.json` in the state folder, owner-only
+                setting = Path(w.directory) / "state" / "lico" / "memory.json"
+                setting.write_text('{"auto_close": true}')
+                setting.chmod(0o600)
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
             conn, sid, generation = Conn(w.socket), made["sid"], made["generation"]
@@ -105,4 +109,26 @@ def test_y_on_the_question_ends_the_session_and_resumes_it_to_a_clean_process():
         assert after["generation"] > before["generation"] and "closed_by" not in after, (before["generation"], after)
         settle(w)
         shot(w, "4_after_end_and_resume.png")
+    run(520, check)
+
+
+def test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched():
+    def check(w, conn, sid, figure):
+        first = status_of(conn, sid)["generation"]
+        # the guard acts when something looks at the status: the polls of this test are those looks (and the window's own)
+        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s["generation"] > first and s.get("memory") and s["memory"]["max_rss_kb"] < 400 * 1024 and s, timeout=60)
+        assert "closed_by" not in after, "resumed: nobody closed it now"
+        settle(w)
+        shot(w, "5_auto_closed_and_resumed.png")
+    run(520, check, auto_close=True)
+
+
+def test_without_the_switch_a_red_session_is_left_alone():
+    def check(w, conn, sid, figure):
+        import time
+        first = status_of(conn, sid)["generation"]
+        for _ in range(8):
+            time.sleep(1.0)
+            s = status_of(conn, sid)
+        assert s["state"] == "running" and s["generation"] == first and s["memory"]["max_rss_kb"] >= 500 * 1024, s
     run(520, check)
