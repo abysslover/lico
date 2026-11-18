@@ -402,6 +402,11 @@ impl App {
             self.dirty = true;
         }
         self.ui.list_items = items;
+        let chats = super::super::chatcard::rows_sig(&self.ui.rows, self.clock_now()); // the cards of the Chats tab follow the state and the level of every tab, which the list's own text may not say
+        if chats != self.ui.mem.chat_sig {
+            self.ui.mem.chat_sig = chats;
+            self.dirty = true;
+        }
         self.sync_window_title();
     }
 }

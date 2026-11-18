@@ -21,6 +21,8 @@ pub struct Look {
     pub host: Figure,
     pub window: Figure,
     pub hover: Option<String>, // the session under the mouse
+    pub chat_hover: Option<usize>, // the card of the Chats tab under the mouse (`M22-P04c`: its hint is the sentence of the card)
+    pub chat_sig: String,          // the state and level of every tab as the cards of the Chats tab drew them: the window draws again when it changes
     /// The machine's `MemAvailable` and `MemTotal` in kB as the host last said (none until it does).
     pub machine: Option<(u64, u64)>,
     reads: u64,
@@ -231,17 +233,25 @@ impl App {
             Some(Action::SidebarBookmarkItem(idx)) => self.hover_sidebar_bookmark_item(*idx),
             _ => false,
         };
+        let chat = match hit {
+            Some(Action::SidebarChatEntry(i)) => Some(i),
+            _ => None,
+        };
         let over = match hit {
             Some(Action::Session(id) | Action::Tab(id)) => Some(id),
             _ => None,
         };
-        let changed = over != self.ui.mem.hover;
+        let changed = over != self.ui.mem.hover || chat != self.ui.mem.chat_hover;
         self.ui.mem.hover = over;
+        self.ui.mem.chat_hover = chat;
         changed || popup_changed
     }
 
     /// The memory sentence of the row under the mouse, in place of the keys.
     pub(crate) fn hover_hint(&self, cols: usize) -> Option<String> {
+        if self.ui.mem.chat_hover.is_some() {
+            return self.chat_hover_hint(cols);
+        }
         let id = self.ui.mem.hover.as_ref()?;
         sentence(self.ui.rows.iter().find(|r| &r.session == id)?, cols)
     }

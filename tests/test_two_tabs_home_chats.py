@@ -60,9 +60,9 @@ def test_two_tabs_a_home_pill_and_one_list_of_every_session_whose_cards_name_the
             assert listed["chats_scope"] == "all" and listed["chats_total"] == 3, listed
             by_id = {e["provider_session"]: e for e in listed["chats_entries"]}
             assert [e["provider_session"] for e in listed["chats_entries"]] == ["cl-home", "cl-beta", "cl-alpha"], "newest first, every folder in one list"
-            assert re.fullmatch(r"10m ago · lico://home · ClaudeWork · #cl-home", by_id["cl-home"]["sub"]), by_id["cl-home"]["sub"]
-            assert re.fullmatch(r"15m ago · \S+/proj-beta · ClaudeWork · #cl-beta", by_id["cl-beta"]["sub"]), by_id["cl-beta"]["sub"]
-            assert re.fullmatch(r"20m ago · \S+/proj-alpha · ClaudeWork · #cl-alpha", by_id["cl-alpha"]["sub"]), by_id["cl-alpha"]["sub"]
+            assert (by_id["cl-home"]["age"], by_id["cl-home"]["folder_shown"]) == ("10m", "lico://home"), by_id["cl-home"]  # M22-P04c: the card's second line is the folder, the time is on the first
+            assert by_id["cl-beta"]["age"] == "15m" and by_id["cl-beta"]["folder_shown"].endswith("proj-beta"), by_id["cl-beta"]
+            assert by_id["cl-alpha"]["age"] == "20m" and by_id["cl-alpha"]["folder_shown"].endswith("proj-alpha"), by_id["cl-alpha"]
             assert "global_rect" not in listed or listed["global_rect"] is None, "the scope rows of the old tab are gone from Chats"
 
             # a click goes to the card's folder at once, and the list does not change with the folder

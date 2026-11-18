@@ -1,5 +1,5 @@
-"""M13-P03 in the window: the Chats tab says when a chat was last written where it can be read, shows the whole title of a chat that another program is writing (its `[elsewhere]` mark moves
-to the second line), and does not repeat `Native (~/.claude)` on every row (the default home says nothing; another account or an ssh host is named). A private Xvfb, synthetic homes,
+"""M13-P03, as `M22-P04c` made it, in the window: a Chats card says when a chat was last written (a short time in a colour that follows its age), has the whole width for its title (no mark of
+words takes room from it; a chat another program writes has no mark, the hint row says it), draws the provider as a picture and the state as a disc, ring or square, and never says `Native (~/.claude)`. A private Xvfb, synthetic homes,
 mocked providers: no real terminal or home is looked at. The running-elsewhere rule itself is the one of M11 and is not tested again here."""
 
 from __future__ import annotations
@@ -55,16 +55,29 @@ def test_the_list_says_when_each_chat_was_written_shows_a_live_chats_title_and_n
             by_id = {e["provider_session"]: e for e in listed["chats_entries"]}
 
             live = by_id["cl-live"]
-            assert live["running_elsewhere"] is True and live["pill"] == "[elsewhere]" and live["pill_line"] == 2, live
-            assert re.fullmatch(r"\[elsewhere\] written (\d+s|\d+m) ago · \S+/proj-alpha(?: · ClaudeWork)?", live["sub"]), live["sub"]  # M22-P03: a card names its folder
-            assert live["title_shown"].startswith("Refactor the billing exporter so") and len(live["title_shown"]) >= 30, "the mark no longer takes the title's room: " + live["title_shown"]
+            assert live["running_elsewhere"] is True and live["state"] == "none" and live["icon"] == "claude", live  # M22-P04c: no word and no picture for a chat another program writes
+            assert re.fullmatch(r"[12]m", live["age"]) and live["age_class"] == "fresh", live
+            assert live["title_shown"].startswith("Refactor the billing") and live["title_line2"] and len(live["title_shown"] + live["title_line2"]) >= 40, "no mark takes the title's room; it goes on to the second line: " + repr(live)
+            assert LIVE_TITLE.replace(" ", "").startswith((live["title_shown"] + live["title_line2"]).replace(" ", "").rstrip("\u2026")), live
+            assert live["folder_shown"] == "", "a title on two lines leaves no room for the folder (the hint row and the path row have it)"
 
-            for sid, age in (("cl-native0", r"10m ago"), ("cl-native1", r"3h ago"), ("cl-native2", r"2d ago")):
-                sub = by_id[sid]["sub"]
-                assert re.fullmatch(age + r" · \S+/proj-alpha · #" + sid[:8], sub), sub
-                assert "Native" not in sub and by_id[sid]["pill"] is None, by_id[sid]
+            for sid, age, klass in (("cl-native0", "10m", "fresh"), ("cl-native1", "3h", "today"), ("cl-native2", "2d", "week")):
+                card = by_id[sid]
+                assert (card["age"], card["age_class"], card["state"], card["memory"]) == (age, klass, "none", None), card
+                assert card["icon"] == "claude" and (card["title_line2"] != "") != (card["folder_shown"] != ""), card  # the second line is the rest of a long title, or else the folder
+                assert card["folder_shown"] == "" or card["folder_shown"].endswith("proj-alpha"), card
             closed = by_id["cl-closed"]
-            assert re.fullmatch(r"2h ago · \S+/proj-alpha · ClaudeWork · #cl-close", closed["sub"]), closed["sub"]
-            assert all("Native" not in e["sub"] for e in listed["chats_entries"]), [e["sub"] for e in listed["chats_entries"]]
+            assert (closed["age"], closed["age_class"], closed["state"]) == ("2h", "today", "none"), closed
             here = next(e for e in listed["chats_entries"] if e["open_session"])
-            assert here["pill"] == "[open]" and here["pill_line"] == 1, here
+            assert (here["state"], here["memory"], here["icon"]) == ("open", "ok", "claude"), here  # a disc, green while its memory is fine
+
+            # no card has a letter or a word of state any more: only the title, the folder and the time are text
+            assert all(not any(k in e for k in ("pill", "pill_line", "sub")) for e in listed["chats_entries"]), listed["chats_entries"][0]
+
+            # the hint row says all of it for the card under the pointer
+            w.move(*_centre(live["rect"]))
+            hint = wait_for(lambda: (h := w.ui()["hint"]) and "billing exporter" in h and h)
+            assert re.search(r"\b[12]m ago\b", hint) and "written by another program" in hint and "ClaudeWork" in hint and "#cl-live" in hint, hint
+            w.move(*_centre(here["rect"]))
+            hint = wait_for(lambda: (h := w.ui()["hint"]) and "open" in h and h)
+            assert " \u00b7 open" in hint, hint

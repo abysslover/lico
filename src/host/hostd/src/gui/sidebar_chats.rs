@@ -8,6 +8,7 @@
 use cosmic_text::{Color, SwashCache};
 use serde_json::{json, Value};
 
+use super::chatcard::{self, folder_of, Shown, State};
 use super::controls::{self, Action, Rect};
 use super::panel::AsyncJob;
 use super::sidebar::{norm_path, SidebarGeom, HOME_PATH};
@@ -39,14 +40,11 @@ pub struct ChatEntryGeom {
     pub account: Option<String>,
     pub account_label: Option<String>,
     pub title: String,
-    pub folder: Option<String>, // where the session is, as the card says it (`folder_of`)
+    pub folder: Option<String>, // where the session is, short (`chatcard::folder_of`)
     pub open_session: Option<String>,
     pub open_state: Option<String>,
     pub running_elsewhere: bool,
-    pub pill: Option<&'static str>, // `[open]`, `[closed]`, `[ended]`, `[elsewhere]`
-    pub pill_line: u8,              // the line of the card it is drawn on: 1, or 2 for `[elsewhere]` so that the title keeps the first line whole
-    pub sub: String,                // the second line, whole
-    pub title_shown: String,        // the title as drawn (cut to the room it has)
+    pub card: Shown, // what the card drew: the icon, the title and the folder as shown, the time and its colour class, the state and its memory level, where each part is
     pub rect: Rect,
 }
 
@@ -73,78 +71,6 @@ pub(super) fn calc_chats_ps(tab_y1: f32, hint_y: f32, lh: f32, s: f32, ssh: bool
     let avail = (nav_y - list_top).max(0.0);
     let card_h = (2.0 * lh + 4.0 * s).max(16.0);
     ((avail / card_h).floor() as usize).clamp(3, 25)
-}
-
-fn rel_age(now: u64, updated_at: u64) -> String {
-    if updated_at == 0 || now <= updated_at {
-        return "now".into();
-    }
-    let d = now - updated_at;
-    if d < 60 {
-        format!("{d}s")
-    } else if d < 3600 {
-        format!("{}m", d / 60)
-    } else if d < 86_400 {
-        format!("{}h", d / 3600)
-    } else {
-        format!("{}d", d / 86_400)
-    }
-}
-
-/// How long ago, in the words of the list: `10m ago`, `3h ago`, `just now`.
-fn ago(now: u64, updated_at: u64) -> String {
-    match rel_age(now, updated_at).as_str() {
-        "now" => "just now".to_string(),
-        short => format!("{short} ago"),
-    }
-}
-
-/// Who a row belongs to, when that is worth a word: another account of the provider, or an ssh host. The provider's own default home (`Native (~/.claude)`) is the common
-/// case and says nothing, so the word is not repeated on every row; the badge already says which provider.
-fn who_of(it: &ChatEntry) -> Option<&str> {
-    it.account_label.as_deref().or(it.ssh_host.as_deref()).filter(|l| !l.starts_with("Native ("))
-}
-
-/// The mark of a card and the line it is drawn on: `[elsewhere]` goes to the second line (with when the chat was written) so that the title has the first line whole.
-fn pill_of(it: &ChatEntry) -> Option<(&'static str, u8)> {
-    match it.open_state.as_deref() {
-        Some("running") => Some(("[open]", 1)),
-        Some("disconnected") => Some(("[closed]", 1)),
-        Some("exited") => Some(("[ended]", 1)),
-        _ if it.running_elsewhere => Some(("[elsewhere]", 2)),
-        _ => None,
-    }
-}
-
-/// Where a session is, short: `lico://home` for a Home session, else the last two components of its folder (`work/api`), whole when it has only one (`/srv`).
-pub(super) fn folder_of(it: &ChatEntry) -> Option<String> {
-    if it.global {
-        return Some(HOME_PATH.to_string());
-    }
-    let cwd = it.cwd.as_deref()?;
-    let mut tail: Vec<&str> = cwd.rsplit('/').filter(|c| !c.is_empty()).take(2).collect();
-    tail.reverse();
-    (!tail.is_empty()).then(|| tail.join("/"))
-}
-
-/// The second line of a card: when the chat was last written first (it was the part that the old line cut off), then where it is, then who, then the short id; a chat that another
-/// program writes says `[elsewhere] written 4m ago`.
-fn sub_line(it: &ChatEntry, now: u64) -> String {
-    let short_id = &it.provider_session[..it.provider_session.len().min(8)];
-    let who = who_of(it);
-    let folder = folder_of(it);
-    if let Some(("[elsewhere]", _)) = pill_of(it) {
-        let mut line = format!("[elsewhere] written {}", ago(now, it.updated_at));
-        for part in folder.iter().map(String::as_str).chain(who) {
-            line.push_str(&format!(" \u{00b7} {part}"));
-        }
-        return line;
-    }
-    let mut parts = vec![ago(now, it.updated_at)];
-    parts.extend(folder);
-    parts.extend(who.map(str::to_string));
-    parts.push(format!("#{short_id}"));
-    parts.join(" \u{00b7} ")
 }
 
 /// What the sidebar says for a refused request: a host of another build does not know the operation, which is not a fault of the folder.
@@ -439,7 +365,7 @@ impl App {
             .entries_geom
             .iter()
             .map(|e| {
-                json!({
+                let mut v = json!({
                     "index": e.index,
                     "provider": e.provider,
                     "provider_session": e.provider_session,
@@ -450,12 +376,10 @@ impl App {
                     "open_session": e.open_session,
                     "open_state": e.open_state,
                     "running_elsewhere": e.running_elsewhere,
-                    "pill": e.pill,
-                    "pill_line": e.pill_line,
-                    "sub": e.sub,
-                    "title_shown": e.title_shown,
                     "rect": e.rect,
-                })
+                });
+                e.card.add_to(&mut v);
+                v
             })
             .collect();
         out["chats_scope"] = json!(p.scope);
@@ -497,6 +421,7 @@ impl App {
         let unreachable = self.ui.sidebar.unreachable;
         let now = self.clock_now();
         let cur_session = self.session.clone();
+        let states: Vec<State> = self.ui.sidebar.chats.items.iter().map(|it| chatcard::state_of(it, it.open_session.as_ref().and_then(|sid| self.ui.rows.iter().find(|r| &r.session == sid)), now)).collect();
 
         let Some(fs) = self.font_system.as_mut() else { return };
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
@@ -505,9 +430,6 @@ impl App {
         let ink = Color::rgb(0xEA, 0xF0, 0xF7);
         let muted = Color::rgb(0x98, 0xA6, 0xB8);
         let dim = Color::rgb(0x5E, 0x6C, 0x7E);
-        let gold_ink = Color::rgb(0xFA, 0xD2, 0x6E);
-        let claude_ink = Color::rgb(0xF2, 0xAA, 0x6B);
-        let codex_ink = Color::rgb(0x7A, 0xE0, 0xB8);
 
         // 1. Controls row: `[Host: local v]`  `[R]`  `[+]`
         let row_h = lh + 2.0 * s;
@@ -611,42 +533,8 @@ impl App {
                     controls::fill(buf, width, height, [r[0], r[1], r[0] + 3.0 * s, r[3]], 0xFF56_B4FF);
                 }
 
-                let (badge, b_col) = if it.provider == "claude" {
-                    ("C\u{00b7}", claude_ink)
-                } else {
-                    ("X\u{00b7}", codex_ink)
-                };
-                let pill = pill_of(it);
-                let pill_col = match pill {
-                    Some(("[open]", _)) => Color::rgb(0x68, 0xE0, 0xA8),
-                    Some(("[closed]", _)) => gold_ink,
-                    Some(("[ended]", _)) => muted,
-                    Some(_) => Color::rgb(0xF2, 0xB1, 0x3C), // another program is writing it: it cannot be resumed from here
-                    None => dim,
-                };
-                let pill_w = pill.filter(|(_, line)| *line == 1).map_or(0.0, |(p, _)| controls.width(fs, p) + 8.0 * s);
-                let b_w = controls.text(fs, swash, buf, width, height, r[0] + 6.0 * s, y + s, r[2] as i32, badge, b_col);
-                let title_x = r[0] + 6.0 * s + b_w + 4.0 * s;
-                let title_clip = (r[2] - pill_w - 4.0 * s) as i32;
-                let title_cols = (((title_clip as f32 - title_x).max(24.0)) / (char_w * s)) as usize;
-                let title_shown = clip_cols(&it.title, title_cols);
-                controls.text(fs, swash, buf, width, height, title_x, y + s, title_clip, &title_shown, ink);
-                if let Some((pt, 1)) = pill {
-                    controls.text(fs, swash, buf, width, height, r[2] - pill_w + 2.0 * s, y + s, r[2] as i32, pt, pill_col);
-                }
-
-                let sub = sub_line(it, now);
-                let clip_to = (r[2] - 4.0 * s) as i32;
-                match pill {
-                    Some((pt, 2)) => {
-                        let w = controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, clip_to, pt, pill_col);
-                        let rest = sub.strip_prefix(pt).unwrap_or(&sub).trim_start();
-                        controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s + w + char_w * s, y + lh + s, clip_to, &clip_cols(rest, max_cols.saturating_sub(2 + pt.len() + 1)), muted);
-                    }
-                    _ => {
-                        controls.text(fs, swash, buf, width, height, r[0] + 8.0 * s, y + lh + s, clip_to, &clip_cols(&sub, max_cols.saturating_sub(2)), muted);
-                    }
-                }
+                let state = states.get(idx).copied().unwrap_or(State::None);
+                let card = chatcard::draw_card(controls, fs, swash, buf, width, height, r, fill, it, state, now, s, lh, char_w * s);
 
                 controls.target(r, Action::SidebarChatEntry(idx));
                 out_geom.push(ChatEntryGeom {
@@ -660,10 +548,7 @@ impl App {
                     open_session: it.open_session.clone(),
                     open_state: it.open_state.clone(),
                     running_elsewhere: it.running_elsewhere,
-                    pill: pill.map(|(p, _)| p),
-                    pill_line: pill.map_or(0, |(_, line)| line),
-                    sub,
-                    title_shown,
+                    card,
                     rect: r,
                 });
                 y += card_h;
@@ -719,69 +604,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn chat(session: &str, label: Option<&str>, ssh: Option<&str>, updated_at: u64) -> ChatEntry {
-        ChatEntry {
-            provider: "claude".into(), provider_session: session.into(), account: None, account_label: label.map(str::to_string), ssh_host: ssh.map(str::to_string), cwd: None, global: false,
-            title: "t".into(), updated_at, open_session: None, open_state: None, running_elsewhere: false,
-        }
-    }
-
-    #[test]
-    fn a_card_says_when_the_chat_was_written_first_and_names_an_account_only_when_it_is_not_the_default_home() {
-        let now = 1_000_000;
-        let native = chat("cl-native-long-id", Some("Native (~/.claude)"), None, now - 600);
-        assert_eq!(sub_line(&native, now), "10m ago \u{00b7} #cl-nativ", "no account word for the default home, and the age is the first thing");
-        assert_eq!(sub_line(&chat("cl-1", Some("ClaudeWork"), None, now - 7200), now), "2h ago \u{00b7} ClaudeWork \u{00b7} #cl-1");
-        assert_eq!(sub_line(&chat("cl-2", None, Some("gpu-box"), now - 5), now), "5s ago \u{00b7} gpu-box \u{00b7} #cl-2");
-        assert_eq!(sub_line(&chat("cl-3", None, None, now), now), "just now \u{00b7} #cl-3");
-        assert_eq!(sub_line(&chat("cl-4", Some("Native (~/.codex)"), None, now - 3 * 86_400), now), "3d ago \u{00b7} #cl-4");
-    }
-
-    #[test]
-    fn a_chat_another_program_writes_keeps_its_first_line_for_the_title_and_says_how_long_ago_it_was_written() {
-        let now = 1_000_000;
-        let mut live = chat("cl-live", Some("ClaudeWork"), None, now - 240);
-        live.running_elsewhere = true;
-        assert_eq!(pill_of(&live), Some(("[elsewhere]", 2)));
-        assert_eq!(sub_line(&live, now), "[elsewhere] written 4m ago \u{00b7} ClaudeWork");
-        live.updated_at = now;
-        assert_eq!(sub_line(&live, now), "[elsewhere] written just now \u{00b7} ClaudeWork");
-        live.open_state = Some("running".into());
-        assert_eq!(pill_of(&live), Some(("[open]", 1)), "a chat that is open in a tab of ours is ours: the old order of the marks holds");
-        for (state, mark) in [("disconnected", "[closed]"), ("exited", "[ended]")] {
-            live.open_state = Some(state.into());
-            assert_eq!(pill_of(&live), Some((mark, 1)));
-        }
-        assert_eq!(pill_of(&chat("cl-x", None, None, 1)), None);
-    }
-
-    #[test]
-    fn the_short_words_of_the_age_stay_the_ones_of_the_list() {
-        assert_eq!([rel_age(100, 100), rel_age(100, 55), rel_age(1000, 400), rel_age(20_000, 10_000), rel_age(500_000, 100_000)], ["now", "45s", "10m", "2h", "4d"]);
-    }
-
-    #[test]
-    fn a_card_names_its_folder_short_and_a_home_session_says_its_virtual_path() {
-        let now = 1_000_000;
-        let mut it = chat("cl-1", Some("ClaudeWork"), None, now - 7200);
-        it.cwd = Some("/work/api/src".into());
-        assert_eq!(folder_of(&it).as_deref(), Some("api/src"), "the last two components");
-        assert_eq!(sub_line(&it, now), "2h ago \u{00b7} api/src \u{00b7} ClaudeWork \u{00b7} #cl-1", "the folder follows the age and comes before who");
-        it.cwd = Some("/srv/".into());
-        assert_eq!(folder_of(&it).as_deref(), Some("srv"), "a trailing slash is not a component");
-        it.cwd = Some("/".into());
-        assert_eq!(folder_of(&it), None, "the root has no name to show");
-        it.cwd = None;
-        assert_eq!(folder_of(&it), None);
-        it.global = true;
-        assert_eq!(folder_of(&it).as_deref(), Some("lico://home"), "a Home session has no folder and says where Home is");
-        assert_eq!(sub_line(&it, now), "2h ago \u{00b7} lico://home \u{00b7} ClaudeWork \u{00b7} #cl-1");
-        let mut live = chat("cl-2", Some("ClaudeWork"), None, now - 90);
-        live.cwd = Some("/work/api".into());
-        live.running_elsewhere = true;
-        assert_eq!(sub_line(&live, now), "[elsewhere] written 1m ago \u{00b7} work/api \u{00b7} ClaudeWork", "the mark keeps the second line's start; the folder is part of what it says");
-    }
 
     #[test]
     fn a_host_that_does_not_know_the_operation_is_explained_and_other_codes_pass_through() {

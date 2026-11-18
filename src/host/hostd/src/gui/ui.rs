@@ -29,7 +29,7 @@ pub(super) mod clip;
 #[path = "search.rs"]
 mod search;
 #[path = "icons.rs"]
-mod icons;
+pub(in crate::gui) mod icons;
 #[path = "tabs.rs"]
 mod tabs;
 #[path = "telemetry.rs"]
