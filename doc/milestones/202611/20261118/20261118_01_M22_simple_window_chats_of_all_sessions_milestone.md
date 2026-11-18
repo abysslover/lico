@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is next, then P05
-- Version: 2.6.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), then P05 is next
+- Version: 2.7.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -64,7 +64,7 @@
 | M22-P02 | host: the chat index (background, incremental, every scope reads it), `.jsonl` only, the provider's own home on by default, the performance experiments | [Plan](../../../plans/202611/20261118/20261118_04_M22-P02_chat_index_plan.md) | done (`4cb06c9`) |
 | M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | [Plan](../../../plans/202611/20261118/20261118_05_M22-P03_window_two_tabs_home_chats_plan.md) | done (`7361c18`) |
 | M22-P04 | window: the toolbar of icon buttons (three now, the terminal's comes with M23), the path row above the hint row and never empty, the tab row without buttons, Global gone from every word | [Plan](../../../plans/202611/20261118/20261118_06_M22-P04_window_toolbar_icons_bottom_rows_plan.md) | done (`8f9cfb7`) |
-| M22-P04a | window: the menu bar as a tree (classified submenus, no function removed) and the New session screen with the three modes Claude, Codex, Local LLM (Local LLM shows the servers found) | written when started | planned |
+| M22-P04a | window: the menu bar as a tree (classified submenus, no function removed) and the New session screen with the three modes Claude, Codex, Local LLM (Local LLM shows the servers found) | [Plan](../../../plans/202611/20261118/20261118_07_M22-P04a_tree_menus_three_modes_plan.md) | done (`e69adb0`) |
 | M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
