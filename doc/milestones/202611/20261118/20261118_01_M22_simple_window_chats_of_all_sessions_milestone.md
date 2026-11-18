@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), P04b (the account icon, the new-session wizard of three icons) is done (`192e304`), then P05 is next
-- Version: 3.0.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), P04b (the account icon, the new-session wizard of three icons) is done (`192e304`), P04c (the Chats cards) is done (`2223fe5`), then P05 is next
+- Version: 3.1.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -68,6 +68,7 @@
 | M22-P04 | window: the toolbar of icon buttons (three now, the terminal's comes with M23), the path row above the hint row and never empty, the tab row without buttons, Global gone from every word | [Plan](../../../plans/202611/20261118/20261118_06_M22-P04_window_toolbar_icons_bottom_rows_plan.md) | done (`8f9cfb7`) |
 | M22-P04a | window: the menu bar as a tree (classified submenus, no function removed) and the New session screen with the three modes Claude, Codex, Local LLM (Local LLM shows the servers found) | [Plan](../../../plans/202611/20261118/20261118_07_M22-P04a_tree_menus_three_modes_plan.md) | done (`e69adb0`) |
 | M22-P04b | window: the account icon first in the toolbar, New session as a wizard that starts with three icons (Claude, Codex, Local LLM; Claude and Codex grey without an account, Local LLM never), the build reaches `lico gui` by a link | [Plan](../../../plans/202611/20261118/20261118_08_M22-P04b_account_icon_new_session_wizard_plan.md) | done (`192e304`) |
+| M22-P04c | window: a Chats card with the provider as a picture, the title (two lines when it needs them), the time of the last access in a colour that follows its age, and the state as a picture (disc green, orange or red by memory, ring for a closed tab, square for an ended one); no letters, no words of state; the hint row says the whole card | [Plan](../../../plans/202611/20261118/20261118_09_M22-P04c_chats_rows_plan.md) | done (`2223fe5`) |
 | M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
