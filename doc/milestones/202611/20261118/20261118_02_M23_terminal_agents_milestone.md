@@ -1,7 +1,7 @@
 # M23 — A Terminal In Lico: Run An Agent In It, And It Comes Into Lico
 
-- Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03 below); the agent that comes into Lico from a terminal is a later phase, after the terminal works
-- Version: 2.0.0
+- Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03 below; P01 is done); the agent that comes into Lico from a terminal is a later phase, after the terminal works
+- Version: 2.1.0
 - Project: Lico
 - Updated: 2026-11-18
 
@@ -37,8 +37,8 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 
 | Phase | What | Plan | Status |
 |---|---|---|---|
-| M23-P01 | the component `lico-vt` 0.1.0: the emulator (parser, grid, scrollback, alternate screen, replies) and the keys (keys, paste, mouse) as plain functions with no I/O and no `unsafe`; its spec first | [Plan](../../../plans/202611/20261118/20261118_10_M23-P01_vt_engine_plan.md) | in progress |
-| M23-P02 | the host: the pty and the child (process group, size, hang-up), the registry, the operations `terminal.open/list/close/input/resize/watch`, the `lico terminal` command, the reply over the socket and `POST /v1` | written when P01 is done | planned |
+| M23-P01 | the component `lico-vt` 0.1.0: the emulator (parser, grid, scrollback, alternate screen, replies) and the keys (keys, paste, mouse) as plain functions with no I/O and no `unsafe`; its spec first | [Plan](../../../plans/202611/20261118/20261118_10_M23-P01_vt_engine_plan.md) | done (`c536948`) |
+| M23-P02 | the host: the pty and the child (process group, size, hang-up), the registry, the operations `terminal.open/list/close/input/resize/watch`, the `lico terminal` command, the reply over the socket and `POST /v1` | written when P02 starts | next |
 | M23-P03 | the window: the terminal tab (draws the grid, the keys, the size follows the window, the wheel, copy and paste), the fourth icon in New session, the menu entry, the hint that says what a terminal is | written when P02 is done | planned |
 | M23-P04 | an agent started in a terminal comes into Lico (Q1): research first, then a plan | written after P03 and the owner's look | idea |
 
