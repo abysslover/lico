@@ -12,7 +12,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn, start
 from lico_measure.rig import private_dir
 
-from tests.gui_helpers import menu_reveal
+from tests.gui_helpers import menu_reveal, open_form
 from tests.test_codex_adapter import FIXTURE, SIM, wait_for
 from tests.test_stale_host import alive, fnv, older_build, status as status_now
 
@@ -353,7 +353,7 @@ def test_a_bad_request_to_session_create_says_the_host_is_an_older_build():
     with private_dir() as directory:
         env = {"FAKE_HOST_BUILD": fnv(LICO), "FAKE_HOST_ERROR": "bad_request"}                                  # the same build, so the window leaves it alone
         with ProductWindow(host_binary=fake_host(directory), env_extra=env) as w:
-            w.key("ctrl+n")                                                                                    # the one account of the stand-in host is chosen
+            open_form(w)                                                                                       # the one-page form; the one account of the stand-in host is chosen
             w.key("Return")                                                                                    # Enter on the folder row starts
             panel = w.ui()["panel"]
             assert any("The session was not started. The host does not understand this request: it is an older build." in line for line in panel["body"]), panel

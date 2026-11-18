@@ -1,6 +1,7 @@
 import time
 
 from lico_measure.captures import ProductWindow, TEXT_X
+from tests.gui_helpers import open_form
 
 
 def test_the_panels_text_is_on_the_screen_after_ctrl_n_and_ctrl_a_not_only_in_the_windows_model():
@@ -9,7 +10,7 @@ def test_the_panels_text_is_on_the_screen_after_ctrl_n_and_ctrl_a_not_only_in_th
         assert w.ui()["panel"] is None and start >= 3, start                  # the first screen says what to do
         w.key("ctrl+n")
         panel = w.ui()["panel"]
-        assert panel["title"] == "New session"
+        assert panel["title"].startswith("New session")                      # M22-P04b: the wizard, step one
         assert w.text_rows() >= 4, w.text_rows()                              # title and the rows of the form: drawn, not just known
         assert w.bright(TEXT_X, 0, TEXT_X + 400, 120) > 300
         w.key("Escape")
@@ -30,8 +31,8 @@ def test_closing_standard_input_does_not_close_the_window():
 
 
 def label_entry(w):
-    """The window's one text field, as the folder row of the new-session screen (it has the focus when the screen opens)."""
-    w.key("ctrl+n")
+    """The window's one text field, as the folder row of the one-page new-session screen (it has the focus when the screen opens)."""
+    open_form(w)
     assert w.ui()["panel"]["text_entry"]
 
 

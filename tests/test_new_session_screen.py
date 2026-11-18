@@ -9,6 +9,7 @@ from lico_measure.p02 import HOSTD_DIR, LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 
 from tests.account_helpers import account
+from tests.gui_helpers import open_form
 from tests.test_claude_adapter import FIXTURE, SIM, argv_of, lines_of
 from tests.test_codex_adapter import wait_for
 
@@ -36,7 +37,7 @@ def test_the_new_session_screen_starts_a_session_in_the_folder_with_its_name_mod
 
         with ProductWindow(host_binary=LICO, host_args=args, before_window=work_account) as w:
             conn = Conn(w.socket)
-            w.key("ctrl+n")
+            open_form(w)  # M22-P04b: Ctrl+N is the wizard; the one-page form is File > New session options...
             first = screen(w)
             form = first["form"]
             assert first["title"] == "New session" and first["text_entry"] and form["focus"] == "Folder"
@@ -61,7 +62,7 @@ def test_the_new_session_screen_starts_a_session_in_the_folder_with_its_name_mod
             argv = argv_of(received)[-1]
             assert argv[argv.index("--model") + 1] == "opus" and argv[argv.index("--effort") + 1] == "high"
             # the next screen starts from what was used, offers the folder, and a folder that is not there is refused with the reason
-            w.key("ctrl+n")
+            open_form(w)
             again = screen(w)
             form = again["form"]
             assert (form["folder"], form["name"], form["model"], form["effort"], form["recent"]) == (str(project), "", "opus", "high", [str(project)])

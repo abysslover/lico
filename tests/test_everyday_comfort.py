@@ -12,7 +12,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import HOSTD_DIR, LICO, ProtoConn as Conn, start
 from lico_measure.rig import private_dir
 from lico_protocol import v1
-from tests.gui_helpers import menu_reveal
+from tests.gui_helpers import menu_reveal, open_form
 from tests.account_helpers import account
 from tests.test_claude_adapter import FIXTURE, SIM, lines_of, new_claude, status_of
 from tests.test_codex_adapter import usual_umask, wait_for
@@ -204,8 +204,7 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
             conn = Conn(w.socket)
 
             # 1. GUI worktree start + dirty-worktree confirmation (`WT-01`, `WT-02`)
-            fast_key(w, "ctrl+n")
-            wait_for(lambda: (p := w.ui()["panel"]) and p["form"] is not None)
+            open_form(w)  # M22-P04b: the one-page form (Ctrl+N is the wizard now)
             fast_type(w, str(repo))
             wait_for(lambda: w.ui()["input"] == str(repo))
             fast_key(w, "Tab")  # checks folder.git and focuses Worktree row

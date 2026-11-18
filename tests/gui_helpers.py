@@ -88,6 +88,13 @@ def menu_click(w, index, prefix):
     w.click(*centre(menu_entry(w, index, prefix, keep_open=True)["rect"]))
 
 
+def open_form(w):
+    """M22-P04b: Ctrl+N and the plus of the toolbar open the new-session wizard (three icons first); the one-page form, every row on one screen, is File > New session options...
+    Returns its panel once it is open."""
+    menu_click(w, 0, "New session options")
+    return wait_for(lambda: (p := w.ui()["panel"]) and p["form"] is not None and p["form"]["wizard"] is None and p)
+
+
 def menu_click_when_enabled(w, index, prefix, timeout=10.0):
     """Clicks the menu entry that starts with `prefix` as soon as it can act (a greyed entry only says why); raises when it never can."""
     end = time.monotonic() + timeout

@@ -221,7 +221,7 @@ impl App {
         let title = match p.step {
             Step::NewSession => {
                 body.extend(self.form_lines(p));
-                "New session".to_string()
+                self.form_title(p)
             }
             Step::Label => {
                 if p.form.is_none() {
@@ -267,7 +267,7 @@ impl App {
                     body.push(format!("{}  {} / {}{}{q}", i + 1, a.1, self.acct_display(a), if a.3 { "  (default)" } else { "" }));
                 }
                 if p.accounts.is_empty() {
-                    body.push("No account yet: press A to add one, or Ctrl+N with a session.".into());
+                    body.push("No account yet: press A to add one. Claude and Codex need an account; Local LLM does not.".into()); // (M22-P04b: Ctrl+N cannot make the first one, the icons are grey until it exists)
                 }
                 body.push(String::new());
                 body.push("A  add a new account (local or SSH remote)".into());
@@ -412,11 +412,7 @@ impl App {
                     match ch {
                         'n' => {
                             if !event.repeat {
-                                if self.ui.mods.shift_key() {
-                                    self.form_open_global();
-                                } else {
-                                    self.form_open();
-                                }
+                                self.form_open_wizard(self.ui.mods.shift_key());
                             }
                             return true;
                         }

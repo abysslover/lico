@@ -11,6 +11,9 @@ use super::icons::{self, Icon};
 use super::super::menu::{Cmd, MenuRow, RowKind, TITLES};
 use super::super::App;
 
+#[path = "picker.rs"]
+mod picker;
+
 pub struct ToolBtn {
     pub label: String,
     pub id: &'static str,
@@ -27,6 +30,9 @@ pub struct ToolbarGeom {
     pub host_items: Vec<(usize, [f32; 4])>,
     /// The button the pointer is over (its word is shown beside the buttons).
     pub hover: Option<usize>,
+    /// The icons of the wizard's first step as the window drew them last, and the one the pointer is over (`M22-P04b`, see `picker.rs`).
+    pub tiles: Vec<[f32; 4]>,
+    pub tile_hover: Option<usize>,
 }
 
 /// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).
@@ -40,12 +46,25 @@ pub fn bar_heights(menu_shown: bool, scale: f32, line_h: f32) -> (f32, f32) {
     (menu_h, menu_h + tool_h)
 }
 
+/// How the toolbar's row is spaced, as `(padding of a text button, gap between buttons)` in units of the scale. `widths` are the widths of the buttons before padding (an icon is its side, a text
+/// button its text), `texts` how many of them are text buttons, `room` the width from the first button to the right edge. At the usual spacing when the row fits; when it does not the padding and
+/// the gap are tightened first, so that a large text size does not hide the buttons at the end of the row (the page buttons of the Files panel) before it has to (`M22-P04b`: the account icon).
+pub(super) fn toolbar_spacing(widths: &[f32], texts: usize, room: f32, s: f32) -> (f32, f32) {
+    let need = |pad: f32, gap: f32| widths.iter().sum::<f32>() + texts as f32 * pad * s + widths.len().saturating_sub(1) as f32 * gap * s;
+    if need(14.0, 5.0) <= room { (14.0, 5.0) } else { (6.0, 3.0) }
+}
+
 impl App {
-    /// The toolbar (`M22-P04`): three icon buttons, New session (a plus), New Home session (a house) and Open browser (a browser window). Everything else is in the menus. With the Files panel
-    /// open the panel's own buttons follow the icons: they act on what the panel shows.
+    /// The toolbar (`M22-P04`, `M22-P04b`): four icon buttons, Accounts (a person), New session (a plus), New Home session (a house) and Open browser (a browser window). Everything else is in the
+    /// menus. The account icon is lit while the host says there is no account at all (it is the first step); the plus and the house are never greyed, because Local LLM needs no account
+    /// (the wizard greys the Claude and Codex icons itself). With the Files panel open the panel's own buttons follow the icons: they act on what the panel shows.
     pub(crate) fn toolbar_entries(&self) -> Vec<ToolBtn> {
         let icon_btn = |label: &str, id: &'static str, cmd: Cmd, icon: Icon| ToolBtn { label: label.into(), id, cmd, active: false, reason: None, icon: Some(icon) };
+        let none_yet = self.ui.account_kinds.as_ref().is_some_and(Vec::is_empty);
+        let mut accounts = icon_btn(if none_yet { "Accounts: none yet, add one to use Claude or Codex" } else { "Accounts" }, "accounts", Cmd::Accounts, Icon::Account);
+        accounts.active = none_yet;
         let mut out = vec![
+            accounts,
             icon_btn("New session", "new_session", Cmd::NewSession, Icon::Plus),
             icon_btn("New Home session", "new_home", Cmd::NewGlobalSession, Icon::House),
             icon_btn("Open browser", "new_browser", Cmd::NewBrowser, Icon::Browser),
@@ -109,8 +128,9 @@ impl App {
     pub(crate) fn toolbar_hover_moved(&mut self) -> bool {
         let (x, y) = (self.ui.mouse.0 as f32, self.ui.mouse.1 as f32);
         let over = self.ui.toolbar_geom.rects.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
-        let changed = over != self.ui.toolbar_geom.hover;
-        self.ui.toolbar_geom.hover = over;
+        let tile = self.ui.toolbar_geom.tiles.iter().position(|r| x >= r[0] && x < r[2] && y >= r[1] && y < r[3]);
+        let changed = over != self.ui.toolbar_geom.hover || tile != self.ui.toolbar_geom.tile_hover;
+        (self.ui.toolbar_geom.hover, self.ui.toolbar_geom.tile_hover) = (over, tile);
         changed
     }
 
@@ -206,8 +226,10 @@ impl App {
         let side = (by1 - by0).max(1.0);
         let hover = self.ui.toolbar_geom.hover;
         let mut tip: Option<String> = None;
+        let widths: Vec<f32> = tool_entries.iter().map(|b| if b.icon.is_some() { side } else { controls.width(fs, &b.label) }).collect();
+        let (pad, gap) = toolbar_spacing(&widths, tool_entries.iter().filter(|b| b.icon.is_none()).count(), width as f32 - 4.0 * s - tx, s);
         for (i, btn) in tool_entries.iter().enumerate() {
-            let bw = if btn.icon.is_some() { side } else { controls.width(fs, &btn.label) + 14.0 * s };
+            let bw = if btn.icon.is_some() { side } else { widths[i] + pad * s };
             if tx + bw > width as f32 - 4.0 * s {
                 break;
             }
@@ -231,7 +253,7 @@ impl App {
                 None => controls.button(fs, swash, buf, width, height, r, &btn.label, fill, col, Action::Toolbar(i)),
             }
             self.ui.toolbar_geom.rects.push(r);
-            tx += bw + 5.0 * s;
+            tx += bw + gap * s;
         }
         // the word of the icon the pointer is over, after the last button
         if let Some(label) = tip {

@@ -209,6 +209,7 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             assert f0["load_count"] == 1 and f0["refresh_count"] == 0
             assert [e["name"] for e in f0["entries"]] == ["sub", "initial.txt"]
             assert [b["id"] for b in u_files["toolbar"]["buttons"]] == [
+                "accounts",
                 "new_session",
                 "new_home",
                 "new_browser",

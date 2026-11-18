@@ -1,4 +1,4 @@
-"""M22-P04: the top and the bottom of the window. The toolbar under the menu bar is three icon buttons (New session, New Home session, Open browser), the tab row holds tabs only (no `+ +B +BL +G`),
+"""M22-P04: the top and the bottom of the window. The toolbar under the menu bar is icon buttons (`M22-P04b`: Accounts first, then New session, New Home session, Open browser), the tab row holds tabs only (no `+ +B +BL +G`),
 the window never says Global (the menu, the start screen, the tab caption `H`, the telemetry strip), and the bottom is the telemetry strip, the PATH row, then the HINT row last; the path row is
 never empty (`lico://home` in Home). A private Xvfb, synthetic homes, mocked providers: no real home is read."""
 
@@ -26,7 +26,7 @@ def _menu_labels(w: ProductWindow, index: int) -> list[str]:
     return labels
 
 
-def test_the_toolbar_is_three_icon_buttons_the_tab_row_has_none_and_no_word_says_global():
+def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_global():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         c_args, _rec = claude_args(root)
@@ -39,16 +39,16 @@ def test_the_toolbar_is_three_icon_buttons_the_tab_row_has_none_and_no_word_says
             w.proc.stdin.flush()
             u = wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["sidebar"]["shown"] and x["start_screen"] and x)
 
-            # the toolbar: three icon buttons, square, with their words in the state; the text buttons are not drawn
+            # the toolbar: four icon buttons (the account first), square, with their words in the state; the text buttons are not drawn
             buttons = u["toolbar"]["buttons"]
-            assert [b["id"] for b in buttons] == ["new_session", "new_home", "new_browser"], [b["id"] for b in buttons]
-            assert [b["icon"] for b in buttons] == ["plus", "house", "browser"]
-            assert [b["label"] for b in buttons] == ["New session", "New Home session", "Open browser"]
+            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser"], [b["id"] for b in buttons]
+            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser"]
+            assert [b["label"] for b in buttons] == ["Accounts", "New session", "New Home session", "Open browser"]
             assert all(b["enabled"] and b["rect"] for b in buttons)
             for b in buttons:
                 wd, ht = b["rect"][2] - b["rect"][0], b["rect"][3] - b["rect"][1]
                 assert abs(wd - ht) <= 2 and ht >= 16, (b["id"], b["rect"])
-            assert buttons[0]["rect"][2] <= buttons[1]["rect"][0] and buttons[1]["rect"][2] <= buttons[2]["rect"][0], "left to right, not overlapping"
+            assert all(a["rect"][2] <= b["rect"][0] for a, b in zip(buttons, buttons[1:])), "left to right, not overlapping"
 
             # the tab row holds tabs only
             assert not any(k in u["tabs"] for k in LEFT_OVER_TAB_BUTTONS), sorted(u["tabs"])
@@ -60,17 +60,21 @@ def test_the_toolbar_is_three_icon_buttons_the_tab_row_has_none_and_no_word_says
             for index in range(4):
                 assert not any("Global" in label for label in _menu_labels(w, index)), index
 
-            # a click on each icon opens what it says
+            # a click on each icon opens what it says (M22-P04b: the plus and the house open the wizard, on its first step)
             w.click(*_centre(buttons[0]["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session" and x)
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "Accounts" and x)
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[1]["rect"]))
-            home = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session" and x["panel"]["form"]["folder"] == "" and x)
-            assert any("Home session" in line for line in home["panel"]["body"]) and not any("Global" in line for line in home["panel"]["body"]), home["panel"]["body"]
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session - step 1 of 3 - Choose" and x)
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[2]["rect"]))
+            home = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Home session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            assert not any("Global" in line for line in home["panel"]["body"]) and "Global" not in home["panel"]["title"], home["panel"]
+            w.key("Escape")
+            wait_for(lambda: w.ui()["panel"] is None)
+            w.click(*_centre(buttons[3]["rect"]))
             wait_for(lambda: (b := w.ui()["browser"]) and b["shown"] and b["prompt"] is False)
 
 
@@ -91,9 +95,13 @@ def test_a_home_session_has_the_caption_h_and_a_telemetry_strip_that_says_home_a
             bar = u["path_bar"]
             assert bar["text"] != "" and bar["source"] != "none", bar
 
-            w.click(*_centre(u["toolbar"]["buttons"][1]["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session" and x["panel"]["form"]["folder"] == "" and x)
-            w.key("Return")
+            w.click(*_centre(next(b for b in u["toolbar"]["buttons"] if b["id"] == "new_home")["rect"]))
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Home session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            w.key("Return")  # the icon that has the focus
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 1 and x)
+            w.key("Return")  # Next
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 2 and x)
+            w.key("Return")  # Enter on the name row starts
             home = wait_for(lambda: (x := w.ui()) and x["panel"] is None and len(x["tabs"]["items"]) == 1 and x["telemetry"]["shown"] and x)
             tab = home["tabs"]["items"][0]
             assert tab["global"] is True and tab["label"].startswith("H·"), tab["label"]

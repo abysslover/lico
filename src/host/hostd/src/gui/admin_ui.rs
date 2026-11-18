@@ -214,7 +214,7 @@ impl App {
         let label = p.ask.as_ref().map_or("session", |a| a.title.as_str());
         lines.push(format!("Choose a {} account for '{label}' (starts a fresh provider thread):", p.provider));
         if p.accounts.is_empty() {
-            lines.push(format!("No {} account exists yet (Ctrl+N creates one).", p.provider));
+            lines.push(format!("No {} account exists yet (the person icon in the toolbar, or Ctrl+A, adds one).", p.provider));
         } else {
             for (i, a) in p.accounts.iter().enumerate().take(9) {
                 let def = if a.3 { "  (default)" } else { "" };

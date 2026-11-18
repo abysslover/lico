@@ -11,6 +11,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 from tests.account_helpers import account
+from tests.gui_helpers import open_form
 from tests.llm_fixtures import FakeServer, openai_models, write_proc
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
@@ -72,7 +73,7 @@ def test_the_session_and_view_dropdowns_open_with_closed_groups_and_a_heading_op
 
             # File and Help have no group; Session and View open with their groups closed and the entries that stay on the dropdown
             file_menu = _open(w, 0)
-            assert [i["label"] for i in file_menu["items"]] == ["New session", "Accounts", "Quit"] and file_menu["groups"] == [], file_menu["items"]
+            assert [i["label"] for i in file_menu["items"]] == ["New session", "New session options...", "Accounts", "Quit"] and file_menu["groups"] == [], file_menu["items"]
             _close(w)
             session = _open(w, 1)
             heads = [i["label"] for i in session["items"] if i["kind"] == "group"]
@@ -166,7 +167,7 @@ def test_new_session_shows_three_modes_and_choosing_local_llm_looks_at_once_and_
                 w.proc.stdin.write("load\n")
                 w.proc.stdin.flush()
                 u = wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["sidebar"]["shown"] and x)
-                w.click(*_centre(u["toolbar"]["buttons"][0]["rect"]))
+                open_form(w)  # M22-P04b: the plus opens the wizard (three icons); the one-page form, with the Provider row, is File > New session options...
                 form = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session" and x["panel"]["form"] and x)
                 row = form["panel"]["body"][0]
                 assert "[Claude]" in row and "Codex" in row and "Local LLM" in row and "[Codex]" not in row, row

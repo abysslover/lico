@@ -153,7 +153,7 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             tb = u_reordered["toolbar"]
             assert tb["shown"] is True
             ids = [b["id"] for b in tb["buttons"]]
-            assert ids == ["new_session", "new_home", "new_browser"], ids  # M22-P04: three icons; the rest is in the menus
+            assert ids == ["accounts", "new_session", "new_home", "new_browser"], ids  # M22-P04b: four icons (the account first); the rest is in the menus
             rects = [b["rect"] for b in tb["buttons"]]
             assert all(r is not None and 0 <= r[0] < r[2] <= 1200 and r[1] > 18 and r[3] < 60 for r in rects), rects
             assert all(a[2] <= b[0] for a, b in zip(rects, rects[1:])), rects
@@ -183,7 +183,7 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             menu_click(w, 0, "Accounts")
             wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"] == "Accounts")
             w.click(*_centre(_tool_btn(w.ui(), "new_session")["rect"]))
-            wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"] == "New session")
+            wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"].startswith("New session"))
 
             # Click disconnected s_closed in sidebar while New session is open -> closes panel, selects s_closed, the Session menu offers 'Resume session'
             w.click(*_row_centre(w, s_closed))

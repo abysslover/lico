@@ -47,6 +47,7 @@ pub enum Action {
     PathCopy,
     WindowMax,
     LlmPick(usize),
+    WizardPick(usize),
     SidebarFilter,
     SidebarFilterClear,
     SidebarGlobal,

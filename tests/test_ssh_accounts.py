@@ -14,6 +14,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn, cli, start
 from lico_measure.rig import files_under, private_dir
 from lico_protocol import v1
+from tests.gui_helpers import open_form
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_control_parity import _http
 
@@ -279,7 +280,7 @@ def test_gui_ssh_account_creation_badges_and_remote_sign_in():
 
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
-            w.key("ctrl+n")
+            open_form(w)  # M22-P04b: the one-page form
             u_form = wait_for(lambda: (u := w.ui())["panel"] is not None and u["panel"]["form"] is not None and u)
             w.key("Up")
             w.key("Right")

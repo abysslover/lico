@@ -54,7 +54,11 @@ impl App {
         let mut ssh_hosts = std::collections::HashMap::new();
         let mut quotas = std::collections::HashMap::new();
         let mut quota_resets = std::collections::HashMap::new();
+        let mut kinds: Vec<String> = Vec::new();
         for a in arr {
+            if let Some(kind) = a["provider"].as_str().filter(|k| !kinds.iter().any(|x| x == k)) {
+                kinds.push(kind.to_string()); // M22-P04b: which providers have an account (the toolbar's account icon is lit with none)
+            }
             if let (Some(id), Some(lbl)) = (a["account"].as_str(), a["label"].as_str()) {
                 labels.insert(id.to_string(), super::super::clean(lbl));
                 if let Some(h) = a["ssh_host"].as_str().filter(|s| !s.is_empty()) {
@@ -69,6 +73,7 @@ impl App {
             }
         }
         self.ui.labels = labels;
+        self.ui.account_kinds = Some(kinds);
         self.ui.ssh_hosts = ssh_hosts;
         self.ui.quotas = quotas;
         self.ui.quota_resets = quota_resets;

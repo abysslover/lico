@@ -100,7 +100,7 @@ pub(super) fn candidate_lines(f: &Form) -> Vec<String> {
 impl App {
     /// A click on a line of the candidates (under the rows and the line of keys, after a blank line and the heading) chooses that server; false when the line is none of them.
     pub(super) fn candidate_click(&mut self, line: usize) -> bool {
-        let at = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).filter(|f| f.local).and_then(|f| line.checked_sub(f.fields().len() + 4).filter(|i| *i < f.servers.len()));
+        let at = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).filter(|f| f.local && f.wiz.map_or(true, |w| w.page == 1)).and_then(|f| line.checked_sub(f.fields().len() + 4).filter(|i| *i < f.servers.len()));
         let Some(i) = at else { return false };
         self.with_form(|_, f| {
             f.server = i;

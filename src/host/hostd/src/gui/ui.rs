@@ -76,7 +76,7 @@ pub struct UiState {
     pub win_btn: super::windowstate::WindowBtn, // the icon that switches between maximized and windowed (`M14-P02`)
     pub path_bar: super::pathbar::PathBar, // the status bar of the full path on the last row (`M14`)
     pub rows: Vec<Row>,
-    pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>,
+    pub labels: HashMap<String, String>, pub ssh_hosts: HashMap<String, String>, pub account_kinds: Option<Vec<String>>, // the providers of the accounts the host listed (none until it has answered)
     pub quotas: HashMap<String, (Option<u8>, Option<u8>)>,
     pub quota_resets: HashMap<String, (Option<u64>, Option<u64>)>,
     pub list_sig: String,
@@ -385,7 +385,7 @@ impl App {
                     } else {
                         if !matches!(&hit, Some(Action::SidebarFilter)) { self.ui.sidebar.filter_focused = false; }
                         match hit {
-                            Some(ref a) if self.llm_click(a) || self.path_click(a) || self.window_btn_click(a) || self.newchat_click(a) || self.sidebar_click(a) => {}
+                            Some(ref a) if self.llm_click(a) || self.path_click(a) || self.window_btn_click(a) || self.newchat_click(a) || self.sidebar_click(a) || self.wizard_click(a) => {}
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             Some(Action::Toolbar(i)) => self.toolbar_click(i),
                             Some(Action::Session(id) | Action::Tab(id)) => self.row_click(id),
@@ -402,7 +402,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::ReadCard) => self.card_open(),
-                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::PathCopy | Action::WindowMax) => {}
+                            Some(Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::WizardPick(_) | Action::PathCopy | Action::WindowMax) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -961,9 +961,7 @@ impl App {
         self.draw_telemetry_bar(&mut buf, width, height, list_w, telem_y_f, hint_y);
         self.draw_path_bar(&mut buf, width, height, hint_y, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
         self.draw_global_quota_summary(&mut buf, width, height, last_row_y, 4.0 * s + hint_w);
-        if self.browser_active() {
-            self.browser_paint(&mut buf, width, height, (list_w as f32 + 4.0 * s, frame.lines.first().map_or(chat_top + lh, |l| l.bottom), frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(hint_y_f, |l| l.top)));
-        }
+        self.paint_main_overlays(&mut buf, width, height, list_w, s, (&frame, chat_top + lh, hint_y_f));
         self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);
         self.draw_mention_popup(&mut buf, width, height, list_w);

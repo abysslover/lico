@@ -51,14 +51,14 @@ def test_f10_and_alt_letters_open_menus_arrows_and_enter_run_and_greyed_entries_
     with ProductWindow() as w:
         w.key("F10")
         m = menu(w)
-        assert m["open"] == 0 and [i["label"] for i in m["items"]][:3] == ["New session", "Accounts", "Quit"] and item(m, "New session")["key"] == "Ctrl+N"
+        assert m["open"] == 0 and [i["label"] for i in m["items"]][:4] == ["New session", "New session options...", "Accounts", "Quit"] and item(m, "New session")["key"] == "Ctrl+N"
         before = w.bright_total()
         w.key("Down")
         assert menu(w)["selected"] == 1 and w.bright_total() != 0 and before > 0
         w.key("Up")
         w.key("Return")                                                                  # runs the entry that was selected: New session
         panel = w.ui()["panel"]
-        assert panel and panel["title"] == "New session" and menu(w)["open"] is None
+        assert panel and panel["title"].startswith("New session") and menu(w)["open"] is None   # M22-P04b: the wizard, step one
         w.key("Escape")
         w.key("alt+s")
         m = menu(w)

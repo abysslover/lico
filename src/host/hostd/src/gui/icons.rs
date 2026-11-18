@@ -1,6 +1,6 @@
-//! The icons of the toolbar (`M22-P04`): a plus (New session), a house (New Home session) and a browser window (Open browser), drawn by the window itself from rectangles, so that no
-//! font glyph has to be checked and each icon is the same pixels in every font. Each is drawn inside a rectangle, centred, in one colour; the caller draws the button's own fill (and
-//! the colour that says it is hovered or greyed). Nothing is drawn outside the rectangle.
+//! The icons of the window (`M22-P04`, `M22-P04b`): a plus (New session), a house (New Home session), a browser window (Open browser), a person (Accounts) and the three things a session
+//! can be (Claude, Codex, Local LLM), drawn by the window itself from rectangles, so that no font glyph has to be checked and each icon is the same pixels in every font. Each is drawn
+//! inside a rectangle, centred, in one colour; the caller draws the button's own fill (and the colour that says it is hovered or greyed). Nothing is drawn outside the rectangle.
 
 use super::super::controls::{fill, Rect};
 
@@ -9,6 +9,14 @@ pub(crate) enum Icon {
     Plus,
     House,
     Browser,
+    /// A person: a head over shoulders (the Accounts screen).
+    Account,
+    /// A spark of rays (a Claude session): no vendor logo, a shape of our own.
+    Claude,
+    /// The code brackets `</>` (a Codex session).
+    Codex,
+    /// A chip with pins (a Local LLM session).
+    Local,
 }
 
 impl Icon {
@@ -18,7 +26,36 @@ impl Icon {
             Icon::Plus => "plus",
             Icon::House => "house",
             Icon::Browser => "browser",
+            Icon::Account => "account",
+            Icon::Claude => "claude",
+            Icon::Codex => "codex",
+            Icon::Local => "local",
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) const ALL: [Icon; 7] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local];
+}
+
+type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
+
+/// A line from `a` to `b` of squares `t` wide, one step along its longer side at a time.
+fn stroke(put: &mut Put, a: (f32, f32), b: (f32, f32), t: f32, col: u32) {
+    let n = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil().max(1.0) as usize;
+    for i in 0..=n {
+        let k = i as f32 / n as f32;
+        let (x, y) = (((a.0 + (b.0 - a.0) * k) - t * 0.5).round(), ((a.1 + (b.1 - a.1) * k) - t * 0.5).round());
+        put(x, y, x + t, y + t, col);
+    }
+}
+
+/// A disc of radius `r` at `c`, one row of pixels at a time.
+fn disc(put: &mut Put, c: (f32, f32), r: f32, col: u32) {
+    for i in 0..(2.0 * r).ceil() as usize {
+        let y = (c.1 - r).round() + i as f32;
+        let dy = y + 0.5 - c.1;
+        let half = (r * r - dy * dy).max(0.0).sqrt();
+        put((c.0 - half).round(), y, (c.0 + half).round(), y + 1.0, col);
     }
 }
 
@@ -68,6 +105,51 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             let ay = (fy0 + (side * 0.09).round()).max(fy0 + 1.0);
             put(x0 + (side * 0.30).round(), ay, x1 - t - 1.0, ay + (side * 0.10).round().max(1.0), ground);
         }
+        Icon::Account => {
+            // a head, and under it the top half of a wider disc for the shoulders, with a gap of the button's colour between them
+            disc(&mut put, (cx, y0 + side * 0.24), side * 0.22, ink);
+            let (rad, base) = (side * 0.46, y1);
+            for i in 0..rad.ceil() as usize {
+                let y = (base - rad).round() + i as f32;
+                let half = (rad * rad - (base - y - 0.5).powi(2)).max(0.0).sqrt();
+                put((cx - half).round(), y, (cx + half).round(), y + 1.0, ink);
+            }
+        }
+        Icon::Claude => {
+            // a spark: a hub, long rays up, down, left and right, short ones between
+            let (mx, my, d) = (cx.round(), cy.round(), side * 0.36);
+            put(x0, my - t * 0.5, x1, my - t * 0.5 + t, ink);
+            put(mx - t * 0.5, y0, mx - t * 0.5 + t, y1, ink);
+            stroke(&mut put, (cx - d, cy - d), (cx + d, cy + d), t, ink);
+            stroke(&mut put, (cx - d, cy + d), (cx + d, cy - d), t, ink);
+            disc(&mut put, (cx, cy), side * 0.15, ink);
+        }
+        Icon::Codex => {
+            // `</>`: two chevrons and a slash between them, in a thinner stroke so that the three stay three pieces
+            let (tc, a, vh, s, sv) = ((side * 0.10).round().max(2.0), side * 0.20, side * 0.30, side * 0.08, side * 0.40);
+            let h = tc * 0.5;
+            stroke(&mut put, (x0 + h + a, cy - vh), (x0 + h, cy), tc, ink);
+            stroke(&mut put, (x0 + h, cy), (x0 + h + a, cy + vh), tc, ink);
+            stroke(&mut put, (x1 - h - a, cy - vh), (x1 - h, cy), tc, ink);
+            stroke(&mut put, (x1 - h, cy), (x1 - h - a, cy + vh), tc, ink);
+            stroke(&mut put, (cx + s, cy - sv), (cx - s, cy + sv), tc, ink);
+        }
+        Icon::Local => {
+            // a chip: a body with a hollow in it and three pins on each of its four sides
+            let inset = (side * 0.20).round();
+            let (b0, b1) = ((x0 + inset, y0 + inset), (x1 - inset, y1 - inset));
+            put(b0.0, b0.1, b1.0, b1.1, ink);
+            put(b0.0 + t, b0.1 + t, b1.0 - t, b1.1 - t, ground);
+            let pin = (t * 0.5).round().max(1.0);
+            for k in 0..3 {
+                let f = (k as f32 + 0.5) / 3.0;
+                let (px, py) = ((b0.0 + (b1.0 - b0.0) * f - pin * 0.5).round(), (b0.1 + (b1.1 - b0.1) * f - pin * 0.5).round());
+                put(px, y0, px + pin, b0.1, ink);
+                put(px, b1.1, px + pin, y1, ink);
+                put(x0, py, b0.0, py + pin, ink);
+                put(b1.0, py, x1, py + pin, ink);
+            }
+        }
     }
 }
 
@@ -79,22 +161,55 @@ mod tests {
     const INK: u32 = 0xFFFF_FFFF;
     const BTN: u32 = 0xFF23_2E3E;
 
-    /// The icon in a 40x40 button inside a 64x64 canvas: the canvas, and the button's rectangle.
-    fn canvas(icon: Icon) -> (Vec<u32>, Rect) {
-        let mut buf = vec![BG; 64 * 64];
-        let r = [12.0, 12.0, 52.0, 52.0];
-        fill(&mut buf, 64, 64, r, BTN);
-        draw(&mut buf, 64, 64, icon, r, INK, BTN);
+    /// The icon in a button 24 pixels smaller than a square canvas of `n`: the canvas, and the button's rectangle.
+    fn canvas_n(icon: Icon, n: usize) -> (Vec<u32>, Rect) {
+        let mut buf = vec![BG; n * n];
+        let r = [12.0, 12.0, (n - 12) as f32, (n - 12) as f32];
+        fill(&mut buf, n, n, r, BTN);
+        draw(&mut buf, n, n, icon, r, INK, BTN);
         (buf, r)
     }
 
+    /// The icon in a 40x40 button inside a 64x64 canvas.
+    fn canvas(icon: Icon) -> (Vec<u32>, Rect) {
+        canvas_n(icon, 64)
+    }
+
+    fn inked_n(buf: &[u32], n: usize) -> Vec<(usize, usize)> {
+        (0..n).flat_map(|y| (0..n).map(move |x| (x, y))).filter(|&(x, y)| buf[y * n + x] == INK).collect()
+    }
+
     fn inked(buf: &[u32]) -> Vec<(usize, usize)> {
-        (0..64).flat_map(|y| (0..64).map(move |x| (x, y))).filter(|&(x, y)| buf[y * 64 + x] == INK).collect()
+        inked_n(buf, 64)
+    }
+
+    /// How many separate pieces of ink the icon is (4-connected).
+    fn pieces(buf: &[u32], n: usize) -> usize {
+        let mut seen = vec![false; n * n];
+        let mut count = 0;
+        for start in 0..n * n {
+            if buf[start] != INK || seen[start] {
+                continue;
+            }
+            count += 1;
+            let mut stack = vec![start];
+            seen[start] = true;
+            while let Some(i) = stack.pop() {
+                let (x, y) = (i % n, i / n);
+                for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+                    if nx < n && ny < n && buf[ny * n + nx] == INK && !seen[ny * n + nx] {
+                        seen[ny * n + nx] = true;
+                        stack.push(ny * n + nx);
+                    }
+                }
+            }
+        }
+        count
     }
 
     #[test]
     fn every_icon_inks_pixels_inside_its_button_and_never_outside_it() {
-        for icon in [Icon::Plus, Icon::House, Icon::Browser] {
+        for icon in Icon::ALL {
             let (buf, r) = canvas(icon);
             let px = inked(&buf);
             assert!(px.len() > 60, "{icon:?} draws something: {}", px.len());
@@ -104,9 +219,17 @@ mod tests {
     }
 
     #[test]
-    fn the_three_icons_are_three_different_pictures() {
-        let [a, b, c] = [Icon::Plus, Icon::House, Icon::Browser].map(|i| canvas(i).0);
-        assert!(a != b && b != c && a != c);
+    fn the_seven_icons_are_seven_different_pictures_and_have_seven_different_names() {
+        let pictures: Vec<Vec<u32>> = Icon::ALL.iter().map(|&i| canvas(i).0).collect();
+        for a in 0..pictures.len() {
+            for b in a + 1..pictures.len() {
+                assert!(pictures[a] != pictures[b], "{:?} and {:?} are one picture", Icon::ALL[a], Icon::ALL[b]);
+            }
+        }
+        let mut names: Vec<&str> = Icon::ALL.iter().map(|i| i.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), 7);
     }
 
     #[test]
@@ -126,9 +249,56 @@ mod tests {
     }
 
     #[test]
+    fn every_icon_is_centred_in_its_button() {
+        for icon in Icon::ALL {
+            let (buf, _) = canvas(icon);
+            let px = inked(&buf);
+            let (min_x, max_x) = (px.iter().map(|p| p.0).min().unwrap(), px.iter().map(|p| p.0).max().unwrap());
+            let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
+            assert!((min_x + max_x).abs_diff(63) <= 3, "{icon:?} is centred across: {min_x}..{max_x}");
+            assert!((min_y + max_y).abs_diff(63) <= 4, "{icon:?} is centred down: {min_y}..{max_y}");
+        }
+    }
+
+    #[test]
+    fn the_person_is_a_head_over_wider_shoulders_with_a_gap_between() {
+        let (buf, _) = canvas_n(Icon::Account, 96);
+        let rows: Vec<usize> = (0..96).filter(|&y| (0..96).any(|x| buf[y * 96 + x] == INK)).collect();
+        let (top, bottom) = (rows[0], *rows.last().unwrap());
+        let gap = (top..=bottom).find(|y| !rows.contains(y)).expect("a row of the button's colour between the head and the shoulders");
+        let width = |ys: std::ops::Range<usize>| ys.map(|y| (0..96).filter(|&x| buf[y * 96 + x] == INK).count()).max().unwrap();
+        assert!(width(top..gap) < width(gap..bottom + 1), "the head ({}) is narrower than the shoulders ({})", width(top..gap), width(gap..bottom + 1));
+        assert_eq!(pieces(&buf, 96), 2, "a head and shoulders, two pieces");
+    }
+
+    #[test]
+    fn the_pictures_have_the_pieces_they_are_made_of() {
+        // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
+        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1)];
+        for (icon, n) in want {
+            let (buf, _) = canvas_n(icon, 128);
+            assert_eq!(pieces(&buf, 128), n, "{icon:?}");
+        }
+    }
+
+    #[test]
+    fn the_chip_has_pins_on_all_four_sides_and_the_spark_reaches_all_four_edges() {
+        // the picture's box is the full side (58 of a 104 button) only when the pins (or the rays) reach out to it
+        for icon in [Icon::Local, Icon::Claude] {
+            let (buf, _) = canvas_n(icon, 128);
+            let px = inked_n(&buf, 128);
+            let (min_x, max_x) = (px.iter().map(|p| p.0).min().unwrap(), px.iter().map(|p| p.0).max().unwrap());
+            let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
+            assert!(max_x - min_x + 1 >= 56 && max_y - min_y + 1 >= 56, "{icon:?} reaches out: x {min_x}..{max_x}, y {min_y}..{max_y}");
+        }
+    }
+
+    #[test]
     fn a_rectangle_too_small_to_hold_an_icon_gets_none() {
-        let mut buf = vec![BG; 64 * 64];
-        draw(&mut buf, 64, 64, Icon::House, [0.0, 0.0, 6.0, 6.0], INK, BTN);
-        assert!(buf.iter().all(|&c| c == BG));
+        for icon in Icon::ALL {
+            let mut buf = vec![BG; 64 * 64];
+            draw(&mut buf, 64, 64, icon, [0.0, 0.0, 6.0, 6.0], INK, BTN);
+            assert!(buf.iter().all(|&c| c == BG), "{icon:?}");
+        }
     }
 }

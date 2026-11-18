@@ -18,6 +18,7 @@ pub const TITLES: [&str; 4] = ["File", "Session", "View", "Help"];
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Cmd {
     NewSession,
+    NewSessionOptions,
     NewGlobalSession,
     NewBrowser,
     NewLocalBrowser,
@@ -133,6 +134,7 @@ impl App {
         match menu {
             0 => vec![
                 Self::entry("New session", "Ctrl+N", Cmd::NewSession, None),
+                Self::entry("New session options...", "", Cmd::NewSessionOptions, None),
                 Self::entry("Accounts", "Ctrl+A", Cmd::Accounts, None),
                 Self::entry("Quit", "Ctrl+Q", Cmd::Quit, None),
             ],
@@ -337,8 +339,9 @@ impl App {
 
     pub(crate) fn run_cmd(&mut self, cmd: Cmd) {
         match cmd {
-            Cmd::NewSession => self.form_open(),
-            Cmd::NewGlobalSession => self.form_open_global(),
+            Cmd::NewSession => self.form_open_wizard(false),
+            Cmd::NewSessionOptions => self.form_open(),
+            Cmd::NewGlobalSession => self.form_open_wizard(true),
             Cmd::NewBrowser => self.browser_prompt(false),
             Cmd::NewLocalBrowser => self.browser_prompt(true),
             Cmd::Accounts => self.panel_open(Step::Accounts),

@@ -35,15 +35,20 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             work = account(conn, "Other")                                     # the second account: choosing it must matter
             client = start_client(host, xvfb.display)
             assert ui(client)["panel"] is None                                # nothing is open until a person asks
-            xdo(xvfb.display, "key", "ctrl+n")
+            xdo(xvfb.display, "key", "ctrl+n")                                # M22-P04b: the wizard, three icons first
             screen = panel_of(client, lambda p: p["form"] is not None)
-            assert screen["title"] == "New session" and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
+            assert screen["title"].startswith("New session - step 1 of 3") and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
+            assert [t["enabled"] for t in screen["form"]["tiles"]] == [False, True, True]      # no Claude account here; Codex and Local LLM can be chosen
+            xdo(xvfb.display, "key", "Return")                                # the icon with the focus (Codex, the last provider) is chosen
+            screen = panel_of(client, lambda p: p["form"]["wizard"]["page"] == 1)
             assert any("< Work (default) >" in line for line in screen["body"])
             xdo(xvfb.display, "key", "Up")                                    # from the folder row to the account row
             xdo(xvfb.display, "key", "Right")
             assert panel_of(client, lambda p: p["form"]["account"] == work)["form"]["focus"] == "Account"
             assert conn.call(op="status")["sessions"] == []                  # choosing creates nothing
-            xdo(xvfb.display, "key", "Return")
+            xdo(xvfb.display, "key", "Return")                                # Next
+            panel_of(client, lambda p: p["form"]["wizard"]["page"] == 2)
+            xdo(xvfb.display, "key", "Return")                                # Start
             state = ui(client, lambda u: u["panel"] is None and len(u["rows"]) == 1)
             made = conn.call(op="status")["sessions"]
             assert len(made) == 1 and made[0]["account"] == work and made[0]["provider"] == "codex"
@@ -51,6 +56,8 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             # a new account is made on the screen, with the input line as its text field, and backing out creates no session
             xdo(xvfb.display, "key", "ctrl+n")
             assert panel_of(client, lambda p: p["form"] is not None)["form"]["account"] == work      # the screen starts from what was used last
+            xdo(xvfb.display, "key", "Return")                                # Codex is chosen
+            panel_of(client, lambda p: p["form"]["wizard"]["page"] == 1)
             xdo(xvfb.display, "key", "Up")
             xdo(xvfb.display, "key", "Right")                                 # after the last account: add a new one
             assert panel_of(client, lambda p: p["form"]["account"] == "")["form"]["problem"].startswith("add an account")
@@ -58,11 +65,13 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             assert panel_of(client, lambda p: p["text_entry"] and p["form"] is not None)["title"] == "New codex account"
             xdo(xvfb.display, "type", "Home")
             xdo(xvfb.display, "key", "Return")
-            back = panel_of(client, lambda p: p["title"] == "New session" and p["form"]["account"] != "")["form"]
+            back = panel_of(client, lambda p: p["title"].startswith("New session - step 2 of 3") and p["form"]["account"] != "")["form"]
             home = [a["account"] for a in conn.call(op="account.list")["accounts"] if a["label"] == "Home"]
             assert back["focus"] == "SignIn" and [back["account"]] == home
             assert sorted(a["label"] for a in conn.call(op="account.list")["accounts"]) == ["Home", "Other", "Work"]
-            xdo(xvfb.display, "key", "Escape")
+            xdo(xvfb.display, "key", "Escape")                                # Back: the icons again (nothing is created)
+            panel_of(client, lambda p: p["form"] is not None and p["form"]["wizard"]["page"] == 0)
+            xdo(xvfb.display, "key", "Escape")                                # and out
             ui(client, lambda u: u["panel"] is None)
             assert len(conn.call(op="status")["sessions"]) == 1
         finally:

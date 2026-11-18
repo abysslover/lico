@@ -31,6 +31,10 @@ pub enum Field {
     Permission,
     SignIn,
     Start,
+    /// The wizard (`M22-P04b`): one of the three icons of its first step, and the two rows that move between steps.
+    Pick(usize),
+    Back,
+    Next,
 }
 
 impl Field {
@@ -47,7 +51,7 @@ impl Field {
             Field::Model => "Model",
             Field::Effort => "Effort",
             Field::Permission => "Permission",
-            Field::Recent(_) | Field::SignIn | Field::Start => "",
+            Field::Recent(_) | Field::SignIn | Field::Start | Field::Pick(_) | Field::Back | Field::Next => "",
         }
     }
 
@@ -79,10 +83,21 @@ pub struct Form {
     pub(super) kept: Option<Server>,
     pub(super) scanned: bool,
     pub(super) scan_req: u64,
+    /// The wizard (`M22-P04b`): which step it is on; none for the one-page form.
+    pub(super) wiz: Option<wizard::Wiz>,
 }
 
 impl Form {
-    fn fields(&self) -> Vec<Field> {
+    /// The rows on screen: the one-page form's, or those of the wizard's step.
+    pub(super) fn fields(&self) -> Vec<Field> {
+        match self.wiz {
+            Some(w) => self.page_rows(w),
+            None => self.all_rows(),
+        }
+    }
+
+    /// Every row of the one-page form (the wizard shares them out over its steps).
+    pub(super) fn all_rows(&self) -> Vec<Field> {
         if self.local {
             return vec![Field::Provider, Field::Server, Field::Model, Field::Name, Field::Start];
         }
@@ -246,6 +261,7 @@ impl App {
             kept,
             scanned: false,
             scan_req: 0,
+            wiz: None,
         });
         self.form_check_git();
         self.form_resume();
@@ -349,8 +365,13 @@ impl App {
 
     /// Why the session cannot be started yet, from what the form can see.
     fn form_problem(&self, p: &Panel, f: &Form) -> Option<String> {
+        self.rows_problem(p, f).or_else(|| name_problem(self.live(p, f, Field::Name).trim()))
+    }
+
+    /// The same without the name's (the wizard's second step does not wait for a name: it is the last step's).
+    pub(super) fn rows_problem(&self, p: &Panel, f: &Form) -> Option<String> {
         if f.local {
-            return local_rows::problem(&f.servers, f.server, &f.local_model).or_else(|| name_problem(self.live(p, f, Field::Name).trim()));
+            return local_rows::problem(&f.servers, f.server, &f.local_model);
         }
         let folder = self.live(p, f, Field::Folder);
         let trimmed_folder = folder.trim();
@@ -367,42 +388,45 @@ impl App {
         } else if f.is_git && f.worktree && !crate::worktree::valid_branch_shape(branch.trim()) {
             Some("that branch name is not valid for git".into())
         } else {
-            name_problem(self.live(p, f, Field::Name).trim())
+            None
         }
+    }
+
+    /// One row of the form as a line: the mark of the focus, its word, its value.
+    pub(super) fn row_line(&self, p: &Panel, f: &Form, field: Field) -> String {
+        let value = match field {
+            Field::Provider => local::modes_line(&p.provider),
+            Field::Server => f.servers.get(f.server).map_or("(none yet)".to_string(), |s| format!("< {} >", local_rows::line(s))),
+            Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
+            Field::Folder | Field::Name => match self.live(p, f, field) {
+                t if t.is_empty() && field == Field::Folder => "(Home session: gets a scratch workspace of its own)".into(),
+                t if t.is_empty() => "(optional)".into(),
+                t => t,
+            },
+            Field::Recent(i) => f.recent[i].clone(),
+            Field::Worktree => format!("< {} >", if f.worktree { "new worktree (isolated branch)" } else { "off (use folder directly)" }),
+            Field::Branch => match self.live(p, f, Field::Branch) {
+                t if t.is_empty() => "(required: new git branch name)".into(),
+                t => t,
+            },
+            Field::Model if f.local => if f.local_model.is_empty() { "(none)".into() } else { format!("< {} >", f.local_model) },
+            Field::Model => format!("< {} >", f.model),
+            Field::Effort => format!("< {} >", f.effort),
+            Field::Permission => format!("< {} >", if p.mode == "auto" { "Skip agent prompts" } else { "Ask for approval" }),
+            Field::SignIn => "Sign in to this account first (Ctrl+L)".into(),
+            Field::Start => self.form_problem(p, f).map_or("Start session".into(), |why| format!("Start session (not yet: {why})")),
+            Field::Pick(_) | Field::Back | Field::Next => self.wizard_value(p, f, field),
+        };
+        format!("{} {:<11}{value}", if f.focus == field { '>' } else { ' ' }, field.label())
     }
 
     /// The rows of the form, one line each, then the line of keys.
     pub(crate) fn form_lines(&self, p: &Panel) -> Vec<String> {
         let Some(f) = p.form.as_ref() else { return Vec::new() };
-        let mut lines: Vec<String> = f
-            .fields()
-            .into_iter()
-            .map(|field| {
-                let value = match field {
-                    Field::Provider => local::modes_line(&p.provider),
-                    Field::Server => f.servers.get(f.server).map_or("(none yet)".to_string(), |s| format!("< {} >", local_rows::line(s))),
-                    Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
-                    Field::Folder | Field::Name => match self.live(p, f, field) {
-                        t if t.is_empty() && field == Field::Folder => "(Home session: gets a scratch workspace of its own)".into(),
-                        t if t.is_empty() => "(optional)".into(),
-                        t => t,
-                    },
-                    Field::Recent(i) => f.recent[i].clone(),
-                    Field::Worktree => format!("< {} >", if f.worktree { "new worktree (isolated branch)" } else { "off (use folder directly)" }),
-                    Field::Branch => match self.live(p, f, Field::Branch) {
-                        t if t.is_empty() => "(required: new git branch name)".into(),
-                        t => t,
-                    },
-                    Field::Model if f.local => if f.local_model.is_empty() { "(none)".into() } else { format!("< {} >", f.local_model) },
-                    Field::Model => format!("< {} >", f.model),
-                    Field::Effort => format!("< {} >", f.effort),
-                    Field::Permission => format!("< {} >", if p.mode == "auto" { "Skip agent prompts" } else { "Ask for approval" }),
-                    Field::SignIn => "Sign in to this account first (Ctrl+L)".into(),
-                    Field::Start => self.form_problem(p, f).map_or("Start session".into(), |why| format!("Start session (not yet: {why})")),
-                };
-                format!("{} {:<11}{value}", if f.focus == field { '>' } else { ' ' }, field.label())
-            })
-            .collect();
+        if f.wiz.is_some() {
+            return self.wizard_lines(p, f);
+        }
+        let mut lines: Vec<String> = f.fields().into_iter().map(|field| self.row_line(p, f, field)).collect();
         lines.push(String::new());
         lines.push("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: start".into());
         if f.local {
@@ -414,11 +438,7 @@ impl App {
             lines.push("A local session asks the model server on this machine only; it has no access to files or a shell.".into());
             return lines;
         }
-        lines.push(if p.provider == "codex" {
-            "A folder's own Codex settings (.codex: config, hooks, rules) are not used.".into() // the thread is read-only, so Codex does not trust the folder
-        } else {
-            "A folder's own Claude settings (hooks, environment) are not used; its CLAUDE.md is.".into()
-        });
+        lines.push(wizard::settings_note(&p.provider).into());
         lines
     }
 
@@ -431,6 +451,7 @@ impl App {
             "name": self.live(p, f, Field::Name), "model": f.model, "effort": f.effort, "mode": p.mode,
             "models": f.models, "efforts": f.efforts, "recent": f.recent, "problem": self.form_problem(p, f),
             "local": f.local, "servers": f.servers.iter().map(local_rows::line).collect::<Vec<_>>(), "server": f.server, "local_model": f.local_model, "scanned": f.scanned,
+            "wizard": self.wizard_json(p, f), "tiles": self.tiles_json(),
         })
     }
 
@@ -487,17 +508,8 @@ impl App {
     fn form_cycle(&mut self, by: isize) {
         let mut look = false;
         self.with_form(|p, f| match f.focus {
-            Field::Provider => {
-                let to = next(&PROVIDERS.map(String::from), &p.provider, by);
-                if to != p.provider {
-                    p.provider = to;
-                    p.account = p.first_account(); // none for Local
-                    (f.model, f.effort) = (DEFAULT.into(), DEFAULT.into()); // the program's choices are claude's
-                    f.local = p.provider == "local";
-                    p.notice.clear(); // what the form said about the program of one provider is not for the next
-                    look = f.local && !f.scanned; // M22-P04a: choosing Local LLM is asking for its candidates: the one look is made now (a result that is there stays)
-                }
-            }
+            Field::Provider => look = wizard::set_provider(p, f, &next(&PROVIDERS.map(String::from), &p.provider, by)),
+            Field::Pick(i) => f.focus = Field::Pick((i as isize + by).rem_euclid(PROVIDERS.len() as isize) as usize),
             Field::Server if f.local => {
                 f.server = local_rows::step(f.servers.len(), f.server, by);
                 keep_model(f);
@@ -536,6 +548,7 @@ impl App {
             Some(Field::SignIn) => self.form_sign_in(),
             Some(Field::Start) => self.form_start(),
             Some(Field::Server) => self.form_scan(),
+            Some(Field::Pick(_) | Field::Back | Field::Next) => self.wizard_act(),
             Some(Field::Provider | Field::Account | Field::Worktree | Field::Model | Field::Effort | Field::Permission) => self.form_cycle(1),
             _ => {}
         }
@@ -543,6 +556,9 @@ impl App {
 
     /// Enter: start the session, except where the row has its own meaning.
     fn form_enter(&mut self) {
+        if self.wizard_enter() {
+            return;
+        }
         let adding = self.ui.panel.as_ref().map_or(false, |p| p.chosen_account().is_none());
         match self.focused() {
             Some(Field::Recent(_)) => self.form_pick(),
@@ -555,7 +571,7 @@ impl App {
 
     /// A click on a line of the form; false when the line is not a row (the click is then a selection of text).
     pub(crate) fn form_click(&mut self, line: usize) -> bool {
-        let row = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).and_then(|f| f.fields().get(line).copied());
+        let row = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).and_then(|f| f.row_at(line));
         let Some(row) = row else { return self.candidate_click(line) };
         self.form_focus(row);
         self.form_act();
@@ -730,6 +746,7 @@ impl App {
             Step::Label if matches!(key, Key::Named(NamedKey::Tab)) => self.cycle_label_host(if shift { -1 } else { 1 }),
             Step::NewSession => {
                 match key {
+                    Key::Named(NamedKey::Escape) if self.wizard_escape() => {} // a step back
                     Key::Named(NamedKey::Escape) => return false, // the panel's own: close
                     Key::Named(NamedKey::Tab) => self.form_move(if shift { -1 } else { 1 }),
                     Key::Named(NamedKey::ArrowDown) => self.form_move(1),
@@ -753,6 +770,8 @@ impl App {
 #[path = "newsession_local.rs"]
 mod local;
 use local::keep_model;
+#[path = "newsession_wizard.rs"]
+mod wizard;
 
 #[cfg(test)]
 #[path = "newsession_tests.rs"]

@@ -10,6 +10,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 
 from tests.account_helpers import account
+from tests.gui_helpers import open_form
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import ui, xdo
 from tests.test_login import URL, home_of
@@ -94,7 +95,7 @@ def test_ctrl_v_pastes_a_sign_in_code_that_is_then_accepted_like_a_typed_one_and
 
 
 def label_entry(w):
-    w.key("ctrl+n")                                                           # the folder row of the new-session screen has the focus
+    open_form(w)                                                              # the folder row of the one-page new-session screen has the focus
     assert w.ui()["panel"]["text_entry"]
 
 

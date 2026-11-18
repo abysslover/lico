@@ -56,3 +56,18 @@ fn leaving_the_session_view_with_the_panel_open_parks_the_draft_and_not_the_code
     assert_eq!(app.ed.text(), "my draft");
     nowhere(&app);
 }
+
+#[test]
+fn the_empty_account_screens_say_where_the_first_account_is_made() {
+    // M22-P04b: the Claude and Codex icons of the new-session wizard are grey until an account exists, so Ctrl+N is not where the first one is made
+    let mut app = app(1.0, false);
+    app.panel_open(Step::Accounts);
+    let (_, body) = app.panel_view().expect("the accounts screen");
+    let hint = body.iter().find(|l| l.starts_with("No account yet")).expect("the empty line");
+    assert!(hint.contains("press A") && hint.contains("Local LLM does not") && !hint.contains("Ctrl+N"), "{hint}");
+    app.panel_open(Step::Rebind);
+    app.ui.panel.as_mut().unwrap().provider = "claude".into();
+    let (_, body) = app.panel_view().expect("the rebind screen");
+    let hint = body.iter().find(|l| l.starts_with("No claude account")).expect("the empty line");
+    assert!(hint.contains("person icon") && hint.contains("Ctrl+A") && !hint.contains("Ctrl+N"), "{hint}");
+}

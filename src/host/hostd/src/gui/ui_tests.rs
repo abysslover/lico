@@ -90,10 +90,10 @@ fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_tool
     app.refresh_list();
     app.push_line(0, "hello world".into());
 
-    // the toolbar is the three icons (and Copy while lines are selected); Send to session is the Session menu's entry (M22-P04)
+    // the toolbar is the account icon and the three others (and Copy while lines are selected); Send to session is the Session menu's entry (M22-P04)
     let send = |app: &super::super::App| app.menu_entries(1).into_iter().find(|e| e.cmd == super::super::menu::Cmd::SendTo).map(|e| e.reason);
     let btns = app.toolbar_entries();
-    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["new_session", "new_home", "new_browser"]);
+    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["accounts", "new_session", "new_home", "new_browser"]);
     assert_eq!(send(&app), Some(Some("nothing to send: type in the input box or select lines")));
 
     app.ui.sel = Some((0, 0));
@@ -124,4 +124,37 @@ fn the_left_column_starts_at_the_top_of_the_window_and_only_without_the_menu_bar
     app.ui.markers = false;
     app.ui.menu = false;
     assert_eq!(app.left_column_tops(30.0, 1.0), (30.0, 40.0), "no menu bar: under whatever is on top");
+}
+
+#[test]
+fn the_account_icon_comes_first_is_lit_only_when_the_host_says_there_is_no_account_and_never_greys_the_plus_or_the_house() {
+    use serde_json::json;
+    let mut app = super::super::scroll_oracle::app(1.0, false);
+    let entry = |app: &super::super::App, id: &str| app.toolbar_entries().into_iter().find(|b| b.id == id).map(|b| (b.active, b.reason, b.icon.map(super::icons::Icon::name)));
+    assert_eq!(app.toolbar_entries()[0].id, "accounts");
+    assert_eq!(entry(&app, "accounts"), Some((false, None, Some("account"))), "before the host has answered nothing is known, so nothing is lit");
+    app.sync_accounts_value(&json!({"ok": 1, "accounts": []}));
+    assert_eq!(entry(&app, "accounts"), Some((true, None, Some("account"))), "no account at all: the first step is lit");
+    assert_eq!(entry(&app, "new_session"), Some((false, None, Some("plus"))), "Local LLM needs no account, so the plus is never greyed");
+    assert_eq!(entry(&app, "new_home"), Some((false, None, Some("house"))));
+    app.sync_accounts_value(&json!({"ok": 1, "accounts": [{"account": "a1", "provider": "codex", "label": "Lab"}]}));
+    assert_eq!(entry(&app, "accounts"), Some((false, None, Some("account"))), "an account of any provider puts the light out");
+    assert_eq!(app.ui.account_kinds.as_deref(), Some(&["codex".to_string()][..]));
+    let word = |app: &super::super::App| app.toolbar_entries()[0].label.clone();
+    assert_eq!(word(&app), "Accounts");
+    app.sync_accounts_value(&json!({"ok": 1, "accounts": []}));
+    assert!(word(&app).contains("add one"), "the word beside the icon says what to do: {}", word(&app));
+}
+
+#[test]
+fn the_toolbar_tightens_its_spacing_before_it_hides_a_button() {
+    use super::toolbar::toolbar_spacing;
+    // four icons of 25 px and six text buttons (the Files panel's) of 636 px of text: 100 + 636 + 6 x 14 + 9 x 5 = 865 px at the usual spacing
+    let widths = [25.0, 25.0, 25.0, 25.0, 156.0, 120.0, 84.0, 132.0, 72.0, 72.0];
+    assert_eq!(toolbar_spacing(&widths, 6, 865.0, 1.0), (14.0, 5.0), "it fits: the usual spacing");
+    assert_eq!(toolbar_spacing(&widths, 6, 864.0, 1.0), (6.0, 3.0), "one pixel short: tightened");
+    assert_eq!(toolbar_spacing(&widths, 6, 300.0, 1.0), (6.0, 3.0), "far too short: tightened as far as it goes (the last buttons are then left out, as before)");
+    assert_eq!(toolbar_spacing(&widths, 6, 994.0, 2.0), (14.0, 5.0), "the scale multiplies the padding and the gap, not the widths: 736 + 6 x 28 + 9 x 10");
+    assert_eq!(toolbar_spacing(&widths, 6, 993.0, 2.0), (6.0, 3.0));
+    assert_eq!(toolbar_spacing(&[], 0, 0.0, 1.0), (14.0, 5.0), "no buttons: nothing to tighten");
 }
