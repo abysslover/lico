@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), then P05 is next
-- Version: 2.7.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), P04b (the account icon, the new-session wizard of three icons) is done (`192e304`), then P05 is next
+- Version: 3.0.0
 - Project: Lico
 - Updated: 2026-11-18
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -32,6 +32,7 @@
 - **A browser page opened before can be opened again.**
 - **Chats also lists what was opened outside Lico, with Claude or Codex themselves; this is on by default** (the setting that includes the provider's own home is ON unless the person turns it off).
 - **The menu is not cut, it is a tree** (the chat, after P04, asked which entries to remove): no function is removed. Starting a session offers the three modes **Claude, Codex, Local LLM** by default, and choosing Local LLM shows the candidates (the servers found) there, so `Find Local LLM servers...` is no longer a menu chore; functions the person may not know when they will use are **classified and kept in the menu bar as a tree** (submenus), not deleted. This is phase P04a.
+- **The account icon and the wizard** (the chat, 2026-11-18, after P04a was installed and opened): a build must reach `lico gui` by itself (the lead made `~/bin/lico` a link to the build); pressing New session must not draw text but just **three icons, Claude, Codex, Local LLM**; **an account icon first in the toolbar, then the plus**; Local LLM needs no account, so only the **Claude and Codex icons are grey** without an account of theirs; **pressing an icon opens a wizard that goes on step by step**. The browser tab is still text (it is P05, next).
 - **Performance** (a message sent while the lead worked): listing everything may need performance work and a background index. Experiment, think it through, and leave no delay.
 
 ## What the code does today (read 2026-11-18)
@@ -51,7 +52,8 @@
 - **A chat index in the host, not a scan per call.** A snapshot of every record of every home (path, size, modification time, folder, title, turn count) is built when the host starts, kept fresh by comparing sizes and times (no record is opened again unless it changed), and read by every scope of `session.chats`. A call reads memory. The lead measures first (cold disk, warm, one changed record, 5,000 records), and the budget is: a page in under 5 ms warm, the first build under 1 s in the background, no call waits for a build. Phase P02.
 - **Calls leave the sidebar, not Lico.** A room two sessions share shows as a small `⇄` mark on the tab of each of the two sessions (decided in P03: a session with no transcript has no card, a tab always exists while the session is open); a click opens the room. The agents' tools and the REST and CLI calls do not change.
 - **The bottom is: path row, then the key-hint row.** The path row always has text: the folder, `lico://home` in Home, the row under the pointer when there is one.
-- **The top is the menu bar and a toolbar of four icon buttons** (the terminal's appears with M23, so that no button is shown that does nothing); the session tabs row loses `+ +B +BL +G`. Every other action stays in the menus.
+- **The top is the menu bar and a toolbar of icon buttons**: the account (a person), New session (a plus), New Home session (a house), Open browser (a browser window); the terminal's appears with M23, so that no button is shown that does nothing. The session tabs row loses `+ +B +BL +G`. Every other action stays in the menus.
+- **New session is a wizard of three steps** (P04b): the three icons (Claude and Codex grey without an account of theirs, Local LLM never), then the account and the folder (Local LLM: the server), then the options and the start; Esc goes a step back. The one-page form stays as File > New session options... and for the folder actions of the sidebar.
 - **The browser tab has an address bar at the top** (`‹ ›  ⟳  address`): cut in the MIDDLE when long (the host name and the end stay), the whole address when the bar has the keys, Enter goes. Text that is not an address is a search with the engine of the setting `browser_search` (a URL with `%s`); the default engine is chosen by one measured probe in P05 (three requests, to find one the engine can use). A new tab is an EMPTY page with the bar focused; the explanation is on `F1`. The click ring goes (BROW-09 is removed in `lico-browser-view`).
 - **Browser pages are remembered** (address, title, time; at most 100, in the host's state directory, mode 0600, never for a tab opened `--local`, cleared by a menu entry), listed in Chats and reopened by a click; "Reopen closed tab" is in the menu.
 - **The provider's own home is included by default.** The setting `native_claude` / `native_codex` has `ask` today (the New chat dialog asks); the default becomes `on`. A person who chose `off` keeps `off`.
@@ -65,6 +67,7 @@
 | M22-P03 | window: two left tabs, Home as one virtual directory, Chats of all sessions with the jump, Calls out of the sidebar | [Plan](../../../plans/202611/20261118/20261118_05_M22-P03_window_two_tabs_home_chats_plan.md) | done (`7361c18`) |
 | M22-P04 | window: the toolbar of icon buttons (three now, the terminal's comes with M23), the path row above the hint row and never empty, the tab row without buttons, Global gone from every word | [Plan](../../../plans/202611/20261118/20261118_06_M22-P04_window_toolbar_icons_bottom_rows_plan.md) | done (`8f9cfb7`) |
 | M22-P04a | window: the menu bar as a tree (classified submenus, no function removed) and the New session screen with the three modes Claude, Codex, Local LLM (Local LLM shows the servers found) | [Plan](../../../plans/202611/20261118/20261118_07_M22-P04a_tree_menus_three_modes_plan.md) | done (`e69adb0`) |
+| M22-P04b | window: the account icon first in the toolbar, New session as a wizard that starts with three icons (Claude, Codex, Local LLM; Claude and Codex grey without an account, Local LLM never), the build reaches `lico gui` by a link | [Plan](../../../plans/202611/20261118/20261118_08_M22-P04b_account_icon_new_session_wizard_plan.md) | done (`192e304`) |
 | M22-P05 | browser tab: address bar at the top, search, an empty first page, remembered pages and reopen, the click ring removed | written when P04 is done | planned |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
