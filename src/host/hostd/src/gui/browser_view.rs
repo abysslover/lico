@@ -141,7 +141,8 @@ impl App {
         format!("browser:{}", self.ui.browser.active.as_deref().unwrap_or("new"))
     }
 
-    fn browser_enter(&mut self, key: &str) {
+    pub(super) fn browser_enter(&mut self, key: &str) {
+        self.ui.terminal.active = None; // (a terminal tab gives way to whatever is entered)
         if self.ui.panel.is_some() {
             self.panel_close();
         }

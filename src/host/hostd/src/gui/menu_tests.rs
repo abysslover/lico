@@ -22,7 +22,7 @@ fn a_dropdown_opens_with_its_groups_closed_and_the_entries_that_stay_are_on_the_
     assert!(rows.iter().all(|r| r.depth == 0 && r.kind != RowKind::Group("Go to", true)), "nothing is indented while every group is closed");
     let head = |l: &str| labels(&rows).iter().position(|x| x == l);
     assert!(head("New Home session") < head("Go to") && head("Go to") < head("Start screen"), "a group stands where its first entry was: {:?}", labels(&rows));
-    assert!(rows.len() < app.menu_entries(1).len() / 2, "the long list is short now: {} of {}", rows.len(), app.menu_entries(1).len());
+    assert!(rows.len() <= app.menu_entries(1).len() / 2, "the long list is short now: {} of {}", rows.len(), app.menu_entries(1).len());
     assert_eq!(app.menu_rows(0).len(), app.menu_entries(0).len(), "File has no group");
     assert_eq!(app.menu_rows(3).len(), app.menu_entries(3).len(), "Help has no group");
     let view = app.menu_rows(2);

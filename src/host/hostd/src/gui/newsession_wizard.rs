@@ -1,5 +1,5 @@
-//! The new-session wizard (`M22-P04b`): the one-page form's rows shared out over three steps. Step one is three icons (Claude, Codex, Local LLM: the window draws them, see
-//! `toolbar/picker.rs`) and nothing else; step two is the account and the folder (Local LLM: the server); step three is the options and the start. Every step ends with Back and
+//! The new-session wizard (`M22-P04b`, `M23-P03`): the one-page form's rows shared out over three steps. Step one is four icons (Claude, Codex, Local LLM and Terminal: the window draws them, see
+//! `toolbar/picker.rs`) and nothing else; the Terminal icon goes to one more step, the folder, which starts a shell (a terminal tab, not a session); step two is the account and the folder (Local LLM: the server); step three is the options and the start. Every step ends with Back and
 //! Next (Start on the last). The rows, the checks, the sign-in, the recent folders, the look for servers and the request are the form's own: nothing is done twice and no function of
 //! the one-page form is lost (it stays as File > New session options...).
 
@@ -9,15 +9,20 @@ use super::*;
 /// The blank lines the first step keeps for the icons (the window paints them over these).
 const TILE_LINES: usize = 6;
 const STEPS: usize = 3;
+/// The icons of the first step: the three providers (the form's own `PROVIDERS`, at the same places) and the terminal, which needs no account and has no provider.
+pub(super) const PICKS: [&str; 4] = ["claude", "codex", "local", "terminal"];
+const TERMINAL: usize = 3;
 
 /// Where the wizard is: the step (`0` the icons, `1` the account and folder or the server, `2` the options and the start) and whether it is for a Home session (no folder).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct Wiz {
     pub(crate) page: usize,
     pub(crate) home: bool,
+    /// The Terminal icon was chosen: the step after it asks for the folder only, and starts a shell on it.
+    pub(crate) terminal: bool,
 }
 
-/// One of the three icons of the first step as the window draws it.
+/// One of the icons of the first step as the window draws it.
 pub(crate) struct Tile {
     pub(crate) provider: &'static str,
     pub(crate) word: &'static str,
@@ -29,9 +34,15 @@ pub(crate) struct Tile {
 fn word(kind: &str) -> &'static str {
     match kind {
         "local" => "Local LLM",
+        "terminal" => "Terminal",
         "codex" => "Codex",
         _ => "Claude",
     }
+}
+
+/// Why a terminal cannot be started on the folder typed, from the text alone (empty: the person's home, which the host picks).
+fn terminal_problem(folder: &str) -> Option<String> {
+    (!(folder.is_empty() || (folder.starts_with('/') && crate::folders::valid_path_shape(folder)))).then(|| "the folder must be a full path that starts with /".to_string())
 }
 
 /// What a folder's own settings do (the line under the account and folder).
@@ -67,9 +78,9 @@ fn page_of(field: Field) -> usize {
 }
 
 impl Panel {
-    /// An icon is for a provider with an account, or for Local LLM, which needs none.
+    /// An icon is for a provider with an account, or for Local LLM and the terminal, which need none.
     fn tile_enabled(&self, kind: &str) -> bool {
-        kind == "local" || self.accounts.iter().any(|a| a.1 == kind)
+        kind == "local" || kind == "terminal" || self.accounts.iter().any(|a| a.1 == kind)
     }
 }
 
@@ -77,7 +88,13 @@ impl Form {
     /// The rows of a step: the one-page form's own rows that are on it, then Back and Next (the last step ends with Back and then the Start row). A Home session has no folder.
     pub(super) fn page_rows(&self, w: Wiz) -> Vec<Field> {
         if w.page == 0 {
-            return (0..PROVIDERS.len()).map(Field::Pick).collect();
+            return (0..PICKS.len()).map(Field::Pick).collect();
+        }
+        if w.terminal {
+            let mut rows = vec![Field::Folder];
+            rows.extend((0..self.recent.len().min(RECENT_SHOWN)).map(Field::Recent));
+            rows.extend([Field::Back, Field::Next]);
+            return rows;
         }
         let mut rows: Vec<Field> = self
             .all_rows()
@@ -104,7 +121,9 @@ impl Form {
 /// The row that has the focus when a step is shown.
 fn focus_of(p: &Panel, f: &Form, page: usize) -> Field {
     match page {
+        0 if f.wiz.is_some_and(|w| w.terminal) => Field::Pick(TERMINAL),
         0 => Field::Pick(PROVIDERS.iter().position(|k| *k == p.provider).unwrap_or(0)),
+        1 if f.wiz.is_some_and(|w| w.terminal) => Field::Folder,
         1 if f.local => Field::Server,
         1 if f.wiz.is_some_and(|w| w.home) => Field::Account,
         1 => Field::Folder,
@@ -122,7 +141,7 @@ impl App {
     /// The form that is open becomes the wizard, on its first step with the focus on the icon of the provider it opened on, or else on the first one that can be chosen.
     pub(super) fn wizard_begin(&mut self, home: bool) {
         self.with_form(|p, f| {
-            f.wiz = Some(Wiz { page: 0, home });
+            f.wiz = Some(Wiz { page: 0, home, terminal: false });
             if home {
                 f.folder.clear();
                 f.checked_folder = "\x00".to_string();
@@ -148,7 +167,7 @@ impl App {
 
     fn tiles_of(&self, p: &Panel, f: &Form) -> Vec<Tile> {
         let hover = self.ui.toolbar_geom.tile_hover;
-        PROVIDERS.iter().enumerate().map(|(i, k)| Tile { provider: k, word: word(k), enabled: p.tile_enabled(k), focused: f.focus == Field::Pick(i), hovered: hover == Some(i) }).collect()
+        PICKS.iter().enumerate().map(|(i, k)| Tile { provider: k, word: word(k), enabled: p.tile_enabled(k), focused: f.focus == Field::Pick(i), hovered: hover == Some(i) }).collect()
     }
 
     /// How many lines at the top of the body the window paints the icons over; none when the first step is not shown.
@@ -159,7 +178,7 @@ impl App {
     /// An icon was chosen (a click, Enter or Space): its provider is the form's, and the wizard goes on to the account and folder (Local LLM: the server, which is looked for at once). The
     /// icon of a provider with no account is not taken: it has the focus and says why.
     pub(super) fn wizard_pick(&mut self, i: usize) {
-        let Some(kind) = PROVIDERS.get(i).copied().filter(|_| self.wizard_page() == Some(0)) else { return };
+        let Some(kind) = PICKS.get(i).copied().filter(|_| self.wizard_page() == Some(0)) else { return };
         let usable = self.ui.panel.as_ref().is_some_and(|p| p.tile_enabled(kind));
         if !usable {
             let why = format!("{} needs an account first: the person icon in the toolbar adds one.", word(kind));
@@ -170,8 +189,21 @@ impl App {
             self.dirty = true;
             return;
         }
+        if kind == "terminal" {
+            self.with_form(|p, f| {
+                if let Some(w) = f.wiz.as_mut() {
+                    w.terminal = true;
+                }
+                p.notice.clear();
+            });
+            self.wizard_go(1);
+            return;
+        }
         let mut look = false;
         self.with_form(|p, f| {
+            if let Some(w) = f.wiz.as_mut() {
+                w.terminal = false;
+            }
             look = set_provider(p, f, kind) || (kind == "local" && !f.scanned);
             if kind != "local" && p.chosen_account().is_none() {
                 p.account = p.first_account(); // the accounts may have changed since the form opened
@@ -206,6 +238,9 @@ impl App {
         }
         self.form_store();
         self.form_resume(); // (the text stays on the input line while the step is shown)
+        if self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).and_then(|f| f.wiz).is_some_and(|w| w.terminal) {
+            return self.wizard_terminal_start();
+        }
         let problem = self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))).and_then(|(p, f)| self.rows_problem(p, f));
         if let Some(why) = problem {
             if let Some(p) = self.ui.panel.as_mut() {
@@ -215,6 +250,20 @@ impl App {
             return;
         }
         self.wizard_go(2);
+    }
+
+    /// Start, from the folder of the terminal step: the panel closes and the host is asked for a shell there (the tab shows when it answers; why not, the line says).
+    fn wizard_terminal_start(&mut self) {
+        let folder = self.ui.panel.as_ref().and_then(|p| Some(self.live(p, p.form.as_ref()?, Field::Folder).trim().to_string())).unwrap_or_default();
+        if let Some(why) = terminal_problem(&folder) {
+            if let Some(p) = self.ui.panel.as_mut() {
+                p.notice = format!("Not yet: {why}.");
+            }
+            self.dirty = true;
+            return;
+        }
+        self.panel_close();
+        self.terminal_open((!folder.is_empty()).then_some(folder));
     }
 
     pub(super) fn wizard_back(&mut self) {
@@ -271,19 +320,21 @@ impl App {
         let Some((w, f)) = p.form.as_ref().and_then(|f| Some((f.wiz?, f))) else { return "New session".into() };
         let name = match w.page {
             0 => "Choose",
+            1 if w.terminal => "Terminal folder",
             1 if f.local => "Local LLM server",
             1 if w.home => "Account",
             1 => "Account and folder",
             _ => "Options and start",
         };
-        format!("{} - step {} of {STEPS} - {name}", if w.home { "New Home session" } else { "New session" }, w.page + 1)
+        format!("{} - step {} of {} - {name}", if w.home { "New Home session" } else { "New session" }, w.page + 1, if w.terminal && w.page > 0 { 2 } else { STEPS })
     }
 
     /// The text of a row of the wizard's own.
     pub(super) fn wizard_value(&self, p: &Panel, f: &Form, field: Field) -> String {
         match field {
-            Field::Pick(i) => word(PROVIDERS[i % PROVIDERS.len()]).into(),
+            Field::Pick(i) => word(PICKS[i % PICKS.len()]).into(),
             Field::Back => "Back  (Esc)".into(),
+            Field::Next if f.wiz.is_some_and(|w| w.terminal) => terminal_problem(self.live(p, f, Field::Folder).trim()).map_or("Start terminal  (Enter)".into(), |why| format!("Start terminal  (not yet: {why})")),
             _ => self.rows_problem(p, f).map_or("Next  (Enter)".into(), |why| format!("Next  (not yet: {why})")),
         }
     }
@@ -306,6 +357,11 @@ impl App {
         }
         let mut lines: Vec<String> = f.fields().into_iter().map(|field| self.row_line(p, f, field)).collect();
         lines.push(String::new());
+        if w.terminal {
+            lines.push("Tab, Up, Down: move   Enter: start the terminal".into());
+            lines.push("A terminal runs your shell in that folder (empty: your home folder). It is not fenced: it runs as you, with your files and your login.".into());
+            return lines;
+        }
         lines.push(format!("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: {}", if w.page == 1 { "next" } else { "start" }));
         if f.local {
             if w.page == 1 {
@@ -328,7 +384,7 @@ impl App {
     /// What the state says of the wizard: the step, how many there are, whether it is a Home session, the name of the step.
     pub(super) fn wizard_json(&self, p: &Panel, f: &Form) -> Value {
         let Some(w) = f.wiz else { return Value::Null };
-        json!({"page": w.page, "pages": STEPS, "home": w.home, "title": self.form_title(p), "name": self.form_title(p).rsplit(" - ").next().unwrap_or("")})
+        json!({"page": w.page, "pages": if w.terminal && w.page > 0 { 2 } else { STEPS }, "terminal": w.terminal, "home": w.home, "title": self.form_title(p), "name": self.form_title(p).rsplit(" - ").next().unwrap_or("")})
     }
 
     /// The icons of the first step as the state says them, with the rectangle the window drew each in.

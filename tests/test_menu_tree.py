@@ -22,7 +22,7 @@ VIEW_GROUPS = ["Find", "Scroll", "Show", "Text size", "Settings"]
 
 # every entry the menus had before the trees, by the start of its label (nothing was removed)
 SESSION_ENTRIES = [
-    "New Home session", "New browser tab", "New local browser tab", "Next session", "Previous session", "Start screen", "Resume session", "Rebind account...", "Permission mode:", "Rename session",
+    "New Home session", "New browser tab", "New local browser tab", "New terminal tab", "Next session", "Previous session", "Start screen", "Resume session", "Rebind account...", "Permission mode:", "Rename session",
     "Close session", "Delete session", "Send to session...", "Hand over conversation...", "Find Local LLM servers...", "Allow approval", "Deny approval", "Copy selected", "Cut selection", "Paste",
     "Virtual display:", "Stop real-screen control",
 ]

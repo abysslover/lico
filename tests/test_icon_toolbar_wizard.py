@@ -1,5 +1,5 @@
 """M22-P04b: the account icon and the new-session wizard in the real window. The toolbar starts with the account icon (lit while the host says there is no account); the plus and the house are
-never greyed, because Local LLM needs no account. The plus opens three icons (Claude, Codex, Local LLM, drawn by the window, the ones with no account grey) and nothing else; each icon goes on to
+never greyed, because Local LLM needs no account. The plus opens four icons (Claude, Codex, Local LLM and Terminal, drawn by the window, the ones with no account grey) and nothing else; each icon goes on to
 a step of its own (the account and the folder, or the server; then the options and the start), Esc goes a step back, and the session that starts is the one the one-page form starts for the same
 answers (still at File > New session options...). A private Xvfb, synthetic homes, mocked providers, a fake server on a loopback port listed by a process table the test wrote."""
 
@@ -45,7 +45,7 @@ def _panel(w: ProductWindow, until=lambda p: True) -> dict:
 
 
 def _step(w: ProductWindow, page: int) -> dict:
-    """The panel once the wizard is on step `page` (0, 1 or 2) and, on the first step, the three icons have been drawn."""
+    """The panel once the wizard is on step `page` (0, 1 or 2) and, on the first step, the four icons have been drawn."""
     return _panel(w, lambda p: p["form"] and p["form"]["wizard"] and p["form"]["wizard"]["page"] == page and (page > 0 or all(t["rect"] for t in p["form"]["tiles"])))
 
 
@@ -99,18 +99,18 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             _ready(w)
             w.click(*centre(_button(w, "new_session")["rect"]))
 
-            # step one: three icons and nothing else; Codex has no account here, so it is grey, and Local LLM never is
+            # step one: four icons and nothing else; Codex has no account here, so it is grey, and Local LLM and Terminal never are
             first = _step(w, 0)
             form = first["form"]
             assert first["title"] == "New session - step 1 of 3 - Choose" and first["text_entry"] is False
-            assert [t["provider"] for t in form["tiles"]] == ["claude", "codex", "local"] and [t["enabled"] for t in form["tiles"]] == [True, False, True]
-            assert [t["icon"] for t in form["tiles"]] == ["claude", "codex", "local"] and [t["word"] for t in form["tiles"]] == ["Claude", "Codex", "Local LLM"]
+            assert [t["provider"] for t in form["tiles"]] == ["claude", "codex", "local", "terminal"] and [t["enabled"] for t in form["tiles"]] == [True, False, True, True]
+            assert [t["icon"] for t in form["tiles"]] == ["claude", "codex", "local", "terminal"] and [t["word"] for t in form["tiles"]] == ["Claude", "Codex", "Local LLM", "Terminal"]
             said = "\n".join(first["body"])
             assert not any(word in said for word in ("Provider", "Account", "Folder", "Name", "Model", "Effort", "Start session")), first["body"]
             assert "Codex needs an account first" in said, first["body"]
             rects = [t["rect"] for t in form["tiles"]]
             assert len({(round(r[2] - r[0]), round(r[3] - r[1])) for r in rects}) == 1 and rects[0][2] - rects[0][0] >= 40 and all(a[2] < b[0] for a, b in zip(rects, rects[1:])), rects
-            claude, codex, local = rects
+            claude, codex, local, _terminal = rects
             assert _ink(w, claude, 180) > 150 and _ink(w, local, 180) > 150, "the icons are drawn"
             assert _ink(w, codex, 180) == 0 and _ink(w, codex, 90) > 100, "the icon with no account is drawn dim"
             assert form["tiles"][0]["focus"] is True and _gray(w, claude) > _gray(w, local) > _gray(w, codex), "the focus is lit, an icon that can be chosen is not, a grey one is darker still"
@@ -118,7 +118,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             # the pointer lights an icon, and the word under the icons is the one the pointer is on
             w.move(*centre(local))
             hovered = _step(w, 0)["form"]["tiles"]
-            assert [t["hover"] for t in hovered] == [False, False, True] and _gray(w, local) == _gray(w, claude), hovered
+            assert [t["hover"] for t in hovered] == [False, False, True, False] and _gray(w, local) == _gray(w, claude), hovered
             assert "Local LLM" in _step(w, 0)["body"], "the word of the icon the pointer is on"
 
             # a click on a grey icon takes nothing: it says why
@@ -189,7 +189,7 @@ def test_local_llm_needs_no_account_and_looks_at_this_machine_as_soon_as_its_ico
                 _ready(w)
                 w.click(*centre(_button(w, "new_session")["rect"]))
                 first = _step(w, 0)
-                assert [t["enabled"] for t in first["form"]["tiles"]] == [False, False, True], "no account: Claude and Codex are grey, Local LLM is not"
+                assert [t["enabled"] for t in first["form"]["tiles"]] == [False, False, True, True], "no account: Claude and Codex are grey, Local LLM and Terminal are not"
                 assert first["form"]["focus"] == "Pick(2)", "and it has the focus"
                 assert any("Claude and Codex need an account first" in line for line in first["body"]), first["body"]
                 time.sleep(0.8)

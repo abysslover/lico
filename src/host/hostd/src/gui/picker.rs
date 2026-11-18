@@ -60,9 +60,13 @@ pub(super) fn draw_tiles(buf: &mut [u32], width: usize, height: usize, s: f32, r
 impl App {
     /// Over the text of the main area: the browser page, and the wizard's icons. (One call, so that `ui.rs` stays as small as it is.)
     pub(crate) fn paint_main_overlays(&mut self, buf: &mut [u32], width: usize, height: usize, list_w: usize, s: f32, (frame, first_bottom, prompt_fallback): (&Composed, f32, f32)) {
-        if self.browser_active() {
+        if self.page_active() {
             let (top, bottom) = (frame.lines.first().map_or(first_bottom, |l| l.bottom), frame.lines.iter().find(|l| l.key == scroll::Key::Prompt).map_or(prompt_fallback, |l| l.top));
-            self.browser_paint(buf, width, height, (list_w as f32 + 4.0 * s, top, bottom));
+            if self.browser_active() {
+                self.browser_paint(buf, width, height, (list_w as f32 + 4.0 * s, top, bottom));
+            } else {
+                self.terminal_paint(buf, width, height, (list_w as f32 + 4.0 * s, top, bottom));
+            }
         }
         self.picker_paint(buf, width, height, list_w, s);
     }
@@ -80,7 +84,7 @@ impl App {
         let rects = tile_rects([list_w as f32 + 4.0 * s, first.0, width as f32 - 4.0 * s, last.1], s, tiles.len());
         let looks: Vec<Look> = tiles
             .iter()
-            .map(|t| Look { icon: match t.provider { "claude" => Icon::Claude, "codex" => Icon::Codex, _ => Icon::Local }, enabled: t.enabled, focused: t.focused, hovered: t.hovered })
+            .map(|t| Look { icon: match t.provider { "claude" => Icon::Claude, "codex" => Icon::Codex, "terminal" => Icon::Terminal, _ => Icon::Local }, enabled: t.enabled, focused: t.focused, hovered: t.hovered })
             .collect();
         draw_tiles(buf, width, height, s, &rects, &looks);
         for (i, r) in rects.iter().enumerate() {

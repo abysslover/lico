@@ -101,6 +101,7 @@
 "tests/test_toolbar_and_nav.py" = ["cli", "gui", "host"]
 "tests/test_browser_tab.py" = ["gui", "host"]
 "tests/test_terminal_cli.py" = ["cli", "host"]
+"tests/test_terminal_tab.py" = ["gui", "host"]
 "tests/test_conversation_view.py" = ["cli", "gui", "host"]
 "tests/test_quota_display.py" = ["cli", "gui", "host"]
 "tests/test_workspace_files.py" = ["cli", "gui", "host"]

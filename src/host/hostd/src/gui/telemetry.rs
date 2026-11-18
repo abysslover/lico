@@ -121,7 +121,7 @@ impl App {
         } else {
             None
         };
-        let mut items = vec!["Ctrl+N new session", "Ctrl+A accounts", "Ctrl+Tab next session", "Alt+1-9 session by number"];
+        let mut items = if self.terminal_active() { self.terminal_hint_items() } else { vec!["Ctrl+N new session", "Ctrl+A accounts", "Ctrl+Tab next session", "Alt+1-9 session by number"] };
         if let Some(e) = escape {
             items.insert(2, e);
         }

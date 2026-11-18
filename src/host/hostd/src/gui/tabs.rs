@@ -174,6 +174,7 @@ impl App {
     ) {
         self.ui.tabs_geom = TabsGeom::default();
         self.ui.calls.tab_items_geom.clear();
+        self.ui.terminal.tab_geom.clear();
         if !self.tabs_shown() || list_w >= width || y1 <= y0 {
             return;
         }
@@ -238,6 +239,7 @@ impl App {
             })
             .collect();
         let browser_entries: Vec<(String, String, bool, bool)> = self.ui.browser.tabs.iter().map(|t| (t.id.clone(), super::super::browser_view::caption(t), self.browser_active() && self.ui.browser.active.as_deref() == Some(t.id.as_str()), t.local)).collect();
+        let terminal_entries = self.terminal_tab_entries();
         let ensure = std::mem::take(&mut self.ui.tab_ensure_visible);
         let active_idx = entries.iter().position(|e| e.3);
 
@@ -271,9 +273,10 @@ impl App {
             .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
             .collect();
         let browser_widths: Vec<f32> = browser_entries.iter().map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w).collect();
-        let total_w: f32 = widths.iter().chain(&call_widths).chain(&browser_widths).map(|w| *w + 3.0 * s).sum();
+        let terminal_widths: Vec<f32> = terminal_entries.iter().map(|(_, cap, _)| controls.width(fs, cap) + 14.0 * s + close_w).collect();
+        let total_w: f32 = widths.iter().chain(&call_widths).chain(&browser_widths).chain(&terminal_widths).map(|w| *w + 3.0 * s).sum();
         let all_fit = self.ui.tab_scroll == 0 && total_w <= (tabs_limit_x - (x_left + 6.0 * s)).max(0.0);
-        let show_nav = (!entries.is_empty() || !call_entries.is_empty() || !browser_entries.is_empty()) && !all_fit;
+        let show_nav = (!entries.is_empty() || !call_entries.is_empty() || !browser_entries.is_empty() || !terminal_entries.is_empty()) && !all_fit;
         let (mut prev_rect, mut next_rect) = (None, None);
         if show_nav {
             let nx_rect = [tabs_limit_x - nav_w, by0, tabs_limit_x, by1];
@@ -295,7 +298,7 @@ impl App {
             }
         }
 
-        if entries.is_empty() && call_entries.is_empty() && browser_entries.is_empty() {
+        if entries.is_empty() && call_entries.is_empty() && browser_entries.is_empty() && terminal_entries.is_empty() {
             controls.text(
                 fs,
                 swash,
@@ -424,6 +427,25 @@ impl App {
                 controls.target(trect, Action::BrowserTab(bid.clone()));
                 controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
                 controls.target(crect, Action::CloseBrowserTab(bid.clone()));
+                tx = rx1 + 3.0 * s;
+            }
+            for ((tid, cap, selected), tw) in terminal_entries.iter().zip(&terminal_widths) {
+                if tx + close_w + 16.0 * s > tabs_limit_x {
+                    break;
+                }
+                let rx1 = (tx + *tw).min(tabs_limit_x);
+                let trect = [tx, by0, rx1, y1 - 1.0];
+                let green = Color::rgb(0x9B, 0xD9, 0x8E);
+                controls::fill(buf, width, height, trect, if *selected { 0xFF1D_3324 } else { 0xFF16_2219 });
+                if *selected {
+                    controls::fill(buf, width, height, [trect[0], trect[1], trect[2], trect[1] + 2.0 * s], 0xFF5C_C46B);
+                }
+                let crect = [rx1 - close_w - 2.0 * s, by0 + 2.0 * s, rx1 - 2.0 * s, by1];
+                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, cap, if *selected { ink } else { green });
+                controls.target(trect, Action::TerminalTab(tid.clone()));
+                controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
+                controls.target(crect, Action::CloseTerminalTab(tid.clone()));
+                self.ui.terminal.tab_geom.push((tid.clone(), trect, crect));
                 tx = rx1 + 3.0 * s;
             }
         }

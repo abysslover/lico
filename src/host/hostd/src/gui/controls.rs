@@ -27,6 +27,8 @@ pub enum Action {
     TabScroll(isize),
     BrowserTab(String),
     CloseBrowserTab(String),
+    TerminalTab(String),
+    CloseTerminalTab(String),
     FocusSessionDir,
     SidebarTab(u8),
     SidebarHost,

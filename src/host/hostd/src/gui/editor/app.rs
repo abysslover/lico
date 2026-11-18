@@ -25,7 +25,9 @@ impl App {
     /// What the prompt of this frame is: the rows of the input box with the line under it, or the one line of a panel (a sign-in code is never drawn).
     pub(crate) fn prompt_view(&mut self, cols: usize, area_rows: usize) -> Prompt {
         let line = |text: String| Prompt { rows: vec![text], note: None, caret: None };
-        if self.code_entry() {
+        if self.terminal_active() {
+            line(self.terminal_status_row()) // the one row under the grid: what the keys do, or that the shell ended
+        } else if self.code_entry() {
             line(format!("> {}", self.shown_input()))
         } else if self.ui.panel.is_some() || !self.has_prompt_target() || self.browser_active() {
             let preedit = if self.browser_page_has_the_keys() { "" } else { self.preedit.as_str() }; // the page's composition is shown in the header (M17-P11)
@@ -129,7 +131,7 @@ impl App {
 
     /// Where a paste may go: the input line of a session or the text entry of a panel, never during a composition.
     pub(crate) fn paste_allowed(&self) -> bool {
-        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { self.has_prompt_target() }
+        self.preedit.is_empty() && if self.ui.panel.is_some() { self.text_mode() } else { self.has_prompt_target() || self.terminal_active() }
     }
 
     /// Ctrl+V and Ctrl+Shift+V paste the clipboard, Shift+Insert the primary selection; only on the person's own key.
@@ -165,7 +167,7 @@ impl App {
         if !self.paste_allowed() {
             return;
         }
-        if self.browser_paste(&result) {
+        if self.browser_paste(&result) || self.terminal_paste(&result) {
             return;
         }
         if self.ui.panel.is_none() {

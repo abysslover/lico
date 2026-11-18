@@ -31,7 +31,7 @@ mod pathbar;
 mod windowstate;
 mod native_prompt;
 mod newchat_draw;
-mod chatcard; mod sidebar_chats; // the Chats tab: the list and its fetch, and what a card says and draws
+mod chatcard; mod sidebar_chats; mod terminal; // the Chats tab: the list and its fetch, and what a card says and draws
 mod sidebar_tabs;
 mod sidebar_render;
 mod tool_fold;
@@ -284,7 +284,7 @@ impl App {
             self.pending_show = Some((id.to_string(), after)); // applied once the window exists
             return;
         };
-        self.hide();
+        self.hide(); self.ui.terminal.active = None; // a session takes the view; a terminal tab is shown again by its tab
         self.load_fonts();
         let Some(context) = self.context.as_ref() else { return };
         let surface = if self.ui.enabled { None } else { Some(Surface::new(context, window.clone()).expect("surface")) };
@@ -644,7 +644,7 @@ impl ApplicationHandler<Ev> for App {
                         self.stale_pending = false; // the old composition finishing (whatever its text), not new typing
                         emit_ime("ignored", &text);
                     }
-                    Ime::Commit(text) if self.browser_commit(&text) => {
+                    Ime::Commit(text) if self.browser_commit(&text) || self.terminal_commit(&text) => {
                         emit_ime("commit", &text); // for the page: the address row keeps its own text
                         self.preedit.clear();
                     }

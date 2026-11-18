@@ -1,5 +1,5 @@
-//! The icons of the window (`M22-P04`, `M22-P04b`): a plus (New session), a house (New Home session), a browser window (Open browser), a person (Accounts) and the three things a session
-//! can be (Claude, Codex, Local LLM), drawn by the window itself from rectangles, so that no font glyph has to be checked and each icon is the same pixels in every font. Each is drawn
+//! The icons of the window (`M22-P04`, `M22-P04b`, `M23-P03`): a plus (New session), a house (New Home session), a browser window (Open browser), a person (Accounts), the three things a session
+//! can be (Claude, Codex, Local LLM) and a screen with a prompt (Terminal), drawn by the window itself from rectangles, so that no font glyph has to be checked and each icon is the same pixels in every font. Each is drawn
 //! inside a rectangle, centred, in one colour; the caller draws the button's own fill (and the colour that says it is hovered or greyed). Nothing is drawn outside the rectangle.
 
 use super::super::controls::{fill, Rect};
@@ -17,6 +17,8 @@ pub(crate) enum Icon {
     Codex,
     /// A chip with pins (a Local LLM session).
     Local,
+    /// A screen with the prompt `>_` cut out of it (a terminal).
+    Terminal,
 }
 
 impl Icon {
@@ -30,11 +32,12 @@ impl Icon {
             Icon::Claude => "claude",
             Icon::Codex => "codex",
             Icon::Local => "local",
+            Icon::Terminal => "terminal",
         }
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 7] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local];
+    pub(crate) const ALL: [Icon; 8] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -150,6 +153,17 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
                 put(b1.0, py, x1, py + pin, ink);
             }
         }
+        Icon::Terminal => {
+            // a screen: a body, with the prompt `>_` cut out of it in the button's colour (one piece of ink, as the browser window is)
+            let (fy0, fy1) = ((y0 + side * 0.10).round(), (y1 - side * 0.10).round());
+            put(x0, fy0, x1, fy1, ink);
+            let (mid, tc, ah) = ((fy0 + fy1) * 0.5, (side * 0.10).round().max(2.0), side * 0.17);
+            let ax = x0 + side * 0.20;
+            stroke(&mut put, (ax, mid - ah), (ax + ah, mid), tc, ground);
+            stroke(&mut put, (ax + ah, mid), (ax, mid + ah), tc, ground);
+            let uy = (mid + ah - tc * 0.5).round();
+            put((x0 + side * 0.50).round(), uy, (x0 + side * 0.80).round(), uy + tc, ground);
+        }
     }
 }
 
@@ -219,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn the_seven_icons_are_seven_different_pictures_and_have_seven_different_names() {
+    fn the_eight_icons_are_eight_different_pictures_and_have_eight_different_names() {
         let pictures: Vec<Vec<u32>> = Icon::ALL.iter().map(|&i| canvas(i).0).collect();
         for a in 0..pictures.len() {
             for b in a + 1..pictures.len() {
@@ -229,7 +243,7 @@ mod tests {
         let mut names: Vec<&str> = Icon::ALL.iter().map(|i| i.name()).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
     }
 
     #[test]
@@ -274,7 +288,7 @@ mod tests {
     #[test]
     fn the_pictures_have_the_pieces_they_are_made_of() {
         // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
-        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1)];
+        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1)];
         for (icon, n) in want {
             let (buf, _) = canvas_n(icon, 128);
             assert_eq!(pieces(&buf, 128), n, "{icon:?}");

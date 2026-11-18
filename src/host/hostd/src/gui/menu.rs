@@ -22,6 +22,7 @@ pub enum Cmd {
     NewGlobalSession,
     NewBrowser,
     NewLocalBrowser,
+    NewTerminal,
     Accounts,
     Quit,
     Next,
@@ -144,6 +145,7 @@ impl App {
                     Self::entry("New Home session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
                     Self::entry("New browser tab", "", Cmd::NewBrowser, panel_reason),
                     Self::entry("New local browser tab", "", Cmd::NewLocalBrowser, panel_reason),
+                    Self::entry("New terminal tab", "", Cmd::NewTerminal, panel_reason),
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
                     Self::entry("Start screen", "Esc", Cmd::Start, panel_reason.or(none_open)),
@@ -344,6 +346,7 @@ impl App {
             Cmd::NewGlobalSession => self.form_open_wizard(true),
             Cmd::NewBrowser => self.browser_prompt(false),
             Cmd::NewLocalBrowser => self.browser_prompt(true),
+            Cmd::NewTerminal => self.terminal_open_here(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
             Cmd::Next => {

@@ -38,7 +38,7 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             xdo(xvfb.display, "key", "ctrl+n")                                # M22-P04b: the wizard, three icons first
             screen = panel_of(client, lambda p: p["form"] is not None)
             assert screen["title"].startswith("New session - step 1 of 3") and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
-            assert [t["enabled"] for t in screen["form"]["tiles"]] == [False, True, True]      # no Claude account here; Codex and Local LLM can be chosen
+            assert [t["enabled"] for t in screen["form"]["tiles"]] == [False, True, True, True]      # no Claude account here; Codex, Local LLM and Terminal can be chosen
             xdo(xvfb.display, "key", "Return")                                # the icon with the focus (Codex, the last provider) is chosen
             screen = panel_of(client, lambda p: p["form"]["wizard"]["page"] == 1)
             assert any("< Work (default) >" in line for line in screen["body"])

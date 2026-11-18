@@ -66,7 +66,7 @@ pub struct FrameStats {
 
 #[derive(Default)]
 pub struct UiState {
-    pub browser: super::browser_view::BrowserState,
+    pub browser: super::browser_view::BrowserState, pub terminal: super::terminal::TermState,
     pub stats: FrameStats,
     pub faces: super::fonts::Faces,
     pub enabled: bool,
@@ -255,7 +255,7 @@ impl App {
     }
 
     fn header_base(&self) -> String {
-        if let Some(h) = self.browser_header() {
+        if let Some(h) = self.browser_header().or_else(|| self.terminal_header()) {
             return h;
         }
         if let Some(ch) = self.active_call_header() {
@@ -358,7 +358,7 @@ impl App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.ui.mouse = (position.x, position.y);
-                self.browser_move();
+                self.browser_move(); self.terminal_drag();
                 self.browser_pointer();
                 self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved() | self.toolbar_hover_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
@@ -397,7 +397,7 @@ impl App {
                             Some(Action::MentionItem(i)) => { let _ = self.complete_mention_index(i); }
                             Some(Action::TabScroll(d)) => self.step_tab_scroll(d),
                             Some(Action::BrowserTab(id)) => self.browser_activate(&id),
-                            Some(Action::CloseBrowserTab(id)) => self.browser_close_ui(&id),
+                            Some(Action::CloseBrowserTab(id)) => self.browser_close_ui(&id), Some(Action::TerminalTab(id)) => self.terminal_activate(&id), Some(Action::CloseTerminalTab(id)) => self.terminal_close_ui(&id),
                             Some(Action::FocusSessionDir) => self.focus_active_session_dir(),
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
@@ -406,13 +406,13 @@ impl App {
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
-                            None if self.browser_mouse_button(true) => {}
+                            None if self.browser_mouse_button(true) || self.terminal_mouse_button(true) => {}
                             None if self.ed_mouse_press(x, y) => {}
                             None => self.main_mouse_press(x, y),
                         }
                     }
                     self.dirty = true;
-                } else if !self.browser_mouse_button(false) {
+                } else if !self.browser_mouse_button(false) && !self.terminal_mouse_button(false) {
                     self.main_mouse_release();
                 }
                 true
@@ -423,13 +423,13 @@ impl App {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
                     MouseScrollDelta::PixelDelta(p) => (p.y / (self.line_h() * self.ui.scale.max(1.0)) as f64) as isize,
                 };
-                if self.browser_wheel(delta) { return true; }
+                if self.browser_wheel(delta) || self.terminal_wheel(delta) { return true; }
                 if !self.files_wheel(lines) && !self.sidebar_wheel(lines) { self.scroll_by(lines); }
                 true
             }
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 (self.ui.flash, self.ui.clicked) = (None, None);
-                if self.browser_hotkey(event) || self.llm_key(event) || self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
+                if self.browser_hotkey(event) || self.terminal_hotkey(event) || self.llm_key(event) || self.newchat_key(event) || self.real_screen_hotkey(event) || self.menu_key(event) || self.sidebar_key(event) || self.panel_key(event) || self.search_key(event) || self.paste_key(event) || self.approval_key(event) || self.call_hotkey(event) || self.mention_key(event) || self.edit_key(event) || self.nav_key(event) {
                     return true;
                 }
                 let ctrl = self.ui.mods.control_key() && !self.ui.mods.alt_key();
@@ -591,7 +591,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
-        dump["browser"] = self.browser_json();
+        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json();
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)
@@ -620,7 +620,7 @@ impl App {
             self.ui.composed = None; // what the buffer holds is not known
         }
         self.card_frame(presented);
-        self.browser_after_paint();
+        self.browser_after_paint(); self.terminal_after_paint();
         let done = Instant::now();
         let us = |a: Instant, b: Instant| b.duration_since(a).as_micros() as u64;
         let stats = &mut self.ui.stats;
@@ -636,7 +636,7 @@ impl App {
     /// was done and the painting; none when nothing could be drawn. The scroll step (see scroll.rs) lives here.
     pub(crate) fn compose(&mut self, buf: &mut [u32], width: usize, height: usize, age: u8) -> Option<(Instant, Instant)> {
         let mut buf = buf;
-        if self.browser_active() {
+        if self.page_active() {
             self.ui.composed = None; // the page is painted over the frame: every frame is a full repaint
         }
         let s = self.ui.scale.max(1.0);
@@ -686,7 +686,7 @@ impl App {
         let status = self.status_line(panel_view.is_some());
         let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
         let is_tx = panel_view.is_none();
-        let browser_rows = if panel_view.is_none() && self.browser_active() { Some(rows_avail) } else { None };
+        let browser_rows = if panel_view.is_none() && self.page_active() { Some(rows_avail) } else { None };
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
                 let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone(), 0u16)).collect();
