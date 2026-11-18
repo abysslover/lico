@@ -1,9 +1,9 @@
 # M23 — A Terminal In Lico: Run An Agent In It, And It Comes Into Lico
 
-- Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03 below; P01 and P02 are done); the agent that comes into Lico from a terminal is a later phase, after the terminal works
-- Version: 2.2.0
+- Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03 below; all three are done, the owner's look with `lico gui` is next); the agent that comes into Lico from a terminal is a later phase, after the terminal works
+- Version: 2.3.0
 - Project: Lico
-- Updated: 2026-11-18
+- Updated: 2026-11-19
 
 ## The owner's words (the source, in the chat, 2026-11-18)
 
@@ -31,7 +31,7 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 | D1 | A terminal is a tab of its own kind in the tab row, beside the session tabs and the browser tabs; it is not a session and not in the Chats list | a shell is not a chat; nothing of the session machinery (turns, approvals, resume) applies |
 | D2 | The pty, the child and the emulator live in the host (`terminal.*` operations); the window draws what the host says and sends the keys | the same split as the browser; the shell survives the window closing and a second client sees it; every later candidate for Q1 needs the host |
 | D3 | The entry is New session: its first step has a fourth icon, Terminal, and the menu tree has the same entry; Terminal needs no account (like Local LLM, never grey). A separate toolbar button is not added now | the owner's words |
-| D4 | The wizard for a terminal is two steps after the icons' one: the folder (and the shell named), then the name and the start | no account, no model, no permission mode apply |
+| D4 | The wizard for a terminal has one step after the icons': the folder, where Enter starts it (changed in P03, plan D10: the host's terminal has no name and the shell is the person's `$SHELL`, so a name step would ask for something nothing keeps) | no account, no model, no permission mode apply |
 
 ## Phases
 
@@ -39,7 +39,7 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 |---|---|---|---|
 | M23-P01 | the component `lico-vt` 0.1.0: the emulator (parser, grid, scrollback, alternate screen, replies) and the keys (keys, paste, mouse) as plain functions with no I/O and no `unsafe`; its spec first | [Plan](../../../plans/202611/20261118/20261118_10_M23-P01_vt_engine_plan.md) | done (`c536948`) |
 | M23-P02 | the host: the pty and the shell (its own session and group, size, hang-up, a parent-death signal, the signals at their default action), the table of at most 8 terminals, the operations `terminal.open/list/close/input/resize/watch/text` (socket only: `POST /v1` refuses them), the `lico terminal` command | [Plan](../../../plans/202611/20261118/20261118_11_M23-P02_host_terminal_ops_plan.md) | done (`36ef1b1`) |
-| M23-P03 | the window: the terminal tab (draws the grid, the keys, the size follows the window, the wheel, copy and paste), the fourth icon in New session, the menu entry, the hint that says what a terminal is | written when P03 starts | next |
+| M23-P03 | the window: the terminal tab (draws the grid, the keys, the size follows the window, the wheel, copy and paste), the fourth icon in New session, the menu entry, the hint that says what a terminal is | [Plan](../../../plans/202611/20261119/20261119_01_M23-P03_window_terminal_plan.md) | done (`3cf3b6b`) |
 | M23-P04 | an agent started in a terminal comes into Lico (Q1): research first, then a plan | written after P03 and the owner's look | idea |
 
 The order with M22: the owner named the terminal first and asked for the browser address bar after it, so M23-P01 to P03 come before M22-P05 (the browser tab) and M22-P06 (the guide and the release `0.8.0`, which then ships both).
