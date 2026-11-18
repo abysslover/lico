@@ -1,0 +1,18 @@
+[package]
+name = "lico-vt"
+version = "0.1.0"
+edition = "2021"
+description = "The emulator of a terminal and the encoding of its input: the bytes a program writes become a grid of styled cells with a scrollback, a cursor, a title and modes; keys, a paste and the mouse become the bytes the program expects. No process, no pty, no file, no clock, no unsafe."
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.lico]
+purpose = "The meaning of a terminal's bytes and keys with no I/O: UTF-8 and escape sequences (cursor, erase, edit, scroll region, SGR in every form, the alternate screen, the modes, the replies to status requests, the title) into a bounded grid with a scrollback, the text of a selection, and the keys, the paste and the mouse into the bytes a program expects."
+spec = "SPEC.md"
+depends = []
+external = []
+budget = { mib = 256, seconds = 30 }

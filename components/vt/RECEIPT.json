@@ -1,0 +1,90 @@
+{
+  "component": "lico-vt",
+  "cost": {
+    "budget": {
+      "mib": 256,
+      "seconds": 30
+    },
+    "compile_s": 0.7,
+    "peak_mib": 20.2,
+    "wall_s": 1.21
+  },
+  "date": "2026-11-18",
+  "hash": "308ff04640993941d314fcdec9d75905da5c0ff34e31049a1dd2b25631dfbecf",
+  "inputs": {
+    "dependencies": [],
+    "externals": [],
+    "files": [
+      [
+        "Cargo.toml",
+        "8f6f648ffd47e5cfbd260d9fbaeebba174631df902c3b48c5784a5518abeac30"
+      ],
+      [
+        "SPEC.md",
+        "15a870d5e85689d7934e8ea70b02832bafcf8b74c6220631c26344f30acb1923"
+      ],
+      [
+        "src/csi.rs",
+        "2739c07ce316df83513ab05fbe3b7929bccd91728c44a28e2bf658947e4262a9"
+      ],
+      [
+        "src/grid.rs",
+        "d2888a5042820aaf3cf783b0aaea21be9b2d2b557596212c691f376ff02052c6"
+      ],
+      [
+        "src/keys.rs",
+        "a26174bddc485c2bfc6205b0d5f5506bac27f60d1facab496532bd15fd64df06"
+      ],
+      [
+        "src/lib.rs",
+        "b2920df6477dce04ea04c0673338a664a9c147f60e2a6bd944def285a7f4042b"
+      ],
+      [
+        "src/parser.rs",
+        "71198f3f3b600f6b48354125a94bdc49f310d28967fdd73a22014889c8a925fd"
+      ],
+      [
+        "src/term.rs",
+        "75cdf3542533bbdc69a6b68c22827187857c4aaef6b69b75930940e972e5c9a0"
+      ],
+      [
+        "src/types.rs",
+        "b691dab5e96df0cddc5a699c3cd26dd8caa91111464b30febc326c15c8ff663c"
+      ],
+      [
+        "src/width.rs",
+        "2aac08b22b5d8b49dba1a120d9043b657e78d9dfa47bb3d0ec30deef3c5ec94e"
+      ],
+      [
+        "tests/common/mod.rs",
+        "2e0a67ad95f3ac937ed9c75aeaf1fc622f2f00cba665fdefcf215da191a43572"
+      ],
+      [
+        "tests/contract.rs",
+        "8cc498cccad55b003246ceba8f470268024b1f6d32b53c6c49019c2621f9b883"
+      ],
+      [
+        "tests/invariants.rs",
+        "44707730ddc73c66685e23ff358fa6b2f5d3bcf68afd3e40dd9ffad2ca132c58"
+      ],
+      [
+        "tests/keys.rs",
+        "223e7bab01d7f0f005dcd87083de77719d6b14fb44dc744c6fee6c48ca26cdc7"
+      ],
+      [
+        "tests/screen.rs",
+        "46210dfde7fe7f18b18c683dc6103e96738e2aeab2f87d6cd3e13c15e76bce4c"
+      ]
+    ],
+    "lock": "",
+    "toolchain": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "result": {
+    "count": 106,
+    "failed": 0,
+    "ignored": 0,
+    "passed": 106
+  },
+  "tool": "lico-xtask 0.1.0",
+  "version": "0.1.0"
+}

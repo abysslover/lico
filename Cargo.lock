@@ -756,6 +756,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lico-vt"
+version = "0.1.0"
+
+[[package]]
 name = "lico-ws"
 version = "0.3.0"
 dependencies = [
