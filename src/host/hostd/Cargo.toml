@@ -40,6 +40,7 @@ lico-browser-view = { path = "../../../components/browser-view" }
 lico-engine = { path = "../../../components/engine" }
 lico-memguard = { path = "../../../components/memguard" }
 lico-frame = { path = "../../../components/frame" }
+lico-vt = { path = "../../../components/vt" }
 
 [dev-dependencies]
 lico-png = { path = "../../../components/png", features = ["testing"] }

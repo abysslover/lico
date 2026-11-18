@@ -636,6 +636,7 @@ dependencies = [
  "lico-proxy",
  "lico-sandbox",
  "lico-toolloop",
+ "lico-vt",
  "serde_json",
  "softbuffer",
  "unicode-linebreak",

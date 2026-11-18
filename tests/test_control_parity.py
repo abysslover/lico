@@ -77,6 +77,13 @@ def test_capabilities_matches_across_socket_cli_and_http():
                 "clipboard.write",
                 "clipboard.done",
                 "picture.slot",
+                "terminal.open",
+                "terminal.list",
+                "terminal.close",
+                "terminal.input",
+                "terminal.resize",
+                "terminal.watch",
+                "terminal.text",
             ]
             assert set(sock_cap["mcp_tools"]) == {
                 "sessions",

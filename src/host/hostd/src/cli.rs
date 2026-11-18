@@ -29,6 +29,8 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                  find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
   browser open URL [--local] | list | close ID | shot ID FILE\n\
                  a browser tab (http or https; the engine is installed by itself the first time, the command waits for that and says so; it is started with the first tab and ended with the last; --local lets that tab reach this computer's own addresses; shot writes the newest frame to a new PNG)\n\
+  terminal open [--cwd DIR] [--shell PATH] [--size COLSxROWS] | list | close ID | send ID TEXT [--enter] | show ID [--scroll N] [--text] | resize ID COLSxROWS\n\
+                 a terminal: your own shell on a pty, with no window yet (it runs as you; only this socket opens one, never the HTTP door); show prints the screen (--text: as plain text)\n\
   session options                models and efforts the installed Claude Code offers, and the recent folders\n\
   session rename ID [NAME]       give a session a name (no name = take it away)\n\
   session close ID [--keep-worktree|--remove-worktree] [--force-dirty]\n\
@@ -701,6 +703,16 @@ pub fn run(args: Vec<String>) {
                 }
             }
             expect_ok(reply);
+        }
+        ["terminal", rest @ ..] => {
+            let request = crate::terminal_cli::request(rest, &std::env::current_dir().unwrap_or_default()).unwrap_or_else(|_| die(1, USAGE));
+            let reply = call(&mut connect(&socket), request);
+            match crate::terminal_cli::plain_text(rest, &reply) {
+                Some(text) => print!("{text}"),
+                None => {
+                    expect_ok(reply);
+                }
+            }
         }
         ["llm", "discover", rest @ ..] => {
             let mut request = json!({"op": "llm.discover"});

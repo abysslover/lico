@@ -54,6 +54,21 @@ pub(crate) fn note_provider(pid: u32) {
     }
 }
 
+/// The start time of `pid` as `/proc` says it: the same for the whole life of a process, so a later signal can check that the pid was not reused (M23-P02: a terminal's shell).
+pub(crate) fn start_time(pid: u32) -> Option<String> {
+    stat_start_group(pid).map(|(start, _)| start)
+}
+
+/// Sends `signal` to the group of `pid` only while `pid` is still the process whose start time was `start` and still leads its group; false when it is not.
+pub(crate) fn signal_group(pid: u32, start: &str, signal: i32) -> bool {
+    if stat_start_group(pid).is_some_and(|(s, group)| s == start && group == pid) {
+        unsafe { kill(-(pid as i32), signal) };
+        true
+    } else {
+        false
+    }
+}
+
 /// Kill the group of every provider that is still the process that was noted (a pid that was reused is not signalled) and still leads its group.
 pub(crate) fn end_listed_groups() {
     let list = PROVIDERS.lock().unwrap_or_else(|e| e.into_inner()).clone();

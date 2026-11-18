@@ -22,6 +22,14 @@ pub const SOCKET_ONLY_OPS: &[&str] = &[
     "clipboard.write",
     "clipboard.done",
     "picture.slot",
+    // a terminal is a shell that runs as the person: the socket (owner-only) opens one, `POST /v1` does not (M23-P02)
+    "terminal.open",
+    "terminal.list",
+    "terminal.close",
+    "terminal.input",
+    "terminal.resize",
+    "terminal.watch",
+    "terminal.text",
 ];
 
 /// Loopback HTTP routes served by `src/host/hostd/src/http.rs`.
