@@ -6,6 +6,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Client, Xvfb, private_dir
 
 from tests.account_helpers import account
+from tests.gui_helpers import menu_reveal, reveal
 from tests.test_claude_adapter import claude_host, new_claude, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import responses, ui, xdo
@@ -62,9 +63,12 @@ def test_f10_and_alt_letters_open_menus_arrows_and_enter_run_and_greyed_entries_
         w.key("alt+s")
         m = menu(w)
         assert m["open"] == 1
-        nxt = item(m, "Next session")
+        # M22-P04a: the menu is a tree; each of these is in a group that a click on its heading opens, and an opened group moves the rows under it, so the box of `Next session` is read last
+        reveal_in = lambda text: menu_reveal(w, 1, lambda label: text in label)
+        allow, copy = reveal_in("Allow"), reveal_in("Copy")
+        assert allow["reason"] == "no approval is pending" and copy["reason"] == "nothing is selected"
+        nxt = reveal_in("Next session")
         assert nxt["enabled"] is False and nxt["reason"] == "needs two sessions"
-        assert item(m, "Allow")["reason"] == "no approval is pending" and item(m, "Copy")["reason"] == "nothing is selected"
         assert w.bright(int(nxt["rect"][0]), int(nxt["rect"][1]), int(nxt["rect"][2]), int(nxt["rect"][3]), threshold=70) > 50       # drawn (dim), with its reason beside it
         w.key("Right")
         assert menu(w)["open"] == 2
@@ -88,7 +92,7 @@ def test_clicks_open_a_menu_run_an_entry_close_on_a_click_elsewhere_and_a_greyed
         w.click(*centre(menu(w)["titles"][1]["rect"]))
         m = menu(w)
         assert m["open"] == 1
-        w.click(*centre(item(m, "Next session")["rect"]))                                # greyed: nothing happens but the reason is shown
+        w.click(*centre(menu_reveal(w, 1, lambda label: "Next session" in label)["rect"]))   # greyed (in the group Go to): nothing happens but the reason is shown
         state = w.ui()
         assert state["menu"]["open"] is None and "needs two sessions" in state["header"] and state["panel"] is None
         w.click(*centre(menu(w)["titles"][2]["rect"]))
@@ -118,14 +122,21 @@ def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pend
             state = ui(client, lambda u: len(u["rows"]) == 3)
             order = [r[2] for r in state["layout"]["rows"]]
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: drawn(u, 1))["menu"]
-            assert item(m, "Next session")["enabled"] and item(m, "Session 1")["key"] == "Alt+1" and item(m, "Allow")["enabled"] is False
-            rect = item(m, "Session 2")["rect"]
+            ui(client, lambda u: drawn(u, 1))
+            def drawn_menu():
+                u = ui(client)
+                return u["menu"] if drawn(u, 1) else None
+
+            reveal_in = lambda text: reveal(drawn_menu, lambda rect: click_at(xvfb.display, *centre(rect)), lambda label: text in label)
+            # M22-P04a: the menu is a tree: each entry is in a group, shown by a click on its heading
+            allow = reveal_in("Allow")
+            assert allow["enabled"] is False and reveal_in("Next session")["enabled"] and reveal_in("Session 1")["key"] == "Alt+1"
+            rect = reveal_in("Session 2")["rect"]
             click_at(xvfb.display, *centre(rect))
             assert ui(client, lambda u: u["selected"] == order[1])["selected"] == order[1]
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: drawn(u, 1))["menu"]
-            click_at(xvfb.display, *centre(item(m, "Next session")["rect"]))
+            ui(client, lambda u: drawn(u, 1))
+            click_at(xvfb.display, *centre(reveal_in("Next session")["rect"]))
             assert ui(client, lambda u: u["selected"] == order[2])["selected"] == order[2]
             xdo(xvfb.display, "key", "alt+s")
             ui(client, lambda u: u["menu"]["open"] == 1)
@@ -133,8 +144,10 @@ def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pend
             conn.call(op="input", session=order[2], generation=1, request_id="a", text="fixture")
             wait_for(lambda: status_of(conn, order[2]).get("approvals"))
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: drawn(u, 1) and any(i["label"].startswith("Allow") and i["enabled"] for i in u["menu"]["items"]))["menu"]
-            click_at(xvfb.display, *centre(item(m, "Allow")["rect"]))
+            ui(client, lambda u: drawn(u, 1))
+            wait_for(lambda: reveal_in("Allow")["enabled"])
+            m = ui(client, lambda u: drawn(u, 1))["menu"]
+            click_at(xvfb.display, *centre(reveal_in("Allow")["rect"]))
             wait_for(lambda: len(responses(received)) == 1)
             assert responses(received)[0]["response"]["behavior"] == "allow"
             for scale_check in (m,):                                                     # every box lies inside the window, clear of the margins

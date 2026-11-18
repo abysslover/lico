@@ -9,7 +9,7 @@ from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import Xvfb, private_dir
 
 from tests.account_helpers import account
-from tests.gui_helpers import centre, click_at, drawn, item, menu_client
+from tests.gui_helpers import centre, click_at, client_reveal, drawn, item, menu_client
 from tests.test_claude_adapter import claude_host, new_claude
 from tests.test_codex_adapter import wait_for
 from tests.test_first_view import ui, window_id, xdo
@@ -52,15 +52,18 @@ def test_mouse_click_drag_shift_selection_copy_cut_undo_redo_and_ctrl_a_accounts
             assert sel_state["editor"]["selection_range"] == [11, 16]
 
             xdo(display, "key", "alt+s")
-            m = ui(client, lambda u: drawn(u, 1))["menu"]
-            assert item(m, "Copy")["label"] == "Copy selected text" and item(m, "Copy")["enabled"] is True
-            assert item(m, "Cut selection")["enabled"] is True
-            xdo(display, "key", "Escape")
-            ui(client, lambda u: u["menu"]["open"] is None)
+            ui(client, lambda u: drawn(u, 1))
+            copy = client_reveal(client, display, 1, "Copy")  # M22-P04a: the Session menu is a tree: Copy and Cut are in the group Edit
+            assert copy["label"] == "Copy selected text" and copy["enabled"] is True
+            assert client_reveal(client, display, 1, "Cut selection")["enabled"] is True
+            # M22-P04a: the clicks that opened the menu and its group kept the prompt selection, so a click on the entry copies it (a click in a menu used to clear the selection first)
+            click_at(display, *centre(client_reveal(client, display, 1, "Copy")["rect"]))
+            ui(client, lambda u: u["menu"]["open"] is None and u["copied"] == 1 and "Copied selection." in u["header"])
+            assert _clipboard_utf8(display) == "gamma"
 
             # Ctrl+C copies prompt selection when no conversation lines are selected.
             xdo(display, "key", "ctrl+c")
-            copied_state = ui(client, lambda u: u["copied"] == 1 and "Copied selection." in u["header"])
+            copied_state = ui(client, lambda u: u["copied"] == 2 and "Copied selection." in u["header"])
             assert copied_state["selection"] is None
             assert _clipboard_utf8(display) == "gamma"
 

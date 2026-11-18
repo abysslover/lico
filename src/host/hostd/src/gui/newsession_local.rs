@@ -80,3 +80,33 @@ pub(super) fn keep_model(f: &mut Form) {
     }
 }
 
+/// The three ways to start a session, all in sight on the Provider row, the chosen one in brackets (`M22-P04a`): the words are the person's (Claude, Codex, Local LLM), the wire's are `claude`, `codex`, `local`.
+pub(super) fn modes_line(chosen: &str) -> String {
+    let word = |k: &str| match k {
+        "local" => "Local LLM",
+        "codex" => "Codex",
+        _ => "Claude",
+    };
+    PROVIDERS.iter().map(|k| if *k == chosen { format!("[{}]", word(k)) } else { format!(" {} ", word(k)) }).collect::<Vec<_>>().join(" ")
+}
+
+/// The candidates of Local LLM, one line each under the rows (the lines a click on a row of them chooses): while the look runs, a line that says so; none when the form is not on Local.
+pub(super) fn candidate_lines(f: &Form) -> Vec<String> {
+    let mut lines = vec![String::new(), if f.scan_req != 0 { "Model servers on this machine: looking...".into() } else if f.servers.is_empty() { "Model servers on this machine: none shown".into() } else { "Model servers on this machine (a click chooses one):".to_string() }];
+    lines.extend(f.servers.iter().enumerate().map(|(i, s)| format!("{} {}", if i == f.server { '>' } else { ' ' }, local_rows::line(s))));
+    lines
+}
+
+impl App {
+    /// A click on a line of the candidates (under the rows and the line of keys, after a blank line and the heading) chooses that server; false when the line is none of them.
+    pub(super) fn candidate_click(&mut self, line: usize) -> bool {
+        let at = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).filter(|f| f.local).and_then(|f| line.checked_sub(f.fields().len() + 4).filter(|i| *i < f.servers.len()));
+        let Some(i) = at else { return false };
+        self.with_form(|_, f| {
+            f.server = i;
+            keep_model(f);
+        });
+        self.dirty = true;
+        true
+    }
+}

@@ -8,6 +8,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 
+from tests.gui_helpers import menu_reveal
 from tests.test_claude_adapter import new_claude, records
 from tests.test_codex_adapter import wait_for
 from tests.test_new_session_screen import claude_args
@@ -51,7 +52,7 @@ def test_a_draft_goes_by_the_chord_to_the_session_picked_by_its_number_and_the_r
             assert w.ui()["selected"] == api
             w.type_text(DRAFT)
             w.click(*centre(menu(w)["titles"][1]["rect"]))                                        # Session
-            entry = item(menu(w), "Send to session")
+            entry = menu_reveal(w, 1, lambda label: "Send to session" in label)  # M22-P04a: in the group Share
             assert entry["enabled"] and entry["key"] == "Ctrl+Shift+S", entry
             w.key("Escape")                                                                       # the menu shows the entry and its key; the key itself opens the panel
             assert menu(w)["open"] is None and panel(w) is None
@@ -107,7 +108,7 @@ def test_the_whole_conversation_is_handed_over_from_the_session_menu_and_the_rec
             w.click(*row_centre(w, api))
             assert w.ui()["selected"] == api
             w.click(*centre(menu(w)["titles"][1]["rect"]))                                        # Session
-            entry = item(menu(w), "Hand over conversation")
+            entry = menu_reveal(w, 1, lambda label: "Hand over conversation" in label)
             assert entry["enabled"], entry
             w.click(*centre(entry["rect"]))
             asked = panel(w)

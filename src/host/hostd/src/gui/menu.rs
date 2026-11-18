@@ -1,5 +1,9 @@
 //! The menu bar: File, Session, View, Help. Every entry is an action the window already has, with its key beside it; an entry that cannot act now is
 //! greyed and says why. The keyboard (F10, Alt+letter, arrows, Enter, Esc) and the mouse reach the same entries.
+//!
+//! The menus are trees (`M22-P04a`): the entries of Session and View that the person has no fixed time to use are classified into groups (`Go to`, `This session`, `Share`, `Tools`, `Approvals`,
+//! `Edit`, `Find`, `Scroll`, `Text size`, `Show`, `Settings`), each a heading that opens and closes in place; no entry was removed, and every key still works with the menu closed. `menu_entries`
+//! stays the flat list of every entry (the rows of an open dropdown are `menu_rows`, headings and the entries of the groups that are open).
 
 use winit::event::KeyEvent;
 use winit::keyboard::{Key, NamedKey};
@@ -77,6 +81,41 @@ pub struct Entry {
 pub struct MenuGeom {
     pub titles: Vec<[f32; 4]>,
     pub items: Vec<[f32; 4]>,
+    /// The groups that are open in the open dropdown (it opens with none).
+    pub groups_open: Vec<&'static str>,
+}
+
+/// One row of an open dropdown: an entry (at `depth` 1 inside an open group), or the heading of a group.
+pub struct MenuRow {
+    pub label: String,
+    pub key: &'static str,
+    pub reason: Option<&'static str>, // why it cannot act now (a heading always can)
+    pub depth: u8,
+    pub kind: RowKind,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum RowKind {
+    Entry(usize),           // the index in `menu_entries`
+    Group(&'static str, bool), // the group and whether it is open
+}
+
+/// The group an entry is classified into, or none for an entry that stays on the dropdown itself.
+pub(crate) fn group_of(cmd: Cmd) -> Option<&'static str> {
+    Some(match cmd {
+        Cmd::Next | Cmd::Prev | Cmd::GoTo(_) => "Go to",
+        Cmd::Resume | Cmd::Rebind | Cmd::ToggleMode | Cmd::Rename | Cmd::Close | Cmd::Delete => "This session",
+        Cmd::SendTo | Cmd::HandOver => "Share",
+        Cmd::FindLlm | Cmd::ToggleVirtualDisplay | Cmd::StopRealScreen => "Tools",
+        Cmd::Allow | Cmd::Deny => "Approvals",
+        Cmd::Copy | Cmd::Cut | Cmd::Paste => "Edit",
+        Cmd::FindConversation | Cmd::SearchAll => "Find",
+        Cmd::Older | Cmd::Newer | Cmd::Newest => "Scroll",
+        Cmd::FontLarger | Cmd::FontSmaller | Cmd::FontReset => "Text size",
+        Cmd::ToggleHiddenFiles | Cmd::ToggleGroupBy | Cmd::ToggleEvents => "Show",
+        Cmd::ToggleClipWrite | Cmd::ToggleNotifications | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
+        _ => return None,
+    })
 }
 
 impl App {
@@ -165,17 +204,17 @@ impl App {
                     });
                 }
                 v.extend([
+                    Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
+                    Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
+                    Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
+                    Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
+                    Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
                     Entry {
                         label: format!("Hidden files: {}", if self.ui.show_hidden { "shown" } else { "hidden" }),
                         key: "Ctrl+H",
                         cmd: Cmd::ToggleHiddenFiles,
                         reason: files_or_none,
                     },
-                    Self::entry("Find in conversation", "Ctrl+F", Cmd::FindConversation, panel_reason.or(none_open)),
-                    Self::entry("Search all sessions", "Ctrl+Shift+F", Cmd::SearchAll, panel_reason),
-                    Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
-                    Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
-                    Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
                     Entry {
                         label: format!("Group sessions: {}", if self.ui.group_by_workspace { "workspace" } else { "account" }),
                         key: "Ctrl+Shift+G",
@@ -228,6 +267,48 @@ impl App {
         }
     }
 
+    /// The rows of an open dropdown: each entry that is not in a group, and for each group its heading (where its first entry is) and, when it is open, its entries after it.
+    pub(crate) fn menu_rows(&self, menu: usize) -> Vec<MenuRow> {
+        let entries = self.menu_entries(menu);
+        let row = |i: usize, depth: u8| MenuRow { label: entries[i].label.clone(), key: entries[i].key, reason: entries[i].reason, depth, kind: RowKind::Entry(i) };
+        let mut rows: Vec<MenuRow> = Vec::new();
+        let mut done: Vec<&'static str> = Vec::new();
+        for (i, e) in entries.iter().enumerate() {
+            match group_of(e.cmd) {
+                None => rows.push(row(i, 0)),
+                Some(g) if done.contains(&g) => {}
+                Some(g) => {
+                    done.push(g);
+                    let open = self.ui.menu_geom.groups_open.contains(&g);
+                    rows.push(MenuRow { label: g.to_string(), key: "", reason: None, depth: 0, kind: RowKind::Group(g, open) });
+                    if open {
+                        rows.extend((0..entries.len()).filter(|j| group_of(entries[*j].cmd) == Some(g)).map(|j| row(j, 1)));
+                    }
+                }
+            }
+        }
+        rows
+    }
+
+    /// Opens or closes a group of the open dropdown and keeps the selection on its heading.
+    pub(crate) fn menu_group_set(&mut self, menu: usize, group: &'static str, open: bool) {
+        self.ui.menu_geom.groups_open.retain(|g| *g != group);
+        if open {
+            self.ui.menu_geom.groups_open.push(group);
+        }
+        self.ui.menu_sel = self.menu_rows(menu).iter().position(|r| r.kind == RowKind::Group(group, open)).unwrap_or(0);
+        self.dirty = true;
+    }
+
+    /// A click or Enter on a row of the open dropdown: a heading opens or closes, an entry runs.
+    pub(crate) fn menu_row_run(&mut self, menu: usize, row: usize) {
+        match self.menu_rows(menu).get(row).map(|r| r.kind) {
+            Some(RowKind::Group(g, open)) => self.menu_group_set(menu, g, !open),
+            Some(RowKind::Entry(i)) => self.menu_run(menu, i),
+            None => {}
+        }
+    }
+
     pub(crate) fn menu_close(&mut self) {
         if self.ui.menu_open.take().is_some() {
             self.dirty = true;
@@ -237,7 +318,8 @@ impl App {
     pub(crate) fn menu_open_at(&mut self, menu: usize) {
         self.close_files_host_popup();
         self.ui.menu_open = Some(menu);
-        self.ui.menu_sel = self.menu_entries(menu).iter().position(|e| e.reason.is_none()).unwrap_or(0);
+        self.ui.menu_geom.groups_open.clear(); // a dropdown opens with its groups closed
+        self.ui.menu_sel = self.menu_rows(menu).iter().position(|r| r.reason.is_none()).unwrap_or(0);
         self.dirty = true;
     }
 
@@ -356,25 +438,38 @@ impl App {
             _ => {}
         }
         let Some(open) = self.ui.menu_open else { return false };
+        let rows = self.menu_rows(open);
         let entries = self.menu_entries(open);
+        let on = rows.get(self.ui.menu_sel).map(|r| r.kind);
+        let group_here = match on {
+            Some(RowKind::Group(g, o)) => Some((g, o)),
+            Some(RowKind::Entry(i)) if rows[self.ui.menu_sel].depth > 0 => group_of(entries[i].cmd).map(|g| (g, true)),
+            _ => None,
+        };
         match &event.logical_key {
             Key::Named(NamedKey::Escape) => self.menu_close(),
-            Key::Named(NamedKey::ArrowLeft) => self.menu_open_at((open + TITLES.len() - 1) % TITLES.len()),
-            Key::Named(NamedKey::ArrowRight) => self.menu_open_at((open + 1) % TITLES.len()),
+            Key::Named(NamedKey::ArrowLeft) => match group_here {
+                Some((g, true)) => self.menu_group_set(open, g, false), // a group that is open closes (from its heading or from an entry in it)
+                _ => self.menu_open_at((open + TITLES.len() - 1) % TITLES.len()),
+            },
+            Key::Named(NamedKey::ArrowRight) => match group_here {
+                Some((g, false)) => self.menu_group_set(open, g, true),
+                _ => self.menu_open_at((open + 1) % TITLES.len()),
+            },
             Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowUp) => {
                 let step: isize = if event.logical_key == Key::Named(NamedKey::ArrowDown) { 1 } else { -1 };
-                let n = entries.len() as isize;
+                let n = rows.len() as isize;
                 let mut i = self.ui.menu_sel as isize;
                 for _ in 0..n {
                     i = (i + step).rem_euclid(n);
-                    if entries[i as usize].reason.is_none() {
+                    if rows[i as usize].reason.is_none() {
                         break; // entries that cannot act are skipped by the arrows
                     }
                 }
                 self.ui.menu_sel = i as usize;
                 self.dirty = true;
             }
-            Key::Named(NamedKey::Enter) => self.menu_run(open, self.ui.menu_sel),
+            Key::Named(NamedKey::Enter) => self.menu_row_run(open, self.ui.menu_sel),
             _ => {} // while a menu is open nothing else reaches the window
         }
         true
@@ -412,3 +507,7 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "menu_tests.rs"]
+mod tests;

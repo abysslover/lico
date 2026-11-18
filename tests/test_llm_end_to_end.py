@@ -14,6 +14,7 @@ from pathlib import Path
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn, cli
 from lico_measure.rig import private_dir
+from tests.gui_helpers import menu_reveal
 from tests.llm_fixtures import FakeServer, keyed_server, normalised, ollama_tags, openai_models, write_proc
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_llm_discover_ssh import _calls, _rig, _tables
@@ -53,8 +54,7 @@ def test_find_servers_here_and_on_an_ssh_host_from_the_dialog_and_the_command_an
 
                 # 1. the menu opens the dialog; nothing is looked at until Enter
                 _key(w, "alt+s")
-                menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and all(b["rect"] for b in m["items"]) and m)
-                w.click(*_centre(next(i["rect"] for i in menu["items"] if i["label"] == "Find Local LLM servers...")))
+                w.click(*_centre(menu_reveal(w, 1, lambda label: label == "Find Local LLM servers...")["rect"]))  # M22-P04a: in the group Tools
                 d = wait_for(lambda: (x := w.ui()["sidebar"]["llm_find"]) and x["open"] and x)
                 assert d["state"] == "idle" and d["host"] is None, d
                 time.sleep(1.0)

@@ -11,6 +11,7 @@ from pathlib import Path
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
+from tests.gui_helpers import menu_reveal
 from tests.account_helpers import account
 from tests.test_claude_adapter import new_claude, records, status_of
 from tests.test_codex_adapter import usual_umask, wait_for
@@ -131,8 +132,7 @@ def test_clean_conversation_hides_internal_events_preserves_logs_and_colors_user
 
             # Also verify View menu label reflects `Internal events: shown` and clicking it hides them again
             _fast_key(w, "alt+v")
-            u_vm = wait_for(lambda: (u := w.ui())["menu"]["open"] == 2 and all(i["rect"] for i in u["menu"]["items"]) and u)
-            ev_item = next(i for i in u_vm["menu"]["items"] if "Internal events: shown" in i["label"])
+            ev_item = menu_reveal(w, 2, lambda label: "Internal events: shown" in label)  # M22-P04a: in the group Show
             r = ev_item["rect"]
             w.click((r[0] + r[2]) / 2.0, (r[1] + r[3]) / 2.0)
             u_clean_again = wait_for(lambda: (u := w.ui())["settings"]["show_events"] is False and u)

@@ -379,7 +379,7 @@ impl App {
             .into_iter()
             .map(|field| {
                 let value = match field {
-                    Field::Provider => format!("< {} >", p.provider),
+                    Field::Provider => local::modes_line(&p.provider),
                     Field::Server => f.servers.get(f.server).map_or("(none yet)".to_string(), |s| format!("< {} >", local_rows::line(s))),
                     Field::Account => p.chosen_account().map_or("< add a new account >".to_string(), |a| format!("< {}{} >", self.acct_display(a), if a.3 { " (default)" } else { "" })),
                     Field::Folder | Field::Name => match self.live(p, f, field) {
@@ -406,8 +406,9 @@ impl App {
         lines.push(String::new());
         lines.push("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: start".into());
         if f.local {
+            lines.extend(local::candidate_lines(f));
             lines.extend(f.servers.get(f.server).and_then(local_rows::key_note));
-            if f.servers.is_empty() {
+            if f.servers.is_empty() && f.scan_req == 0 {
                 lines.push(local_rows::empty_hint().into());
             }
             lines.push("A local session asks the model server on this machine only; it has no access to files or a shell.".into());
@@ -484,6 +485,7 @@ impl App {
 
     /// Left and Right (and Space and a click): the next or previous value of a choice.
     fn form_cycle(&mut self, by: isize) {
+        let mut look = false;
         self.with_form(|p, f| match f.focus {
             Field::Provider => {
                 let to = next(&PROVIDERS.map(String::from), &p.provider, by);
@@ -493,6 +495,7 @@ impl App {
                     (f.model, f.effort) = (DEFAULT.into(), DEFAULT.into()); // the program's choices are claude's
                     f.local = p.provider == "local";
                     p.notice.clear(); // what the form said about the program of one provider is not for the next
+                    look = f.local && !f.scanned; // M22-P04a: choosing Local LLM is asking for its candidates: the one look is made now (a result that is there stays)
                 }
             }
             Field::Server if f.local => {
@@ -515,6 +518,9 @@ impl App {
             Field::Permission => p.mode = if p.mode == "auto" { "default" } else { "auto" },
             _ => {}
         });
+        if look {
+            self.form_scan();
+        }
         self.form_check_git();
         self.dirty = true;
     }
@@ -550,7 +556,7 @@ impl App {
     /// A click on a line of the form; false when the line is not a row (the click is then a selection of text).
     pub(crate) fn form_click(&mut self, line: usize) -> bool {
         let row = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).and_then(|f| f.fields().get(line).copied());
-        let Some(row) = row else { return false };
+        let Some(row) = row else { return self.candidate_click(line) };
         self.form_focus(row);
         self.form_act();
         true

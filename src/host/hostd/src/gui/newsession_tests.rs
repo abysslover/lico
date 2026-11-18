@@ -45,7 +45,7 @@ fn the_line_about_a_folders_own_settings_is_the_one_of_the_chosen_provider() {
     (p.provider, p.account) = ("codex".into(), "a3".into());
     let (_, body) = app.panel_view().unwrap();
     assert!(body.iter().any(|l| l.contains("Codex settings (.codex: config, hooks, rules) are not used")), "{body:?}");
-    assert!(!body.iter().any(|l| l.contains("Claude") || l.contains("CLAUDE.md")), "a Codex session is not told about Claude: {body:?}");
+    assert!(!body.iter().skip(1).any(|l| l.contains("Claude") || l.contains("CLAUDE.md")), "a Codex session is not told about Claude (the Provider row names all three modes): {body:?}");
 }
 
 #[test]
@@ -240,8 +240,15 @@ fn scan_reply() -> serde_json::Value {
     ]})
 }
 
-/// The form with the Local provider chosen the way a person chooses it: Provider row, Right twice (claude, codex, local).
+/// The form with the Local provider chosen the way a person chooses it: Provider row, Right twice (claude, codex, local). Choosing it makes the one look (`M22-P04a`; no host answers in this window, so it
+/// fails at once): the form returned is the one before any look, as the tests of the Server row need it.
 fn local() -> App {
+    let mut app = chosen_local();
+    app.ui.panel.as_mut().unwrap().notice.clear();
+    app
+}
+
+fn chosen_local() -> App {
     let mut app = opened();
     app.form_focus(Field::Provider);
     app.form_cycle(1);
@@ -260,11 +267,11 @@ fn local_is_the_third_provider_and_asks_for_a_server_and_a_model_but_not_for_an_
     app.form_focus(Field::Provider);
     app.form_cycle(1);
     app.form_cycle(1);
-    assert_eq!(app.ui.panel.as_ref().unwrap().notice, "", "a notice about the claude program is not for another provider");
+    assert!(!app.ui.panel.as_ref().unwrap().notice.contains("claude program"), "a notice about the claude program is not for another provider");
     assert_eq!(form(&app)["provider"], "local");
     assert_eq!(rows(&app), ["Provider", "Server", "Model", "Name", "Start"]);
     let (_, body) = app.panel_view().unwrap();
-    assert!(body[0].contains("< local >") && body[1].starts_with("  Server"), "{body:?}");
+    assert!(body[0].contains("[Local LLM]") && body[1].starts_with("  Server"), "{body:?}");
     assert!(!body.iter().any(|l| l.contains("Account") || l.contains("Folder") || l.contains("Effort") || l.contains("Permission") || l.contains("Sign in")), "{body:?}");
     app.form_focus(Field::Provider);
     app.form_cycle(1); // wraps round to claude, with its account and its rows again
@@ -357,7 +364,7 @@ fn a_local_session_is_told_it_has_no_files_or_shell_and_not_about_a_folders_sett
     let app = local();
     let (_, body) = app.panel_view().unwrap();
     assert!(body.iter().any(|l| l.contains("no access to files or a shell")), "{body:?}");
-    assert!(!body.iter().any(|l| l.contains("Claude") || l.contains("Codex") || l.contains("CLAUDE.md")), "{body:?}");
+    assert!(!body.iter().skip(1).any(|l| l.contains("Claude") || l.contains("Codex") || l.contains("CLAUDE.md")), "{body:?}");
 }
 
 #[test]
@@ -407,4 +414,53 @@ fn the_forms_that_ask_for_a_folder_never_open_on_local() {
     let f = form(&app);
     assert_eq!((f["provider"].clone(), f["focus"].clone()), (json!("claude"), json!("Folder")));
     assert!(rows(&app).contains(&"Folder".to_string()));
+}
+
+#[test]
+fn the_provider_row_shows_the_three_modes_at_once_with_the_chosen_one_in_brackets() {
+    let mut app = opened();
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body[0].contains("[Claude]") && body[0].contains("Codex") && body[0].contains("Local LLM") && !body[0].contains("[Codex]") && !body[0].contains("[Local LLM]"), "{body:?}");
+    app.form_focus(Field::Provider);
+    app.form_cycle(1);
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body[0].contains("[Codex]") && body[0].contains("Claude") && !body[0].contains("[Claude]"), "{body:?}");
+    app.form_cycle(1);
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body[0].contains("[Local LLM]") && body[0].contains("Codex"), "{body:?}");
+}
+
+#[test]
+fn choosing_local_llm_on_the_provider_row_looks_for_its_candidates_at_once_and_a_result_that_is_there_is_not_asked_for_again() {
+    let looked = |app: &App| app.ui.panel.as_ref().unwrap().notice.contains("Could not look for servers"); // no host answers in this window: the look was made and failed
+    let mut app = opened();
+    app.form_focus(Field::Provider);
+    app.form_cycle(1);
+    assert!(!looked(&app), "Codex is not Local LLM: nothing is looked at");
+    app.form_cycle(1);
+    assert!(looked(&app), "Local LLM chosen: the one look is made, on this machine");
+    app.on_local_scan(0, scan_reply());
+    app.ui.panel.as_mut().unwrap().notice.clear();
+    app.form_focus(Field::Provider);
+    app.form_cycle(1); // claude
+    app.form_cycle(1); // codex
+    app.form_cycle(1); // local again
+    assert_eq!(form(&app)["provider"], "local");
+    assert!(!looked(&app) && form(&app)["servers"].as_array().unwrap().len() == 2, "the result stays and is not asked for again");
+}
+
+#[test]
+fn the_candidates_are_listed_under_the_rows_and_a_click_on_one_chooses_it() {
+    let mut app = local();
+    app.on_local_scan(0, scan_reply());
+    let (_, body) = app.panel_view().unwrap();
+    let head = body.iter().position(|l| l.starts_with("Model servers on this machine")).expect("the candidates have a heading");
+    assert!(body[head + 1].starts_with("> 127.0.0.1:11434") && body[head + 2].starts_with("  127.0.0.1:1234"), "{body:?}");
+    assert!(body[head + 1].matches("127.0.0.1:11434").count() == 1, "the address is said once on a line: {body:?}");
+    assert_eq!(head, rows(&app).len() + 3, "the heading comes after the rows, a blank line, the line of keys and a blank line");
+    assert!(app.form_click(head + 2), "a line of the candidates is a click that is taken");
+    assert_eq!(form(&app)["server"], 1);
+    let (_, body) = app.panel_view().unwrap();
+    assert!(body[head + 2].starts_with("> 127.0.0.1:1234") && body[head + 1].starts_with("  127.0.0.1:11434"), "the marker follows the click: {body:?}");
+    assert!(!app.form_click(head + 3), "a line past the candidates is no candidate");
 }

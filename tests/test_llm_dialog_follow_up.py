@@ -12,6 +12,7 @@ from pathlib import Path
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO
 from lico_measure.rig import private_dir
+from tests.gui_helpers import menu_reveal
 from tests.llm_fixtures import FakeServer, ollama_tags, openai_models, write_proc
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
@@ -31,8 +32,7 @@ def _find(w: ProductWindow) -> dict | None:
 
 def _open(w: ProductWindow) -> dict:
     _key(w, "alt+s")
-    menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and all(b["rect"] for b in m["items"]) and m)
-    w.click(*_centre(next(i["rect"] for i in menu["items"] if i["label"] == "Find Local LLM servers...")))
+    w.click(*_centre(menu_reveal(w, 1, lambda label: label == "Find Local LLM servers...")["rect"]))  # M22-P04a: in the group Tools
     return wait_for(lambda: (d := _find(w)) and d["open"] and d)
 
 

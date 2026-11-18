@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::super::controls::{self, Action};
 use super::super::editor;
-use super::super::menu::TITLES;
+use super::super::menu::{group_of, RowKind, TITLES};
 use super::super::App;
 use super::Row;
 
@@ -155,15 +155,33 @@ impl App {
             .map(|(i, t)| json!({"label": t, "rect": self.ui.menu_geom.titles.get(i)}))
             .collect();
         let items: Vec<Value> = match self.ui.menu_open {
-            Some(m) => self
-                .menu_entries(m)
-                .iter()
-                .enumerate()
-                .map(|(i, e)| json!({"label": e.label, "key": e.key, "enabled": e.reason.is_none(), "reason": e.reason, "rect": self.ui.menu_geom.items.get(i)}))
-                .collect(),
+            Some(m) => {
+                let entries = self.menu_entries(m);
+                self.menu_rows(m)
+                    .iter()
+                    .enumerate()
+                    .map(|(i, e)| {
+                        let (kind, open, group) = match e.kind {
+                            RowKind::Group(g, open) => ("group", json!(open), json!(g)),
+                            RowKind::Entry(at) => ("entry", Value::Null, json!(group_of(entries[at].cmd))),
+                        };
+                        json!({"label": e.label, "key": e.key, "enabled": e.reason.is_none(), "reason": e.reason, "rect": self.ui.menu_geom.items.get(i), "kind": kind, "depth": e.depth, "open": open, "group": group})
+                    })
+                    .collect()
+            }
             None => Vec::new(),
         };
-        json!({"shown": self.ui.menu, "titles": titles, "open": self.ui.menu_open, "selected": self.ui.menu_sel, "items": items})
+        // every group of the open dropdown with the labels it holds, so that a test (or a person who reads the state) can tell which heading leads to an entry
+        let groups: Vec<Value> = match self.ui.menu_open {
+            Some(m) => {
+                let entries = self.menu_entries(m);
+                let mut names: Vec<&str> = Vec::new();
+                entries.iter().filter_map(|e| group_of(e.cmd)).for_each(|g| if !names.contains(&g) { names.push(g) });
+                names.iter().map(|g| json!({"label": g, "entries": entries.iter().filter(|e| group_of(e.cmd) == Some(g)).map(|e| e.label.clone()).collect::<Vec<_>>()})).collect()
+            }
+            None => Vec::new(),
+        };
+        json!({"shown": self.ui.menu, "titles": titles, "open": self.ui.menu_open, "selected": self.ui.menu_sel, "items": items, "groups": groups})
     }
 
     pub(crate) fn show_telemetry_bar(&self) -> bool {

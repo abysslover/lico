@@ -12,6 +12,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import HOSTD_DIR, LICO, ProtoConn as Conn, start
 from lico_measure.rig import private_dir
 from lico_protocol import v1
+from tests.gui_helpers import menu_reveal
 from tests.account_helpers import account
 from tests.test_claude_adapter import FIXTURE, SIM, lines_of, new_claude, status_of
 from tests.test_codex_adapter import usual_umask, wait_for
@@ -279,8 +280,7 @@ def test_product_window_worktree_attention_marks_and_conversation_search():
 
             # View menu toggles Desktop notifications off
             fast_key(w, "alt+v")
-            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
-            notif_rect = next(item["rect"] for item in menu["items"] if "Desktop notifications: on" in item["label"])
+            notif_rect = menu_reveal(w, 2, lambda label: "Desktop notifications: on" in label)["rect"]  # M22-P04a: in the group Settings
             w.click((notif_rect[0] + notif_rect[2]) / 2, (notif_rect[1] + notif_rect[3]) / 2)
             wait_for(lambda: w.ui()["settings"]["notifications"] is False)
 

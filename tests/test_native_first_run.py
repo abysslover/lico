@@ -11,6 +11,7 @@ from pathlib import Path
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
+from tests.gui_helpers import menu_reveal
 from tests.account_helpers import account
 from tests.test_chats_pagination_and_resume import _seed_claude_jsonl, _seed_codex_jsonl
 from tests.test_claude_adapter import argv_of
@@ -76,15 +77,13 @@ def test_no_question_is_asked_and_the_settings_menu_turns_native_off_and_on():
 
             # the View menu: Native Claude is on; one click turns it off, the next turns it on
             _key(w, "alt+v")
-            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
-            item = next(i for i in menu["items"] if "Use existing Claude Code login" in i["label"])
+            item = menu_reveal(w, 2, lambda label: "Use existing Claude Code login" in label)  # M22-P04a: in the group Settings
             assert item["label"].endswith(": on"), item
             w.click(*_centre(item["rect"]))
             wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "off")
             wait_for(lambda: next(n for n in w.ui()["sidebar"]["native"] if n["provider"] == "claude")["state"] == "off")
             _key(w, "alt+v")
-            menu = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 2 and all(b["rect"] for b in m["items"]) and m)
-            item = next(i for i in menu["items"] if "Use existing Claude Code login" in i["label"])
+            item = menu_reveal(w, 2, lambda label: "Use existing Claude Code login" in label)
             assert item["label"].endswith(": off"), item
             w.click(*_centre(item["rect"]))
             wait_for(lambda: {n["provider"]: n["state"] for n in conn.call(op="account.list")["native"]}["claude"] == "on")

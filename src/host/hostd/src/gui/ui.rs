@@ -373,10 +373,10 @@ impl App {
                     self.ui.flash = None;
                     let hit = self.ui.controls.hit_at(x, y);
                     if !matches!(&hit, Some(Action::Session(_) | Action::Tab(_))) { self.ui.clicked = None; }
-                    if self.ui.menu_open.is_some() || hit.is_some() || !self.ed.contains(x, y) { self.ed.clear_selection(); }
+                    if !matches!(hit, Some(Action::Item(..) | Action::Menu(_))) && (self.ui.menu_open.is_some() || hit.is_some() || !self.ed.contains(x, y)) { self.ed.clear_selection(); } // the menus act on the selection (Copy, Cut): a click in them keeps it (M22-P04a)
                     if let Some(open) = self.ui.menu_open {
                         match hit {
-                            Some(Action::Item(m, i)) => self.menu_run(m, i),
+                            Some(Action::Item(m, i)) => self.menu_row_run(m, i),
                             Some(Action::Menu(m)) if m == open => self.menu_close(),
                             Some(Action::Menu(m)) => self.menu_open_at(m),
                             _ => self.menu_close(), // a click elsewhere only closes the menu
@@ -674,7 +674,7 @@ impl App {
         let sb_mode = self.sidebar_shown();
         let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open() || self.sidebar_bookmarks_popup_open() || self.active_call_open() || self.mention_popup_shown();
         let menu_sel = self.ui.menu_sel;
-        let menu_entries = menu_open.map(|m| self.menu_entries(m)).unwrap_or_default();
+        let menu_entries = menu_open.map(|m| self.menu_rows(m)).unwrap_or_default();
         let tool_entries = if self.ui.menu { self.toolbar_entries() } else { Vec::new() };
         let list_items = self.ui.list_items.clone();
         let total = memrow::total(&self.ui.rows, &self.ui.mem);

@@ -12,7 +12,7 @@ from lico_measure.rig import Xvfb, private_dir
 from lico_protocol import v1
 
 from tests.account_helpers import account
-from tests.gui_helpers import centre, click_at, drawn, item, menu_client
+from tests.gui_helpers import centre, click_at, client_reveal, drawn, item, menu_client
 from tests.test_admin_controls import _claude_http_host
 from tests.test_claude_adapter import claude_host, new_claude, status_of
 from tests.test_codex_adapter import wait_for
@@ -110,10 +110,11 @@ def test_gui_workspace_grouping_rolls_worktrees_up_and_font_size_persists_across
             xdo(xvfb.display, "key", "ctrl+equal")
             ui(client, lambda u: u["settings"]["font_px"] == 16)
             xdo(xvfb.display, "key", "alt+v")
-            m = ui(client, lambda u: drawn(u, 2))["menu"]
-            assert item(m, "Group sessions: workspace")["enabled"] is True
-            assert item(m, "Text size: 14 px (reset)")["enabled"] is True
-            click_at(xvfb.display, *centre(item(m, "Text size: larger")["rect"]))
+            ui(client, lambda u: drawn(u, 2))
+            reveal_in = lambda text: client_reveal(client, xvfb.display, 2, text)  # M22-P04a: the View menu is a tree: the entries are in the groups Show and Text size
+            assert reveal_in("Group sessions: workspace")["enabled"] is True
+            assert reveal_in("Text size: 14 px (reset)")["enabled"] is True
+            click_at(xvfb.display, *centre(reveal_in("Text size: larger")["rect"]))
             state = ui(client, lambda u: u["settings"]["font_px"] == 17)
             row_h_17 = state["layout"]["rows"][0][1] - state["layout"]["rows"][0][0]
             assert row_h_17 > row_h_14 + 2.5

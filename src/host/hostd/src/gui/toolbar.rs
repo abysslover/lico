@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use super::super::controls::{self, Action};
 use super::icons::{self, Icon};
-use super::super::menu::{Cmd, Entry, TITLES};
+use super::super::menu::{Cmd, MenuRow, RowKind, TITLES};
 use super::super::App;
 
 pub struct ToolBtn {
@@ -158,7 +158,7 @@ impl App {
         bar_h: f32,
         menu_open: Option<usize>,
         menu_sel: usize,
-        menu_entries: &[Entry],
+        menu_entries: &[MenuRow],
         tool_entries: &[ToolBtn],
     ) {
         self.ui.menu_geom.titles.clear();
@@ -247,12 +247,17 @@ impl App {
             let mut inner = 0.0f32;
             let mut lefts = Vec::new();
             for e in menu_entries {
+                let mark = match e.kind {
+                    RowKind::Group(_, true) => "v ",
+                    RowKind::Group(_, false) => "> ",
+                    RowKind::Entry(_) => "",
+                };
                 let left = match e.reason {
-                    Some(reason) => format!("{}   ({reason})", e.label),
-                    None => e.label.clone(),
+                    Some(reason) => format!("{mark}{}   ({reason})", e.label),
+                    None => format!("{mark}{}", e.label),
                 };
                 let key_w = if e.key.is_empty() { 0.0 } else { controls.width(fs, e.key) };
-                inner = inner.max(controls.width(fs, &left) + 24.0 * s + key_w);
+                inner = inner.max(controls.width(fs, &left) + 24.0 * s + key_w + 14.0 * s * f32::from(e.depth));
                 lefts.push(left);
             }
             let w = inner + 2.0 * pad;
@@ -266,7 +271,7 @@ impl App {
                     controls::fill(buf, width, height, r, 0xFF2C_4A78);
                 }
                 let colour = if e.reason.is_none() { ink } else { dim };
-                controls.text(fs, swash, buf, width, height, x + pad, r[1] + s, r[2] as i32, &lefts[i], colour);
+                controls.text(fs, swash, buf, width, height, x + pad + 14.0 * s * f32::from(e.depth), r[1] + s, r[2] as i32, &lefts[i], colour);
                 if !e.key.is_empty() {
                     let key_w = controls.width(fs, e.key);
                     controls.text(fs, swash, buf, width, height, r[2] - pad - key_w, r[1] + s, r[2] as i32, e.key, colour);

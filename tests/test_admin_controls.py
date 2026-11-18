@@ -16,7 +16,7 @@ from tests.test_claude_adapter import FIXTURE, SIM, argv_of, claude_host, new_cl
 from tests.test_codex_adapter import codex_host, sent, usual_umask, wait_for
 from tests.test_first_view import ui, xdo
 from tests.test_host_control import _http
-from tests.gui_helpers import centre, click_at, drawn, item, menu_client
+from tests.gui_helpers import centre, click_at, client_reveal, drawn, item, menu_client
 
 
 def _claude_http_host(directory: str):
@@ -166,10 +166,11 @@ def test_gui_account_rename_session_rebind_and_permission_mode_toggle():
             assert "Permission mode: asks for approval." in state["header"]
 
             xdo(xvfb.display, "key", "alt+s")
-            m = ui(client, lambda u: drawn(u, 1))["menu"]
-            assert item(m, "Permission mode: approval")["enabled"] is True
-            assert item(m, "Rebind account...")["enabled"] is False and item(m, "Rebind account...")["reason"] == "close the session first"
-            click_at(xvfb.display, *centre(item(m, "Permission mode: approval")["rect"]))
+            ui(client, lambda u: drawn(u, 1))
+            reveal_in = lambda text: client_reveal(client, xvfb.display, 1, text)  # M22-P04a: the Session menu is a tree: both entries are in the group This session
+            assert reveal_in("Permission mode: approval")["enabled"] is True
+            assert reveal_in("Rebind account...")["enabled"] is False and reveal_in("Rebind account...")["reason"] == "close the session first"
+            click_at(xvfb.display, *centre(reveal_in("Permission mode: approval")["rect"]))
             ui(client, lambda u: "mode: auto (permissions skipped)" in u["header"])
 
             # 3) Close session (Ctrl+Shift+W) and rebind via Ctrl+Shift+B -> 2 (Backup)

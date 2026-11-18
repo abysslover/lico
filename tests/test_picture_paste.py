@@ -16,6 +16,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
 
+from tests.gui_helpers import menu_reveal
 from tests.test_claude_adapter import new_claude, records, sent_users, status_of, user_text
 from tests.test_clipboard_read import forged_head, make_png
 from tests.test_codex_adapter import wait_for
@@ -116,8 +117,7 @@ def menu_paste(w):
     titles = w.ui()["menu"]["titles"]
     rect = titles[1]["rect"]
     w.click((rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2)
-    wait_for(lambda: w.ui()["menu"]["open"] == 1 and all(i["rect"] for i in w.ui()["menu"]["items"]) or None)
-    item = next(i for i in w.ui()["menu"]["items"] if i["label"] == "Paste")
+    item = menu_reveal(w, 1, lambda label: label == "Paste")  # M22-P04a: in the group Edit
     assert item["enabled"], item
     r = item["rect"]
     w.click((r[0] + r[2]) / 2, (r[1] + r[3]) / 2)

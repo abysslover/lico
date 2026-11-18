@@ -15,6 +15,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn, cli, start
 from lico_measure.rig import private_dir
 from lico_protocol import v1
+from tests.gui_helpers import menu_reveal
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_control_parity import _http
 
@@ -266,13 +267,7 @@ def test_gui_hidden_files_toggle_via_toolbar_key_and_menu_persists():
 
             # 4. Toggle back ON via `View > Hidden files: hidden` menu item and preview `.hidden_note.md`
             w.click(*_centre(u_off["menu"]["titles"][2]["rect"]))  # View menu (index 2)
-            u_menu = wait_for(
-                lambda: (u := w.ui())["menu"]["open"] == 2
-                and len(u["menu"]["items"]) >= 2
-                and all(b["rect"] for b in u["menu"]["items"])
-                and u
-            )
-            hid_item = next(it for it in u_menu["menu"]["items"] if it["label"].startswith("Hidden files:"))
+            hid_item = menu_reveal(w, 2, lambda label: label.startswith("Hidden files:"))  # M22-P04a: in the group Show
             assert hid_item["enabled"] is True
             w.click(*_centre(hid_item["rect"]))
             u_on2 = wait_for(lambda: (u := w.ui())["panel"]["files"]["show_hidden"] is True and u)

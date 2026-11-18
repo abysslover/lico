@@ -12,6 +12,7 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn, start
 from lico_measure.rig import private_dir
 
+from tests.gui_helpers import menu_reveal
 from tests.test_codex_adapter import FIXTURE, SIM, wait_for
 from tests.test_stale_host import alive, fnv, older_build, status as status_now
 
@@ -116,13 +117,13 @@ def test_a_disconnected_session_is_resumed_from_the_window_by_the_menu_entry_and
             wait_for(lambda: len(w.ui()["rows"]) == 2, timeout=15)
             w.key("alt+1")
             w.key("alt+s")
-            entry = next(i for i in w.ui()["menu"]["items"] if "Resume session" in i["label"])
+            entry = menu_reveal(w, 1, lambda label: "Resume session" in label)  # M22-P04a: in the group This session
             assert entry["key"] == "Ctrl+R" and entry["enabled"] is False and entry["reason"] == "the session is running"
             w.key("Escape")
             order = [r["session"] for r in w.ui()["rows"]]
             w.key(f"alt+{order.index(gone['session']) + 1}")
             w.key("alt+s")
-            entry = next(i for i in w.ui()["menu"]["items"] if "Resume session" in i["label"])
+            entry = menu_reveal(w, 1, lambda label: "Resume session" in label)  # M22-P04a: in the group This session
             assert entry["enabled"] is True and not entry.get("reason")
             w.key("Escape")
             w.key("ctrl+r")
@@ -130,7 +131,7 @@ def test_a_disconnected_session_is_resumed_from_the_window_by_the_menu_entry_and
             assert sessions_of(w)[gone["session"]]["generation"] == gone["generation"] + 1
             assert sessions_of(w)[running["session"]]["generation"] == running["generation"]        # the other one was not touched
             w.key("alt+s")
-            entry = next(i for i in w.ui()["menu"]["items"] if "Resume session" in i["label"])
+            entry = menu_reveal(w, 1, lambda label: "Resume session" in label)  # M22-P04a: in the group This session
             assert entry["enabled"] is False and entry["reason"] == "the session is running"
 
 

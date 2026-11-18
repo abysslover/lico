@@ -21,6 +21,7 @@ import pytest
 from lico_measure.p02 import HOSTD_DIR, LICO, start
 from lico_measure.rig import Xvfb, private_dir
 
+from tests.gui_helpers import menu_reveal
 from tests.test_capture_cli import read_png
 from tests.test_claude_adapter import FIXTURE, SIM, records, status_of
 from tests.test_clipboard_read import make_png
@@ -439,7 +440,7 @@ def test_the_real_window_takes_a_written_text_to_the_clipboard_when_y_allows_it_
 
 def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the_claude_input_box():
     centre = lambda r: ((r[0] + r[2]) // 2, (r[1] + r[3]) // 2)
-    item = lambda m, prefix: next(i for i in m["items"] if i["label"].startswith(prefix))
+    item = lambda m, prefix: menu_reveal(w, 2, lambda label: label.startswith(prefix))  # M22-P04a: the View menu is a tree: the entry in a closed group is shown first
     fkey = lambda w, *k: subprocess.run(["xdotool", "key", *k], env=w.env, check=True)
     fclick = lambda w, wid, x, y: subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", "1"], env=w.env, check=True)
     with private_dir() as directory:
