@@ -50,6 +50,8 @@ pub enum Action {
     WindowMax,
     LlmPick(usize),
     WizardPick(usize),
+    /// A click on box `.1` of the row at line `.0` of the wizard's second or third step (`M22-P07`).
+    WizardChoose(usize, usize),
     SidebarFilter,
     SidebarFilterClear,
     SidebarGlobal,

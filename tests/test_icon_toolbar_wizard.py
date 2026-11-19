@@ -49,6 +49,12 @@ def _step(w: ProductWindow, page: int) -> dict:
     return _panel(w, lambda p: p["form"] and p["form"]["wizard"] and p["form"]["wizard"]["page"] == page and (page > 0 or all(t["rect"] for t in p["form"]["tiles"])))
 
 
+def _boxes(w: ProductWindow, page: int) -> dict:
+    """The panel once step `page` has painted its chips and cards (every box has its rectangle), and the boxes by their row's word (a card with no word of its own by its first text)."""
+    panel = _panel(w, lambda p: p["form"] and p["form"]["wizard"] and p["form"]["wizard"]["page"] == page and p["form"]["cards"] and all(i["rect"] for c in p["form"]["cards"] for i in c["items"]))
+    return {(c["label"] or c["items"][0]["text"]): c for c in panel["form"]["cards"]} | {"panel": panel}
+
+
 def _gray(w: ProductWindow, rect: list[float], inset: int = 4) -> int:
     """The grey level of the fill of a box, read inside its edge (the ring of the focus is outside it)."""
     data, width, _ = w.gray()
@@ -205,10 +211,20 @@ def test_local_llm_needs_no_account_and_looks_at_this_machine_as_soon_as_its_ico
                 body = w.ui()["panel"]["body"]
                 assert any(line.startswith("> 127.0.0.1:") and "openai" in line for line in body) and any("Found 1 server" in line for line in body), body
 
-                w.key("Return")  # Next
+                two = _boxes(w, 1)
+                servers = [c for c in two["panel"]["form"]["cards"] if c["items"][0]["text"].startswith("127.0.0.1:")]
+                assert len(servers) == 1 and servers[0]["items"][0]["chosen"] is True and servers[0]["items"][0]["icon"] == "local" and "openai" in servers[0]["items"][0]["hint"], two["panel"]["form"]["cards"]
+                assert two["Server"]["items"][0]["text"] == "Look again", "a card that looks again, where the Server row was"
+                look = two["Server"]["items"][0]["rect"]
+                assert w.bright(int(look[2]) + 14, int(look[1]), 1190, int(look[3]), 90) == 0, "the text of the row (the server's line, much longer than the card) is covered: nothing is left beside the card"
+                w.click(*centre(two["Next"]["items"][0]["rect"]))  # Next
                 third = _step(w, 2)
                 assert third["title"] == "New session - step 3 of 3 - Options and start" and not any(line.lstrip("> ").startswith(("Folder", "Account")) for line in third["body"]), third["body"]
-                w.key("Return")  # Enter on the name row starts
+                three = _boxes(w, 2)
+                assert [i["text"] for i in three["Model"]["items"]] == ["tiny-llama", "qwen-small"] and "Effort" not in three and "Permission" not in three
+                w.click(*centre(three["Model"]["items"][1]["rect"]))
+                assert _boxes(w, 2)["panel"]["form"]["local_model"] == "qwen-small"
+                w.click(*centre(_boxes(w, 2)["Start session"]["items"][0]["rect"]))  # the card starts
                 wait_for(lambda: conn.call(op="status")["sessions"])
                 entry = conn.call(op="status")["sessions"][0]
                 assert entry["provider"] == "local", entry
@@ -239,3 +255,68 @@ def test_the_house_opens_the_same_wizard_for_a_home_session_with_no_folder_and_s
             assert tab["global"] is True and tab["label"].startswith("H·"), tab
             entry = conn.call(op="status")["sessions"][0]
             assert entry["account"] == made["Work"] and entry["provider"] == "claude", entry
+
+
+def test_the_second_and_third_step_paint_chips_and_cards_and_a_click_on_one_chooses_it():
+    """M22-P07: the account, the model, the effort and the permission are chips in one row (the chosen one filled), the recent folders, Back, Next and Start are cards; a click on a box does
+    what the keys did on its row, the text rows keep what only the keys and the typing can do, and what the person chose is what the host started."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = root.resolve() / "project"
+        project.mkdir()
+        kwargs, made, received = _rig(root, [("Work", "claude"), ("Home", "claude")])
+        with ProductWindow(**kwargs) as w:
+            conn = Conn(w.socket)
+            _ready(w)
+            w.click(*centre(_button(w, "new_session")["rect"]))
+            w.click(*centre(_step(w, 0)["form"]["tiles"][0]["rect"]))
+            w.type_text(str(project))                                     # the folder is typed: its row stays text
+            two = _boxes(w, 1)
+            account = two["Account"]
+            names = [i["text"] for i in account["items"]]
+            assert account["chips"] is True and names[-1] == "+ New account" and sorted(n.split(" ")[0] for n in names[:-1]) == ["Home", "Work"], names
+            assert [i["icon"] for i in account["items"]] == ["claude", "claude", "plus"] and sum(i["chosen"] for i in account["items"]) == 1
+            assert "Folder" not in two and two["Back"]["items"][0]["icon"] == "back" and two["Next"]["items"][0]["enabled"] is True and two["Next"]["items"][0]["hint"] == "Enter"
+            first, other = (next(i for i in account["items"] if i["chosen"]), next(i for i in account["items"][:-1] if not i["chosen"]))
+            assert _gray(w, first["rect"], 2) > _gray(w, other["rect"], 2), "the chosen chip is filled, the other is not"
+            row = (first["rect"][1], first["rect"][3])
+
+            # a click beside the chips, on the covered text of the row, is no choice (the text under it used to change on a click)
+            w.click(account["items"][-1]["rect"][2] + 60, (row[0] + row[1]) / 2)
+            assert _boxes(w, 1)["panel"]["form"]["account"] == made[first["text"].split(" ")[0]], "a click beside the chips changed the account"
+
+            # a click on a chip chooses that account (the folder that was typed is kept), the keys are then on the account row
+            w.click(*centre(other["rect"]))
+            now = _boxes(w, 1)
+            label = other["text"].split(" ")[0]
+            assert [i["chosen"] for i in now["Account"]["items"]] == [i["text"] == other["text"] for i in account["items"]] and now["panel"]["form"]["account"] == made[label], now["panel"]["form"]
+            assert now["Account"]["focus"] is True and now["panel"]["form"]["folder"] == str(project)
+            w.click(*centre(now["Next"]["items"][0]["rect"]))             # a card: Next
+            three = _boxes(w, 2)
+            assert [three[k]["chips"] for k in ("Model", "Effort", "Permission")] == [True, True, True] and "Name" not in three
+            assert [i["text"] for i in three["Model"]["items"]] == ["default", "fable", "opus", "sonnet"] and [i["text"] for i in three["Permission"]["items"]] == ["Skip agent prompts", "Ask for approval"]
+            pick = lambda row, text: w.click(*centre(next(i for i in _boxes(w, 2)[row]["items"] if i["text"] == text)["rect"]))
+            pick("Model", "opus")
+            pick("Effort", "high")
+            pick("Permission", "Ask for approval")
+            form = _boxes(w, 2)["panel"]["form"]
+            assert (form["model"], form["effort"], form["mode"], form["focus"]) == ("opus", "high", "default", "Permission"), form
+            assert conn.call(op="status")["sessions"] == [], "choosing creates nothing"
+            w.click(*centre(_boxes(w, 2)["Start session"]["items"][0]["rect"]))
+            wait_for(lambda: w.ui()["panel"] is None and conn.call(op="status")["sessions"])
+            entry = conn.call(op="status")["sessions"][0]
+            assert (entry["cwd"], entry["account"], entry["chosen_model"], entry["chosen_effort"]) == (str(project), made[label], "opus", "high"), entry
+
+            # the next wizard offers the folder just used as a card: a click on it takes it into the folder row
+            w.key("ctrl+n")
+            _step(w, 0)
+            w.key("Return")
+            again = _boxes(w, 1)
+            card = next(c for c in again["panel"]["form"]["cards"] if c["items"][0]["text"] == str(project))   # (the first recent folder carries the word `recent`)
+            assert card["chips"] is False and card["items"][0]["chosen"] is True
+            w.key("ctrl+u")
+            _panel(w, lambda p: p["input"] == "")
+            w.click(*centre(card["items"][0]["rect"]))
+            _panel(w, lambda p: p["input"] == str(project) and p["form"]["focus"] == "Folder")
+            w.key("Escape")
+            w.key("Escape")

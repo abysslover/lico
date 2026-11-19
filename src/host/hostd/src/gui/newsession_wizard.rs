@@ -28,6 +28,38 @@ pub(crate) struct Tile {
     pub(crate) hovered: bool,
 }
 
+/// One box the window paints over a row of the second or third step (`M22-P07`): a chip (one of a row's short values) or a card (a whole line).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CardItem {
+    pub(crate) text: String,
+    /// What is said after the text in a dimmer ink: a key, or why the box cannot be taken yet.
+    pub(crate) hint: String,
+    /// The picture at its left (the name of an `Icon`).
+    pub(crate) icon: Option<&'static str>,
+    pub(crate) chosen: bool,
+    pub(crate) enabled: bool,
+}
+
+/// A row of a step as boxes: the line it covers, its word, whether the boxes are chips of one choice (the chosen one is filled) or one card, and whether the keys are on the row.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CardRow {
+    pub(crate) line: usize,
+    pub(crate) label: &'static str,
+    pub(crate) chips: bool,
+    pub(crate) focused: bool,
+    pub(crate) items: Vec<CardItem>,
+}
+
+fn item(text: impl Into<String>, icon: Option<&'static str>, chosen: bool) -> CardItem {
+    CardItem { text: text.into(), hint: String::new(), icon, chosen, enabled: true }
+}
+
+/// What a server's card says after its address: its kind, how many models, a key, the one used last.
+fn server_hint(s: &Server) -> String {
+    let line = local_rows::line(s);
+    line.strip_prefix(&s.addr).unwrap_or(&line).trim().to_string()
+}
+
 fn word(kind: &str) -> &'static str {
     match kind {
         "local" => "Local LLM",
@@ -269,8 +301,11 @@ impl App {
 
     /// A click on one of the painted icons (`Action::WizardPick`).
     pub(crate) fn wizard_click(&mut self, action: &Action) -> bool {
-        let Action::WizardPick(i) = action else { return false };
-        self.wizard_pick(*i);
+        match action {
+            Action::WizardPick(i) => self.wizard_pick(*i),
+            Action::WizardChoose(line, i) => drop(self.wizard_choose(*line, *i)), // (a click beside the boxes of a row is no choice, and is not a click on the row's hidden text either)
+            _ => return false,
+        }
         true
     }
 
@@ -314,7 +349,7 @@ impl App {
         }
         let mut lines: Vec<String> = f.fields().into_iter().map(|field| self.row_line(p, f, field)).collect();
         lines.push(String::new());
-        lines.push(format!("Tab, Up, Down: move   Left, Right, Space or a click: change   Enter: {}", if w.page == 1 { "next" } else { "start" }));
+        lines.push(String::new()); // (the one-page form says the keys here; the wizard shows boxes to click and keeps the line, which the places of the lines below count on)
         if f.local {
             if w.page == 1 {
                 lines.extend(local::candidate_lines(f));
@@ -331,6 +366,108 @@ impl App {
             lines.push(settings_note(&p.provider).into());
         }
         lines
+    }
+
+    /// The rows of the second and third step as boxes (`M22-P07`): the account, the model, the effort, the permission and the worktree as chips, the recent folders, the servers, the sign-in,
+    /// Back, Next and Start as cards. The text rows stay the model (the folder, the branch and the name are typed); the window paints these over the lines of the rows that have them. None on
+    /// the first step and in the one-page form.
+    pub(crate) fn wizard_cards(&self) -> Vec<CardRow> {
+        let Some((p, f)) = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| Some((p, p.form.as_ref()?))) else { return Vec::new() };
+        let Some(w) = f.wiz.filter(|w| w.page > 0) else { return Vec::new() };
+        let rows = f.fields();
+        let mut cards: Vec<CardRow> = rows.iter().enumerate().filter_map(|(line, field)| self.card_row(p, f, line, *field)).collect();
+        if f.local && w.page == 1 {
+            // the servers are the lines under the rows, the line of keys, a blank line and the heading (`candidate_click`'s own count)
+            cards.extend(f.servers.iter().enumerate().map(|(i, s)| CardRow {
+                line: rows.len() + 4 + i,
+                label: "",
+                chips: false,
+                focused: f.focus == Field::Server && i == f.server,
+                items: vec![CardItem { hint: server_hint(s), ..item(s.addr.clone(), Some("local"), i == f.server) }],
+            }));
+        }
+        cards
+    }
+
+    fn card_row(&self, p: &Panel, f: &Form, line: usize, field: Field) -> Option<CardRow> {
+        let focused = f.focus == field;
+        let chips = |items: Vec<CardItem>| Some(CardRow { line, label: field.label(), chips: true, focused, items });
+        let card = |item: CardItem| Some(CardRow { line, label: field.label(), chips: false, focused, items: vec![item] });
+        let said = |text: &str, icon: &'static str, hint: String, problem: bool| card(CardItem { hint, enabled: !problem, ..item(text, Some(icon), false) });
+        let words = |list: Vec<String>, chosen: &str| chips(list.into_iter().map(|t| item(t.clone(), None, t == chosen)).collect());
+        match field {
+            Field::Account => {
+                let provider = ["claude", "codex"].into_iter().find(|k| *k == p.provider);
+                let mut items: Vec<CardItem> =
+                    p.accounts.iter().filter(|a| a.1 == p.provider).map(|a| item(format!("{}{}", self.acct_display(a), if a.3 { " (default)" } else { "" }), provider, a.0 == p.account)).collect();
+                items.push(item("+ New account", Some("plus"), p.chosen_account().is_none()));
+                chips(items)
+            }
+            Field::Recent(i) => card(item(f.recent[i].clone(), None, self.live(p, f, Field::Folder) == f.recent[i])),
+            Field::Worktree => chips(vec![item("Use the folder", None, !f.worktree), item("New worktree", None, f.worktree)]),
+            Field::SignIn => said("Sign in to this account", "account", "Ctrl+L".into(), false),
+            Field::Back => said("Back", "back", "Esc".into(), false),
+            Field::Next => {
+                let why = self.rows_problem(p, f);
+                said("Next", "forward", why.as_ref().map_or("Enter".into(), |w| format!("not yet: {w}")), why.is_some())
+            }
+            Field::Start => {
+                let why = self.form_problem(p, f);
+                said("Start session", "forward", why.as_ref().map_or("Enter".into(), |w| format!("not yet: {w}")), why.is_some())
+            }
+            Field::Server => {
+                let text = if f.scan_req != 0 { "Looking for model servers..." } else if f.servers.is_empty() { "Look for model servers" } else { "Look again" };
+                said(text, "reload", String::new(), false)
+            }
+            Field::Model if f.local => words(f.servers.get(f.server)?.models.clone(), &f.local_model),
+            Field::Model => words(p.model_choices(f, false), &f.model),
+            Field::Effort => words(p.model_choices(f, true), &f.effort),
+            Field::Permission => chips(vec![item("Skip agent prompts", None, p.mode == "auto"), item("Ask for approval", None, p.mode != "auto")]),
+            Field::Provider | Field::Folder | Field::Branch | Field::Name | Field::Pick(_) => None,
+        }
+    }
+
+    /// A click on box `index` of the row at `line` (`Action::WizardChoose`): a chip sets its value, a card does what a click on its line did (a folder is taken, a server is chosen, Back, Next,
+    /// the sign-in, Start). A second click on `+ New account` while it is the choice goes to adding one. False when there is no such box.
+    pub(crate) fn wizard_choose(&mut self, line: usize, index: usize) -> bool {
+        let cards = self.wizard_cards();
+        let Some(row) = cards.iter().find(|r| r.line == line).filter(|r| index < r.items.len()) else { return false };
+        if !row.chips {
+            return self.form_click(line);
+        }
+        let Some(field) = self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).and_then(|f| f.row_at(line)) else { return false };
+        if field == Field::Account && row.items[index].chosen && index + 1 == row.items.len() {
+            self.form_new_account();
+            return true;
+        }
+        self.form_focus(field);
+        self.with_form(|p, f| match field {
+            Field::Account => p.account = p.accounts.iter().filter(|a| a.1 == p.provider).map(|a| a.0.clone()).chain(std::iter::once(String::new())).nth(index).unwrap_or_default(),
+            Field::Worktree => f.worktree = index == 1,
+            Field::Model if f.local => f.local_model = f.servers.get(f.server).and_then(|s| s.models.get(index)).cloned().unwrap_or_default(),
+            Field::Model => f.model = p.model_choices(f, false).swap_remove(index),
+            Field::Effort => f.effort = p.model_choices(f, true).swap_remove(index),
+            Field::Permission => p.mode = if index == 0 { "auto" } else { "default" },
+            _ => {}
+        });
+        self.form_check_git();
+        self.dirty = true;
+        true
+    }
+
+    /// What the state says of the boxes: each row's line, word and boxes with the rectangle the window drew each in.
+    pub(super) fn cards_json(&self) -> Value {
+        let rects = &self.ui.toolbar_geom.cards;
+        Value::Array(
+            self.wizard_cards()
+                .iter()
+                .map(|r| {
+                    let drawn = rects.iter().find(|c| c.0 == r.line).map(|c| &c.1);
+                    let items = r.items.iter().enumerate().map(|(i, x)| json!({"text": x.text, "hint": x.hint, "icon": x.icon, "chosen": x.chosen, "enabled": x.enabled, "rect": drawn.and_then(|d| d.get(i))}));
+                    json!({"line": r.line, "label": r.label, "chips": r.chips, "focus": r.focused, "items": items.collect::<Vec<_>>()})
+                })
+                .collect(),
+        )
     }
 
     /// What the state says of the wizard: the step, how many there are, whether it is a Home session, the name of the step.

@@ -451,7 +451,7 @@ impl App {
             "name": self.live(p, f, Field::Name), "model": f.model, "effort": f.effort, "mode": p.mode,
             "models": f.models, "efforts": f.efforts, "recent": f.recent, "problem": self.form_problem(p, f),
             "local": f.local, "servers": f.servers.iter().map(local_rows::line).collect::<Vec<_>>(), "server": f.server, "local_model": f.local_model, "scanned": f.scanned,
-            "wizard": self.wizard_json(p, f), "tiles": self.tiles_json(),
+            "wizard": self.wizard_json(p, f), "tiles": self.tiles_json(), "cards": self.cards_json(),
         })
     }
 

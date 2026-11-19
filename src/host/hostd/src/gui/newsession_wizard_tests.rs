@@ -499,3 +499,184 @@ fn left_and_right_go_round_the_four_icons() {
     app.form_cycle(-1);
     assert_eq!(form(&app)["focus"], "Pick(3)", "and before the first, the fourth");
 }
+
+// ---- M22-P07: the choices of steps two and three as chips and cards painted over the rows ----
+
+fn chosen_of(row: &CardRow) -> Vec<&str> {
+    row.items.iter().filter(|i| i.chosen).map(|i| i.text.as_str()).collect()
+}
+
+fn texts_of(row: &CardRow) -> Vec<&str> {
+    row.items.iter().map(|i| i.text.as_str()).collect()
+}
+
+fn one_page() -> App {
+    let mut one = app(1.0, false);
+    one.form_open();
+    one
+}
+
+fn on_step_three(provider: &str) -> App {
+    let mut app = opened_on(false, &[("a1", "claude"), ("a3", "codex")], provider);
+    app.with_form(|_, f| (f.models, f.efforts) = (vec!["opus".into(), "sonnet".into()], vec!["low".into(), "high".into()]));
+    app.wizard_pick(PICKS.iter().position(|k| *k == provider).unwrap());
+    app.ed.put("/work/one");
+    app.wizard_next();
+    assert_eq!(page(&app), 2);
+    app
+}
+
+#[test]
+fn step_one_and_the_one_page_form_have_no_chips_and_no_cards() {
+    let app = both();
+    assert!(app.wizard_cards().is_empty(), "step one has its own icons");
+    assert!(one_page().wizard_cards().is_empty(), "the one-page form stays text");
+}
+
+#[test]
+fn the_account_is_a_row_of_chips_the_recent_folders_are_cards_and_the_signed_in_row_is_a_card() {
+    let mut app = both();
+    app.wizard_pick(0);
+    let cards = app.wizard_cards();
+    let account = cards.iter().find(|r| r.label == "Account").expect("the account row has chips");
+    assert!(account.chips && account.line == 0 && account.focused == (form(&app)["focus"] == "Account"));
+    assert_eq!(texts_of(account), ["a1 (default)", "+ New account"], "Claude's accounts only, then the way to add one: {account:?}");
+    assert_eq!(chosen_of(account), ["a1 (default)"]);
+    assert_eq!(account.items[0].icon, Some("claude"), "the picture of the provider");
+    let recents: Vec<&CardRow> = cards.iter().filter(|r| !r.chips && r.items.len() == 1 && r.items[0].text.starts_with("/work/")).collect();
+    assert_eq!(recents.iter().map(|r| r.items[0].text.as_str()).collect::<Vec<_>>(), ["/work/one", "/work/two"], "one card per recent folder");
+    assert_eq!(recents.iter().map(|r| r.line).collect::<Vec<_>>(), [2, 3], "each over the line of its own row");
+    assert!(recents.iter().all(|r| !r.items[0].chosen), "no folder is taken yet");
+    app.wizard_choose(recents[1].line, 0);
+    assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().folder, "/work/two", "a click on a card does what a click on its line did: the folder is taken");
+    let after = app.wizard_cards();
+    assert!(after.iter().any(|r| !r.chips && r.items[0].text == "/work/two" && r.items[0].chosen), "and the card of the folder shows it");
+}
+
+#[test]
+fn a_click_on_the_account_chips_chooses_an_account_or_asks_to_add_one() {
+    let mut app = opened(false, &[("a1", "claude"), ("a2", "claude"), ("a3", "codex")]);
+    app.wizard_pick(0);
+    let line = app.wizard_cards().iter().find(|r| r.label == "Account").unwrap().line;
+    assert!(app.wizard_choose(line, 1));
+    assert_eq!(app.ui.panel.as_ref().unwrap().account, "a2");
+    assert_eq!(chosen_of(app.wizard_cards().iter().find(|r| r.label == "Account").unwrap()), ["a2 (default)"]);
+    assert!(app.wizard_choose(line, 2));
+    assert_eq!(app.ui.panel.as_ref().unwrap().account, "", "the last chip is `+ New account`: no account is chosen");
+    assert_eq!(chosen_of(app.wizard_cards().iter().find(|r| r.label == "Account").unwrap()), ["+ New account"]);
+    assert!(!app.wizard_choose(line, 9), "a chip that is not there is nothing");
+    assert!(app.ui.panel.as_ref().unwrap().step == Step::NewSession, "choosing `+ New account` the first time only chooses it");
+    assert!(app.wizard_choose(line, 2));
+    assert!(app.ui.panel.as_ref().unwrap().step == Step::Label, "a second click on the chosen `+ New account` goes to adding an account");
+}
+
+#[test]
+fn step_three_has_model_effort_and_permission_as_chips_and_start_and_back_as_cards() {
+    let mut app = on_step_three("claude");
+    let cards = app.wizard_cards();
+    let by = |label: &str| cards.iter().find(|r| r.label == label).unwrap_or_else(|| panic!("no chips for {label}: {cards:?}")).clone();
+    assert_eq!(texts_of(&by("Model")), ["default", "opus", "sonnet"]);
+    assert_eq!(texts_of(&by("Effort")), ["default", "low", "high"]);
+    assert_eq!(texts_of(&by("Permission")), ["Skip agent prompts", "Ask for approval"]);
+    assert_eq!((chosen_of(&by("Model")), chosen_of(&by("Permission"))), (vec!["default"], vec!["Skip agent prompts"]));
+    app.wizard_choose(by("Model").line, 2);
+    app.wizard_choose(by("Effort").line, 1);
+    app.wizard_choose(by("Permission").line, 1);
+    let f = app.ui.panel.as_ref().unwrap();
+    assert_eq!((f.form.as_ref().unwrap().model.as_str(), f.form.as_ref().unwrap().effort.as_str(), f.mode), ("sonnet", "low", "default"));
+    assert_eq!(form(&app)["focus"], "Permission", "a click on a chip puts the keys on its row");
+    let again = app.wizard_cards();
+    let chosen = |label: &str| chosen_of(again.iter().find(|r| r.label == label).unwrap()).join(",");
+    assert_eq!((chosen("Model"), chosen("Effort"), chosen("Permission")), ("sonnet".into(), "low".into(), "Ask for approval".into()));
+    let singles: Vec<&str> = cards.iter().filter(|r| !r.chips).map(|r| r.items[0].text.as_str()).collect();
+    assert!(singles.iter().any(|t| t.starts_with("Back")) && singles.iter().any(|t| t.starts_with("Start session")), "{singles:?}");
+    assert!(!cards.iter().any(|r| r.label == "Name"), "the name is typed: it stays a text row");
+}
+
+#[test]
+fn codex_has_only_the_default_model_and_effort_so_its_chips_are_one_each() {
+    let app = on_step_three("codex");
+    let cards = app.wizard_cards();
+    assert_eq!(texts_of(cards.iter().find(|r| r.label == "Model").unwrap()), ["default"], "the program's own choices are Claude's");
+    assert_eq!(texts_of(cards.iter().find(|r| r.label == "Effort").unwrap()), ["default"]);
+}
+
+#[test]
+fn local_llm_has_a_card_per_server_the_chosen_one_filled_and_its_models_as_chips() {
+    let mut app = opened(false, &[]);
+    app.with_form(|_, f| {
+        let server = |addr: &str, models: &[&str]| Server { addr: addr.into(), api: "openai".into(), models: models.iter().map(|m| m.to_string()).collect(), wants_key: false, remembered: false };
+        (f.local, f.scanned) = (true, true);
+        f.servers = vec![server("127.0.0.1:1111", &["tiny"]), server("127.0.0.1:2222", &["qwen-small", "tiny-llama"])];
+    });
+    app.wizard_pick(2);
+    let first = app.wizard_cards();
+    let servers: Vec<&CardRow> = first.iter().filter(|r| r.items.len() == 1 && r.items[0].text.contains("127.0.0.1:")).collect();
+    assert_eq!(servers.len(), 2, "one card per server: {first:?}");
+    assert_eq!(servers[0].items[0].icon, Some("local"));
+    assert_eq!((servers[0].items[0].chosen, servers[1].items[0].chosen), (true, false));
+    app.wizard_choose(servers[1].line, 0);
+    assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().server, 1, "a click on a server's card chooses it");
+    app.wizard_next();
+    assert_eq!(page(&app), 2);
+    let cards = app.wizard_cards();
+    let model = cards.iter().find(|r| r.label == "Model").expect("the models of the chosen server are chips");
+    assert_eq!(texts_of(model), ["qwen-small", "tiny-llama"]);
+    assert_eq!(chosen_of(model), ["qwen-small"]);
+    app.wizard_choose(model.line, 1);
+    assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().local_model, "tiny-llama");
+    assert!(!cards.iter().any(|r| r.label == "Effort" || r.label == "Permission"), "a local session has no effort and no permission");
+}
+
+#[test]
+fn the_line_of_keys_is_blank_in_the_wizard_and_the_one_page_form_keeps_it() {
+    let mut app = both();
+    app.wizard_pick(0);
+    let (_, body) = app.panel_view().unwrap();
+    assert!(!body.iter().any(|l| l.contains("Tab, Up, Down")), "{body:?}");
+    assert!(one_page().panel_view().unwrap().1.iter().any(|l| l.contains("Tab, Up, Down")));
+}
+
+#[test]
+fn next_is_a_card_that_says_why_it_cannot_be_taken_yet_and_a_click_on_it_then_says_so_and_stays() {
+    let mut app = both();
+    app.wizard_pick(0);
+    app.ed.put("relative/folder"); // (the Folder row has the focus: its text is the input line's)
+    let next = |app: &App| app.wizard_cards().into_iter().find(|r| r.items[0].text == "Next").unwrap();
+    let row = next(&app);
+    assert!(!row.items[0].enabled && row.items[0].hint.starts_with("not yet: the folder must be a full path"), "{row:?}");
+    assert!(app.wizard_choose(row.line, 0));
+    assert_eq!(page(&app), 1, "a click on a card that cannot be taken is what a click on its line was: it says why and stays");
+    assert!(notice(&app).starts_with("Not yet:"), "{}", notice(&app));
+    app.with_form(|_, f| f.folder = "/work/one".into()); // (the click moved the focus to Next, so the folder is the form's again)
+    let ready = next(&app);
+    assert!(ready.items[0].enabled && ready.items[0].hint == "Enter", "{ready:?}");
+    assert!(app.wizard_choose(ready.line, 0));
+    assert_eq!(page(&app), 2);
+}
+
+#[test]
+fn the_worktree_of_a_git_folder_is_two_chips_and_choosing_the_second_asks_for_a_branch() {
+    let mut app = both();
+    app.with_form(|_, f| (f.folder, f.checked_folder, f.is_git) = ("/work/one".into(), "/work/one".into(), true));
+    app.wizard_pick(0);
+    let chips = |app: &App| app.wizard_cards().into_iter().find(|r| r.label == "Worktree").expect("a git folder has the worktree row");
+    let row = chips(&app);
+    assert_eq!((texts_of(&row), chosen_of(&row)), (vec!["Use the folder", "New worktree"], vec!["Use the folder"]));
+    assert!(!rows(&app).contains(&"Branch".to_string()));
+    assert!(app.wizard_choose(row.line, 1));
+    assert_eq!(chosen_of(&chips(&app)), ["New worktree"]);
+    assert!(rows(&app).contains(&"Branch".to_string()), "the branch is typed: a text row appears under the chips");
+    assert!(app.wizard_choose(row.line, 0));
+    assert!(!app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().worktree);
+}
+
+#[test]
+fn a_click_beside_the_chips_of_a_row_is_no_choice_and_not_a_click_on_the_hidden_text_either() {
+    let mut app = on_step_three("claude");
+    let model = app.wizard_cards().into_iter().find(|r| r.label == "Model").unwrap();
+    assert!(app.wizard_click(&Action::WizardChoose(model.line, usize::MAX)), "the click is taken by the veil of the row");
+    assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().model, "default", "and it changed nothing: the row's text, which cycled on a click, is hidden");
+    assert!(app.wizard_click(&Action::WizardChoose(model.line, 2)));
+    assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().model, "sonnet");
+}

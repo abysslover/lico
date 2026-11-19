@@ -13,6 +13,8 @@ use super::super::App;
 
 #[path = "picker.rs"]
 mod picker;
+#[path = "wizard_cards.rs"]
+mod wizard_cards;
 
 pub struct ToolBtn {
     pub label: String,
@@ -33,6 +35,8 @@ pub struct ToolbarGeom {
     /// The icons of the wizard's first step as the window drew them last, and the one the pointer is over (`M22-P04b`, see `picker.rs`).
     pub tiles: Vec<[f32; 4]>,
     pub tile_hover: Option<usize>,
+    /// The boxes of the wizard's second and third step as the window drew them last: for each row's line, the rectangle of each of its boxes (`M22-P07`, see `wizard_cards.rs`).
+    pub cards: Vec<(usize, Vec<[f32; 4]>)>,
 }
 
 /// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).

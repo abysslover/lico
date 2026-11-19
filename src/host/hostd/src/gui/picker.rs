@@ -7,12 +7,12 @@ use super::super::super::scroll::{self, Composed};
 use super::super::super::App;
 use super::icons::{self, Icon};
 
-const FILL: u32 = 0xFF23_2E3E;
-const LIT: u32 = 0xFF2C_4A78;
-const GREY_FILL: u32 = 0xFF1B_222D;
-const RING: u32 = 0xFF5C_8AD0;
-const INK: u32 = 0xFFE0_E0E0;
-const GREY_INK: u32 = 0xFF70_7880;
+pub(super) const FILL: u32 = 0xFF23_2E3E;
+pub(super) const LIT: u32 = 0xFF2C_4A78;
+pub(super) const GREY_FILL: u32 = 0xFF1B_222D;
+pub(super) const RING: u32 = 0xFF5C_8AD0;
+pub(super) const INK: u32 = 0xFFE0_E0E0;
+pub(super) const GREY_INK: u32 = 0xFF70_7880;
 
 /// How one icon is drawn.
 pub(super) struct Look {
@@ -69,6 +69,7 @@ impl App {
             }
         }
         self.picker_paint(buf, width, height, list_w, s);
+        self.cards_paint(buf, width, height, list_w, s);
     }
 
     /// The wizard's icons, over the blank lines of its first step (from the top of the first to the bottom of the last that is on screen), each a target of its own.
