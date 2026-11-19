@@ -1,4 +1,4 @@
-//! The new-session wizard without a host (`M22-P04b`, `M23-P03`): four icons first (the fourth is the terminal), then the account and folder (or the server), then the options and the start; the rows are the
+//! The new-session wizard without a host (`M22-P04b`, `M23-P03`): five icons first (the second is `agy`, the fifth the terminal), then the account and folder (or the server), then the options and the start; the rows are the
 //! one-page form's own, so each of its functions is on one page of the wizard, and what the wizard starts is what the form would start for the same answers.
 
 use serde_json::json;
@@ -54,13 +54,13 @@ fn notice(app: &App) -> String {
 }
 
 #[test]
-fn the_wizard_opens_on_step_one_with_four_icons_and_no_text_row() {
+fn the_wizard_opens_on_step_one_with_five_icons_and_no_text_row() {
     let app = both();
     assert_eq!(page(&app), 0);
-    assert_eq!(rows(&app), ["Pick(0)", "Pick(1)", "Pick(2)", "Pick(3)"]);
+    assert_eq!(rows(&app), ["Pick(0)", "Pick(1)", "Pick(2)", "Pick(3)", "Pick(4)"]);
     assert_eq!(title(&app), "New session - step 1 of 3 - Choose");
     let tiles = app.wizard_tiles().unwrap();
-    assert_eq!(tiles.iter().map(|t| (t.provider, t.enabled)).collect::<Vec<_>>(), [("claude", true), ("codex", true), ("local", true), ("terminal", true)]);
+    assert_eq!(tiles.iter().map(|t| (t.provider, t.enabled)).collect::<Vec<_>>(), [("claude", true), ("agy", false), ("codex", true), ("local", true), ("terminal", true)]);
     assert!(!app.text_mode(), "no row takes text on the first step");
     let (_, body) = app.panel_view().unwrap();
     let said = body.join("\n");
@@ -74,7 +74,7 @@ fn the_wizard_opens_on_step_one_with_four_icons_and_no_text_row() {
 fn a_tile_of_a_provider_with_no_account_is_grey_and_says_why_and_local_never_is() {
     let mut app = opened(false, &[]);
     let enabled = |app: &App| app.wizard_tiles().unwrap().iter().map(|t| t.enabled).collect::<Vec<_>>();
-    assert_eq!(enabled(&app), [false, false, true, true], "Local LLM and the terminal work with no account");
+    assert_eq!(enabled(&app), [false, false, false, true, true], "Local LLM and the terminal work with no account; agy is found or not on the machine, not by an account");
     app.wizard_pick(0);
     assert_eq!(page(&app), 0, "a grey tile is not taken");
     assert!(notice(&app).contains("Claude") && notice(&app).contains("account"), "{}", notice(&app));
@@ -82,8 +82,8 @@ fn a_tile_of_a_provider_with_no_account_is_grey_and_says_why_and_local_never_is(
     let (_, body) = app.panel_view().unwrap();
     assert!(body.iter().any(|l| l.contains("Claude") && l.contains("account")), "the word line says why: {body:?}");
     app.ui.panel.as_mut().unwrap().accounts = vec![account("a3", "codex", "Lab", true)];
-    assert_eq!(enabled(&app), [false, true, true, true], "an account of one provider lights that provider only");
-    app.wizard_pick(2);
+    assert_eq!(enabled(&app), [false, false, true, true, true], "an account of one provider lights that provider only");
+    app.wizard_pick(3);
     assert_eq!(page(&app), 1, "Local LLM is chosen with no Claude account");
 }
 
@@ -106,7 +106,7 @@ fn choosing_claude_goes_to_step_two_with_the_account_and_folder_rows() {
 #[test]
 fn choosing_codex_brings_its_own_account() {
     let mut app = both();
-    app.wizard_pick(1);
+    app.wizard_pick(2);
     assert_eq!((form(&app)["provider"].as_str().unwrap(), form(&app)["account"].as_str().unwrap()), ("codex", "a3"));
     assert_eq!(page(&app), 1);
     let (_, body) = app.panel_view().unwrap();
@@ -249,7 +249,7 @@ fn a_folder_that_is_a_git_repository_brings_the_worktree_rows_to_the_first_step(
 fn no_row_of_the_one_page_form_is_lost_in_the_wizard() {
     for (local, git, worktree) in [(false, false, false), (false, true, false), (false, true, true), (true, false, false)] {
         let mut app = both();
-        app.wizard_pick(if local { 2 } else { 0 });
+        app.wizard_pick(if local { 3 } else { 0 });
         {
             let f = app.ui.panel.as_mut().unwrap().form.as_mut().unwrap();
             (f.is_git, f.worktree) = (git, worktree);
@@ -272,7 +272,7 @@ fn no_row_of_the_one_page_form_is_lost_in_the_wizard() {
 #[test]
 fn local_llm_looks_at_this_machine_when_chosen_and_not_again_when_the_step_is_left_and_entered() {
     let mut app = both();
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     assert_eq!(page(&app), 1);
     assert_eq!(rows(&app), ["Server", "Back", "Next"]);
     assert_eq!(title(&app), "New session - step 2 of 3 - Local LLM server");
@@ -283,7 +283,7 @@ fn local_llm_looks_at_this_machine_when_chosen_and_not_again_when_the_step_is_le
     ]}));
     assert!(notice(&app).contains("Found 1 server"), "{}", notice(&app));
     assert!(app.wizard_escape());
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     assert!(!notice(&app).contains("Could not look") && !notice(&app).contains("Looking"), "a result that is there is kept and no second look is made: {}", notice(&app));
     assert_eq!(form(&app)["servers"].as_array().unwrap().len(), 1);
     let (_, body) = app.panel_view().unwrap();
@@ -293,7 +293,7 @@ fn local_llm_looks_at_this_machine_when_chosen_and_not_again_when_the_step_is_le
 #[test]
 fn local_llm_goes_on_to_the_model_and_the_name_and_starts_with_the_servers_request() {
     let mut app = both();
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     app.on_local_scan(0, json!({"ok": 1, "endpoints": [
         {"address": "127.0.0.1", "port": 11434, "kind": "ollama", "auth": "none_needed", "models": ["llama3", "qwen2"], "process": "ollama"},
     ]}));
@@ -310,7 +310,7 @@ fn local_llm_goes_on_to_the_model_and_the_name_and_starts_with_the_servers_reque
 #[test]
 fn local_llm_cannot_go_on_with_no_server_and_says_so() {
     let mut app = both();
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     app.wizard_next();
     assert_eq!(page(&app), 1);
     assert!(notice(&app).contains("Not yet"), "{}", notice(&app));
@@ -319,7 +319,7 @@ fn local_llm_cannot_go_on_with_no_server_and_says_so() {
 #[test]
 fn enter_on_the_server_row_with_no_server_looks_again_it_does_not_go_on() {
     let mut app = both();
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     app.ui.panel.as_mut().unwrap().notice.clear();
     app.form_enter();
     assert_eq!(page(&app), 1, "there is nothing to go on with");
@@ -343,7 +343,7 @@ fn enter_is_next_on_step_two_and_the_start_on_step_three_and_a_row_with_a_meanin
 #[test]
 fn enter_on_a_tile_chooses_it_and_on_back_and_next_does_what_they_say() {
     let mut app = both();
-    app.form_move(1); // the Codex tile
+    app.form_focus(Field::Pick(2)); // the Codex tile (the second is agy)
     app.form_enter();
     assert_eq!((page(&app), form(&app)["provider"].as_str().unwrap()), (1, "codex"));
     app.form_focus(Field::Back);
@@ -362,12 +362,12 @@ fn left_and_right_move_over_the_icons_and_a_click_on_a_back_or_next_row_acts() {
     assert_eq!(form(&app)["focus"], "Pick(0)");
     app.form_cycle(1);
     assert_eq!(form(&app)["focus"], "Pick(1)");
-    app.form_cycle(1);
-    app.form_cycle(1);
-    app.form_cycle(1);
+    for _ in 0..4 {
+        app.form_cycle(1);
+    }
     assert_eq!(form(&app)["focus"], "Pick(0)", "round");
     app.form_cycle(-1);
-    assert_eq!(form(&app)["focus"], "Pick(3)");
+    assert_eq!(form(&app)["focus"], "Pick(4)");
     app.wizard_pick(0);
     let next = rows(&app).iter().position(|r| r == "Next").unwrap();
     assert!(app.form_click(next));
@@ -395,20 +395,20 @@ fn another_icon_after_going_back_resets_the_account_and_the_options_of_the_first
     }
     app.wizard_pick(0);
     assert!(app.wizard_escape());
-    app.wizard_pick(1);
+    app.wizard_pick(2);
     assert_eq!((form(&app)["provider"].as_str().unwrap(), form(&app)["account"].as_str().unwrap(), form(&app)["model"].as_str().unwrap()), ("codex", "a3", "default"));
 }
 
 #[test]
 fn the_first_focus_is_the_icon_of_the_provider_the_form_opened_on_or_else_the_first_one_that_can_be_chosen() {
     assert_eq!(form(&both())["focus"], "Pick(0)");
-    assert_eq!(form(&opened_on(false, &[("a3", "codex")], "codex"))["focus"], "Pick(1)", "the provider the form opened on");
-    assert_eq!(form(&opened_on(false, &[("a3", "codex")], "claude"))["focus"], "Pick(1)", "the last provider has no account any more: the first one that has");
-    assert_eq!(form(&opened_on(false, &[], "claude"))["focus"], "Pick(2)", "with no account at all only Local LLM can be chosen, and it has the focus");
+    assert_eq!(form(&opened_on(false, &[("a3", "codex")], "codex"))["focus"], "Pick(2)", "the provider the form opened on");
+    assert_eq!(form(&opened_on(false, &[("a3", "codex")], "claude"))["focus"], "Pick(2)", "the last provider has no account any more: the first one that has");
+    assert_eq!(form(&opened_on(false, &[], "claude"))["focus"], "Pick(3)", "with no account at all only Local LLM can be chosen, and it has the focus: not agy, which is no provider of a session");
     let mut app = both();
-    app.wizard_pick(1);
+    app.wizard_pick(2);
     assert!(app.wizard_escape());
-    assert_eq!(form(&app)["focus"], "Pick(1)", "back from a step the icon that was chosen has the focus");
+    assert_eq!(form(&app)["focus"], "Pick(2)", "back from a step the icon that was chosen has the focus");
 }
 
 #[test]
@@ -426,8 +426,8 @@ fn the_state_says_the_step_the_tiles_and_nothing_when_the_one_page_form_is_open(
     let f = form(&app);
     assert_eq!((f["wizard"]["page"].clone(), f["wizard"]["pages"].clone(), f["wizard"]["home"].clone()), (json!(0), json!(3), json!(false)));
     let tiles = f["tiles"].as_array().unwrap();
-    assert_eq!(tiles.iter().map(|t| t["provider"].as_str().unwrap()).collect::<Vec<_>>(), ["claude", "codex", "local", "terminal"]);
-    assert_eq!(tiles.iter().map(|t| t["word"].as_str().unwrap()).collect::<Vec<_>>(), ["Claude", "Codex", "Local LLM", "Terminal"]);
+    assert_eq!(tiles.iter().map(|t| t["provider"].as_str().unwrap()).collect::<Vec<_>>(), ["claude", "agy", "codex", "local", "terminal"]);
+    assert_eq!(tiles.iter().map(|t| t["word"].as_str().unwrap()).collect::<Vec<_>>(), ["Claude", "agy", "Codex", "Local LLM", "Terminal"]);
     assert_eq!(tiles.iter().filter(|t| t["focus"] == json!(true)).count(), 1);
     let one_page = app_with_form();
     assert_eq!((form(&one_page)["wizard"].clone(), form(&one_page)["tiles"].clone()), (json!(null), json!(null)));
@@ -459,11 +459,11 @@ fn the_wizard_steps_and_their_text_fit_a_window_of_600_pixels() {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- the terminal icon (`M23-P03`, `M23-P03a`)
 
 #[test]
-fn the_terminal_icon_needs_no_account_and_has_the_fourth_place() {
+fn the_terminal_icon_needs_no_account_and_has_the_fifth_place() {
     let app = opened(false, &[]);
-    assert_eq!(rows(&app), ["Pick(0)", "Pick(1)", "Pick(2)", "Pick(3)"]);
+    assert_eq!(rows(&app), ["Pick(0)", "Pick(1)", "Pick(2)", "Pick(3)", "Pick(4)"]);
     let tiles = app.wizard_tiles().unwrap();
-    assert_eq!(tiles.iter().map(|t| (t.provider, t.word, t.enabled)).collect::<Vec<_>>(), [("claude", "Claude", false), ("codex", "Codex", false), ("local", "Local LLM", true), ("terminal", "Terminal", true)]);
+    assert_eq!(tiles.iter().map(|t| (t.provider, t.word, t.enabled)).collect::<Vec<_>>(), [("claude", "Claude", false), ("agy", "agy", false), ("codex", "Codex", false), ("local", "Local LLM", true), ("terminal", "Terminal", true)]);
     let said = app.panel_view().unwrap().1.join("\n");
     assert!(!said.contains("Terminal needs") && !said.contains("and Terminal"), "a terminal is never said to need an account: {said}");
 }
@@ -471,12 +471,43 @@ fn the_terminal_icon_needs_no_account_and_has_the_fourth_place() {
 #[test]
 fn choosing_the_terminal_opens_a_shell_at_once_with_no_step_and_no_account() {
     let mut app = opened(false, &[]);
-    app.wizard_pick(3);
+    app.wizard_pick(4);
     assert!(app.ui.panel.is_none(), "the panel is gone: the Terminal icon has no step after it");
     assert!(app.ui.flash.as_deref().is_some_and(|f| f.contains("terminal refused")), "(no host answers here, and the window says so): {:?}", app.ui.flash);
     let mut with_accounts = both();
-    with_accounts.wizard_pick(3);
+    with_accounts.wizard_pick(4);
     assert!(with_accounts.ui.panel.is_none(), "the same with accounts: nothing is asked");
+}
+
+// ---- M23-P04c: the agy picture ----
+
+#[test]
+fn the_agy_picture_is_second_and_grey_with_its_own_reason_until_agy_is_found_and_asks_for_no_account() {
+    let mut app = opened(false, &[]);
+    let agy = |app: &App| app.wizard_tiles().unwrap().into_iter().find(|t| t.provider == "agy").map(|t| (t.word, t.enabled)).unwrap();
+    assert_eq!(agy(&app), ("agy", false), "the unit tests start with none found");
+    let said = app.panel_view().unwrap().1.join("\n");
+    assert!(said.contains("agy is not installed on this machine"), "{said}");
+    assert!(said.contains("Claude and Codex need an account first") && !said.contains("agy need") && !said.contains("and agy") && !said.contains("agy and"), "agy is no matter of an account: {said}");
+    app.wizard_pick(1);
+    assert_eq!(page(&app), 0, "a grey picture is not taken");
+    assert_eq!(form(&app)["focus"], "Pick(1)");
+    assert!(notice(&app).contains("agy is not installed on this machine") && !notice(&app).contains("account"), "{}", notice(&app));
+    assert!(app.panel_view().unwrap().1.join("\n").contains("agy: not installed"), "the word line of the picture that has the focus");
+    app.ui.panel.as_mut().unwrap().agy = true;
+    app.ui.panel.as_mut().unwrap().notice.clear(); // (the sentence of the click above would still be there)
+    assert_eq!(agy(&app), ("agy", true), "found: it needs no account of Lico's");
+    let said = app.panel_view().unwrap().1.join("\n");
+    assert!(!said.contains("not installed") && said.contains("Claude and Codex need an account first"), "{said}");
+}
+
+#[test]
+fn choosing_a_found_agy_closes_the_panel_and_opens_a_terminal_and_no_step_follows() {
+    let mut app = opened(false, &[]);
+    app.ui.panel.as_mut().unwrap().agy = true;
+    app.wizard_pick(1);
+    assert!(app.ui.panel.is_none(), "no step after it, as after the Terminal picture");
+    assert!(app.ui.flash.as_deref().is_some_and(|f| f.contains("terminal refused")), "(no host answers here, and the window says so): {:?}", app.ui.flash);
 }
 
 #[test]
@@ -491,13 +522,13 @@ fn another_icon_is_still_a_step_and_the_focus_returns_to_it_on_back() {
 }
 
 #[test]
-fn left_and_right_go_round_the_four_icons() {
+fn left_and_right_go_round_the_five_icons() {
     let mut app = both();
-    app.form_focus(Field::Pick(3));
+    app.form_focus(Field::Pick(4));
     app.form_cycle(1);
-    assert_eq!(form(&app)["focus"], "Pick(0)", "after the fourth, the first");
+    assert_eq!(form(&app)["focus"], "Pick(0)", "after the fifth, the first");
     app.form_cycle(-1);
-    assert_eq!(form(&app)["focus"], "Pick(3)", "and before the first, the fourth");
+    assert_eq!(form(&app)["focus"], "Pick(4)", "and before the first, the fifth");
 }
 
 // ---- M22-P07: the choices of steps two and three as chips and cards painted over the rows ----
@@ -609,7 +640,7 @@ fn local_llm_has_a_card_per_server_the_chosen_one_filled_and_its_models_as_chips
         (f.local, f.scanned) = (true, true);
         f.servers = vec![server("127.0.0.1:1111", &["tiny"]), server("127.0.0.1:2222", &["qwen-small", "tiny-llama"])];
     });
-    app.wizard_pick(2);
+    app.wizard_pick(3);
     let first = app.wizard_cards();
     let servers: Vec<&CardRow> = first.iter().filter(|r| r.items.len() == 1 && r.items[0].text.contains("127.0.0.1:")).collect();
     assert_eq!(servers.len(), 2, "one card per server: {first:?}");

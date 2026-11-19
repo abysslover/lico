@@ -2,11 +2,15 @@
 //! that is not one) and what it types into the new shell. The window here has no socket, so the answers of the host are put in as it would give them. The real window with a real host and
 //! a program named `agy` is `tests/test_agy_chats.py`.
 
+use std::ffi::OsStr;
+use std::os::unix::fs::PermissionsExt;
+use std::path::{Path, PathBuf};
+
 use serde_json::{json, Value};
 
 use super::super::scroll_oracle::app;
 use super::super::sidebar_chats::ChatEntry;
-use super::agy::{valid_conversation, Plan};
+use super::agy::{installed, valid_conversation, Plan, START_LINE};
 use super::view::TermJob;
 
 const ID: &str = "11111111-aaaa-4bbb-8ccc-000000000001";
@@ -118,4 +122,84 @@ fn a_click_on_a_card_with_a_bad_id_starts_nothing_and_says_so() {
     a.chats_activate_entry(0);
     assert!(a.ui.terminal.tabs.is_empty() && a.ui.terminal.queue.is_empty());
     assert_eq!(a.ui.flash.as_deref(), Some("That conversation cannot be opened here."));
+}
+
+// ---- M23-P04c: the `agy` picture of New session ----
+
+/// A folder under the system's temporary one that is removed when it goes out of scope.
+struct Dir(PathBuf);
+
+impl Dir {
+    fn new() -> Dir {
+        let dir = std::env::temp_dir().join(format!("lico_agyfind_{}", crate::core::random_hex(8)));
+        std::fs::create_dir_all(&dir).unwrap();
+        Dir(dir)
+    }
+
+    fn at(&self, rel: &str) -> PathBuf {
+        self.0.join(rel)
+    }
+}
+
+impl Drop for Dir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// A file named `agy` in `dir` with the permission bits `mode`.
+fn program(dir: &Path, mode: u32) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(dir.join("agy"), "#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(dir.join("agy"), std::fs::Permissions::from_mode(mode)).unwrap();
+}
+
+#[test]
+fn agy_is_found_as_an_executable_file_in_a_folder_of_the_path_or_in_the_two_folders_of_the_home() {
+    let d = Dir::new();
+    let (bin, other) = (d.at("bin"), d.at("other"));
+    program(&bin, 0o755);
+    std::fs::create_dir_all(&other).unwrap();
+    let path = std::env::join_paths([&other, &bin]).unwrap();
+    assert!(installed(Some(&path), None), "in a folder of the PATH, not the first");
+    assert!(!installed(Some(other.as_os_str()), None), "no program in the folder");
+    assert!(!installed(None, None) && !installed(Some(OsStr::new("")), None), "no PATH, an empty one");
+    for folder in [".local/bin", "bin"] {
+        let home = Dir::new();
+        program(&home.at(folder), 0o700);
+        assert!(installed(None, Some(&home.0)), "{folder} of the home");
+    }
+    let home = Dir::new();
+    program(&home.at(".local/share/bin"), 0o755);
+    assert!(!installed(None, Some(&home.0)), "only those two folders of the home");
+}
+
+#[test]
+fn a_file_that_cannot_run_a_folder_a_dangling_link_and_a_relative_entry_are_not_agy_and_a_link_to_a_program_is() {
+    let d = Dir::new();
+    program(&d.at("noexec"), 0o644);
+    std::fs::create_dir_all(d.at("dir/agy")).unwrap();
+    std::fs::create_dir_all(d.at("gone")).unwrap();
+    std::os::unix::fs::symlink(d.at("nowhere"), d.at("gone/agy")).unwrap();
+    for folder in ["noexec", "dir", "gone"] {
+        assert!(!installed(Some(d.at(folder).as_os_str()), None), "{folder}");
+    }
+    program(&d.at("real"), 0o755);
+    std::fs::create_dir_all(d.at("links")).unwrap();
+    std::os::unix::fs::symlink(d.at("real/agy"), d.at("links/agy")).unwrap();
+    assert!(installed(Some(d.at("links").as_os_str()), None), "a link to a program counts");
+    // a relative entry of the PATH is the folder the window happens to be in: never looked in, though it resolves from here
+    let up = "../".repeat(std::env::current_dir().unwrap().components().count() - 1);
+    let rel = format!("{up}{}", d.at("real").to_string_lossy().trim_start_matches('/'));
+    assert!(Path::new(&rel).join("agy").is_file(), "the relative path resolves from here: {rel}");
+    assert!(!installed(Some(OsStr::new(&rel)), None), "{rel}");
+}
+
+#[test]
+fn the_picture_types_agy_and_enter_and_nothing_else_into_a_new_shell_and_the_tab_is_for_no_conversation() {
+    assert_eq!(START_LINE, "agy\r");
+    let mut a = app(1.0, false);
+    a.on_terminal_async(TermJob::OpenTyping { line: START_LINE.into(), conversation: None }, opened("t1", "/work/one"));
+    assert_eq!(a.ui.terminal.queue.iter().map(|(t, b)| (t.as_str(), b.clone())).collect::<Vec<_>>(), vec![("t1", b"agy\r".to_vec())]);
+    assert!(a.ui.terminal.tabs[0].conversation.is_none(), "a fresh start: no conversation is known");
 }

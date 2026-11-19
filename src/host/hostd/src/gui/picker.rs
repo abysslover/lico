@@ -1,4 +1,4 @@
-//! What the window paints over the main area after its text (`M22-P04b`): the browser page, and the three icons of the new-session wizard's first step (Claude, Codex, Local LLM), drawn over
+//! What the window paints over the main area after its text (`M22-P04b`): the browser page, and the icons of the new-session wizard's first step (Claude, agy, Codex, Local LLM, Terminal), drawn over
 //! the blank lines the panel's body keeps for them. Each icon is a square with a target of its own (`Action::WizardPick`); the one the keys are on has a ring, the one the pointer is on is
 //! lit, and an icon of a provider with no account is grey. Nothing here reads the host: what the icons are is the wizard's (`newsession_wizard.rs`).
 
@@ -85,7 +85,7 @@ impl App {
         let rects = tile_rects([list_w as f32 + 4.0 * s, first.0, width as f32 - 4.0 * s, last.1], s, tiles.len());
         let looks: Vec<Look> = tiles
             .iter()
-            .map(|t| Look { icon: match t.provider { "claude" => Icon::Claude, "codex" => Icon::Codex, "terminal" => Icon::Terminal, _ => Icon::Local }, enabled: t.enabled, focused: t.focused, hovered: t.hovered })
+            .map(|t| Look { icon: match t.provider { "claude" => Icon::Claude, "codex" => Icon::Codex, "agy" => Icon::Agy, "terminal" => Icon::Terminal, _ => Icon::Local }, enabled: t.enabled, focused: t.focused, hovered: t.hovered })
             .collect();
         draw_tiles(buf, width, height, s, &rects, &looks);
         for (i, r) in rects.iter().enumerate() {
@@ -112,6 +112,17 @@ mod tests {
         assert!(r[0][0] >= region[0] && r[2][2] <= region[2] && r[0][1] >= region[1] && r[0][3] <= region[3], "inside the room: {r:?}");
         let gaps = [r[1][0] - r[0][2], r[2][0] - r[1][2]];
         assert!(gaps[0] > 6.0 && (gaps[0] - gaps[1]).abs() < 1.5, "a gap that holds the focus ring: {gaps:?}");
+    }
+
+    #[test]
+    fn five_squares_of_one_size_fit_the_room_the_window_gives_them_with_a_gap_between() {
+        let region = [334.0, 100.0, 900.0, 208.0];
+        let r = tile_rects(region, 1.0, 5);
+        assert_eq!(r.len(), 5, "the five icons of the first step (M23-P04c)");
+        let sides: Vec<f32> = r.iter().map(|q| q[2] - q[0]).collect();
+        assert!(sides.iter().all(|w| (*w - sides[0]).abs() <= 1.0) && sides[0] >= 40.0, "squares of one size, to the pixel: {sides:?}");
+        assert!(r[0][0] >= region[0] && r[4][2] <= region[2], "inside the room: {r:?}");
+        assert!(r.windows(2).all(|w| w[1][0] - w[0][2] > 6.0), "a gap that holds the focus ring: {r:?}");
     }
 
     #[test]

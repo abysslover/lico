@@ -52,6 +52,7 @@ pub struct Panel {
     pub send: Option<sendto::Outgoing>, // what the send-to-session panel holds
     pub card: Option<cardview::View>, // the text of a request, as far as it was read
     pub files: Option<files_ui::Explorer>, // on-demand working-directory viewer
+    pub agy: bool, // a program named `agy` was found on this machine when New session opened (`M23-P04c`): the `agy` picture is not grey
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
@@ -167,7 +168,7 @@ impl App {
         (self.ui.sel, self.ui.dragging, self.ui.drag_origin, self.ui.drag_moved) = (None, false, None, false);
         let stash = self.ed.take();
         self.preedit.clear();
-        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), pending_check_req: 0, login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None });
+        self.ui.panel = Some(Panel { step, provider: String::new(), account: String::new(), notice: String::new(), accounts: Vec::new(), new_ssh_host: None, ssh_hosts: Vec::new(), pending_check_req: 0, login: Value::Null, confirm: None, last_error: String::new(), mode: "auto", opened: false, stash, form: None, ask: None, send: None, card: None, files: None, agy: false });
         self.sync_quiet();
         if step == Step::Accounts {
             self.load_accounts();

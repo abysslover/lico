@@ -105,32 +105,35 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             _ready(w)
             w.click(*centre(_button(w, "new_session")["rect"]))
 
-            # step one: four icons and nothing else; Codex has no account here, so it is grey, and Local LLM and Terminal never are
+            # step one: five icons and nothing else; Codex has no account here and agy is not on the window's PATH, so they are grey, and Local LLM and Terminal never are
             first = _step(w, 0)
             form = first["form"]
             assert first["title"] == "New session - step 1 of 3 - Choose" and first["text_entry"] is False
-            assert [t["provider"] for t in form["tiles"]] == ["claude", "codex", "local", "terminal"] and [t["enabled"] for t in form["tiles"]] == [True, False, True, True]
-            assert [t["icon"] for t in form["tiles"]] == ["claude", "codex", "local", "terminal"] and [t["word"] for t in form["tiles"]] == ["Claude", "Codex", "Local LLM", "Terminal"]
+            assert [t["provider"] for t in form["tiles"]] == ["claude", "agy", "codex", "local", "terminal"] and [t["enabled"] for t in form["tiles"]] == [True, False, False, True, True]
+            assert [t["icon"] for t in form["tiles"]] == ["claude", "agy", "codex", "local", "terminal"] and [t["word"] for t in form["tiles"]] == ["Claude", "agy", "Codex", "Local LLM", "Terminal"]
             said = "\n".join(first["body"])
             assert not any(word in said for word in ("Provider", "Account", "Folder", "Name", "Model", "Effort", "Start session")), first["body"]
-            assert "Codex needs an account first" in said, first["body"]
+            assert "Codex needs an account first" in said and "agy is not installed on this machine" in said and "agy needs an account" not in said, first["body"]
             rects = [t["rect"] for t in form["tiles"]]
             assert len({(round(r[2] - r[0]), round(r[3] - r[1])) for r in rects}) == 1 and rects[0][2] - rects[0][0] >= 40 and all(a[2] < b[0] for a, b in zip(rects, rects[1:])), rects
-            claude, codex, local, _terminal = rects
+            claude, agy, codex, local, _terminal = rects
             assert _ink(w, claude, 180) > 150 and _ink(w, local, 180) > 150, "the icons are drawn"
-            assert _ink(w, codex, 180) == 0 and _ink(w, codex, 90) > 100, "the icon with no account is drawn dim"
+            assert _ink(w, codex, 180) == 0 and _ink(w, codex, 90) > 100 and _ink(w, agy, 180) == 0 and _ink(w, agy, 90) > 100, "the icons with no account and with no agy are drawn dim"
             assert form["tiles"][0]["focus"] is True and _gray(w, claude) > _gray(w, local) > _gray(w, codex), "the focus is lit, an icon that can be chosen is not, a grey one is darker still"
 
             # the pointer lights an icon, and the word under the icons is the one the pointer is on
             w.move(*centre(local))
             hovered = _step(w, 0)["form"]["tiles"]
-            assert [t["hover"] for t in hovered] == [False, False, True, False] and _gray(w, local) == _gray(w, claude), hovered
+            assert [t["hover"] for t in hovered] == [False, False, False, True, False] and _gray(w, local) == _gray(w, claude), hovered
             assert "Local LLM" in _step(w, 0)["body"], "the word of the icon the pointer is on"
 
             # a click on a grey icon takes nothing: it says why
             w.click(*centre(codex))
             grey = _step(w, 0)
-            assert grey["form"]["focus"] == "Pick(1)" and any("Codex needs an account" in line for line in grey["body"]) and grey["form"]["wizard"]["page"] == 0
+            assert grey["form"]["focus"] == "Pick(2)" and any("Codex needs an account" in line for line in grey["body"]) and grey["form"]["wizard"]["page"] == 0
+            w.click(*centre(agy))
+            grey = _step(w, 0)
+            assert grey["form"]["focus"] == "Pick(1)" and any("agy is not installed on this machine" in line for line in grey["body"]) and grey["form"]["wizard"]["page"] == 0 and w.ui()["terminal"]["tabs"] == [], "agy is not on the PATH: the click opens nothing and says why"
 
             # Esc on the first step closes the screen; the keys do what they say on the icons: Right and Left move, Enter chooses
             w.key("Escape")
@@ -195,13 +198,13 @@ def test_local_llm_needs_no_account_and_looks_at_this_machine_as_soon_as_its_ico
                 _ready(w)
                 w.click(*centre(_button(w, "new_session")["rect"]))
                 first = _step(w, 0)
-                assert [t["enabled"] for t in first["form"]["tiles"]] == [False, False, True, True], "no account: Claude and Codex are grey, Local LLM and Terminal are not"
-                assert first["form"]["focus"] == "Pick(2)", "and it has the focus"
+                assert [t["enabled"] for t in first["form"]["tiles"]] == [False, False, False, True, True], "no account and no agy: Claude, agy and Codex are grey, Local LLM and Terminal are not"
+                assert first["form"]["focus"] == "Pick(3)", "and it has the focus"
                 assert any("Claude and Codex need an account first" in line for line in first["body"]), first["body"]
                 time.sleep(0.8)
                 assert server.connections == 0, "the icons look at nothing"
 
-                w.click(*centre(first["form"]["tiles"][2]["rect"]))
+                w.click(*centre(first["form"]["tiles"][3]["rect"]))
                 second = _step(w, 1)
                 wait_for(lambda: w.ui()["panel"]["form"]["scanned"])
                 form = w.ui()["panel"]["form"]

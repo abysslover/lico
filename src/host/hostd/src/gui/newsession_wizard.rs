@@ -1,4 +1,4 @@
-//! The new-session wizard (`M22-P04b`, `M23-P03`): the one-page form's rows shared out over three steps. Step one is four icons (Claude, Codex, Local LLM and Terminal: the window draws them, see
+//! The new-session wizard (`M22-P04b`, `M23-P03`): the one-page form's rows shared out over three steps. Step one is five icons (Claude, agy, Codex, Local LLM and Terminal: the window draws them, see
 //! `toolbar/picker.rs`) and nothing else; the Terminal icon has no step after it: it opens a shell at once, a terminal tab and not a session, in the current folder (`M23-P03a`); step two is the account and the folder (Local LLM: the server); step three is the options and the start. Every step ends with Back and
 //! Next (Start on the last). The rows, the checks, the sign-in, the recent folders, the look for servers and the request are the form's own: nothing is done twice and no function of
 //! the one-page form is lost (it stays as File > New session options...).
@@ -9,8 +9,9 @@ use super::*;
 /// The blank lines the first step keeps for the icons (the window paints them over these).
 const TILE_LINES: usize = 6;
 const STEPS: usize = 3;
-/// The icons of the first step: the three providers (the form's own `PROVIDERS`, at the same places) and the terminal, which needs no account and has no provider.
-pub(super) const PICKS: [&str; 4] = ["claude", "codex", "local", "terminal"];
+/// The icons of the first step: the three providers (the form's own `PROVIDERS`), `agy` between Claude and Codex (a program of the person's started in a terminal, `M23-P04c`: no provider of a
+/// session) and the terminal, which needs no account and has no provider.
+pub(super) const PICKS: [&str; 5] = ["claude", "agy", "codex", "local", "terminal"];
 
 /// Where the wizard is: the step (`0` the icons, `1` the account and folder or the server, `2` the options and the start) and whether it is for a Home session (no folder).
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -64,6 +65,7 @@ fn word(kind: &str) -> &'static str {
     match kind {
         "local" => "Local LLM",
         "terminal" => "Terminal",
+        "agy" => "agy",
         "codex" => "Codex",
         _ => "Claude",
     }
@@ -102,9 +104,9 @@ fn page_of(field: Field) -> usize {
 }
 
 impl Panel {
-    /// An icon is for a provider with an account, or for Local LLM and the terminal, which need none.
+    /// An icon is for a provider with an account, or for Local LLM and the terminal, which need none, or for `agy` when the program was found (it has no account of Lico's).
     fn tile_enabled(&self, kind: &str) -> bool {
-        kind == "local" || kind == "terminal" || self.accounts.iter().any(|a| a.1 == kind)
+        kind == "local" || kind == "terminal" || (kind == "agy" && self.agy) || self.accounts.iter().any(|a| a.1 == kind)
     }
 }
 
@@ -139,7 +141,7 @@ impl Form {
 /// The row that has the focus when a step is shown.
 fn focus_of(p: &Panel, f: &Form, page: usize) -> Field {
     match page {
-        0 => Field::Pick(PROVIDERS.iter().position(|k| *k == p.provider).unwrap_or(0)),
+        0 => Field::Pick(PICKS.iter().position(|k| *k == p.provider).unwrap_or(0)),
         1 if f.local => Field::Server,
         1 if f.wiz.is_some_and(|w| w.home) => Field::Account,
         1 => Field::Folder,
@@ -156,15 +158,15 @@ impl App {
 
     /// The form that is open becomes the wizard, on its first step with the focus on the icon of the provider it opened on, or else on the first one that can be chosen.
     pub(super) fn wizard_begin(&mut self, home: bool) {
+        self.agy_look(); // is there an `agy` on this machine: looked for each time the wizard opens
         self.with_form(|p, f| {
             f.wiz = Some(Wiz { page: 0, home });
             if home {
                 f.folder.clear();
                 f.checked_folder = "\x00".to_string();
             }
-            let at = PROVIDERS.iter().position(|k| *k == p.provider).unwrap_or(0);
-            let first = if p.tile_enabled(PROVIDERS[at]) { at } else { PROVIDERS.iter().position(|k| p.tile_enabled(k)).unwrap_or(PROVIDERS.len() - 1) };
-            f.focus = Field::Pick(first);
+            let kind = if PROVIDERS.contains(&p.provider.as_str()) && p.tile_enabled(&p.provider) { p.provider.as_str() } else { PROVIDERS.iter().copied().find(|k| p.tile_enabled(k)).unwrap_or("local") };
+            f.focus = Field::Pick(PICKS.iter().position(|k| *k == kind).unwrap_or(0)); // (agy and the terminal are never the first focus of a form that opened on a provider)
         });
         self.form_check_git();
         self.form_resume();
@@ -197,7 +199,7 @@ impl App {
         let Some(kind) = PICKS.get(i).copied().filter(|_| self.wizard_page() == Some(0)) else { return };
         let usable = self.ui.panel.as_ref().is_some_and(|p| p.tile_enabled(kind));
         if !usable {
-            let why = format!("{} needs an account first: the person icon in the toolbar adds one.", word(kind));
+            let why = if kind == "agy" { "agy is not installed on this machine.".to_string() } else { format!("{} needs an account first: the person icon in the toolbar adds one.", word(kind)) };
             self.with_form(|p, f| {
                 f.focus = Field::Pick(i);
                 p.notice = why;
@@ -208,6 +210,11 @@ impl App {
         if kind == "terminal" {
             self.panel_close();
             self.terminal_open_here();
+            return;
+        }
+        if kind == "agy" {
+            self.panel_close();
+            self.agy_start(); // a terminal in the folder on the left with `agy` typed into it (`M23-P04c`)
             return;
         }
         let mut look = false;
@@ -338,12 +345,22 @@ impl App {
             let tiles = self.tiles_of(p, f);
             let mut lines = vec![" ".to_string(); TILE_LINES]; // (a space: an empty line would have no height)
             if let Some(t) = tiles.iter().find(|t| t.hovered).or_else(|| tiles.iter().find(|t| t.focused)) {
-                lines.push(if t.enabled { t.word.to_string() } else { format!("{}: no account yet", t.word) });
+                lines.push(match (t.enabled, t.provider) {
+                    (true, _) => t.word.to_string(),
+                    (false, "agy") => format!("{}: not installed", t.word),
+                    (false, _) => format!("{}: no account yet", t.word),
+                });
             }
-            let grey: Vec<&str> = tiles.iter().filter(|t| !t.enabled).map(|t| t.word).collect();
-            if !grey.is_empty() {
+            let grey: Vec<&str> = tiles.iter().filter(|t| !t.enabled && t.provider != "agy").map(|t| t.word).collect();
+            let no_agy = tiles.iter().any(|t| t.provider == "agy" && !t.enabled);
+            if !grey.is_empty() || no_agy {
                 lines.push(String::new());
+            }
+            if !grey.is_empty() {
                 lines.push(format!("{} {} an account first: the person icon in the toolbar adds one.", grey.join(" and "), if grey.len() == 1 { "needs" } else { "need" }));
+            }
+            if no_agy {
+                lines.push("agy is not installed on this machine.".into());
             }
             return lines;
         }

@@ -339,8 +339,8 @@ def test_the_fourth_icon_opens_a_terminal_at_once_in_the_current_folder_with_no_
             new_session_button(w)
             first = wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]) and p)
             tiles = first["form"]["tiles"]
-            assert [t["provider"] for t in tiles] == ["claude", "codex", "local", "terminal"] and tiles[3]["enabled"], tiles
-            w.click(*centre(tiles[3]["rect"]))
+            assert [t["provider"] for t in tiles] == ["claude", "agy", "codex", "local", "terminal"] and tiles[4]["enabled"], tiles
+            w.click(*centre(tiles[4]["rect"]))
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["header"] and "lico$" in "\n".join(u["terminal"]["lines"] or []) and u["terminal"])
             assert str(project) in started["header"] and started["tabs"][0]["cwd"] == str(project), "the folder Directories is on: " + started["header"]
             assert str(project) in run(w, "pwd", str(project) + "\n")
@@ -360,7 +360,7 @@ def test_the_fourth_icon_opens_a_terminal_at_once_in_the_current_folder_with_no_
             wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] and s["loading"] is None and s["load_count"] > 0)
             new_session_button(w)
             wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]))
-            w.click(*centre(w.ui()["panel"]["form"]["tiles"][3]["rect"]))
+            w.click(*centre(w.ui()["panel"]["form"]["tiles"][4]["rect"]))
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
             shown = w.ui()["sidebar"]["cwd"]
             assert shown and Path(shown).is_dir() and started["tabs"][0]["cwd"] == shown, (shown, started["tabs"])
@@ -370,7 +370,7 @@ def terminal_from_the_icon(w: ProductWindow) -> dict:
     """The toolbar's New session icon and then the Terminal picture: the shell is opened at once; returns the terminal's state when it is shown."""
     new_session_button(w)
     wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]))
-    w.click(*centre(w.ui()["panel"]["form"]["tiles"][3]["rect"]))
+    w.click(*centre(w.ui()["panel"]["form"]["tiles"][4]["rect"]))
     return wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
 
 
