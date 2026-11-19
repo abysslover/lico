@@ -11,7 +11,7 @@ from lico_measure.rig import private_dir
 from tests.gui_helpers import centre
 from tests.test_agy_chats import flat
 from tests.test_codex_adapter import usual_umask, wait_for
-from tests.test_terminal_tab import new_session_button, rig, shot, tab, term
+from tests.test_terminal_tab import new_session_button, rig, shot, tab, term, walk_then_choose_home
 
 FAKE = '#!/bin/sh\necho "agy-up $# args in $(pwd)"\nsleep 60\n'
 
@@ -72,6 +72,25 @@ def test_the_agy_picture_is_second_starts_plain_agy_in_a_terminal_in_the_folder_
             assert first["picture_rect"], "P04a: the tab shows the agy picture"
             assert len(term(w)["tabs"]) == 1 and len(Conn(w.socket).call(op="terminal.list")["terminals"]) == 1
             shot(w, "12_agy_started_from_new_session.png")
+
+
+def test_agy_starts_in_the_folder_the_left_lists_also_when_the_scope_is_home():
+    """The owner's report (2026-11-20): the folder agy ran in had nothing to do with the work directory. Its own log says where it ran; here the fake prints it."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = root.resolve() / "project"
+        (project / "inner").mkdir(parents=True)
+        fake_agy(root / "bin")
+
+        def before(w: ProductWindow) -> None:
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="start")["ok"] == 1
+
+        with ProductWindow(**rig(root, path_prefix=str(root / "bin"), before_window=before)) as w:
+            listed = walk_then_choose_home(w, project)
+            w.click(*centre(agy_tile(w)["rect"]))
+            started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
+            assert started["tabs"][0]["cwd"] == str(listed), "the folder the left lists, not the one kept (" + str(project) + "): " + str(started["tabs"])
+            wait_for(lambda: f"agy-up 0 args in {listed}" in flat(w))
 
 
 def test_agy_in_the_home_bin_is_found_and_a_file_that_cannot_run_is_not_and_a_grey_picture_says_why_and_opens_nothing():

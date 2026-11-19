@@ -418,7 +418,10 @@ fn the_folder_directories_shows_is_the_start_folder_and_it_wins_over_the_last_on
     assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "Directories on an ssh host shows a folder of another machine: not used");
     a.ui.sidebar.ssh_host = None;
     a.ui.sidebar.global_scope = true;
-    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the Global scope has no folder of its own");
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(shown.as_str()), "the Home scope still lists a folder (M23-P04d, the owner's word): the one on the left counts");
+    a.ui.sidebar.cwd.clear();
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the Home scope with nothing listed: the last one kept");
+    a.ui.sidebar.cwd = shown.clone();
     a.ui.sidebar.global_scope = false;
     a.ui.sidebar.unreachable = true;
     assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "a listing that failed is not a folder to start in");
@@ -428,7 +431,10 @@ fn the_folder_directories_shows_is_the_start_folder_and_it_wins_over_the_last_on
     a.ui.sidebar.cwd = shown.clone();
     assert_eq!(a.terminal_start_dir().as_deref(), Some(shown.as_str()), "the owner's word: the folder on the left decides, also with a session in front");
     a.ui.sidebar.global_scope = true;
-    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the left shows no folder of this machine (Home): the session in front's");
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(shown.as_str()), "a session in front and the left in the Home scope with a folder listed: the folder on the left (M23-P04d)");
+    a.ui.sidebar.cwd.clear();
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the Home scope with nothing listed: the session in front's");
+    a.ui.sidebar.cwd = shown.clone();
     a.ui.sidebar.global_scope = false;
     a.ui.sidebar.ssh_host = Some("box".into());
     assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the left is on another machine: the session in front's");

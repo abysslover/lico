@@ -432,6 +432,34 @@ def test_a_terminal_starts_in_the_folder_on_the_left_also_when_a_session_is_in_f
             assert started["tabs"][0]["cwd"] == str(project / "inner"), "the folder on the left, not the session's " + str(project) + ": " + str(started["tabs"])
 
 
+def walk_then_choose_home(w: ProductWindow, project: Path) -> Path:
+    """Walks Directories into `project/inner`, then clicks the Home row: the scope is Home and the list goes on showing `inner` (M23-P04d). Returns the folder the list shows."""
+    side = wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project) and s["loading"] is None and any(e["name"] == "inner" and e["rect"] for e in s["entries"]) and s)
+    w.click(*centre(next(e for e in side["entries"] if e["name"] == "inner")["rect"]))
+    wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project / "inner") and s["loading"] is None and s["global_rect"])
+    w.click(*centre(w.ui()["sidebar"]["global_rect"]))
+    side = wait_for(lambda: (s := w.ui()["sidebar"]) and s["global_scope"] is True and s)
+    assert side["cwd"] == str(project / "inner"), "the Home row changes the scope, not the list: " + str(side["cwd"])
+    return project / "inner"
+
+
+def test_a_terminal_starts_in_the_folder_the_left_lists_also_when_the_scope_is_home():
+    """The owner's report (2026-11-20, after M23-P04c): the folder agy ran in had nothing to do with the work directory. With a session that has no folder in front, or after a click on the
+    Home row, the scope is Home while Directories goes on listing a folder; that folder is the work directory (the owner's word), and the rule used to skip it for the last folder kept."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = root.resolve() / "project"
+        (project / "inner").mkdir(parents=True)
+
+        def before(w: ProductWindow) -> None:
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="start")["ok"] == 1
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
+            listed = walk_then_choose_home(w, project)
+            started = terminal_from_the_icon(w)
+            assert started["tabs"][0]["cwd"] == str(listed), "the folder the left lists, not the one kept (" + str(project) + "): " + str(started["tabs"])
+
+
 def test_korean_composes_in_the_terminal_and_the_shell_gets_the_committed_text_only():
     from lico_measure.ime import SENTENCE_KEYS
 

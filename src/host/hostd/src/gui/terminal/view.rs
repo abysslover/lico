@@ -161,13 +161,15 @@ impl App {
         self.terminal_open(cwd);
     }
 
-    /// The folder a terminal starts in, from the menu and from the Terminal icon: the folder Directories shows now (`M23-P03d`, the owner's word: the left decides; `M23-P03c` made it
-    /// count at all, since `saved_cwd` does not follow the person's moves), else the folder of the session in front (when the left shows none of this machine's: an ssh host, the Home scope,
-    /// a failed listing), else the last folder the window kept (`M23-P03a`); the first of them that is a folder of this machine. None, the host's home, when there is none.
+    /// The folder a terminal starts in, from the menu, from the Terminal icon and from the `agy` icon: the folder Directories lists now (`M23-P03d`, the owner's word: the left decides;
+    /// `M23-P03c` made it count at all, since `saved_cwd` does not follow the person's moves; `M23-P04d`: also in the Home scope, which is a highlight of the list and not another list: a
+    /// session with no folder in front, or a click on the Home row, turns the scope on and the list goes on showing a folder), else the folder of the session in front (when the left lists none
+    /// of this machine's: an ssh host, a failed listing, nothing yet), else the last folder the window kept (`M23-P03a`); the first of them that is a folder of this machine. None, the host's
+    /// home, when there is none.
     pub(super) fn terminal_start_dir(&self) -> Option<String> {
         let sb = &self.ui.sidebar;
         let session = self.selected_row().filter(|r| r.ssh_host.is_empty()).map(|r| r.cwd.as_str());
-        let shown = Some(sb.cwd.as_str()).filter(|_| sb.ssh_host.is_none() && !sb.global_scope && !sb.unreachable);
+        let shown = Some(sb.cwd.as_str()).filter(|_| sb.ssh_host.is_none() && !sb.unreachable);
         [shown, session, Some(self.ui.saved_cwd.as_str())].into_iter().flatten().find(|d| !d.is_empty() && std::path::Path::new(d).is_dir()).map(str::to_string)
     }
 
