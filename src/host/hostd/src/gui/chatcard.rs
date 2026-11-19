@@ -301,6 +301,7 @@ pub(super) fn icon_of(provider: &str) -> Icon {
         "claude" => Icon::Claude,
         "local" => Icon::Local,
         "browser" => Icon::Browser,
+        "agy" => Icon::Agy,
         _ => Icon::Codex,
     }
 }
@@ -310,6 +311,7 @@ fn icon_ink(provider: &str) -> Color {
         "claude" => Color::rgb(0xF2, 0xAA, 0x6B),
         "local" => Color::rgb(0xA8, 0xB8, 0xCC),
         "browser" => Color::rgb(0x7F, 0xB4, 0xF2),
+        "agy" => Color::rgb(0xB8, 0xA2, 0xF2),
         _ => Color::rgb(0x7A, 0xE0, 0xB8),
     }
 }

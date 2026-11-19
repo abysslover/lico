@@ -24,6 +24,8 @@ use super::super::App;
 /// What the host answered, for one request the window made about a terminal.
 pub(crate) enum TermJob {
     Open,
+    /// An open that then types a line into the new shell (`M23-P04b`): the command and the conversation of `agy` the tab is for, when it is one.
+    OpenTyping { line: String, conversation: Option<String> },
     List,
     Watch { tab: String, gen: u64 },
     Resize { tab: String, size: (u16, u16) },
@@ -52,11 +54,13 @@ pub(crate) struct TTab {
     pub size: (u16, u16),
     pub resizing: bool,
     pub painted: u64,
+    /// The conversation of `agy` the window opened this terminal for (`M23-P04b`), while the window lives; none for a terminal the person opened.
+    pub conversation: Option<String>,
 }
 
 impl TTab {
     fn new(id: String, cwd: String, title: String, size: (u16, u16)) -> TTab {
-        TTab { id, cwd, title, screen: Screen::default(), seq: 0, ask: 0, gen: 0, watching: false, rearm: false, scroll: 0, size, resizing: false, painted: 0 }
+        TTab { id, cwd, title, screen: Screen::default(), seq: 0, ask: 0, gen: 0, watching: false, rearm: false, scroll: 0, size, resizing: false, painted: 0, conversation: None }
     }
 }
 
@@ -135,6 +139,11 @@ impl App {
 
     /// A new terminal, on the person's own action only (the menu, the wizard): in `cwd`, or the person's home; the size of the grid as it was last painted.
     pub(crate) fn terminal_open(&mut self, cwd: Option<String>) {
+        self.terminal_open_as(cwd, TermJob::Open);
+    }
+
+    /// The same, with the job that tells what the window does with the host's answer (`M23-P04b`: the open that types a line into the new shell).
+    pub(super) fn terminal_open_as(&mut self, cwd: Option<String>, job: TermJob) {
         let mut request = json!({"op": "terminal.open"});
         let (cols, rows) = self.ui.terminal.grid;
         if cols > 0 && rows > 0 {
@@ -143,7 +152,7 @@ impl App {
         if let Some(dir) = cwd.filter(|d| d.starts_with('/')) {
             request["cwd"] = json!(dir);
         }
-        self.terminal_call(request, 15, TermJob::Open);
+        self.terminal_call(request, 15, job);
     }
 
     /// The menu's `New terminal tab`: in the folder Directories shows, else the selected session's, else at home.
@@ -220,26 +229,37 @@ impl App {
         self.dirty = true;
     }
 
+    /// The host's answer to `terminal.open`: the tab is adopted and shown; its id, or none when the host refused (the person is told why).
+    fn terminal_opened(&mut self, reply: &Value) -> Option<String> {
+        if reply["ok"] != json!(1) {
+            self.ui.flash = Some(refusal(reply["error"].as_str().unwrap_or("refused")));
+            self.dirty = true;
+            return None;
+        }
+        let id = reply["tab"].as_str().unwrap_or("").to_string();
+        if id.is_empty() {
+            return None;
+        }
+        let size = (reply["cols"].as_u64().unwrap_or(80) as u16, reply["rows"].as_u64().unwrap_or(24) as u16);
+        if self.terminal_tab(&id).is_none() {
+            self.ui.terminal.tabs.push(TTab::new(id.clone(), reply["cwd"].as_str().unwrap_or("").into(), String::new(), size));
+        }
+        self.terminal_activate(&id);
+        Some(id)
+    }
+
     /// The answers of the host to what this module asked.
     pub(crate) fn on_terminal_async(&mut self, job: TermJob, reply: Value) {
         let ok = reply["ok"] == json!(1);
         let error = reply["error"].as_str().unwrap_or("refused").to_string();
         match job {
             TermJob::Open => {
-                if !ok {
-                    self.ui.flash = Some(refusal(&error));
-                    self.dirty = true;
-                    return;
+                self.terminal_opened(&reply);
+            }
+            TermJob::OpenTyping { line, conversation } => {
+                if let Some(id) = self.terminal_opened(&reply) {
+                    self.agy_started(&id, line, conversation);
                 }
-                let id = reply["tab"].as_str().unwrap_or("").to_string();
-                if id.is_empty() {
-                    return;
-                }
-                let size = (reply["cols"].as_u64().unwrap_or(80) as u16, reply["rows"].as_u64().unwrap_or(24) as u16);
-                if self.terminal_tab(&id).is_none() {
-                    self.ui.terminal.tabs.push(TTab::new(id.clone(), reply["cwd"].as_str().unwrap_or("").into(), String::new(), size));
-                }
-                self.terminal_activate(&id);
             }
             TermJob::List => {
                 self.ui.terminal.listed = true;
@@ -371,7 +391,7 @@ impl App {
     }
 
     /// Bytes for the shell of the shown tab: typing returns to the live screen and ends a selection; joined with what already waits for the same tab, in order.
-    fn terminal_send(&mut self, bytes: Vec<u8>) {
+    pub(super) fn terminal_send(&mut self, bytes: Vec<u8>) {
         let Some(t) = self.shown_tab() else { return };
         let (id, scrolled) = (t.id.clone(), t.scroll > 0);
         if bytes.is_empty() {
@@ -709,14 +729,14 @@ impl App {
             "header": self.terminal_header(), "status": shown.map(|_| self.terminal_status_row()), "queued": t.queue.len(), "inflight": t.input_inflight,
             "selection": t.sel.map(|s| json!({"anchor": [s.anchor.0, s.anchor.1], "focus": [s.focus.0, s.focus.1], "point": s.is_point()})), "dragging": t.dragging, "first_pixel": t.first_pixel,
             "lines": shown.map(|x| x.screen.plain_lines()),
-            "tabs": t.tabs.iter().map(|x| json!({
+            "tabs": t.tabs.iter().map(|x| { let mut v = json!({
                 "rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.1), "close_rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.2),
                 "agent": x.screen.agent, "picture_rect": t.tab_geom.iter().find(|g| g.0 == x.id).and_then(|g| g.3),
                 "id": x.id, "cwd": x.cwd, "caption": screen::caption(if x.screen.title.is_empty() { &x.title } else { &x.screen.title }, &x.cwd, &x.id), "seq": x.seq, "gen": x.gen, "watching": x.watching,
                 "scroll": x.scroll, "size": [x.size.0, x.size.1], "cols": x.screen.cols, "rows": x.screen.rows, "title": x.screen.title, "running": x.screen.running, "exit": x.screen.exit,
                 "cursor": x.screen.cursor.map(|(r, c)| json!([r, c])), "top": x.screen.top, "total": x.screen.total, "painted": x.painted,
                 "modes": {"app_cursor": x.screen.modes.app_cursor, "bracketed_paste": x.screen.modes.bracketed_paste, "alt_screen": x.screen.modes.alt_screen},
-            })).collect::<Vec<_>>(),
+            }); v["conversation"] = json!(x.conversation); v }).collect::<Vec<_>>(),
         })
     }
 }

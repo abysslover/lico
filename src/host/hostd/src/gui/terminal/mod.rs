@@ -2,12 +2,16 @@
 //! `keys`: which keys are the shell's and which are Lico's) and the part that is the window's (`view`: the tab, its watch, its input, its painting). A directory of its own because
 //! `gui/mod.rs` has no line to spare.
 
+mod agy;
 mod keys;
 mod screen;
 mod view;
 
 pub(crate) use view::{TermJob, TermState};
 
+#[cfg(test)]
+#[path = "agy_tests.rs"]
+mod agy_tests;
 #[cfg(test)]
 #[path = "keys_tests.rs"]
 mod keys_tests;

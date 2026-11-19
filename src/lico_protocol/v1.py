@@ -393,7 +393,7 @@ REPLIES = {
         "limit": {"type": INT, "minimum": 1, "maximum": 100},
         "has_more": {"type": BOOL},
         "items": {"type": "array", "items": _obj({
-            "provider": {"type": STR, "enum": ["codex", "claude", "browser"]},
+            "provider": {"type": STR, "enum": ["codex", "claude", "browser", "agy"]},
             "provider_session": {"type": STR, "min_length": 1, "max_length": 2048},
             "account": {"type": [STR, "null"], "max_length": 64},
             "account_label": {"type": [STR, "null"], "max_length": 40},
@@ -541,6 +541,7 @@ REQUESTS = {
         "recorded": {"type": BOOL},
         "others": {"type": BOOL},
         "pages": {"type": BOOL},
+        "agy": {"type": BOOL},
         "offset": {"type": INT, "minimum": 0, "maximum": 1000000},
         "limit": {"type": INT, "minimum": 1, "maximum": 100},
     }),

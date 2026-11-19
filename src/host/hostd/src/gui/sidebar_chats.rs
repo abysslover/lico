@@ -184,6 +184,7 @@ impl App {
         if all {
             req["all"] = json!(true);
             req["pages"] = json!(true); // the pages the browser remembers are listed among the chats (M22-P05c)
+            req["agy"] = json!(true); // so are the conversations of `agy` (M23-P04b)
         } else if is_glob {
             req["global"] = json!(true);
         } else if let Some(ref c) = cwd_opt {
@@ -249,6 +250,10 @@ impl App {
         };
         if entry.provider == "browser" {
             self.browser_open_page(&entry.provider_session); // a remembered page is no session: a click opens it in a new tab
+            return;
+        }
+        if entry.provider == "agy" {
+            self.agy_open(&entry.provider_session, entry.cwd.as_deref()); // a conversation of `agy` is no session of Lico's: a click brings it back in a terminal (`M23-P04b`)
             return;
         }
         self.chats_go_to_folder(&entry); // at once: the card already knows where the session is, so Directories does not wait for the resume

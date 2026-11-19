@@ -241,3 +241,18 @@ fn a_remembered_page_has_the_browsers_picture_no_folder_and_says_its_address_on_
     let short = hint_of(&page, State::None, None, NOW, 60);
     assert!(short.chars().count() <= 60 && short.starts_with("Installing"), "{short}");
 }
+
+#[test]
+fn a_conversation_of_agy_has_its_own_picture_and_colour_the_folder_no_state_and_a_hint_of_the_time_the_folder_and_the_id() {
+    let mut c = chat("11111111-aaaa-4bbb-8ccc-000000000001", NOW - 2 * HOUR);
+    (c.provider, c.cwd) = ("agy".into(), Some("/work/api/v2".into()));
+    assert_eq!(icon_of("agy"), Icon::Agy);
+    for other in ["claude", "local", "browser", "codex"] {
+        assert_ne!(icon_ink("agy"), icon_ink(other), "its colour is its own, not {other}'s");
+    }
+    assert_eq!(folder_of(&c).as_deref(), Some("api/v2"));
+    assert!(folder_line(&c, 40).ends_with("api/v2"), "{:?}", folder_line(&c, 40));
+    assert_eq!(state_of(&c, None, NOW), State::None, "a conversation of agy is no session of Lico's: no state picture");
+    let hint = hint_of(&c, State::None, None, NOW, 200);
+    assert_eq!(hint, format!("t \u{00b7} {} \u{00b7} api/v2 \u{00b7} #11111111", age_words(NOW, NOW - 2 * HOUR)), "{hint}");
+}

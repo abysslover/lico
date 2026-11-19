@@ -2,6 +2,7 @@
 //! resumed-transcript seeding (`resume_id` on `session.create`) across `claude` and `codex`
 //! for both local and `[ssh: <host>]` accounts (`M07-P03`).
 
+mod agy;
 mod index;
 mod latest;
 mod live;
@@ -523,6 +524,10 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
     if request.get("pages").and_then(Value::as_bool).unwrap_or(false) && scope == Scope::All && account_filter.is_none() {
         let dir = shared.cfg.registry_dir.parent();
         all_items.extend(dir.map(crate::pages::load).unwrap_or_default().into_iter().map(page_item).filter(|it| matches_query(it, &query_norm)));
+    }
+    // the conversations of `agy` (M23-P04b) join it the same way: the window asks, for this machine's list and no account; the file is read at each ask
+    if request.get("agy").and_then(Value::as_bool).unwrap_or(false) && scope == Scope::All && account_filter.is_none() {
+        all_items.extend(agy::home().map(|home| agy::load(&home)).unwrap_or_default().into_iter().map(agy::item).filter(|it| matches_query(it, &query_norm)));
     }
     all_items.sort_by(|a, b| {
         b.updated_at
