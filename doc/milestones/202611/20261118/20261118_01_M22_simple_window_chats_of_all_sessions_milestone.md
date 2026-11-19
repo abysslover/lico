@@ -1,7 +1,7 @@
 # M22 — A Simpler Window: Two Left Tabs, Every Past Session In Chats, Four Buttons, A Browser That Feels Like One
 
-- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), P04b (the account icon, the new-session wizard of three icons) is done (`192e304`), P04c (the Chats cards) is done (`2223fe5`), P05a (the browser tab's address bar at the top, the empty first page, the click ring removed) is done (`8b30b19`), P05b (words typed in the bar are searched with the setting `browser_search`, Google by default) is done (`68ca2c3`), then P05c (remembered pages) is next
-- Version: 3.3.0
+- Status: in_progress (2026-11-18); the owner answered the open questions in the chat the same day (section "The owner's answers"); P01 and P02 are done, P03 is done (`7361c18`), P04 is done (`8f9cfb7`), P04a (the menu as a tree, the three modes) is done (`e69adb0`), P04b (the account icon, the new-session wizard of three icons) is done (`192e304`), P04c (the Chats cards) is done (`2223fe5`), P05a (the browser tab's address bar at the top, the empty first page, the click ring removed) is done (`8b30b19`), P05b (words typed in the bar are searched with the setting `browser_search`, Google by default) is done (`68ca2c3`), P05c (the pages the browser remembers, listed in Chats, reopened by a click, `Reopen closed tab`) is done (`69b16c6`), then P06 (the release `0.8.0`) is next
+- Version: 3.4.0
 - Project: Lico
 - Updated: 2026-11-19
 - Base: `main` at `103d17e` (M20 on `main`; M21, our own build of Moli, is still an idea and keeps its number)
@@ -71,7 +71,7 @@
 | M22-P04c | window: a Chats card with the provider as a picture, the title (two lines when it needs them), the time of the last access in a colour that follows its age, and the state as a picture (disc green, orange or red by memory, ring for a closed tab, square for an ended one); no letters, no words of state; the hint row says the whole card | [Plan](../../../plans/202611/20261118/20261118_09_M22-P04c_chats_rows_plan.md) | done (`2223fe5`) |
 | M22-P05a | browser tab: the address bar at the top (back, forward, reload and the address, cut in the middle), an empty first page with the bar focused, the click ring removed; `lico-browser-view` 0.8.0 | [plan](../../plans/202611/20261119/20261119_04_M22-P05a_address_bar_plan.md) | done (`8b30b19`) |
 | M22-P05b | browser tab: text that is not an address is searched with the engine of the setting `browser_search`; the default engine (Google) by one measured probe; `lico-browser-view` 0.9.0 | [plan](../../plans/202611/20261119/20261119_05_M22-P05b_search_plan.md) | done (`68ca2c3`) |
-| M22-P05c | browser tab: remembered pages (address, title, time; at most 100; mode 0600; never for a local tab), listed in Chats, reopened by a click, `Reopen closed tab` in the menu, cleared by a menu entry | written when P05b is done | planned |
+| M22-P05c | browser tab: remembered pages (address, title, time; at most 100; mode 0600; never for a local tab), listed in Chats, reopened by a click, `Reopen closed tab` in the menu, cleared by a menu entry | [plan](../../plans/202611/20261119/20261119_06_M22-P05c_remembered_pages_plan.md) | done (`69b16c6`) |
 | M22-P06 | specification and guide, README, CHANGELOG, the suite, `cargo xtask system`, release `0.8.0` | written when P05 is done | planned |
 
 ## What this milestone does not do
