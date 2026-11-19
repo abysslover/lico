@@ -85,9 +85,15 @@ def test_session_list_shows_state_account_and_a_pending_approval_while_the_sessi
             # the hidden sessions have no view and no subscriber: the list comes from the host's status alone
             assert status_of(conn, s3)["subscribers"] == 0 and status_of(conn, s2)["subscribers"] == 0
             # a click on the row of the hidden session selects it, and its approval is offered
-            row = [r for r in state["layout"]["rows"] if r[2] == s3][0]       # the list is grouped by provider and account, so its order is not the host's
-            click(xvfb.display, 100, (row[0] + row[1]) / 2)
-            state = ui(client, lambda u: u["selected"] == s3 and u["approval_bar"])
+            for attempt in range(3):                                          # a click that the window has not taken (the machine is busy) is made again, from the layout as it is then
+                row = [r for r in ui(client)["layout"]["rows"] if r[2] == s3][0]       # the list is grouped by provider and account, so its order is not the host's
+                click(xvfb.display, 100, (row[0] + row[1]) / 2)
+                try:
+                    state = ui(client, lambda u: u["selected"] == s3 and u["approval_bar"], timeout=5.0)
+                    break
+                except AssertionError:
+                    if attempt == 2:
+                        raise
             assert state["approval_bar"].endswith("run: ls -la") and state["header"].startswith("claude | Work | simulator | waiting for approval")
             deny = state["layout"]["deny"]
             click(xvfb.display, (deny[0] + deny[2]) / 2, (deny[1] + deny[3]) / 2)

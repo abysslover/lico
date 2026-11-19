@@ -5,17 +5,9 @@ default_s = 15          # wall seconds of one test (setup + call + teardown)
 cold_run_s = 180        # the whole suite, nothing skipped by receipt, build not counted
 peak_rss_mib = 1536     # all workers together (resident sets of the whole process tree, shared pages counted once per process); the tests and the build are judged apart. Lowered from 2048 on 2026-11-19 (M23-P03a): measured 1161 for the tests and 1176 for the build, a run went over 2000 before the causes were fixed
 
-[[allow]]
-test = "tests/test_memory_guard_window.py::test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched"
-seconds = 90
-reason = "the guard acts only when something looks at the status and the host measures a session's memory at most every three seconds: a session must first hold its memory, be seen red, be closed and be resumed (measured 34.7 s)"
-
-[[allow]]
-test = "tests/test_memory_guard_window.py::test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_a_clean_process_and_the_session_is_left_alone_meanwhile"
-seconds = 90
-reason = "a session must hold over 500 MB twice, be seen red by the host's three-second look, be asked about, closed and resumed: the one test covers the whole red flow so that the suite holds that memory once (measured 13 s for its first half)"
-
-[[allow]]
-test = "tests/test_memory_guard_window.py::test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_under_the_list_orange"
-seconds = 90
-reason = "the stall time is whole minutes: the working session must be quiet for over a minute before the picture (measured about 75 s)"
+# No test has an entry now (M23-P03b): the longest in the cold run is 11.5 s, and the guard's own tests no longer wait for real minutes (the host takes the quiet time after typing from LICO_GUARD_TYPING_QUIET_MS, the stall time from the owner's memory.json).
+# An entry looks like:
+#   [[allow]]
+#   test = "tests/test_x.py::test_name"      (a prefix of the node id)
+#   seconds = 30
+#   reason = "why this one test cannot be quicker"

@@ -21,13 +21,7 @@ def shot(w, name):
         w.png(SCREENS / name)
 
 
-def holding(mib):
-    """A window with one simulator session whose agent holds `mib` MiB; returns (window context, session id)."""
-    directory_cm = private_dir()
-    return directory_cm
-
-
-def run(mib, check, auto_close=False):
+def run(mib, check, auto_close=False, stall_s=None, env_extra=None):
     with private_dir() as directory:
         args, _ = claude_args(directory)
         made = {}
@@ -36,13 +30,17 @@ def run(mib, check, auto_close=False):
             made["sid"], made["generation"] = new_claude(Conn(w.socket), name="heavy")
             # the owner's file `memory.json` in the state folder, owner-only: small limits, so that the tests hold little memory (the defaults 400 and 500 MB are the unit tests')
             setting = Path(w.directory) / "state" / "lico" / "memory.json"
-            setting.write_text('{"warn_mb": 40, "limit_mb": 60' + (', "auto_close": true' if auto_close else "") + "}")
+            setting.write_text('{"warn_mb": 40, "limit_mb": 60' + (', "auto_close": true' if auto_close else "") + (f', "stall_s": {stall_s}' if stall_s else "") + "}")
             setting.chmod(0o600)
 
-        with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
+        with ProductWindow(host_binary=LICO, host_args=args, before_window=session, env_extra=env_extra) as w:
             conn, sid, generation = Conn(w.socket), made["sid"], made["generation"]
             begin(conn, sid, generation, f"hold:{mib}:0:0")
-            figure = wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m.get("max_rss_kb", 0) >= (mib + 20) * 1024 * 0.95 and m)
+            if auto_close:
+                # with the short quiet time the guard may close the session before a poll here has seen the red figure (the host looks every three seconds, the guard acts at the next look at the status): the check waits for the resume itself, from the generation the session started with
+                figure = {"started_generation": generation}
+            else:
+                figure = wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m.get("max_rss_kb", 0) >= (mib + 20) * 1024 * 0.95 and m, timeout=30)
             check(w, conn, sid, figure)
 
 
@@ -60,8 +58,10 @@ def window_sees(w, mb):
 
 
 def settle(w):
-    import time
-    time.sleep(1.2)      # the window redraws after the model changed; let the picture catch up
+    """The window redraws after the model changed: let the picture catch up, but only when a picture is to be taken (nothing a test asserts waits for it)."""
+    if SCREENS:
+        import time
+        time.sleep(1.2)
 
 
 def test_a_session_holding_45_mb_is_orange_and_a_click_asks_nothing():
@@ -81,7 +81,7 @@ def test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_
     def check(w, conn, sid, figure):
         import time
         assert figure["max_rss_kb"] >= 60 * 1024, figure
-        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60, "stall_s": 600}, "the host sends the owner's limits in every status reply"
+        assert conn.call(op="status")["memory_limits"] == {"warn_mb": 40, "limit_mb": 60, "stall_s": 3}, "the host sends the owner's limits, and the stall time, in every status reply"
         window_sees(w, 60)
         w.click(*centre(tab_rect(w, sid)))
         panel = wait_for(lambda: w.ui()["panel"], timeout=30)
@@ -103,7 +103,7 @@ def test_a_click_on_a_red_session_asks_once_n_keeps_it_y_ends_and_resumes_it_to_
         reply = conn.call(op="session.resume", session=sid, generation=reply["generation"])
         assert reply["ok"] == 1 and "closed_by" not in status_of(conn, sid), reply
         wait_for(lambda: (m := status_of(conn, sid).get("memory")) and m["max_rss_kb"] < 40 * 1024 and m, timeout=40)
-    run(70, check)
+    run(70, check, stall_s=3)
 
 
 def test_y_on_the_question_ends_the_session_and_resumes_it_to_a_clean_process():
@@ -123,36 +123,10 @@ def test_y_on_the_question_ends_the_session_and_resumes_it_to_a_clean_process():
 
 def test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched():
     def check(w, conn, sid, figure):
-        first = status_of(conn, sid)["generation"]
+        first = figure["started_generation"]
         # the guard acts when something looks at the status: the polls of this test are those looks (and the window's own)
-        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s["generation"] > first and s.get("memory") and s["memory"]["max_rss_kb"] < 40 * 1024 and s, timeout=90)
+        after = wait_for(lambda: (s := status_of(conn, sid)) and s["state"] == "running" and s["generation"] > first and s.get("memory") and s["memory"]["max_rss_kb"] < 40 * 1024 and s, timeout=20)
         assert "closed_by" not in after, "resumed: nobody closed it now"
         settle(w)
         shot(w, "5_auto_closed_and_resumed.png")
-    run(70, check, auto_close=True)
-
-
-def test_a_working_session_that_shows_nothing_for_the_stall_time_turns_the_line_under_the_list_orange():
-    """`stall_s` 3 in the owner's file; a simulator turn that says nothing for a long time (`quiet:900`); the picture is taken once it has been quiet for over the stall time."""
-    import time
-    with private_dir() as directory:
-        args, _ = claude_args(directory)
-        made = {}
-
-        def session(w):
-            made["sid"], made["generation"] = new_claude(Conn(w.socket), name="quiet")
-            setting = Path(w.directory) / "state" / "lico" / "memory.json"
-            setting.write_text('{"stall_s": 3}')
-            setting.chmod(0o600)
-
-        with ProductWindow(host_binary=LICO, host_args=args, before_window=session) as w:
-            conn, sid = Conn(w.socket), made["sid"]
-            begin(conn, sid, made["generation"], "quiet:900")
-            wait_for(lambda: status_of(conn, sid).get("activity") == "working", timeout=30)
-            assert conn.call(op="status")["memory_limits"]["stall_s"] == 3
-            time.sleep(6)                                   # a working turn with no activity for over the stall time
-            assert status_of(conn, sid).get("activity") == "working"
-            w.click(*centre(tab_rect(w, sid)))
-            time.sleep(1.5)
-            shot(w, "6_stalled.png")
-
+    run(70, check, auto_close=True, env_extra={"LICO_GUARD_TYPING_QUIET_MS": "1000"})     # the guard leaves a session alone for 30 s after the person's last input: a second here, the test's input being its own

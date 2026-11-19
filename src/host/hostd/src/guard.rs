@@ -31,6 +31,16 @@ pub fn closed_by(session: &str) -> Option<&'static str> {
 
 /// How long after the person's last input to a session it still counts as being typed to.
 const TYPING_QUIET_MS: u64 = 30_000;
+
+/// The same, as the host uses it: `LICO_GUARD_TYPING_QUIET_MS` shortens it (between 100 ms and the 30 s above), for tests that would otherwise wait the whole of it; read once.
+fn typing_quiet_ms() -> u64 {
+    static MS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *MS.get_or_init(|| quiet_from(std::env::var("LICO_GUARD_TYPING_QUIET_MS").ok().as_deref()))
+}
+
+fn quiet_from(raw: Option<&str>) -> u64 {
+    raw.and_then(|v| v.parse().ok()).filter(|n| (100..=TYPING_QUIET_MS).contains(n)).unwrap_or(TYPING_QUIET_MS)
+}
 /// The gap between two resumes by the guard.
 const RESUME_GAP_MS: u64 = 20_000;
 /// After the warning to the main agent the auto-close waits this long (the main agent may deal with it itself); a close for the machine is also paced by it (one at a time).
@@ -158,7 +168,7 @@ fn plan_warning(entries: &[Value], cfg: &Config, st: &mut State, now: u64, machi
         return None;
     }
     let me = entries.iter().find(|e| e["session"] == main)?;
-    let typing = st.typed.get(main).is_some_and(|t| now.saturating_sub(*t) < TYPING_QUIET_MS);
+    let typing = st.typed.get(main).is_some_and(|t| now.saturating_sub(*t) < typing_quiet_ms());
     let idle = Idle { turn_running: me["activity"] != "idle", approval_pending: me["approvals"].as_array().is_some_and(|a| !a.is_empty()), person_typing: typing };
     if me["state"] != "running" || !idle.ok() {
         return None;
@@ -215,7 +225,7 @@ fn plan(entries: &[Value], cfg: &Config, st: &mut State, now: u64, machine: Opti
         }
     }
     let ok_to_close = |st: &State, e: &Value, id: &str| -> bool {
-        let typing = st.typed.get(id).is_some_and(|t| now.saturating_sub(*t) < TYPING_QUIET_MS);
+        let typing = st.typed.get(id).is_some_and(|t| now.saturating_sub(*t) < typing_quiet_ms());
         let idle = Idle { turn_running: e["activity"] != "idle", approval_pending: e["approvals"].as_array().is_some_and(|a| !a.is_empty()), person_typing: typing };
         e["state"] == "running" && !cfg.auto_close_off.iter().any(|o| o == id) && idle.ok() && st.loops.allowed(id, now)
     };
@@ -511,6 +521,18 @@ mod tests {
         assert_eq!((c.limits, c.auto_close, c.auto_close_off), (Limits { warn_mb: 300, limit_mb: 600 }, true, vec!["s9".to_string()]));
         assert_eq!(parse_config(r#"{"warn_mb": 700, "limit_mb": 600}"#).limits, Limits::default(), "an unusable pair keeps the defaults");
         assert!(!parse_config(r#"{"auto_close": "yes"}"#).auto_close, "only the true of JSON switches it on");
+    }
+
+    #[test]
+    fn the_quiet_time_after_typing_is_thirty_seconds_unless_the_variable_names_a_shorter_one_of_at_least_a_tenth_of_a_second() {
+        assert_eq!(quiet_from(None), 30_000);
+        assert_eq!(quiet_from(Some("1500")), 1_500);
+        assert_eq!(quiet_from(Some("100")), 100);
+        assert_eq!(quiet_from(Some("99")), 30_000, "too short: the person's typing would not count");
+        assert_eq!(quiet_from(Some("0")), 30_000);
+        assert_eq!(quiet_from(Some("30000")), 30_000);
+        assert_eq!(quiet_from(Some("30001")), 30_000, "never longer than the default");
+        assert_eq!(quiet_from(Some("soon")), 30_000);
     }
 
     #[test]

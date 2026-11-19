@@ -131,7 +131,7 @@ def test_a_history_waits_for_the_person_and_one_yes_hands_the_records_with_their
     assert [r for r in shown if re.fullmatch(r">> \d+ >> alpha one", r)] and [r for r in shown if re.fullmatch(r">> \d+ >> beta two", r)], shown
     assert [int(r.split(" ")[1]) for r in shown] == list(range(held)), "a number to each record, in order"
     assert len(records(world.log, target)) == held, "the read wrote nothing in the record it read"
-    sent = received_with(world, "[history of session 'docs'")
+    sent = wait_for(lambda: received_with(world, "[history of session 'docs'"))      # the program reads what it was handed in its own time: on a loaded machine that is after the reply
     assert len(sent) == 1 and sent[0].startswith("[from lico | ") and "approved and done: [history of session 'docs'" in sent[0], sent
     assert f"lico-host: request session={caller} tool=history approval={number} state=asked size={len('last 50 records')}" in err(world)
     assert f"lico-host: request session={caller} tool=history approval={number} state=done size={len('last 50 records')}" in err(world)
