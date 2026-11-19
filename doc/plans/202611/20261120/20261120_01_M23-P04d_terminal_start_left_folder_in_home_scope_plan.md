@@ -1,7 +1,7 @@
 # M23-P04d Plan — The Folder The Left Lists Starts The Terminal And agy, Also In The Home Scope
 
-- Status: in_progress (2026-11-20)
-- Version: 1.0.0
+- Status: done (2026-11-20), commit `cf3def6` (the prefix `phase/M23-P04d-` approved by the owner at commit time)
+- Version: 1.1.0
 - Branch: `phase/M23-P04d-left-folder-in-home-scope` from `main` (`fffdc08`)
 - Milestone: [M23](../../../milestones/202611/20261118/20261118_02_M23_terminal_agents_milestone.md), a third fix of the start folder (after P03c and P03d)
 - The owner's words (2026-11-20, after P04a, P04b and P04c): "agy 실행 디렉토리가 work directory와 관련이 없음" (the folder agy runs in has nothing to do with the work directory), and, asked which folder it should have been: **the folder the left lists** (the first of four choices; the others were the session in front's folder, a folder step in the wizard, a Chats card's folder).
@@ -26,7 +26,16 @@ Limit to say in the guide: a person who clicks the Home row on purpose, wanting 
 
 ## Steps
 
-1. [ ] **Tests first**: the unit test of `terminal/view_tests.rs` changes where it pins the old rule (two lines: the Global scope, with and without a session in front) and is red on the old condition; one window test (`tests/test_terminal_tab.py`: the left walks to a folder, the Home row is clicked, the Terminal picture and the `agy` picture) red on the old build.
-2. [ ] **The rule** in `terminal/view.rs` (one condition removed, the comment says why).
-3. [ ] **Gates**: the changed-files suite, `cargo xtask check`, clippy compared with the parent, mutation checks of the condition (the old condition back, the ssh skip, the unreachable skip).
-4. [ ] **The guide** says it (1.14.1) and the plan is closed with its results.
+1. [x] **Tests first**: the unit test of `terminal/view_tests.rs` changes where it pins the old rule (two lines: the Global scope, with and without a session in front) and is red on the old condition; one window test (`tests/test_terminal_tab.py`: the left walks to a folder, the Home row is clicked, the Terminal picture and the `agy` picture) red on the old build.
+2. [x] **The rule** in `terminal/view.rs` (one condition removed, the comment says why).
+3. [x] **Gates**: the changed-files suite, `cargo xtask check`, clippy compared with the parent, mutation checks of the condition (the old condition back, the ssh skip, the unreachable skip).
+4. [x] **The guide** says it (1.14.1) and the plan is closed with its results.
+
+## Results (2026-11-20)
+
+- **Red first.** The unit test of the start folder failed on the old condition (the Home scope gave the last folder kept, not the listed one). The two window tests failed on the old build, and the failure is the owner's report: a folder `project` kept, the left walked into `project/inner`, a click on the Home row, the Terminal picture and the `agy` picture: both started in `project`.
+- **The rule.** One condition removed in `terminal/view.rs`: the folder Directories lists counts in every scope of this machine, the Home scope included; an ssh host and a failed listing still do not, and the order after the listed folder is unchanged (the session in front, the last folder kept, the home). The comment says why: Home highlights a row, it is not another list.
+- **What the person sees.** With a session that has no folder in front, or after a click on the Home row, the Terminal picture, `Session > New terminal tab` and the `agy` picture start in the folder the left lists, not at the home. `agy` writes the folder it was started in into its own log (`workspaceDirs`), which is how the bug was seen: all four starts of the owner's new window were in the home folder.
+- **Mutation checks.** 8, all caught: the old condition back, the listed folder only in the Home scope, an ssh host's folder used, a failed listing used, the session in front before the listed folder, the kept folder before it, the listed folder never used, a folder that is not there used. The clean runs pass; the source was restored and compared.
+- **Gates.** The changed-files suite at the commit: 252 tests in 79 files on 4 worker(s): 252 passed; 0 skipped (receipt); 129.3 s; peak 1058.5 MiB. `cargo xtask check` passes. `cargo clippy --all-targets` gives the same findings as at the parent (139 warnings and 5 errors on the program, 155 and 6 on the tests; none in the changed file). The window tests of the terminal tab (12) and of the `agy` picture (3) pass on the new build. The guide is 1.14.1.
+- **Limit** (the guide says it). A person who clicks the Home row on purpose, wanting the home, still gets the folder the list shows, because that click does not change the list.
