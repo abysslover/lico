@@ -1,7 +1,7 @@
 # M23-P04a Plan — The Terminal Tab Knows What Runs In It (`claude`, `codex`, `agy`)
 
-- Status: in_progress (2026-11-19)
-- Version: 1.0.0
+- Status: done (2026-11-19), commit `5a8d8c9`
+- Version: 1.1.0
 - Branch: `phase/M23-P04a-tab-knows-agent` from `phase/M23-P03d-terminal-start-left` (`d6de701`, published as `main`); the prefix `phase/M23-P04a-` is approved by the owner (2026-11-19, with P04b and P04c)
 - Milestone: [M23](../../../milestones/202611/20261118/20261118_02_M23_terminal_agents_milestone.md), row P04, level A of [the P04 plan](20261119_10_M23-P04_agent_in_terminal_plan.md)
 - The owner's words (2026-11-19): "A+B만 먼저하고 C는 향후로" and "모든 기본 아이콘 크기는 세션 시작할 때 보이는 Claude, Codex 아이콘을 기본으로 하고 그정도 간결성(거의 텍스트가 없는 수준)" and "거의 컴맹 수준의 사람도 쓸 수 있는 직관성"
@@ -24,13 +24,23 @@
 
 ## Steps
 
-1. [ ] **Tests first**: Rust unit tests (`terminal/agent.rs`: the names, the interpreters, the near-misses, a damaged or empty command line, a bound; `terminal/tests.rs`: a real pty whose foreground program is a copy of `sleep` named `claude`, a script named `codex` (run by `/bin/sh`) and a plain `sleep`, the answer of `terminal.list` and `terminal.watch`, and `agent` null again after the program ends; `gui/terminal`: `Screen::parse` keeps only the three names, the tab strip's entries carry the picture); one window test (`tests/test_terminal_tab.py`: a program named `agy` started in the shell, the dump says `agy` for the tab).
-2. [ ] **The host**: `pty.rs` (`foreground_group`), `terminal/agent.rs`, `tab.rs` (`row` and `snapshot`).
-3. [ ] **The window**: `Screen.agent`, the picture `Icon::Agy`, the tab strip.
-4. [ ] **The docs**: the protocol note (rows `terminal.list` and `terminal.watch`), the guide.
-5. [ ] **Gates**: mutation checks, the changed-files suite, `cargo xtask check`, the owner's build.
+1. [x] **Tests first**: Rust unit tests (`terminal/agent.rs`: the names, the interpreters, the near-misses, a damaged or empty command line, a bound; `terminal/tests.rs`: a real pty whose foreground program is a copy of `sleep` named `claude`, a script named `codex` (run by `/bin/sh`) and a plain `sleep`, the answer of `terminal.list` and `terminal.watch`, and `agent` null again after the program ends; `gui/terminal`: `Screen::parse` keeps only the three names, the tab strip's entries carry the picture); one window test (`tests/test_terminal_tab.py`: a program named `agy` started in the shell, the dump says `agy` for the tab).
+2. [x] **The host**: `pty.rs` (`foreground_group`), `terminal/agent.rs`, `tab.rs` (`row` and `snapshot`).
+3. [x] **The window**: `Screen.agent`, the picture `Icon::Agy`, the tab strip.
+4. [x] **The docs**: the protocol note (rows `terminal.list` and `terminal.watch`), the guide.
+5. [x] **Gates**: mutation checks, the changed-files suite, `cargo xtask check`, the owner's build.
 
 ## Not decided here
 
 - The picture of `agy` is a shape of our own (an upward chevron over a dot: "anti-gravity"), like the Claude and Codex pictures, which are no vendor logos. The owner may want another.
 - Naming other programs (`vim`, `htop`, a build) in the tab: not asked; the same mechanism could, but each name would be a decision about what the person sees.
+
+## Results (2026-11-19)
+
+- **What the person sees.** A terminal tab in which `claude`, `codex` or `agy` runs shows that program's picture in the tab (the Claude and Codex pictures of step one, and a new `agy` picture, an upward chevron over a dot) in the place of the text `>_`; the caption is the title or the folder as before. When the program ends the text is back. A terminal with no agent, `vim`, a build, a plain shell, looks as it did.
+- **What the host does.** `terminal.list` rows and `terminal.watch` answers carry `agent` (`"claude"`, `"codex"`, `"agy"` or null), worked out when the answer is made: the pty master's `tcgetpgrp` (the one new system call, in `pty.rs`), then `/proc/<leader>/cmdline` (same user, at most 4096 bytes, `terminal/agent.rs`). Nothing is sent to the program, nothing of its screen or conversation is read, no setting and no approval changes (D5).
+- **Behaviours found while testing, kept as they are.** `/proc/<pid>/cmdline` reads empty for a moment after an exec, so the first answer after a start may still say null and the next one names the program (the change of the screen moves the number, so a watch sees it); once the shell has ended the pty has no foreground group (the kernel), so an ended terminal says null even while a program it started still holds the pty; a terminal that is not shown is not watched and keeps the last picture it had (D4).
+- **Tests first and red.** 6 host tests (`terminal/tests/agent_tests.rs`, over `terminal/agent.rs`: the names, the interpreters, the near misses `node other.js agy` and `claude.txt` and `cat claude`, a command line of 3000 flags, the real pty with copies of `sleep` named `claude` and `agy` and a script named `codex`, null after Ctrl+C and after the shell ended, also while a program the shell started still holds the pty), 4 window unit tests and one changed (`Screen::parse` keeps only the three names, the strip's entries and the adoption from `terminal.list`, the `agy` picture and the three names that have one; the piece counts of the pictures) and one window test (`tests/test_terminal_tab.py`, a program named `agy` in a shell: the dump's `agent` and `picture_rect`, bright pixels in the picture's box, `terminal.list`, text again after Ctrl+C). The terminal window tests are 11 of 11.
+- **Mutation checks.** 19 at host and window unit level (no interpreter runs a script, a name that only contains an agent's counts, a script keeps its ending, the text after `-c` is a script, no bound, a flag is the script, `NAME=value` after `env` is the program, any argument may name the program, the watch or the list says no agent, the shell instead of the foreground group is asked, a screen never has an agent, codex told as claude, the list's agent not adopted, the caption keeps `>_`, codex has claude's picture, the strip keeps the text, the `agy` picture has no dot) and 3 at window level, built into the release binaries (the picture not drawn, no picture box in the geometry, the host's word never taken from a watch): all caught, the clean runs pass. One of the first run (`H9`, a `running` guard) survived because the code was redundant: it was removed and a test for a background agent after the shell's end was added. A window-level mutation that did not compile was a void result and was replaced by one that does (the tab's fill as the picture's ink), which the pixel check caught.
+- **Gates.** The changed-files suite at the commit: 543 tests in 117 files, 542 passed in 165.8 s and the one that failed was the size ratchet (`terminal/tests.rs` had grown to 901 lines): the agent tests moved to `terminal/tests/agent_tests.rs` (783 and 123 lines) and the suite then passed (the rest by receipt). `cargo xtask check` passes. `cargo clippy --all-targets` gives the same findings as at the parent (139 warnings and 5 errors on the program, 155 and 6 on the tests, none in the changed files after two type-complexity warnings and a `repeat().take()` were fixed). The first commit try was refused by the public guard for two fixture paths in a test (a home-folder look): reworded, the guard untouched.
+- **Limits** (the guide says the first; the owner may want them changed). A tab that is not shown keeps its last picture (the window keeps one watch); the `agy` picture is a shape of our own, as the Claude and Codex pictures are; the three names are the only ones answered, so a person who runs another agent sees the text; live pty tests need a longer watchdog on a busy machine (`Rig::with_watchdog(40)` for the live agent tests).

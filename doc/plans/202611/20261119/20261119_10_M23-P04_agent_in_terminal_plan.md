@@ -1,7 +1,7 @@
 # M23-P04 Plan — An Agent Started In A Terminal Tab (`agy`, `claude`, `codex`) Meets Lico
 
-- Status: research done; the owner chose levels **A and B** (2026-11-19), C is for later; P04a, P04b and P04c below are next (not started)
-- Version: 1.1.0
+- Status: research done; the owner chose levels **A and B** (2026-11-19), C is for later; P04a is done (`5a8d8c9`), P04b and P04c below are next (not started)
+- Version: 1.2.0
 - Branch: `phase/M23-P04a-...`, `phase/M23-P04b-...`, `phase/M23-P04c-...` in turn, each from the one before (the three prefixes are approved by the owner, 2026-11-19)
 - Milestone: [M23](../../../milestones/202611/20261118/20261118_02_M23_terminal_agents_milestone.md), row P04 and its question Q1
 - The owner's words (2026-11-19): "사실 terminal에서 지금 agy를 실행해도 실행은 되긴 하는데 원래 그 agy의 형태로 보이는 거라서 과연 그렇게 열었을 때 lico와 연결되는지는 잘 모르겠음."

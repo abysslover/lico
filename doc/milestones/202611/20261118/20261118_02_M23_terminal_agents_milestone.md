@@ -1,7 +1,7 @@
 # M23 — A Terminal In Lico: Run An Agent In It, And It Comes Into Lico
 
 - Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03, P03a and P03b below are done; the owner looked at P03 with `lico gui` on 2026-11-19 and P03a is what the owner asked for then: the icon opens a shell at once, a shell that ends closes its tab, and the suite's memory brought down); the agent that comes into Lico from a terminal is a later phase, after the terminal works
-- Version: 2.8.0
+- Version: 2.9.0
 - Project: Lico
 - Updated: 2026-11-19
 
@@ -44,7 +44,8 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 | M23-P03b | the suite's time and build memory after the owner's word that the limit must not be tight: the guard's 30 s quiet time shortened for the test that waited it (`LICO_GUARD_TYPING_QUIET_MS`), three duplicate tests removed, the debug information of the unit tests' binary cut to the lines (the build's peak 1727 to about 1160 MiB), the budget table with no exception left | [Plan](../../../plans/202611/20261119/20261119_03_M23-P03b_test_diet_plan.md) | done |
 | M23-P03c | the owner's report after P06: a new terminal opened at the home, not in the working directory; the start folder is now the session in front's, else the folder Directories shows (which `last_cwd` did not follow), else the last one kept | [Plan](../../../plans/202611/20261119/20261119_08_M23-P03c_terminal_start_folder_plan.md) | done (`ecc8772`) |
 | M23-P03d | the owner's report after P03c and P07: however the start folder is decided on the left, the shell starts at the home; a session in front won over the folder Directories shows; the folder on the left decides now, then the session's, then the last one kept | [Plan](../../../plans/202611/20261119/20261119_11_M23-P03d_terminal_start_left_decides_plan.md) | done (`b1da9fe`) |
-| M23-P04 | an agent started in a terminal comes into Lico (Q1): research done (`agy` is not connected today; three levels of "connected"), the plan proposes A (the tab knows what runs in it) and B (the agent's conversations in Chats, one click back into a terminal) first; the owner chooses the level | [Plan](../../../plans/202611/20261119/20261119_10_M23-P04_agent_in_terminal_plan.md) | the owner chose A and B (2026-11-19), C later; the `agy` picture goes between Claude and Codex in New session; P04a, P04b and P04c follow |
+| M23-P04a | level A of P04: the terminal tab knows which agent runs in it (`claude`, `codex`, `agy`, read from the pty's foreground process) and shows its picture in the place of the text `>_`; `terminal.list` and `terminal.watch` say `agent`; read-only, no approval, no setting; 19 + 3 mutation checks caught | [Plan](../../../plans/202611/20261119/20261119_13_M23-P04a_tab_knows_agent_plan.md) | done (`5a8d8c9`) |
+| M23-P04 | an agent started in a terminal comes into Lico (Q1): research done (`agy` is not connected today; three levels of "connected"), the plan proposes A (the tab knows what runs in it) and B (the agent's conversations in Chats, one click back into a terminal) first; the owner chooses the level | [Plan](../../../plans/202611/20261119/20261119_10_M23-P04_agent_in_terminal_plan.md) | the owner chose A and B (2026-11-19), C later; the `agy` picture goes between Claude and Codex in New session; P04a is done, P04b and P04c follow |
 
 The order with M22: the owner named the terminal first and asked for the browser address bar after it, so M23-P01 to P03 come before M22-P05 (the browser tab) and M22-P06 (the guide and the release `0.8.0`, which then ships both).
 
