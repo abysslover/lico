@@ -81,6 +81,15 @@ impl Editor {
         self.selection_range().map(|(lo, hi)| self.text[lo..hi].to_string())
     }
 
+    /// Selects all the text, the cursor at its end (a click on the browser's address bar, Ctrl+L).
+    pub(crate) fn select_all(&mut self) {
+        self.anchor = (!self.text.is_empty()).then_some(0);
+        self.cursor = self.text.len();
+        self.selecting = false;
+        self.typing_run = false;
+        self.goal = None;
+    }
+
     pub(crate) fn clear_selection(&mut self) -> bool {
         let had = self.has_selection();
         self.anchor = None;

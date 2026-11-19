@@ -29,9 +29,11 @@ impl App {
             line(self.terminal_status_row()) // the one row under the grid: what the keys do, or that the shell ended
         } else if self.code_entry() {
             line(format!("> {}", self.shown_input()))
-        } else if self.ui.panel.is_some() || !self.has_prompt_target() || self.browser_active() {
-            let preedit = if self.browser_page_has_the_keys() { "" } else { self.preedit.as_str() }; // the page's composition is shown in the header (M17-P11)
-            line(format!("> {}[{}]", self.ed.text(), preedit)) // the address row is one line, with the composition in it
+        } else if self.browser_active() {
+            self.ui.browser.row = self.header_text(); // the one row under the page: where typing goes, the page's state, the notices; the address is the bar at the top (M22-P05a)
+            line(self.ui.browser.row.clone())
+        } else if self.ui.panel.is_some() || !self.has_prompt_target() {
+            line(format!("> {}[{}]", self.ed.text(), self.preedit)) // one line, with the composition in it
         } else {
             self.chip_prompt(cols, (area_rows.saturating_sub(6) / 2).clamp(1, MAX_ROWS))
         }

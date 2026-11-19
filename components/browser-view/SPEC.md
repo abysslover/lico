@@ -1,4 +1,4 @@
-# lico-browser-view 0.7.3 — specification
+# lico-browser-view 0.8.0 — specification
 
 Written with the P04 plan (M17-P04); approved by the lead under the owner's delegation (the owner away), mail 147. Marks: **MEASURED** (M17-P03: the engine sends PNG frames, a still page one frame, and needs an acknowledgement per frame; `Input.insertText` types committed Korean; there are no composition events), **PROPOSED** (the shapes of the intents and effects: the host adapter of a later phase carries them out and may ask for changes).
 
@@ -12,6 +12,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 |---|---|
 | `parse_address(&str) -> Result<String, UrlError>`, `UrlError { Empty, TooLong, Scheme, Credentials, Invalid }` | what a person typed as an `http` or `https` address; no scheme means `https://` plus the text (`host:port` is not a scheme); the scheme is lower-cased and the rest is left as typed; `file:`, `javascript:`, `data:`, `about:`, `ftp:`, `mailto:`, `view-source:`, `chrome:`, `blob:`, `ws:` are `Scheme`; a user name or password (`@` in the authority) is `Credentials`; no host, a bad port, a space, a control character, a backslash or one of ``<>"{}|^` `` in the host, an unbalanced `[` are `Invalid`; over `MAX_URL` is `TooLong` |
 | `clean(text, max_chars) -> String` | text from a page or the engine made safe to show: control, bidirectional-override and zero-width characters removed, cut at `max_chars` with `…` as the last |
+| `display_address(&str, max_chars) -> String` | the address as the address bar shows it while the bar does not have the keys (0.8.0): `https://` dropped, an address longer than `max_chars` characters cut in the middle so that the host name (with its slash) and the end stay, never longer than `max_chars`, counted in characters |
 | `AddressField`: `text`, `cursor`, `preedit`, `display`, `set_text`, `insert`, `backspace`, `delete`, `left`, `right`, `home`, `end`, `set_preedit`, `clear_preedit`, `commit` | the address row's text field, in characters (Korean included); control characters never enter; at most `MAX_URL` characters; a pre-edit is shown at the cursor and is not part of the text |
 | `Tab::new()`, `phase`, `loading`, `url`, `title`, `history`, `can_back`, `can_forward`, `shown`, `viewport`, `viewport_capped`, `no_font`, `focus`, `focus_address`, `focus_page`, `address`, `address_mut` | the state to draw |
 | `show(area, now_ms)`, `hide()`, `resize(area)`, `submit_address(&str)`, `back()`, `forward()`, `reload()`, `tick(now_ms)` | the intents, each answering `Vec<Effect>` |
@@ -47,7 +48,7 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 ## Versioning and budget
 
-`0.1.0` while the effects have not met the host adapter; `0.7.3` (M20-P02) says in the comments that a `Frame` holds a JPEG or a PNG (the host asks Moli for JPEG; the field keeps the name `png`) and gives the sizes behind the cap; `0.7.1` adds two help sentences (M17-P12); `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
+`0.1.0` while the effects have not met the host adapter; `0.8.0` (M22-P05a) takes the click ring out (`click_mark`, `MARK_RADIUS`, `MARK_THICKNESS`), adds `display_address` and moves the help's sentences from "the header" to "the bottom row"; `0.7.3` (M20-P02) says in the comments that a `Frame` holds a JPEG or a PNG (the host asks Moli for JPEG; the field keeps the name `png`) and gives the sizes behind the cap; `0.7.1` adds two help sentences (M17-P12); `0.7.0` adds the cues of a live page (M17-P11); `0.6.0` adds the install states (M17-P10); `0.5.0` adds the frame reads; `0.4.0` adds reasons and help; `0.3.0` adds the local tab; `0.2.0` adds the notices (M17-P06, approved by the lead under the owner's delegation, mail 150); semantic after. Budget: the default 256 MiB and 30 s.
 
 ## Notices (0.2.0)
 
@@ -73,18 +74,18 @@ The display-free model of one browser tab. It is driven with the person's intent
 
 Requested by the owner in the chat, 2026-11-17 (the engine installs itself when a tab is opened); the spec wording approved by the lead, to be confirmed by the owner. `Phase::Installing { size_mb, source, hash12 }` and `EngineEvent::Installing` (the tab says so, asks no question, produces no effect and takes no pointer, key or text; an address given meanwhile is kept for `Started`), `EngineEvent::Starting` (the engine is there and is being started), `EngineEvent::InstallFailed { why, security, expected_sha256, release }` (the phase becomes `Absent`, the pending address is dropped, and the notice is "the engine could not be installed: WHY", with "SECURITY: " in front for a hash that is not the pinned one or an archive entry that was refused; cleaned and cut like any notice). The model does not know a URL or a hash it could change: the adapter passes the pinned ones.
 
-`help_lines()` also says that the first tab installs the browser engine by itself from its pinned release (about 72 MB, checked by SHA-256) without asking, and that a failed install is explained in the header with the way to install by hand.
+`help_lines()` also says that the first tab installs the browser engine by itself from its pinned release (about 72 MB, checked by SHA-256) without asking, and that a failed install is explained in the bottom row (0.8.0; the header before) with the way to install by hand.
 
 ## The cues of a live page (0.7.0, M17-P11)
 
-Why: the engine draws no caret and no focus ring, so a page with the keys looked like a picture ("it feels like only a picture", the owner, 2026-11-17), and the address row kept the first address after a link. All four helpers are pure.
+Why: the engine draws no caret and no focus ring, so a page with the keys looked like a picture ("it feels like only a picture", the owner, 2026-11-17), and the address row kept the first address after a link. The helpers are pure (three of the four remain from 0.8.0).
 
-- `keys_hint(Focus) -> &'static str`: "typing goes to the page (Ctrl+L: address)" or "typing goes to the address row (click the page to type in it)"; the window puts it in the header of a ready or loading tab.
+- `keys_hint(Focus) -> &'static str`: "typing goes to the page (Ctrl+L: address)" or "typing goes to the address row (click the page to type in it)"; the window puts it in the bottom row of a ready or loading tab (the sentence that was the header before 0.8.0).
 - `follows_page(row, last_put, page_url) -> bool`: the address row takes the page's address when that address is not empty, differs from the last one put in the row, and the row is empty or still holds the last one put (the person has not edited it); a row the person edited or cleared is never overwritten.
-- `click_mark(radius, thickness) -> Vec<(i32, i32)>`: the points of a ring around (0, 0) with `MARK_RADIUS` 9 and `MARK_THICKNESS` 2 as the window's values; the point itself is never in it (an empty list for a radius or thickness of 0 or less). The window draws it at the last click inside the page, only while the page has the keys, and drops it when the page's address changes, on Ctrl+L, on an address Go and on a new tab.
-- `help_lines()` also says that the engine draws no cursor (the header says where typing goes, a ring marks the last click), that contenteditable boxes take no typing while `<input>` and `<textarea>` do, and that some sites, Google search among them, refuse this engine and show their own block page.
+- ~~`click_mark(radius, thickness)`~~ (removed in 0.8.0, M22-P05a: the owner asked for the click ring to go; the window draws no ring).
+- `help_lines()` also says that the engine draws no cursor (the bottom row says where typing goes), that contenteditable boxes take no typing while `<input>` and `<textarea>` do, and that some sites, Google search among them, refuse this engine and show their own block page.
 
-The mark and the crosshair pointer over the page are the window's own drawing and cost nothing in the engine; Lico passes nothing to the engine for them. While the page has the keys the composition of the input method is shown in the header ("composing: ..."), not in the address row. Added in M17-P11 (the lead, under the owner's delegation).
+The crosshair pointer over the page is the window's own drawing (the click ring of 0.7.0 is gone in 0.8.0) and cost nothing in the engine; Lico passes nothing to the engine for them. While the page has the keys the composition of the input method is shown in the bottom row ("composing: ..."), not in the address bar. Added in M17-P11 (the lead, under the owner's delegation).
 
 ## The help of the owner's stealth setting (0.7.1, M17-P12)
 

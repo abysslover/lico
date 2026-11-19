@@ -14,7 +14,9 @@ use cosmic_text::{Buffer, Metrics, SwashCache};
 use serde_json::{json, Value};
 use winit::event::KeyEvent;
 
-use super::controls::Rect;
+#[path = "browser_bar.rs"]
+pub(super) mod browser_bar;
+use super::controls::{self, Rect};
 use super::jobs::{AsyncDone, AsyncJob};
 use super::{emit_ime, App, View};
 
@@ -66,15 +68,16 @@ pub(crate) struct BrowserState {
     pub listed: bool,
     pub help: bool,
     pub last_pixel: u32,
-    /// The keys and the text go to the page (a click on the page, a new tab) or to the address row (a click on it, Ctrl+L, a prompt).
+    /// The keys and the text go to the page (a click on the page, a new tab) or to the address bar (a click on it, Ctrl+L, a prompt).
     pub page_focus: bool,
+    /// Where the bar was painted in the last frame (none before the first), and what its field showed.
+    pub bar: Option<browser_bar::BarLayout>,
+    pub bar_text: String,
+    /// What the one row under the page showed in the last frame.
+    pub row: String,
     /// The person's input waits here, in order: one request is in flight and a mouse move that is not yet sent is replaced by the newer one.
     pub queue: VecDeque<Value>,
     pub input_inflight: bool,
-    /// Where the person last clicked on the page (page pixels): marked with a ring while the page has the keys (M17-P11).
-    pub mark: Option<(i32, i32)>,
-    /// The pixel at the right of the ring as painted (0 when not painted): what a test reads.
-    pub mark_pixel: u32,
     /// The pointer is over the page and is a crosshair there.
     pub pointer_on_page: bool,
 }
@@ -176,7 +179,7 @@ impl App {
         self.browser_enter("browser:new");
         self.ui.browser.prompt = Some(local);
         self.ui.browser.page_focus = false;
-        self.ui.browser.help = true;
+        self.ui.browser.help = false; // an empty page with the bar focused; F1 says the rest (M22-P05a)
         self.ui.flash = None;
         self.browser_list();
     }
@@ -198,7 +201,6 @@ impl App {
         }
         self.ui.browser.help = false;
         self.ui.browser.queue.clear();
-        self.ui.browser.mark = None;
         self.ui.browser.page_focus = true;
         if let Some(t) = self.browser_tab(id) {
             t.rearm = true;
@@ -251,7 +253,6 @@ impl App {
                 self.browser_call(request, 30, BrowserJob::Open { local });
             }
             (None, Some(tab)) => {
-                self.ui.browser.mark = None;
                 self.ui.browser.page_focus = true; // the page is where the person goes next
                 self.browser_call(json!({"op": "browser.go", "tab": tab, "address": text}), 30, BrowserJob::Go { tab })
             }
@@ -365,10 +366,6 @@ impl App {
                     let url = reply["tab"]["url"].as_str().unwrap_or("").to_string();
                     // the address row follows the page when the page's address CHANGED and the person is not typing; a row the person cleared stays clear
                     let before = self.browser_tab(&tab).map(|t| std::mem::replace(&mut t.put_url, url.clone())).unwrap_or_default();
-                    let changed = before != url;
-                    if changed {
-                        self.ui.browser.mark = None; // the page moved on: the old point means nothing
-                    }
                     if self.browser_active() && self.ui.browser.active.as_deref() == Some(tab.as_str()) && lico_browser_view::follows_page(self.ed.text(), &before, &url) {
                         self.ed.clear(); // `put` inserts at the cursor: the old address must go first
                         self.ed.put(&url);
@@ -515,10 +512,20 @@ impl App {
     pub(crate) fn browser_paint(&mut self, buf: &mut [u32], width: usize, height: usize, place: (f32, f32, f32)) {
         let r = page_rect(place.0, place.1, place.2, width);
         self.ui.browser.rect = [r[0] as i32, r[1] as i32, (r[2] - r[0]) as i32, (r[3] - r[1]) as i32];
+        let lh = self.line_h() * self.ui.scale.max(1.0);
+        self.browser_paint_bar(buf, width, height, place.0, place.1 - lh, place.1);
+        if !self.browser_has_frame() {
+            controls::fill(buf, width, height, [r[0], r[1], r[2], r[3]], 0xFF10_151C); // the empty page
+        }
         self.draw_browser_frame(buf, width, height);
         if self.ui.browser.help {
             self.draw_browser_help(buf, width, height);
         }
+    }
+
+    /// The shown tab has a picture (decoded or not yet) to paint.
+    fn browser_has_frame(&self) -> bool {
+        self.ui.browser.active.as_ref().and_then(|id| self.ui.browser.tabs.iter().find(|t| &t.id == id)).is_some_and(|t| t.image.is_some() || !t.png.is_empty())
     }
 
     /// The help lines over the page area (a new tab and F1).
@@ -572,7 +579,6 @@ impl App {
         t.painted += 1;
         let first = buf.get(y0.max(0) as usize * width + x0.max(0) as usize).copied().unwrap_or(0);
         self.ui.browser.last_pixel = first;
-        self.browser_paint_mark(buf, width, height);
     }
 
     /// The person's input for the page waits in a queue and goes one request at a time, in order; a mouse move that has not been sent yet is replaced by the newer one.
@@ -618,15 +624,9 @@ impl App {
     }
 
     fn browser_button_event(&mut self, pressed: bool, button: &str) -> bool {
-        let (Some(tab), Some((x, y))) = (self.ui.browser.active.clone(), self.browser_point()) else {
-            if pressed && self.browser_active() && self.ed.contains(self.ui.mouse.0 as f32, self.ui.mouse.1 as f32) {
-                self.ui.browser.page_focus = false; // a click on the address row
-            }
-            return false;
-        };
+        let (Some(tab), Some((x, y))) = (self.ui.browser.active.clone(), self.browser_point()) else { return false };
         if pressed {
             self.ui.browser.page_focus = true;
-            self.ui.browser.mark = Some((x, y));
             self.dirty = true;
         }
         self.browser_push(json!({"op": "browser.input", "tab": tab, "kind": if pressed { "down" } else { "up" }, "x": x, "y": y, "button": button, "clicks": 1}));
@@ -634,7 +634,7 @@ impl App {
     }
 
     pub(crate) fn browser_mouse_button(&mut self, pressed: bool) -> bool {
-        self.browser_button_event(pressed, "left")
+        self.browser_bar_button(pressed) || self.browser_button_event(pressed, "left")
     }
 
     pub(crate) fn browser_other_button(&mut self, state: winit::event::ElementState, button: winit::event::MouseButton) -> bool {
@@ -708,7 +708,7 @@ impl App {
                 _ => None,
             };
             if let Some(action) = nav {
-                self.browser_call(json!({"op": "browser.nav", "tab": tab, "action": action}), 8, BrowserJob::Done);
+                self.browser_nav(&tab, action);
                 return true;
             }
             if ctrl && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("w")) {
@@ -716,8 +716,7 @@ impl App {
                 return true;
             }
             if ctrl && matches!(&event.logical_key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("l")) {
-                self.ui.browser.page_focus = false; // the address row takes the keys
-                self.dirty = true;
+                self.browser_focus_address(); // the bar takes the keys, with the address selected
                 return true;
             }
         }
@@ -760,8 +759,8 @@ impl App {
     pub(crate) fn browser_json(&self) -> Value {
         let b = &self.ui.browser;
         json!({
-            "active": b.active, "prompt": b.prompt, "page_focus": b.page_focus, "queued": b.queue.len(), "rect": b.rect, "shown": self.browser_active(), "help": b.help, "last_pixel": b.last_pixel, "listed": b.listed,
-            "header": self.browser_header(), "mark": self.browser_mark(), "mark_pixel": b.mark_pixel, "pointer": if b.pointer_on_page { "crosshair" } else { "default" },
+            "active": b.active, "prompt": b.prompt, "page_focus": b.page_focus, "queued": b.queue.len(), "rect": b.rect, "shown": self.browser_active(), "help": b.help, "last_pixel": b.last_pixel, "bar": self.browser_bar_json(), "page": if b.help { "help" } else if self.browser_has_frame() { "frame" } else { "blank" }, "listed": b.listed,
+            "header": self.browser_header(), "row": b.row, "pointer": if b.pointer_on_page { "crosshair" } else { "default" },
             "help_lines": if b.help && self.browser_active() { self.browser_help_lines() } else { Vec::new() },
             "tabs": b.tabs.iter().map(|t| json!({
                 "id": t.id, "local": t.local, "caption": caption(t), "seq": t.seq, "frame_seq": t.frame_seq, "decoded": t.image.is_some(), "decoded_seq": t.decoded_seq,

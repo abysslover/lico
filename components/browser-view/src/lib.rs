@@ -30,10 +30,6 @@ const MAX_NOTICE_HOST: usize = 253;
 pub const LOCAL_NOTE: &str = "this tab can reach services on this machine and no other site";
 pub const UNPINNED_NOTICE: &str = "running an engine that is not the pinned release";
 
-/// The radius and the thickness (pixels) of the ring that marks where the person last clicked on the page (0.7.0).
-pub const MARK_RADIUS: i32 = 9;
-pub const MARK_THICKNESS: i32 = 2;
-
 /// What the header says about where the person's typing goes (0.7.0): the engine draws no caret, so the window says it.
 pub fn keys_hint(focus: Focus) -> &'static str {
     match focus {
@@ -48,22 +44,26 @@ pub fn follows_page(row: &str, last_put: &str, page_url: &str) -> bool {
     !page_url.is_empty() && page_url != last_put && (row.is_empty() || row == last_put)
 }
 
-/// The points (offsets from the click) of a ring of `radius` pixels and `thickness` pixels, the point itself left free (0.7.0); nothing for a radius or a thickness of 0 or less.
-pub fn click_mark(radius: i32, thickness: i32) -> Vec<(i32, i32)> {
-    if radius <= 0 || thickness <= 0 {
-        return Vec::new();
+/// The address as the bar shows it while the bar does not have the keys (0.8.0): `https://` dropped (a person knows it; `http://` stays, it says something), and an address longer
+/// than `max_chars` characters cut in the MIDDLE so that the host name (with its slash) and the end stay: `www.example.com/\u{2026}th/page.html`. The result is never longer than
+/// `max_chars` characters; a width of 0 shows nothing and a width too small for more than a mark shows the start and the mark. Counted in characters, never cut inside one.
+pub fn display_address(address: &str, max_chars: usize) -> String {
+    let text = address.strip_prefix("https://").unwrap_or(address);
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max_chars {
+        return text.to_string();
     }
-    let inner = (radius - thickness).max(0);
-    let mut out = Vec::new();
-    for y in -radius..=radius {
-        for x in -radius..=radius {
-            let d = x * x + y * y;
-            if d > inner * inner && d <= radius * radius + radius {
-                out.push((x, y));
-            }
-        }
+    if max_chars == 0 {
+        return String::new();
     }
-    out
+    let keep = max_chars - 1; // the mark takes one
+    if keep < 4 {
+        return chars[..keep].iter().collect::<String>() + "\u{2026}";
+    }
+    let host_end = chars.iter().position(|c| matches!(c, '/' | '?' | '#')).unwrap_or(chars.len());
+    let head = (host_end + 1).min(keep - keep / 3);
+    let tail = keep - head;
+    chars[..head].iter().collect::<String>() + "\u{2026}" + &chars[chars.len() - tail..].iter().collect::<String>()
 }
 
 // ---- text from outside -----------------------------------------------------------------------------------------------------------------------------
@@ -449,18 +449,18 @@ impl Tab {
             "Pages are told this is Lico with the Moli engine.",
             "A page may still see a Windows platform: the engine decides that.",
             "Only http and https load, on ports 80, 443, 8080 and 8443.",
-            "A load that is refused or fails shows a notice in the header, not an error page.",
+            "A load that is refused or fails shows a notice in the bottom row, not an error page.",
             "Addresses on this computer or a private network are refused, by number and as localhost.",
             "To reach this machine's own services, open a tab for them from the + menu.",
             "A tab opened with the command line appears here at the next list (the + menu, or window focus).",
-            "Korean is typed with the input method: the composition shows in the header (page) or in the address row.",
+            "Korean is typed with the input method: the composition shows in the bottom row (page) or in the address bar.",
             "The page gets the finished text only.",
-            "The header says where typing goes, and a ring marks your last click.",
+            "The bottom row says where typing goes.",
             "A site may refuse an automated browser and show its own block page instead of its content.",
             "To try a search: https://www.google.com/search?q=WORDS",
             "The engine's own socket has no password: only programs on this machine can reach it.",
             "The first tab installs the browser engine by itself (about 46 MB, checked by SHA-256): you are not asked.",
-            "If the install fails the header says why and how to install it by hand.",
+            "If the install fails the bottom row says why and how to install it by hand.",
             "To look at a real site yourself: lico browser open https://SITE",
         ] {
             v.push(line.to_string());

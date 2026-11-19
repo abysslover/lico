@@ -19,6 +19,10 @@ pub(crate) enum Icon {
     Local,
     /// A screen with the prompt `>_` cut out of it (a terminal).
     Terminal,
+    /// A chevron pointing left, a chevron pointing right and an arc with an arrowhead (the browser bar's back, forward and reload, `M22-P05a`).
+    Back,
+    Forward,
+    Reload,
 }
 
 impl Icon {
@@ -33,11 +37,14 @@ impl Icon {
             Icon::Codex => "codex",
             Icon::Local => "local",
             Icon::Terminal => "terminal",
+            Icon::Back => "back",
+            Icon::Forward => "forward",
+            Icon::Reload => "reload",
         }
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 8] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal];
+    pub(crate) const ALL: [Icon; 11] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Back, Icon::Forward, Icon::Reload];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -164,6 +171,31 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             let uy = (mid + ah - tc * 0.5).round();
             put((x0 + side * 0.50).round(), uy, (x0 + side * 0.80).round(), uy + tc, ground);
         }
+        Icon::Back | Icon::Forward => {
+            // a chevron: two strokes meeting at a tip on the middle row, as wide as it is tall (a `<` or a `>`)
+            let (reach, vh) = (side * 0.24, side * 0.44);
+            let dir = if icon == Icon::Back { -1.0 } else { 1.0 };
+            let (tip, tail) = (cx + dir * reach, cx - dir * reach);
+            stroke(&mut put, (tail, cy - vh), (tip, cy), t, ink);
+            stroke(&mut put, (tip, cy), (tail, cy + vh), t, ink);
+        }
+        Icon::Reload => {
+            // an arc round the centre from just above the right side, over the top, down the left and under, to just below the right side (the gap is on the right), and an arrowhead at its
+            // end pointing up into the gap
+            let r = side * 0.40;
+            let at = |deg: f32| {
+                let a = deg.to_radians();
+                (cx + r * a.cos(), cy - r * a.sin())
+            };
+            let steps = 24;
+            for i in 0..steps {
+                stroke(&mut put, at(45.0 + 270.0 * i as f32 / steps as f32), at(45.0 + 270.0 * (i + 1) as f32 / steps as f32), t, ink);
+            }
+            let end = at(315.0);
+            let (tip, wing) = ((end.0 + side * 0.04, end.1 - side * 0.34), side * 0.26);
+            stroke(&mut put, tip, (end.0 - wing, end.1 - side * 0.04), t, ink);
+            stroke(&mut put, tip, (end.0 + wing, end.1 - side * 0.04), t, ink);
+        }
     }
 }
 
@@ -233,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn the_eight_icons_are_eight_different_pictures_and_have_eight_different_names() {
+    fn the_icons_are_all_different_pictures_and_have_different_names() {
         let pictures: Vec<Vec<u32>> = Icon::ALL.iter().map(|&i| canvas(i).0).collect();
         for a in 0..pictures.len() {
             for b in a + 1..pictures.len() {
@@ -243,7 +275,7 @@ mod tests {
         let mut names: Vec<&str> = Icon::ALL.iter().map(|i| i.name()).collect();
         names.sort_unstable();
         names.dedup();
-        assert_eq!(names.len(), 8);
+        assert_eq!(names.len(), Icon::ALL.len());
     }
 
     #[test]
@@ -288,7 +320,7 @@ mod tests {
     #[test]
     fn the_pictures_have_the_pieces_they_are_made_of() {
         // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
-        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1)];
+        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1)];
         for (icon, n) in want {
             let (buf, _) = canvas_n(icon, 128);
             assert_eq!(pieces(&buf, 128), n, "{icon:?}");
@@ -305,6 +337,34 @@ mod tests {
             let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
             assert!(max_x - min_x + 1 >= 56 && max_y - min_y + 1 >= 56, "{icon:?} reaches out: x {min_x}..{max_x}, y {min_y}..{max_y}");
         }
+    }
+
+    #[test]
+    fn back_and_forward_point_opposite_ways_and_reload_leaves_its_gap_on_the_right() {
+        let tip_rows = |icon: Icon, left: bool| {
+            let (buf, _) = canvas_n(icon, 128);
+            let px = inked_n(&buf, 128);
+            let edge = if left { px.iter().map(|p| p.0).min().unwrap() } else { px.iter().map(|p| p.0).max().unwrap() };
+            let ys: Vec<usize> = px.iter().filter(|p| p.0 <= edge + 1 && left || p.0 + 1 >= edge && !left).map(|p| p.1).collect();
+            (ys.iter().sum::<usize>() as f32 / ys.len() as f32, ys.iter().min().copied().unwrap(), ys.iter().max().copied().unwrap())
+        };
+        let (mid_back, lo_b, hi_b) = tip_rows(Icon::Back, true);
+        let (mid_fwd, lo_f, hi_f) = tip_rows(Icon::Forward, false);
+        assert!((mid_back - 63.5).abs() <= 3.0 && (mid_fwd - 63.5).abs() <= 3.0, "the tip is on the middle row: {mid_back} {mid_fwd}");
+        assert!(hi_b - lo_b <= 12 && hi_f - lo_f <= 12, "the tip is a point, not the whole height: {lo_b}..{hi_b} {lo_f}..{hi_f}");
+        // the chevron `<` has its open side to the right: ink at the left of the middle row, none at the right end of it
+        let (back, _) = canvas_n(Icon::Back, 128);
+        let row = |buf: &[u32], y: usize| (0..128).filter(|&x| buf[y * 128 + x] == INK).collect::<Vec<usize>>();
+        let mid = row(&back, 63);
+        assert!(!mid.is_empty() && mid.iter().all(|&x| x < 64), "the tip of `<` is left of the middle: {mid:?}");
+        let (fwd, _) = canvas_n(Icon::Forward, 128);
+        assert!(row(&fwd, 63).iter().all(|&x| x >= 64), "the tip of `>` is right of the middle");
+        // the reload arc: ink on the left, the top and the bottom of the circle, a gap on the right above the arrowhead (the circle there, 30 degrees up, is not drawn)
+        let (reload, _) = canvas_n(Icon::Reload, 128);
+        let high = row(&reload, 52);
+        assert!(!high.is_empty() && high.iter().all(|&x| x < 64), "the gap is on the right: {high:?}");
+        assert!(row(&reload, 41).iter().any(|&x| (56..72).contains(&x)), "the arc passes over the top");
+        assert!(pieces(&reload, 128) == 1, "the arc and its arrowhead are one piece");
     }
 
     #[test]

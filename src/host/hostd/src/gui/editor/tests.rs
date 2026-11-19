@@ -408,3 +408,19 @@ fn undo_and_redo_are_bounded_kept_per_session_across_panels_and_dropped_on_forge
         .sum();
     assert!(total_bytes <= UNDO_BYTES, "undo bytes exceeded cap: {total_bytes}");
 }
+
+#[test]
+fn select_all_selects_the_whole_text_with_the_cursor_at_its_end_and_nothing_for_an_empty_one() {
+    let mut ed = Editor::default();
+    ed.select_all();
+    assert!(!ed.has_selection(), "nothing to select in an empty box");
+    ed.put("https://pages.test/start");
+    ed.home();
+    ed.selecting = true; // a drag that was under way when the click came: the click ends it
+    ed.select_all();
+    assert!(!ed.selecting, "a select-all is not a drag");
+    assert_eq!(ed.selected_text().as_deref(), Some("https://pages.test/start"));
+    assert_eq!(ed.cursor(), ed.text().len(), "the cursor is at the end");
+    ed.put("x"); // typing replaces the selection, as in every address bar
+    assert_eq!(ed.text(), "x");
+}

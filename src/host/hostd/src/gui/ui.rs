@@ -243,7 +243,7 @@ impl App {
     }
 
     /// The target beside the input: provider, account, model and state of the selected session, as the host reports them.
-    fn header_text(&self) -> String {
+    pub(crate) fn header_text(&self) -> String {
         let mut text = self.header_base();
         if let Some(n) = &self.ui.host_notice {
             text = format!("{text} | {n}");
@@ -686,7 +686,7 @@ impl App {
         let status = self.status_line(panel_view.is_some());
         let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
         let is_tx = panel_view.is_none();
-        let browser_rows = if panel_view.is_none() && self.page_active() { Some(rows_avail) } else { None };
+        let browser_rows = if panel_view.is_none() && self.page_active() { Some(rows_avail) } else { None }; let on_bar = self.browser_active(); // (the browser view has its bar at the top: M22-P05a)
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
                 let v: Vec<_> = body.iter().enumerate().map(|(i, l)| (i, i as i64, l.clone(), 0u16)).collect();
@@ -719,7 +719,7 @@ impl App {
                 (used, end) = (used + rows, end + 1);
             }
         }
-        let mut text = header;
+        let mut text = if on_bar { " ".to_string() } else { header }; // the bar is painted over the first line
         if let Some(sb) = &search_bar {
             text.push('\n');
             text.push_str(&clean(sb));
@@ -800,7 +800,7 @@ impl App {
         // the scroll step: what the frame is made of, and whether the last one can be kept in part
         let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, chat_top as i32);
         let line_count = view.buffer.lines.len();
-        self.ed.place(&view.buffer, (line_count - n_prompt, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
+        self.ed.place(&view.buffer, (if on_bar { usize::MAX } else { line_count - n_prompt }, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
         let mut recs: Vec<LineRec> = (0..line_count)
             .map(|i| {
                 let (key, role) = if i + n_prompt >= line_count {

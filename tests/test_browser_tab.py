@@ -76,16 +76,19 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         assert any(b["id"] == "new_browser" and b["rect"] for b in u["toolbar"]["buttons"]), "the browser icon is drawn"
         assert not any(k in u["tabs"] for k in ("new_browser_rect", "new_browser_local_rect")), "the tab row has no buttons"
         click_new_tab(w)
-        b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b)
-        assert "type an address" in b["header"] and "F1 help" in b["header"] and b["help"], b
+        b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b["bar"] and b)
+        # M22-P05a: a new tab is an EMPTY page with the bar at the top focused and empty; the explanation is on F1
+        assert "type an address" in b["header"] and "F1 help" in b["header"] and not b["help"] and b["page"] == "blank", b
+        assert b["bar"]["focus"] and b["bar"]["text"] == "Type an address" and b["bar"]["enabled"] is False, b["bar"]
+        assert b["row"] == b["header"] and "F1 help" in b["row"], "the row under the page says what the header says, not the address"
+        assert b["bar"]["back"][1] < b["rect"][1] and b["bar"]["field"][2] > b["bar"]["field"][0] + 200, "the bar is above the page and the field has room"
+        shot(w, "1_new_tab_empty_page_bar_focused.png")
+        w.key("F1")                                            # the help comes with F1 and goes with the same key
+        b = wait_for(lambda: (b := browser(w)) and b["help"] and b["page"] == "help" and b)
         assert any("lico browser open https://SITE" in line for line in b["help_lines"]), b["help_lines"]
-        shot(w, "1_new_tab_prompt_and_help.png")
-        w.key("F1")                                            # the help goes away and comes back with the same key
-        wait_for(lambda: not browser(w)["help"])
+        shot(w, "1b_new_tab_help_on_f1.png")
         w.key("F1")
-        wait_for(lambda: browser(w)["help"])
-        w.key("F1")
-        wait_for(lambda: not browser(w)["help"])
+        wait_for(lambda: not browser(w)["help"] and browser(w)["page"] == "blank")
         w.type_text("https://pages.test/start")
         w.key("Return")
         tab = wait_for(lambda: browser(w)["active"])
@@ -96,6 +99,9 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         assert b["rect"][2] > 400 and b["rect"][3] > 200 and b["rect"][0] > 0, b["rect"]
         wait_for(lambda: "A fake page" in (browser(w)["header"] or ""))
         assert "ready" in browser(w)["header"]
+        # the bar of a page that has the keys shows the address without its https://, the buttons are on
+        b = wait_for(lambda: (b := browser(w)) and b["bar"] and b["bar"]["text"] == "pages.test/start" and b)
+        assert not b["bar"]["focus"] and b["bar"]["enabled"] and b["page"] == "frame", b["bar"]
         assert t["sent"] and t["sent"][0] == b["rect"][2], "the host was told the size of the area"
         row = next(r for r in conn.call(op="browser.list")["tabs"] if r["tab"] == tab)
         assert row["shown"] and row["viewport"][0] == b["rect"][2], row
@@ -103,7 +109,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         w.key("F1")                                            # F1 over a page: the help lines, with the new sentences
         h = wait_for(lambda: (b := browser(w)) and b["help"] and b["help_lines"] and b)
         text = " ".join(h["help_lines"])
-        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the header, not an error page", "Moli engine", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"]:
+        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the bottom row, not an error page", "Moli engine", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"]:
             assert needle in text, (needle, text)
         shot(w, "10_f1_help_over_a_page.png")
         w.key("F1")
@@ -261,41 +267,148 @@ def test_the_persons_input_reaches_the_page_and_lico_s_own_keys_do_not():
         shot(w, "8_page_has_the_focus.png")
 
 
-MARK_COLOUR = 0xFFE8590C
-
-
-def test_the_header_says_where_typing_goes_and_a_click_leaves_a_mark_and_the_pointer_changes_over_the_page():
-    """M17-P11 (the owner could not tell that the page took the keys: the engine draws no caret): the header says where typing goes, the last click on the page is marked with a
-    ring that goes when the keys leave the page or the page moves on, and the pointer is a crosshair over the page."""
+def test_the_bottom_row_says_where_typing_goes_a_click_leaves_no_ring_and_the_pointer_changes_over_the_page():
+    """M17-P11 (the owner could not tell that the page took the keys: the engine draws no caret): the row under the page says where typing goes and the pointer is a crosshair over the
+    page. M22-P05a: the ring at the last click is gone (the owner's word); the bar at the top shows which of the two has the keys by its frame."""
     with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
         conn = Conn(w.socket)
         tab = open_tab(w, "https://pages.test/start")
         painted(w, tab)
         wait_for(lambda: browser(w)["page_focus"])
         assert "typing goes to the page (Ctrl+L: address)" in browser(w)["header"], browser(w)["header"]
-        assert browser(w)["mark"] is None, "no click yet: no mark"
         w.click(*page_point(w, 120, 90))
-        b = wait_for(lambda: (b := browser(w)) and b["mark"] == [120, 90] and b["mark_pixel"] == MARK_COLOUR and b)
-        shot(w, "11_click_mark_and_typing_hint.png")
+        time.sleep(0.4)
+        b = browser(w)
+        assert "mark" not in b and "mark_pixel" not in b, "the click ring is gone"
+        shot(w, "11_click_no_ring_and_typing_hint.png")
         w.move(*page_point(w, 200, 150))
         wait_for(lambda: browser(w)["pointer"] == "crosshair")
         w.move(30, 300)                                          # over the side list
         wait_for(lambda: browser(w)["pointer"] == "default")
-        # the keys leave the page: the header says so and the mark goes
+        # the keys leave the page: the row says so and the bar is the one with the frame lit
         w.key("ctrl+l")
         b = wait_for(lambda: (b := browser(w)) and not b["page_focus"] and b)
-        assert "typing goes to the address row (click the page to type in it)" in b["header"] and b["mark"] is None, b["header"]
-        shot(w, "13_typing_goes_to_the_address_row.png")
-        # a click gives them back and marks the point; the page moving on (back) takes the mark away
-        w.key("ctrl+u")
+        assert "typing goes to the address row (click the page to type in it)" in b["header"], b["header"]
+        assert "typing goes to the address row" in b["row"], b["row"]
+        assert b["bar"]["focus"], b["bar"]
+        shot(w, "13_typing_goes_to_the_address_bar.png")
+        # an address typed there goes; a click on the page gives the keys back
         w.type_text("https://pages.test/two")
         w.key("Return")
         wait_for(lambda: any(r["url"] == "https://pages.test/two" for r in conn.call(op="browser.list")["tabs"]))
         w.click(*page_point(w, 60, 70))
-        wait_for(lambda: browser(w)["mark"] == [60, 70])
-        w.key("alt+Left")
-        wait_for(lambda: any(r["url"] == "https://pages.test/start" for r in conn.call(op="browser.list")["tabs"]))
-        wait_for(lambda: browser(w)["mark"] is None)
+        wait_for(lambda: browser(w)["page_focus"] and not browser(w)["bar"]["focus"])
+
+
+def centre_of(rect):
+    return centre(rect)
+
+
+def test_the_buttons_of_the_bar_go_back_forward_and_reload_and_the_field_takes_the_keys_with_the_address_selected():
+    """M22-P05a: `‹ › ⟳` run the host's `browser.nav`; a click on the field gives it the keys and selects the address (typing replaces it); the buttons do nothing with no tab."""
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        conn = Conn(w.socket)
+        click_new_tab(w)
+        b = wait_for(lambda: (b := browser(w)) and b["bar"] and b)
+        w.click(*centre_of(b["bar"]["back"]))                    # no tab yet: nothing happens, nothing breaks
+        w.click(*centre_of(b["bar"]["reload"]))
+        time.sleep(0.3)
+        assert conn.call(op="browser.list")["tabs"] == [] and browser(w)["prompt"] is False
+        w.type_text("https://pages.test/start")
+        w.key("Return")
+        tab = wait_for(lambda: browser(w)["active"])
+        painted(w, tab)
+        w.key("ctrl+l")
+        w.type_text("https://pages.test/two")
+        w.key("Return")
+
+        def urls():
+            return [r["url"] for r in conn.call(op="browser.list")["tabs"]]
+
+        wait_for(lambda: urls() == ["https://pages.test/two"])
+        bar = wait_for(lambda: (bar := browser(w)["bar"]) and bar["enabled"] and bar)
+        w.click(*centre_of(bar["back"]))
+        wait_for(lambda: urls() == ["https://pages.test/start"])
+        w.click(*centre_of(bar["forward"]))
+        wait_for(lambda: urls() == ["https://pages.test/two"])
+        frames = painted(w, tab)["frame_seq"]
+        w.click(*centre_of(bar["reload"]))
+        wait_for(lambda: painted(w, tab)["frame_seq"] > frames)
+        assert browser(w)["page_focus"], "a button does not take the keys from the page"
+        # the field: a click gives it the keys and selects the whole address; typing replaces it and Enter goes
+        wait_for(lambda: w.ui()["input"] == "https://pages.test/two")
+        def field_gray():
+            data, width, _ = w.gray()                            # one pixel of the field's top row, above the letters: the selection's colour is lighter than the field's
+            return data[int(bar["field"][1] + 3) * width + int(bar["field"][0] + 12)]
+
+        before = field_gray()
+        w.click(*centre_of(bar["field"]))
+        b = wait_for(lambda: (b := browser(w)) and not b["page_focus"] and b["bar"]["focus"] and b)
+        assert field_gray() > before + 25, "the selected address is painted with the selection's colour"
+        assert b["bar"]["selection"] == "https://pages.test/two", b["bar"]
+        assert b["bar"]["text"] == "https://pages.test/two", "with the keys the field shows the whole address, https:// included"
+        shot(w, "14_field_clicked_address_selected.png")
+        w.type_text("https://pages.test/three")
+        w.key("Return")
+        wait_for(lambda: urls() == ["https://pages.test/three"])
+        wait_for(lambda: browser(w)["page_focus"])
+
+
+def test_a_long_address_is_cut_in_the_middle_in_the_bar_and_whole_with_the_keys_and_the_caret_stays_in_the_field():
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        long = "https://pages.test/" + "/".join(f"segment{i}" for i in range(40)) + "/the-end.html"
+        tab = open_tab(w, long)
+        painted(w, tab)
+        b = wait_for(lambda: (b := browser(w)) and b["bar"] and "\u2026" in b["bar"]["text"] and b)
+        text, field = b["bar"]["text"], b["bar"]["field"]
+        assert text.startswith("pages.test/") and text.endswith("the-end.html") and text.count("\u2026") == 1, text
+        shot(w, "15_long_address_cut_in_the_middle.png")
+        w.key("ctrl+l")                                          # with the keys: the whole address, the caret at its end and inside the field
+        b = wait_for(lambda: (b := browser(w)) and b["bar"]["focus"] and b)
+        assert b["bar"]["text"] == long and b["bar"]["selection"] == long, b["bar"]["text"][:60]
+        w.key("End")
+        caret = wait_for(lambda: (c := browser(w)["bar"]["caret"]) and c)
+        assert field[0] < caret[0] < field[2], (caret, field)
+        w.key("Home")
+        caret = wait_for(lambda: (c := browser(w)["bar"]["caret"]) and c)
+        assert field[0] < caret[0] < field[0] + 40, (caret, field)
+        data, width, _ = w.gray()                                # the caret is drawn: light pixels on the field's top row at its x (the field around it is dark)
+        row = int(field[1] + 3) * width
+        assert max(data[row + int(caret[0])], data[row + int(caret[0]) + 1]) > 150 and data[row + int(caret[0]) + 8] < 100, "a light caret on a dark field"
+        shot(w, "16_long_address_whole_with_the_keys.png")
+
+
+def drag(w, x0, x1, y):
+    """Press at x0, move to x1, release (the harness has click and move only): a selection by the mouse."""
+    since = w.frames()
+    wid = w.window_id()
+    subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x0)), str(int(y)), "mousedown", "1", "mousemove", "--window", wid, str(int(x1)), str(int(y)), "mouseup", "1"], env=w.env, check=True)
+    w.settle(since, 0.2)
+
+
+def test_the_mouse_places_the_caret_and_selects_in_the_bar_and_typing_edits_at_the_caret():
+    """M22-P05a: the editor's own mouse code works on the bar because the bar gives it the geometry of what it drew (caret, glyph boxes): a click puts the caret between two letters, a drag selects."""
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        address = "https://pages.test/start"
+        tab = open_tab(w, address)
+        painted(w, tab)
+        w.key("ctrl+l")
+        w.key("Home")
+        bar = wait_for(lambda: (bar := browser(w)["bar"]) and bar["caret"] and bar)
+        x_start = bar["caret"][0]
+        w.key("End")
+        cw = (wait_for(lambda: browser(w)["bar"]["caret"])[0] - x_start) / len(address)
+        y = (bar["field"][1] + bar["field"][3]) / 2
+        w.click(x_start + 8 * cw + 1, y)                         # between "https://" and "pages"
+        wait_for(lambda: browser(w)["bar"]["selection"] in (None, ""))
+        w.type_text("X")
+        wait_for(lambda: w.ui()["input"] == "https://Xpages.test/start")
+        drag(w, x_start + 9 * cw + 1, x_start + 14 * cw + 1, y)  # "pages"
+        b = wait_for(lambda: (b := browser(w)) and b["bar"]["selection"] and b)
+        assert b["bar"]["selection"] == "pages", b["bar"]
+        shot(w, "17_selection_by_the_mouse_in_the_bar.png")
+        w.type_text("ok")                                        # typing replaces the selection
+        wait_for(lambda: w.ui()["input"] == "https://Xok.test/start")
 
 
 def test_korean_committed_in_a_page_reaches_it_as_text_and_the_address_row_keeps_its_own():

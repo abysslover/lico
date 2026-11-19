@@ -535,7 +535,7 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Moli engine", "Windows platform", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the header, not an error page", "installs the browser engine by itself", "you are not asked", "install it by hand", "ring marks your last click", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"] {
+    for needle in ["Lico", "Moli engine", "Windows platform", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the bottom row, not an error page", "installs the browser engine by itself", "you are not asked", "install it by hand", "bottom row says where typing goes", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
     }
     for gone in ["Obscura", "stealth", "boxes", "contenteditable", "draws no cursor"] {
@@ -642,22 +642,38 @@ fn the_address_row_follows_a_new_page_address_unless_the_person_has_edited_it() 
 }
 
 #[test]
-fn the_click_mark_is_a_ring_around_the_point_and_never_covers_the_point() {
-    let ring = click_mark(MARK_RADIUS, MARK_THICKNESS);
-    assert!(!ring.is_empty() && ring.len() < 200, "a few dozen points: {}", ring.len());
-    assert!(!ring.contains(&(0, 0)), "the point itself stays visible");
-    for p in [(MARK_RADIUS, 0), (-MARK_RADIUS, 0), (0, MARK_RADIUS), (0, -MARK_RADIUS)] {
-        assert!(ring.contains(&p), "{p:?}");
+fn an_address_that_fits_is_shown_whole_without_its_https_and_a_long_one_is_cut_in_the_middle_keeping_the_host_and_the_end() {
+    // fits: only the scheme `https://` goes (a person knows it; `http://` stays because it says something)
+    assert_eq!(display_address("https://pages.test/start", 40), "pages.test/start");
+    assert_eq!(display_address("http://pages.test/start", 40), "http://pages.test/start");
+    assert_eq!(display_address("https://pages.test/start", 16), "pages.test/start", "exactly the width");
+    assert_eq!(display_address("", 20), "");
+    // too long: the host (with its slash) stays at the front, the end of the address stays at the back, an ellipsis between, and the whole is exactly the width
+    let long = "https://www.example.com/a/very/long/path/to/the/page.html?x=1&y=2";
+    let shown = display_address(long, 40);
+    assert_eq!(shown.chars().count(), 40, "{shown}");
+    assert!(shown.starts_with("www.example.com/\u{2026}"), "{shown}");
+    assert!(shown.ends_with("page.html?x=1&y=2"), "{shown}");
+    assert_eq!(shown.matches('\u{2026}').count(), 1, "one cut");
+    // the host also ends at a `?` (and a `#`) when no slash comes first: its mark stays with it
+    assert_eq!(display_address("https://example.org?query=aaaaaaaaaaaaaaaaaaaa", 20), "example.org?\u{2026}aaaaaaa");
+    assert_eq!(display_address("https://example.org#section-aaaaaaaaaaaaaaaaaaaa", 20), "example.org#\u{2026}aaaaaaa");
+    // a host longer than the width: the front is two thirds of it, the end the rest
+    let host = "https://a-very-long-host-name-with-many-labels.example.org/x/y.html";
+    let shown = display_address(host, 30);
+    assert_eq!(shown.chars().count(), 30, "{shown}");
+    assert!(shown.starts_with("a-very-long-host-na") && shown.ends_with("/x/y.html") || shown.ends_with("y.html"), "{shown}");
+    // widths so small that nothing but a mark fits
+    assert_eq!(display_address("https://pages.test/start", 0), "");
+    assert_eq!(display_address("https://pages.test/start", 1), "\u{2026}");
+    assert_eq!(display_address("https://pages.test/start", 4), "pag\u{2026}");
+    // counted in characters: a Korean address is cut at characters, never inside one
+    let korean = "https://\u{d55c}\u{ae00}.test/\u{ac00}\u{b098}\u{b2e4}\u{b77c}\u{b9c8}\u{bc14}\u{c0ac}";
+    let shown = display_address(korean, 12);
+    assert_eq!(shown.chars().count(), 12, "{shown}");
+    assert!(shown.starts_with("\u{d55c}\u{ae00}.test/") && shown.ends_with("\u{c0ac}"), "{shown}");
+    // for every width the result is never wider than asked
+    for n in 0..80 {
+        assert!(display_address(long, n).chars().count() <= n, "{n}");
     }
-    assert!(!ring.contains(&(MARK_RADIUS / 2, 0)) && !ring.contains(&(MARK_RADIUS + MARK_THICKNESS, 0)), "inside and outside the ring are not part of it");
-    assert!(ring.iter().all(|&(x, y)| x.abs() <= MARK_RADIUS + 1 && y.abs() <= MARK_RADIUS + 1), "within the radius and a pixel");
-    assert!(ring.iter().all(|&(x, y)| ring.contains(&(-x, -y)) && ring.contains(&(y, x))), "the ring is symmetric");
-    assert!(click_mark(0, 1).is_empty() && click_mark(5, 0).is_empty(), "no radius or no thickness: nothing to draw");
-    // the exact shape of the window's ring: 144 points; the first point inside the ring (7,0) is not part of it, the last ones (9,1) and (9,3) are
-    assert_eq!(ring.len(), 144, "the ring of the window");
-    assert!(!ring.contains(&(7, 0)) && ring.contains(&(8, 0)) && ring.contains(&(9, 1)) && ring.contains(&(9, 3)) && !ring.contains(&(10, 0)), "the edges of the ring");
-    // a thickness bigger than the radius is a filled disc without its centre
-    let disc = click_mark(2, 5);
-    assert_eq!(disc.len(), 20, "{disc:?}");
-    assert!(disc.contains(&(0, 1)) && !disc.contains(&(0, 0)) && !disc.contains(&(0, 3)));
 }

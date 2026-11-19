@@ -120,6 +120,17 @@ impl Controls {
         self.labels.get_mut(text).unwrap()
     }
 
+    /// Where each glyph of `text` is when it is drawn at x = 0: (first byte, end byte, left, right). The address bar's caret and mouse boxes are made from them (M22-P05a).
+    pub fn glyph_spans(&mut self, fs: &mut FontSystem, text: &str) -> Vec<(usize, usize, f32, f32)> {
+        self.label(fs, text).0.layout_runs().flat_map(|r| r.glyphs.iter().map(|g| (g.start, g.end, g.x, g.x + g.w)).collect::<Vec<_>>()).collect()
+    }
+
+    /// Gives the editor the geometry of `text` drawn as one row at `at` (x of the text's start, y of its top, its width, the scale): its caret, selection and boxes for the mouse.
+    pub fn place_editor(&mut self, fs: &mut FontSystem, ed: &mut super::editor::Editor, text: &str, caret: Option<(usize, usize)>, at: [f32; 4]) {
+        let entry = self.label(fs, text);
+        ed.place(&entry.0, (0, 1, caret), at);
+    }
+
     /// The width a text takes when drawn.
     pub fn width(&mut self, fs: &mut FontSystem, text: &str) -> f32 {
         self.label(fs, text).1
