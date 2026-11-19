@@ -393,8 +393,8 @@ REPLIES = {
         "limit": {"type": INT, "minimum": 1, "maximum": 100},
         "has_more": {"type": BOOL},
         "items": {"type": "array", "items": _obj({
-            "provider": {"type": STR, "enum": ["codex", "claude"]},
-            "provider_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
+            "provider": {"type": STR, "enum": ["codex", "claude", "browser"]},
+            "provider_session": {"type": STR, "min_length": 1, "max_length": 2048},
             "account": {"type": [STR, "null"], "max_length": 64},
             "account_label": {"type": [STR, "null"], "max_length": 40},
             "ssh_host": {"type": [STR, "null"], "min_length": 1, "max_length": 128, "charset": "model"},
@@ -540,6 +540,7 @@ REQUESTS = {
         "query": {"type": STR, "max_length": 256, "no_control": True, "no_hidden": True},
         "recorded": {"type": BOOL},
         "others": {"type": BOOL},
+        "pages": {"type": BOOL},
         "offset": {"type": INT, "minimum": 0, "maximum": 1000000},
         "limit": {"type": INT, "minimum": 1, "maximum": 100},
     }),

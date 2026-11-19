@@ -221,3 +221,23 @@ fn a_wide_character_counts_two_columns_when_a_title_is_laid_out() {
         assert!(width(&a) <= cols && width(&b) <= cols, "{cols}: {a:?} {b:?}");
     }
 }
+
+#[test]
+fn a_remembered_page_has_the_browsers_picture_no_folder_and_says_its_address_on_the_card_and_whole_in_the_hint() {
+    let mut page = chat("https://docs.example.test/guide/getting-started/installing-on-linux?version=2#top", NOW - 2 * HOUR);
+    page.provider = "browser".into();
+    page.title = "Installing on Linux".into();
+    assert_eq!(icon_of("browser"), Icon::Browser);
+    assert_ne!(icon_ink("browser"), icon_ink("claude"), "the picture's colour is its own");
+    assert_eq!(folder_of(&page), None, "a page has no folder");
+    assert_eq!(state_of(&page, None, NOW), State::None, "a page is not a session: no state picture");
+    // the card's second line is the address, `https://` dropped and cut in the middle as the bar cuts it
+    let line = folder_line(&page, 30);
+    assert!(line.starts_with("docs.example.test/") && line.contains('\u{2026}') && line.chars().count() <= 30, "{line:?}");
+    assert_eq!(folder_line(&chat("cl-1", NOW), 30), "", "a chat with no folder has an empty second line, as before");
+    // the hint row: title, time, the whole address; no id and no folder
+    let hint = hint_of(&page, State::None, None, NOW, 200);
+    assert_eq!(hint, format!("Installing on Linux \u{00b7} {} \u{00b7} {}", age_words(NOW, NOW - 2 * HOUR), page.provider_session), "{hint}");
+    let short = hint_of(&page, State::None, None, NOW, 60);
+    assert!(short.chars().count() <= 60 && short.starts_with("Installing"), "{short}");
+}

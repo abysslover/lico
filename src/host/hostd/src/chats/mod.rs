@@ -61,6 +61,21 @@ pub fn valid_query(value: &Value) -> bool {
     matches!(value, Value::String(s) if s.chars().count() <= 256 && !s.chars().any(refused_char))
 }
 
+/// Whether the (lower-cased) `query` is in the title, the provider session, the provider or the account's label of `it`; an empty query is in everything.
+fn matches_query(it: &ChatItem, query: &str) -> bool {
+    query.is_empty()
+        || it.title.to_lowercase().contains(query)
+        || it.provider_session.to_lowercase().contains(query)
+        || it.provider.to_lowercase().contains(query)
+        || it.account_label.as_deref().is_some_and(|l| l.to_lowercase().contains(query))
+}
+
+/// A remembered page as an item of the list: the provider `browser`, the address as its session, the title (the address when the page had none), the time it was last shown.
+fn page_item(page: crate::pages::Page) -> ChatItem {
+    let title = if page.title.is_empty() { page.address.chars().take(crate::pages::MAX_TITLE).collect() } else { page.title };
+    ChatItem { provider: "browser".into(), provider_session: page.address, account: None, account_label: None, ssh_host: None, cwd: None, global: false, title, updated_at: page.time, open_session: None, open_state: None, file: None, turns: None, recorded: true, live: None }
+}
+
 pub(super) fn norm_path(p: &str) -> &str {
     let trimmed = p.trim_end_matches('/');
     if trimmed.is_empty() && p.starts_with('/') {
@@ -498,17 +513,16 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
 
     let mut all_items: Vec<ChatItem> = merged
         .into_values()
-        .filter(|it| {
-            query_norm.is_empty()
-                || it.title.to_lowercase().contains(&query_norm)
-                || it.provider_session.to_lowercase().contains(&query_norm)
-                || it.provider.to_lowercase().contains(&query_norm)
-                || it.account_label.as_deref().is_some_and(|l| l.to_lowercase().contains(&query_norm))
-        })
+        .filter(|it| matches_query(it, &query_norm))
         .collect();
 
     if request.get("recorded").and_then(Value::as_bool).unwrap_or(false) {
         all_items.retain(|it| it.recorded);
+    }
+    // the remembered pages of the browser (M22-P05c) join the list of this machine when the window asks; the other callers do not say `pages` and see what they saw
+    if request.get("pages").and_then(Value::as_bool).unwrap_or(false) && scope == Scope::All && account_filter.is_none() {
+        let dir = shared.cfg.registry_dir.parent();
+        all_items.extend(dir.map(crate::pages::load).unwrap_or_default().into_iter().map(page_item).filter(|it| matches_query(it, &query_norm)));
     }
     all_items.sort_by(|a, b| {
         b.updated_at
@@ -592,6 +606,21 @@ pub(super) fn item_json(it: &ChatItem) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_remembered_page_is_an_item_of_the_browser_with_its_title_or_else_its_cut_address_and_the_query_matches_it() {
+        use crate::pages::{Page, MAX_TITLE};
+        let long = format!("https://long.test/{}", "x".repeat(500));
+        let bare = page_item(Page { address: long.clone(), title: String::new(), time: 7 });
+        assert_eq!((bare.provider.as_str(), bare.provider_session.as_str(), bare.updated_at, bare.global), ("browser", long.as_str(), 7, false));
+        assert!(bare.title.starts_with("https://long.test/") && bare.title.chars().count() == MAX_TITLE, "no title: the address, cut to a title's length");
+        let titled = page_item(Page { address: "https://a.test/Docs".into(), title: "Guide".into(), time: 1 });
+        assert_eq!(titled.title, "Guide");
+        for hit in ["", "guide", "a.test/docs", "browser"] {
+            assert!(matches_query(&titled, hit), "{hit:?}");
+        }
+        assert!(!matches_query(&titled, "other"));
+    }
 
     #[test]
     fn codex_stem_and_system_prompt_filters_handle_real_shapes() {

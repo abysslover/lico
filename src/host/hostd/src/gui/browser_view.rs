@@ -16,6 +16,8 @@ use winit::event::KeyEvent;
 
 #[path = "browser_bar.rs"]
 pub(super) mod browser_bar;
+#[path = "browser_pages.rs"]
+mod browser_pages;
 use super::controls::{self, Rect};
 use super::jobs::{AsyncDone, AsyncJob};
 use super::{emit_ime, App, View};
@@ -31,6 +33,8 @@ pub(crate) enum BrowserJob {
     Watch { tab: String },
     /// The answer to one input of the person (the next one is sent after it).
     Input,
+    /// The answer to `browser.forget` (the remembered pages cleared).
+    Forget,
 }
 
 type Inbox = Arc<Mutex<Option<(u64, Vec<u8>)>>>;
@@ -271,6 +275,7 @@ impl App {
     fn refuse_text(&mut self, error: &str) {
         let why = match error {
             "address_empty" => "type an address or words to search".to_string(),
+            "no_page" => "no closed tab to reopen".to_string(),
             "search_setting" => "the browser_search setting is not an https address with one %s".to_string(),
             "address_scheme" => "only http and https addresses load".to_string(),
             "address_credentials" => "an address with a user name or password is not opened".to_string(),
@@ -321,6 +326,7 @@ impl App {
                 self.dirty = true; // the reconcile after the next frame may send a newer size
             }
             BrowserJob::Done => {}
+            BrowserJob::Forget => self.browser_forgot(&reply),
             BrowserJob::Input => {
                 self.ui.browser.input_inflight = false;
                 self.browser_pump();

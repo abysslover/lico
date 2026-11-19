@@ -18,7 +18,7 @@ fn a_dropdown_opens_with_its_groups_closed_and_the_entries_that_stay_are_on_the_
     app.menu_open_at(1);
     let rows = app.menu_rows(1);
     let heads: Vec<&str> = rows.iter().filter_map(|r| if let RowKind::Group(g, false) = r.kind { Some(g) } else { None }).collect();
-    assert_eq!(heads, ["Go to", "This session", "Share", "Tools", "Approvals", "Edit"], "{:?}", labels(&rows));
+    assert_eq!(heads, ["Browser pages", "Go to", "This session", "Share", "Tools", "Approvals", "Edit"], "{:?}", labels(&rows));
     assert!(rows.iter().all(|r| r.depth == 0 && r.kind != RowKind::Group("Go to", true)), "nothing is indented while every group is closed");
     let head = |l: &str| labels(&rows).iter().position(|x| x == l);
     assert!(head("New Home session") < head("Go to") && head("Go to") < head("Start screen"), "a group stands where its first entry was: {:?}", labels(&rows));

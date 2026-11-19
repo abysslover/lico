@@ -56,6 +56,9 @@ mod native;
 mod new_session;
 mod notify;
 mod chats;
+mod pages;
+#[cfg(test)]
+mod pages_tests;
 mod pasted;
 mod payload;
 mod pending;

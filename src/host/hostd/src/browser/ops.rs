@@ -22,7 +22,7 @@ pub const DEFAULT_AREA: (u32, u32) = (1024, 768);
 /// How long `browser.shot` waits for a first frame.
 pub const SHOT_WAIT: Duration = Duration::from_secs(3);
 
-pub const NAMES: [&str; 11] = ["browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch", "browser.input"];
+pub const NAMES: [&str; 13] = ["browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch", "browser.input", "browser.reopen", "browser.forget"];
 
 /// `op`, `v` and `id` are the fields every request may carry.
 pub fn valid_common(key: &str, v: &Value) -> bool {
@@ -51,6 +51,9 @@ pub fn valid_shot_path(v: &Value) -> bool {
 pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
     if super::window_ops::WINDOW_NAMES.contains(&op) {
         return super::window_ops::valid(op, request);
+    }
+    if super::pages_ops::PAGES_NAMES.contains(&op) {
+        return super::pages_ops::valid(op, request);
     }
     let allowed: &[&str] = match op {
         "browser.open" => &["op", "v", "id", "url", "local", "search"],
@@ -227,6 +230,11 @@ impl Browser {
         let search = request.get("search").and_then(Value::as_bool).unwrap_or(false);
         // the command line is strict and says `bad_request`; the window that searches (M22-P05b) is told why
         let url = self.address_for(shared, typed, search, local).map_err(|e| if search { e } else { "bad_request" })?;
+        self.open_url(shared, &url, local)
+    }
+
+    /// Opens a tab on an address that is already an address (what the typed text became, or a remembered page).
+    pub(super) fn open_url(&self, shared: &Opaque, url: &str, local: bool) -> Reply {
         let index = local as usize;
         let mut engines = self.engines.lock().unwrap();
         if self.hub.tabs.lock().unwrap().len() >= MAX_TABS {
@@ -238,7 +246,7 @@ impl Browser {
             format!("b{n}")
         };
         let prepared = self.ensure_engine(&mut engines, shared, index, true)?;
-        let tab = Self::new_tab(&prepared, &self.source, local, DEFAULT_AREA, &url);
+        let tab = Self::new_tab(&prepared, &self.source, local, DEFAULT_AREA, url);
         self.hub.tabs.lock().unwrap().push(Entry::new(id.clone(), tab, index, local));
         let mut reply = obj(json!({"tab": id, "phase": Self::phase_word(&prepared), "local": local, "unpinned": prepared.unpinned}));
         if prepared.installing {
@@ -477,6 +485,8 @@ impl Ops for Browser {
             "browser.nav" => self.nav(request),
             "browser.watch" => self.watch(request),
             "browser.input" => self.input(request),
+            "browser.reopen" => self.reopen(shared),
+            "browser.forget" => self.forget(shared),
             _ => Err("unknown_op"),
         }
     }

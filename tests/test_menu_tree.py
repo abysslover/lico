@@ -17,12 +17,12 @@ from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
 from tests.test_running_elsewhere_window import _centre
 
-SESSION_GROUPS = ["Go to", "This session", "Share", "Tools", "Approvals", "Edit"]
+SESSION_GROUPS = ["Browser pages", "Go to", "This session", "Share", "Tools", "Approvals", "Edit"]
 VIEW_GROUPS = ["Find", "Scroll", "Show", "Text size", "Settings"]
 
 # every entry the menus had before the trees, by the start of its label (nothing was removed)
 SESSION_ENTRIES = [
-    "New Home session", "New browser tab", "New local browser tab", "New terminal tab", "Next session", "Previous session", "Start screen", "Resume session", "Rebind account...", "Permission mode:", "Rename session",
+    "New Home session", "New browser tab", "New local browser tab", "New terminal tab", "Reopen closed tab", "Clear remembered pages", "Next session", "Previous session", "Start screen", "Resume session", "Rebind account...", "Permission mode:", "Rename session",
     "Close session", "Delete session", "Send to session...", "Hand over conversation...", "Find Local LLM servers...", "Allow approval", "Deny approval", "Copy selected", "Cut selection", "Paste",
     "Virtual display:", "Stop real-screen control",
 ]

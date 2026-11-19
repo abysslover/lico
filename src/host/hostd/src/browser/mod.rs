@@ -7,6 +7,7 @@ mod fonts;
 mod installer;
 mod map;
 mod ops;
+mod pages_ops;
 mod profile;
 mod reserved;
 mod search;
@@ -16,6 +17,8 @@ mod watch;
 mod window_ops;
 #[cfg(test)]
 mod ops_install_tests;
+#[cfg(test)]
+mod pages_ops_tests;
 #[cfg(test)]
 mod real_probe;
 #[cfg(test)]

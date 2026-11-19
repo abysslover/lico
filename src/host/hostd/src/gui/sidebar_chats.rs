@@ -183,6 +183,7 @@ impl App {
         });
         if all {
             req["all"] = json!(true);
+            req["pages"] = json!(true); // the pages the browser remembers are listed among the chats (M22-P05c)
         } else if is_glob {
             req["global"] = json!(true);
         } else if let Some(ref c) = cwd_opt {
@@ -246,6 +247,10 @@ impl App {
         let Some(entry) = self.ui.sidebar.chats.items.get(idx).cloned() else {
             return;
         };
+        if entry.provider == "browser" {
+            self.browser_open_page(&entry.provider_session); // a remembered page is no session: a click opens it in a new tab
+            return;
+        }
         self.chats_go_to_folder(&entry); // at once: the card already knows where the session is, so Directories does not wait for the resume
         if entry.running_elsewhere && entry.open_session.is_none() {
             self.ui.flash = Some(chats_error_text("chat_running_elsewhere"));

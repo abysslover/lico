@@ -8,7 +8,7 @@
 use super::engine::Located;
 use super::map;
 use super::profile::{self, Params};
-use lico_browser_view::{Effect, EngineEvent, Refusal, Tab};
+use lico_browser_view::{Effect, EngineEvent, Phase, Refusal, Tab};
 use lico_cdp::{link, Caller, Error as CdpError, Limits, Reader};
 use lico_proxy::{Config as ProxyConfig, EventKind, Policy, Proxy, Resolver, StdConnector, StdResolver, Why};
 use serde_json::{json, Value};
@@ -550,7 +550,18 @@ fn on_event(setup: &Setup, caller: &Caller, event: &lico_cdp::Event) {
         }
         if finished {
             ask_title(setup, caller, &id, session);
+            remember_page(setup, &id);
         }
+    }
+}
+
+/// The page that has loaded, with its title, is remembered (M22-P05c) unless its tab is for this machine's own services (`pages_ops::note` says which are kept); a file that cannot
+/// be written is one log line with no address.
+fn remember_page(setup: &Setup, id: &str) {
+    let Some((local, ready, url, title)) = with_entry(setup, id, |e| (e.local, *e.tab.phase() == Phase::Ready, e.tab.url().to_string(), e.tab.title().to_string())) else { return };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    if super::pages_ops::note(&setup.state_dir, local, ready, &url, &title, now) == Err("not_saved") {
+        log("a page could not be remembered");
     }
 }
 

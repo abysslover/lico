@@ -159,6 +159,9 @@ pub(super) fn folder_of(it: &ChatEntry) -> Option<String> {
 
 /// The second line of a card: `lico://home`, or the end of the folder as long as `cols` columns allow (the whole path when it fits); empty for a chat without a folder.
 pub(super) fn folder_line(it: &ChatEntry, cols: usize) -> String {
+    if it.provider == "browser" {
+        return lico_browser_view::display_address(&it.provider_session, cols); // the page's address, cut in the middle as the bar cuts it
+    }
     if it.global {
         return HOME_PATH.to_string();
     }
@@ -197,6 +200,17 @@ pub(super) fn title_lines(title: &str, cols1: usize, cols2: usize) -> (String, S
 /// The sentence of the hint row for a card under the pointer: the title, the time, the state in words with its memory figure, the folder, who, the id; cut to `cols` columns with the title
 /// giving way first.
 pub(super) fn hint_of(it: &ChatEntry, state: State, row: Option<&Row>, now: u64, cols: usize) -> String {
+    let rest = if it.provider == "browser" {
+        format!("{} \u{00b7} {}", age_words(now, it.updated_at), it.provider_session) // a remembered page: the whole address, and a click opens it
+    } else {
+        session_rest(it, state, row, now)
+    };
+    let room = cols.saturating_sub(rest.chars().count() + 3).max(12);
+    format!("{} \u{00b7} {rest}", clip_cols(&it.title, room)).chars().take(cols).collect()
+}
+
+/// The hint row of a session after its title: the time, the state in words with its memory figure, the folder, who, the id.
+fn session_rest(it: &ChatEntry, state: State, row: Option<&Row>, now: u64) -> String {
     let mut rest = vec![age_words(now, it.updated_at)];
     let figure = row.map(|r| if r.rss_kb > 0 { r.rss_kb } else { r.memory_kb }).filter(|kb| *kb > 0).map(memrow::long);
     match state {
@@ -216,9 +230,7 @@ pub(super) fn hint_of(it: &ChatEntry, state: State, row: Option<&Row>, now: u64,
     rest.extend(folder_of(it));
     rest.extend(who_of(it).map(str::to_string));
     rest.push(format!("#{}", &it.provider_session[..it.provider_session.len().min(8)]));
-    let rest = rest.join(" \u{00b7} ");
-    let room = cols.saturating_sub(rest.chars().count() + 3).max(12);
-    format!("{} \u{00b7} {rest}", clip_cols(&it.title, room)).chars().take(cols).collect()
+    rest.join(" \u{00b7} ")
 }
 
 /// Where the parts of a card are.
@@ -288,6 +300,7 @@ pub(super) fn icon_of(provider: &str) -> Icon {
     match provider {
         "claude" => Icon::Claude,
         "local" => Icon::Local,
+        "browser" => Icon::Browser,
         _ => Icon::Codex,
     }
 }
@@ -296,6 +309,7 @@ fn icon_ink(provider: &str) -> Color {
     match provider {
         "claude" => Color::rgb(0xF2, 0xAA, 0x6B),
         "local" => Color::rgb(0xA8, 0xB8, 0xCC),
+        "browser" => Color::rgb(0x7F, 0xB4, 0xF2),
         _ => Color::rgb(0x7A, 0xE0, 0xB8),
     }
 }

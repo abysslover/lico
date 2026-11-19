@@ -22,6 +22,8 @@ pub enum Cmd {
     NewGlobalSession,
     NewBrowser,
     NewLocalBrowser,
+    ReopenTab,
+    ForgetPages,
     NewTerminal,
     Accounts,
     Quit,
@@ -105,6 +107,7 @@ pub enum RowKind {
 /// The group an entry is classified into, or none for an entry that stays on the dropdown itself.
 pub(crate) fn group_of(cmd: Cmd) -> Option<&'static str> {
     Some(match cmd {
+        Cmd::ReopenTab | Cmd::ForgetPages => "Browser pages",
         Cmd::Next | Cmd::Prev | Cmd::GoTo(_) => "Go to",
         Cmd::Resume | Cmd::Rebind | Cmd::ToggleMode | Cmd::Rename | Cmd::Close | Cmd::Delete => "This session",
         Cmd::SendTo | Cmd::HandOver => "Share",
@@ -146,6 +149,8 @@ impl App {
                     Self::entry("New browser tab", "", Cmd::NewBrowser, panel_reason),
                     Self::entry("New local browser tab", "", Cmd::NewLocalBrowser, panel_reason),
                     Self::entry("New terminal tab", "", Cmd::NewTerminal, panel_reason),
+                    Self::entry("Reopen closed tab", "", Cmd::ReopenTab, panel_reason),
+                    Self::entry("Clear remembered pages", "", Cmd::ForgetPages, panel_reason),
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
                     Self::entry("Start screen", "Esc", Cmd::Start, panel_reason.or(none_open)),
@@ -346,6 +351,8 @@ impl App {
             Cmd::NewGlobalSession => self.form_open_wizard(true),
             Cmd::NewBrowser => self.browser_prompt(false),
             Cmd::NewLocalBrowser => self.browser_prompt(true),
+            Cmd::ReopenTab => self.browser_reopen(),
+            Cmd::ForgetPages => self.browser_forget_pages(),
             Cmd::NewTerminal => self.terminal_open_here(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
