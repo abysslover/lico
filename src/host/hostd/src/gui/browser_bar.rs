@@ -24,7 +24,9 @@ const DIM: u32 = 0xFF5A_6575;
 const CARET: u32 = 0xFFE0_E0E0;
 const SELECT: u32 = 0xFF2A_4A7A;
 /// What an empty field that is not in use says.
-pub(crate) const PLACEHOLDER: &str = "Type an address";
+pub(crate) const PLACEHOLDER: &str = "Search or type an address";
+/// What an empty bar of a tab for this machine's own services says: it takes addresses only (a search site is out of its reach).
+pub(crate) const PLACEHOLDER_LOCAL: &str = "Type an address";
 /// How many columns of the text to the right of the caret the field keeps in view.
 const AHEAD_COLS: f32 = 6.0;
 
@@ -125,6 +127,16 @@ impl App {
         }
     }
 
+    /// What an empty field says: words may be searched, except in a tab for this machine's own services (the prompt for one, or an open one).
+    fn browser_placeholder(&self) -> &'static str {
+        let b = &self.ui.browser;
+        let local = match &b.active {
+            Some(id) => b.tabs.iter().any(|t| &t.id == id && t.local),
+            None => b.prompt == Some(true),
+        };
+        if local { PLACEHOLDER_LOCAL } else { PLACEHOLDER }
+    }
+
     /// The text of the field, drawn into a scratch picture of the field's inside and copied; with the keys, the editor is given the geometry of what is drawn.
     fn browser_paint_field(&mut self, buf: &mut [u32], width: usize, height: usize, inner: Rect, focused: bool) {
         let s = self.ui.scale.max(1.0);
@@ -136,6 +148,7 @@ impl App {
         }
         let char_w = self.char_w() * s;
         let preedit = self.preedit.clone();
+        let placeholder = self.browser_placeholder();
         let Some(fs) = self.font_system.as_mut() else { return };
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
@@ -157,17 +170,17 @@ impl App {
             }
             let empty = ed.text().is_empty() && preedit.is_empty();
             if empty {
-                controls.text(fs, swash, &mut scratch, iw, ih, 0.0, 0.0, iw as i32, PLACEHOLDER, cosmic_text::Color(DIM)); // an empty bar says what it is for, the caret before it
+                controls.text(fs, swash, &mut scratch, iw, ih, 0.0, 0.0, iw as i32, placeholder, cosmic_text::Color(DIM)); // an empty bar says what it is for, the caret before it
             } else {
                 controls.text(fs, swash, &mut scratch, iw, ih, origin - tx0, 0.0, iw as i32, &drawn, cosmic_text::Color(INK));
             }
             if let Some([cx, _, cw, ch]) = ed.caret {
                 controls::fill(&mut scratch, iw, ih, [cx - tx0, 0.0, cx - tx0 + cw, ch.min(ih as f32)], CARET);
             }
-            if empty { PLACEHOLDER.to_string() } else { drawn[2..].to_string() }
+            if empty { placeholder.to_string() } else { drawn[2..].to_string() }
         } else {
             let empty = ed.text().is_empty();
-            let text = if empty { PLACEHOLDER.to_string() } else { lico_browser_view::display_address(ed.text(), (iw as f32 / char_w) as usize) };
+            let text = if empty { placeholder.to_string() } else { lico_browser_view::display_address(ed.text(), (iw as f32 / char_w) as usize) };
             controls.text(fs, swash, &mut scratch, iw, ih, 0.0, 0.0, iw as i32, &text, cosmic_text::Color(if empty { DIM } else { INK }));
             text
         };

@@ -4,6 +4,9 @@
 
 use lico_frame::{Image, Limits};
 
+mod search;
+pub use search::{check_template, classify, search_url, SearchError, Typed, DEFAULT_SEARCH, MAX_TEMPLATE};
+
 /// The addresses of the history of a tab: a person's back and forward, not an archive.
 pub const MAX_HISTORY: usize = 100;
 /// The longest address taken or shown: a real address is a few hundred characters; browsers stop near 2,000.
@@ -68,7 +71,7 @@ pub fn display_address(address: &str, max_chars: usize) -> String {
 
 // ---- text from outside -----------------------------------------------------------------------------------------------------------------------------
 
-fn hidden_format_char(c: char) -> bool {
+pub(crate) fn hidden_format_char(c: char) -> bool {
     matches!(c, '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2028}' | '\u{2029}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{061C}' | '\u{FEFF}')
 }
 
@@ -457,7 +460,7 @@ impl Tab {
             "The page gets the finished text only.",
             "The bottom row says where typing goes.",
             "A site may refuse an automated browser and show its own block page instead of its content.",
-            "To try a search: https://www.google.com/search?q=WORDS",
+            "Words typed in the bar are searched for: the engine is the browser_search setting (Google by default).",
             "The engine's own socket has no password: only programs on this machine can reach it.",
             "The first tab installs the browser engine by itself (about 46 MB, checked by SHA-256): you are not asked.",
             "If the install fails the bottom row says why and how to install it by hand.",

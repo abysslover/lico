@@ -165,8 +165,8 @@ pub fn read_setting(state_dir: &Path) -> Result<Option<PathBuf>, Problem> {
     std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text).map_err(|_| Problem::Setting("the engine setting cannot be read"))?;
     let value: serde_json::Value = serde_json::from_str(&text).map_err(|_| Problem::Setting("the engine setting is not JSON"))?;
     let Some(dir) = value.get("engine_dir").and_then(|v| v.as_str()) else {
-        // a setting that only says `auto_install` names no engine; `stealth` (a setting of 0.6.2, for an engine that is gone) is read and ignored, so an old file is not an error
-        return if value.get("auto_install").is_some() || value.get("stealth").is_some() { Ok(None) } else { Err(Problem::Setting("the engine setting has no engine_dir")) };
+        // a setting that only says `auto_install` or `browser_search` (M22-P05b) names no engine; `stealth` (a setting of 0.6.2, for an engine that is gone) is read and ignored, so an old file is not an error
+        return if ["auto_install", "stealth", "browser_search"].iter().any(|k| value.get(k).is_some()) { Ok(None) } else { Err(Problem::Setting("the engine setting has no engine_dir")) };
     };
     let dir = PathBuf::from(dir);
     if !dir.is_absolute() || dir.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::CurDir)) {
@@ -175,9 +175,9 @@ pub fn read_setting(state_dir: &Path) -> Result<Option<PathBuf>, Problem> {
     Ok(Some(dir))
 }
 
-/// One flag of the owner's setting file: `Some(b)` when the file is a plain owner-only file of this user, is JSON and holds `name` as a boolean; `None` otherwise (a missing, damaged
-/// or group- or world-readable file says nothing).
-fn setting_flag(state_dir: &Path, name: &str) -> Option<bool> {
+/// One key of the owner's setting file: `Some(value)` when the file is a plain owner-only file of this user, is JSON (an object) and holds `name`; `None` otherwise (a missing,
+/// damaged or group- or world-readable file, a link, says nothing).
+pub fn setting_value(state_dir: &Path, name: &str) -> Option<serde_json::Value> {
     let file = OpenOptions::new().read(true).custom_flags(O_NOFOLLOW | O_CLOEXEC).open(state_dir.join(SETTING_FILE)).ok()?;
     let m = file.metadata().ok()?;
     if !m.is_file() || !mine(&m) || m.permissions().mode() & 0o077 != 0 {
@@ -185,7 +185,12 @@ fn setting_flag(state_dir: &Path, name: &str) -> Option<bool> {
     }
     let mut text = String::new();
     let _ = std::io::Read::read_to_string(&mut std::io::Read::take(&file, 4096), &mut text);
-    serde_json::from_str::<serde_json::Value>(&text).ok()?.get(name)?.as_bool()
+    serde_json::from_str::<serde_json::Value>(&text).ok()?.get(name).cloned()
+}
+
+/// One flag of the owner's setting file: `Some(b)` when `setting_value` holds `name` as a boolean.
+fn setting_flag(state_dir: &Path, name: &str) -> Option<bool> {
+    setting_value(state_dir, name)?.as_bool()
 }
 
 /// Whether the owner turned the self-install off (`{"auto_install": false}` in the owner-only setting file; nothing else turns it on or off, and a missing or unreadable file leaves it on).
@@ -273,8 +278,8 @@ mod tests {
     fn the_pinned_dir_follows_xdg_data_home_else_the_home_directory() {
         let a = Where { home: "/h".into(), xdg_data: None, state_dir: "/s".into() };
         assert_eq!(a.pinned_dir(), PathBuf::from("/h/.local/share/lico/browser/moli-v1.1.25"));
-        let b = Where { home: "/h".into(), xdg_data: Some("/h/data".into()), state_dir: "/s".into() };
-        assert_eq!(b.pinned_dir(), PathBuf::from("/h/data/lico/browser/moli-v1.1.25"));
+        let b = Where { home: "/h".into(), xdg_data: Some("/h/share".into()), state_dir: "/s".into() };
+        assert_eq!(b.pinned_dir(), PathBuf::from("/h/share/lico/browser/moli-v1.1.25"));
     }
 
     #[test]
@@ -341,6 +346,24 @@ mod tests {
         std::fs::rename(dir.parent().unwrap(), &moved).unwrap();
         symlink(&moved, dir.parent().unwrap()).unwrap();
         assert!(matches!(open_pinned(&h, &dir, &pins), Err(Problem::Unsafe(_))), "a link in place of a directory on the way");
+    }
+
+    #[test]
+    fn a_setting_that_only_names_the_search_engine_names_no_engine_and_is_no_error() {
+        let h = home("search_key");
+        let state = h.join("state");
+        std::fs::create_dir_all(&state).unwrap();
+        put(&state, SETTING_FILE, b"{\"browser_search\": \"https://x.test/?q=%s\"}", 0o600);
+        assert_eq!(read_setting(&state).unwrap(), None, "the search key is known: the engine is the pinned one");
+        assert_eq!(setting_value(&state, "browser_search"), Some(serde_json::json!("https://x.test/?q=%s")));
+        assert_eq!(setting_value(&state, "other"), None);
+        put(&state, SETTING_FILE, b"{\"browser_search\": 5, \"auto_install\": false}", 0o600);
+        assert_eq!(setting_value(&state, "browser_search"), Some(serde_json::json!(5)), "the value is given as it is: the reader judges it");
+        assert!(auto_install_off(&state));
+        put(&state, SETTING_FILE, b"{\"browser_search\": \"https://x.test/?q=%s\"}", 0o644);
+        assert_eq!(setting_value(&state, "browser_search"), None, "a file others can read says nothing");
+        put(&state, SETTING_FILE, b"{\"unknown\": 1}", 0o600);
+        assert!(matches!(read_setting(&state), Err(Problem::Setting(_))), "a file of only unknown keys is still refused");
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
     let allowed: &[&str] = match op {
         "browser.show" | "browser.resize" => &["tab", "width", "height"],
         "browser.hide" => &["tab"],
-        "browser.go" => &["tab", "address"],
+        "browser.go" => &["tab", "address", "search"],
         "browser.nav" => &["tab", "action"],
         "browser.watch" => &["tab", "seq", "frame_seq", "frame"],
         "browser.input" => &["tab", "kind", "x", "y", "button", "clicks", "delta", "key", "code", "text"],
@@ -66,7 +66,7 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
                     "delta" => v.as_f64().is_some_and(|d| d.abs() <= 10_000.0),
                     "key" | "code" => matches!(v, Value::String(s) if !s.is_empty() && s.chars().count() <= 32 && !s.chars().any(char::is_control)),
                     "text" => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= 4 * lico_browser_view::MAX_INSERT),
-                    "frame" => v.is_boolean(),
+                    "frame" | "search" => v.is_boolean(),
                     _ => false,
                 }
     }) && required.iter().all(|k| request.contains_key(*k)) && input_shape(op, request)
@@ -151,7 +151,9 @@ impl Browser {
     pub(super) fn go(&self, shared: &crate::driver::Opaque, request: &Map<String, Value>) -> Reply {
         let id = request.get("tab").and_then(Value::as_str).unwrap_or("");
         let typed = request.get("address").and_then(Value::as_str).unwrap_or("");
-        let url = lico_browser_view::parse_address(typed).map_err(address_code)?;
+        let search = request.get("search").and_then(Value::as_bool).unwrap_or(false);
+        let local = self.hub.tabs.lock().unwrap().iter().find(|e| e.id == id).is_some_and(|e| e.local);
+        let url = self.address_for(shared, typed, search, local)?;
         let restart = {
             let tabs = self.hub.tabs.lock().unwrap();
             let e = tabs.iter().find(|e| e.id == id).ok_or("unknown_tab")?;

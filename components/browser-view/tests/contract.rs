@@ -535,7 +535,7 @@ fn the_help_names_the_identity_the_ports_the_refusals_the_list_note_and_the_comm
     let t = Tab::new();
     let help = t.help_lines();
     let all = help.join("\n");
-    for needle in ["Lico", "Moli engine", "Windows platform", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the bottom row, not an error page", "installs the browser engine by itself", "you are not asked", "install it by hand", "bottom row says where typing goes", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"] {
+    for needle in ["Lico", "Moli engine", "Windows platform", "80, 443, 8080 and 8443", "private network", "localhost", "next list", "Korean", "lico browser open https://SITE", "from the + menu", "F1", "notice in the bottom row, not an error page", "installs the browser engine by itself", "you are not asked", "install it by hand", "bottom row says where typing goes", "refuse an automated browser", "Words typed in the bar are searched for", "browser_search", "socket has no password"] {
         assert!(all.contains(needle), "the help says {needle:?}: {all}");
     }
     for gone in ["Obscura", "stealth", "boxes", "contenteditable", "draws no cursor"] {

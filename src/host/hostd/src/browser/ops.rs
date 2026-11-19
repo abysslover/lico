@@ -53,7 +53,7 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
         return super::window_ops::valid(op, request);
     }
     let allowed: &[&str] = match op {
-        "browser.open" => &["op", "v", "id", "url", "local"],
+        "browser.open" => &["op", "v", "id", "url", "local", "search"],
         "browser.list" => &["op", "v", "id"],
         "browser.close" => &["op", "v", "id", "tab"],
         "browser.shot" => &["op", "v", "id", "tab", "path"],
@@ -72,7 +72,7 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
                 "v" => v.as_i64() == Some(1),
                 "id" => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= 64),
                 "url" => matches!(v, Value::String(s) if !s.is_empty() && s.len() <= lico_browser_view::MAX_URL),
-                "local" => v.is_boolean(),
+                "local" | "search" => v.is_boolean(),
                 "tab" => valid_tab_id(v),
                 "path" => valid_shot_path(v),
                 _ => false,
@@ -136,7 +136,7 @@ impl Browser {
         Self::build(Some(at), source)
     }
 
-    fn state_dir_of(&self, shared: &Opaque) -> Option<PathBuf> {
+    pub(super) fn state_dir_of(&self, shared: &Opaque) -> Option<PathBuf> {
         let mut slot = self.state_dir.lock().unwrap();
         if slot.is_none() {
             let s = shared.clone().downcast::<crate::core::Shared>().ok()?;
@@ -223,8 +223,10 @@ impl Browser {
 
     fn open(&self, shared: &Opaque, request: &Map<String, Value>) -> Reply {
         let typed = request.get("url").and_then(Value::as_str).unwrap_or("");
-        let url = lico_browser_view::parse_address(typed).map_err(|_| "bad_request")?;
         let local = request.get("local").and_then(Value::as_bool).unwrap_or(false);
+        let search = request.get("search").and_then(Value::as_bool).unwrap_or(false);
+        // the command line is strict and says `bad_request`; the window that searches (M22-P05b) is told why
+        let url = self.address_for(shared, typed, search, local).map_err(|e| if search { e } else { "bad_request" })?;
         let index = local as usize;
         let mut engines = self.engines.lock().unwrap();
         if self.hub.tabs.lock().unwrap().len() >= MAX_TABS {
@@ -537,7 +539,7 @@ pub(super) mod tests {
             assert!(!valid_tab_id(&json!(bad)), "{bad:?}");
         }
         assert!(!valid_tab_id(&json!(1)) && !valid_tab_id(&Value::Null));
-        for ok in ["/tmp/a.png", "/a", "/home/u/pics/page one.png"] {
+        for ok in ["/tmp/a.png", "/a", "/u/pics/page one.png"] {
             assert!(valid_shot_path(&json!(ok)), "{ok}");
         }
         for bad in ["", "a.png", "./a.png", "/tmp/../etc/x", "/tmp/./x", "/tmp/", "/tmp/a\n.png", "/tmp/a\u{0}.png", &format!("/{}", "a".repeat(1024))] {

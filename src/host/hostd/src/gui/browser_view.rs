@@ -249,12 +249,19 @@ impl App {
                 let mut request = json!({"op": "browser.open", "url": text});
                 if local {
                     request["local"] = json!(true);
+                } else {
+                    request["search"] = json!(true); // words are searched, by the host's setting (M22-P05b); a tab for this machine takes addresses only
                 }
                 self.browser_call(request, 30, BrowserJob::Open { local });
             }
             (None, Some(tab)) => {
                 self.ui.browser.page_focus = true; // the page is where the person goes next
-                self.browser_call(json!({"op": "browser.go", "tab": tab, "address": text}), 30, BrowserJob::Go { tab })
+                let local = self.ui.browser.tabs.iter().any(|t| t.id == tab && t.local);
+                let mut request = json!({"op": "browser.go", "tab": tab, "address": text});
+                if !local {
+                    request["search"] = json!(true);
+                }
+                self.browser_call(request, 30, BrowserJob::Go { tab })
             }
             _ => {}
         }
@@ -263,7 +270,8 @@ impl App {
 
     fn refuse_text(&mut self, error: &str) {
         let why = match error {
-            "address_empty" => "type an address".to_string(),
+            "address_empty" => "type an address or words to search".to_string(),
+            "search_setting" => "the browser_search setting is not an https address with one %s".to_string(),
             "address_scheme" => "only http and https addresses load".to_string(),
             "address_credentials" => "an address with a user name or password is not opened".to_string(),
             "address_too_long" => "that address is too long".to_string(),
@@ -461,7 +469,8 @@ impl App {
         }
         let Some(id) = self.ui.browser.active.as_ref() else {
             let local = self.ui.browser.prompt == Some(true);
-            return Some(format!("browser{} | type an address and press Enter (http or https) | F1 help", if local { " (this machine)" } else { "" }));
+            let ask = if local { "type an address and press Enter (http or https)" } else { "search or type an address and press Enter" };
+            return Some(format!("browser{} | {ask} | F1 help", if local { " (this machine)" } else { "" }));
         };
         let t = self.ui.browser.tabs.iter().find(|t| &t.id == id)?;
         let phase = t.row["phase"].as_str().unwrap_or("starting");

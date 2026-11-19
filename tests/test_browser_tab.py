@@ -78,8 +78,8 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         click_new_tab(w)
         b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b["bar"] and b)
         # M22-P05a: a new tab is an EMPTY page with the bar at the top focused and empty; the explanation is on F1
-        assert "type an address" in b["header"] and "F1 help" in b["header"] and not b["help"] and b["page"] == "blank", b
-        assert b["bar"]["focus"] and b["bar"]["text"] == "Type an address" and b["bar"]["enabled"] is False, b["bar"]
+        assert "search or type an address" in b["header"] and "F1 help" in b["header"] and not b["help"] and b["page"] == "blank", b
+        assert b["bar"]["focus"] and b["bar"]["text"] == "Search or type an address" and b["bar"]["enabled"] is False, b["bar"]
         assert b["row"] == b["header"] and "F1 help" in b["row"], "the row under the page says what the header says, not the address"
         assert b["bar"]["back"][1] < b["rect"][1] and b["bar"]["field"][2] > b["bar"]["field"][0] + 200, "the bar is above the page and the field has room"
         shot(w, "1_new_tab_empty_page_bar_focused.png")
@@ -109,7 +109,7 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         w.key("F1")                                            # F1 over a page: the help lines, with the new sentences
         h = wait_for(lambda: (b := browser(w)) and b["help"] and b["help_lines"] and b)
         text = " ".join(h["help_lines"])
-        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the bottom row, not an error page", "Moli engine", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "refuse an automated browser", "google.com/search?q=WORDS", "socket has no password"]:
+        for needle in ["F1 shows and hides", "80, 443, 8080 and 8443", "notice in the bottom row, not an error page", "Moli engine", "Windows platform", "next list", "localhost", "lico browser open https://SITE", "refuse an automated browser", "Words typed in the bar are searched for", "browser_search", "socket has no password"]:
             assert needle in text, (needle, text)
         shot(w, "10_f1_help_over_a_page.png")
         w.key("F1")
@@ -151,6 +151,70 @@ def test_a_new_tab_asks_for_an_address_then_the_page_is_painted_and_the_address_
         wait_for(lambda: browser(w)["active"] == tab)
         w.key("ctrl+w")
         wait_for(lambda: conn.call(op="browser.list")["tabs"] == [] and not conn.call(op="browser.list")["engines"][0]["running"])
+
+
+def put_setting(w: ProductWindow, **keys) -> None:
+    """The owner-only setting file of the private state folder: the fake engine's folder and the given keys. The host reads `browser_search` at each search, so a test may change it
+    while the window runs."""
+    setting = Path(w.directory) / "state" / "lico" / "browser.json"
+    setting.write_text(json.dumps({"engine_dir": str(Path(w.directory) / "home" / "engine"), **keys}))
+    setting.chmod(0o600)
+
+
+def listed(conn: Conn, tab: str) -> dict:
+    return next(r for r in conn.call(op="browser.list")["tabs"] if r["tab"] == tab)
+
+
+def go_to(w: ProductWindow, text: str) -> None:
+    """The bar of a tab that has a page: Ctrl+L gives it the keys, Ctrl+U clears it, Enter goes."""
+    w.key("ctrl+l")
+    w.key("ctrl+u")
+    w.type_text(text)
+    w.key("Return")
+
+
+def test_words_typed_in_the_bar_are_searched_with_the_owners_engine_else_google_and_an_address_stays_an_address():
+    """M22-P05b. The bar of a normal tab takes words: with the engine of the setting `browser_search`, with Google when there is none, and a wrong setting is said, not skipped; an address
+    is still an address and a tab for this machine's own services takes addresses only. The fake engine takes any address, so nothing leaves the private folder."""
+    with ProductWindow(host_binary=LICO, before_window=fake_engine) as w:
+        put_setting(w, browser_search="https://search.test/find?q=%s&hl=ko")
+        conn = Conn(w.socket)
+        click_new_tab(w)
+        b = wait_for(lambda: (b := browser(w)) and b["shown"] and b["prompt"] is False and b["bar"] and b)
+        assert b["bar"]["text"] == "Search or type an address" and "search or type an address and press Enter" in b["header"], (b["bar"], b["header"])
+        shot(w, "11_new_tab_search_or_type.png")
+        w.type_text("red fox")
+        w.key("Return")
+        tab = wait_for(lambda: browser(w)["active"])
+        wait_for(lambda: listed(conn, tab)["url"] == "https://search.test/find?q=red%20fox&hl=ko")
+        painted(w, tab)
+        shot(w, "12_words_searched.png")
+        go_to(w, "lico")                                      # one word with no dot is a search as well
+        wait_for(lambda: listed(conn, tab)["url"] == "https://search.test/find?q=lico&hl=ko")
+        go_to(w, "pages.test/two")                            # a host with a dot is an address
+        wait_for(lambda: listed(conn, tab)["url"] == "https://pages.test/two")
+        go_to(w, "ftp://x.test/")                             # a scheme that is not http or https is refused, never searched
+        wait_for(lambda: "only http and https" in (w.ui()["header"] or ""))
+        assert listed(conn, tab)["url"] == "https://pages.test/two"
+        # the setting is read at each search: a wrong one is said and changes nothing, an address still goes, and with no key the default engine is used
+        put_setting(w, browser_search="http://search.test/find?q=%s")
+        go_to(w, "red fox")
+        wait_for(lambda: "browser_search" in (w.ui()["header"] or ""))
+        assert listed(conn, tab)["url"] == "https://pages.test/two", "a search that is refused changes nothing"
+        shot(w, "13_wrong_search_setting.png")
+        go_to(w, "pages.test/three")
+        wait_for(lambda: listed(conn, tab)["url"] == "https://pages.test/three")
+        put_setting(w)
+        go_to(w, "red fox")
+        wait_for(lambda: listed(conn, tab)["url"] == "https://www.google.com/search?q=red%20fox")
+        # a tab for this machine's own services takes addresses only, says so, and does not read the setting
+        click_new_tab(w, local=True)
+        b = wait_for(lambda: (b := browser(w)) and b["prompt"] is True and b["bar"] and b)
+        assert b["bar"]["text"] == "Type an address" and "type an address and press Enter (http or https)" in b["header"], (b["bar"], b["header"])
+        w.type_text("red fox")
+        w.key("Return")
+        wait_for(lambda: "that is not an address" in (w.ui()["header"] or ""))
+        assert len(conn.call(op="browser.list")["tabs"]) == 1, "no tab was opened for words"
 
 
 def test_a_local_tab_says_so_and_refusals_say_why():

@@ -9,6 +9,7 @@ mod map;
 mod ops;
 mod profile;
 mod reserved;
+mod search;
 mod sha256;
 mod supervisor;
 mod watch;
@@ -17,6 +18,8 @@ mod window_ops;
 mod ops_install_tests;
 #[cfg(test)]
 mod real_probe;
+#[cfg(test)]
+mod search_tests;
 #[cfg(test)]
 mod system_tests;
 
