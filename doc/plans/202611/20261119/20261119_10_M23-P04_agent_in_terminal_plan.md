@@ -1,8 +1,8 @@
 # M23-P04 Plan — An Agent Started In A Terminal Tab (`agy`, `claude`, `codex`) Meets Lico
 
-- Status: research done, plan proposed, **not started**; waits for the owner's choice of level (see "What the owner decides")
-- Version: 1.0.0
-- Branch: none yet (a phase branch from `phase/M22-P07-wizard-cards` when the owner has chosen; the prefix `phase/M23-P04a-` or similar needs the owner's yes at commit time)
+- Status: research done; the owner chose levels **A and B** (2026-11-19), C is for later; P04a, P04b and P04c below are next (not started)
+- Version: 1.1.0
+- Branch: `phase/M23-P04a-...`, `phase/M23-P04b-...`, `phase/M23-P04c-...` in turn, each from the one before (the three prefixes are approved by the owner, 2026-11-19)
 - Milestone: [M23](../../../milestones/202611/20261118/20261118_02_M23_terminal_agents_milestone.md), row P04 and its question Q1
 - The owner's words (2026-11-19): "사실 terminal에서 지금 agy를 실행해도 실행은 되긴 하는데 원래 그 agy의 형태로 보이는 거라서 과연 그렇게 열었을 때 lico와 연결되는지는 잘 모르겠음."
 - This note changes no code. It says what is true today, what "connected" could mean, and what each level costs.
@@ -28,17 +28,24 @@
 - **A before B**, because B's "which terminal is this conversation open in" (so a click on a card focuses the tab where it already runs, as a click on a session's card does) needs A's knowledge of what runs where.
 - Neither A nor B sends anything to `agy` and neither changes what the shell can do; both are read-only on the person's own records. The host stays the only reader of the records (the window asks `session.chats`).
 
-## Steps (when the owner has chosen A and B)
+## The owner's decisions (2026-11-19)
 
-1. **P04a**: tests first (the host: a fake shell tree where the foreground process is `agy`, `claude`, `codex` and a plain `sleep`, and the answer in `terminal.list` and the window dump; the window: the caption), the function, the caption, gates.
-2. **P04b**: tests first (a synthetic `history.jsonl`: the reader's bounds, a damaged line, a conversation id that is not a plain token, a record file that is group-readable and so ignored as the others are), the reader in `chats/`, the card, the click, the match to a running terminal from P04a, the guide, gates.
-3. Each phase: mutation checks, the changed-files suite, `cargo xtask check`, the owner's build for `lico gui`, a Korean report.
+1. **A and B first; C (`agy` as a Lico session) is for later.**
+2. **A new picture, `agy`, goes into step one of New session between Claude and Codex**: Claude, agy, Codex, Local LLM, Terminal. In A+B it opens a terminal in the folder on the left and starts plain `agy` in it (never with its flag that skips permissions: the agent keeps its own default). The picture is grey, with a short reason, when `agy` is not installed on this machine.
+3. **The UI philosophy** (the owner, 2026-11-19: "거의 컴맹 수준의 사람도 쓸 수 있는 직관성", a person who hardly knows computers must be able to use it; every default icon the size of the Claude and Codex pictures of step one, nearly no text): so the terminal tab's caption says what runs in it by a **picture**, not a word; the Chats card of an `agy` conversation is the same card as the others with `agy`'s picture; nothing new asks a question.
+4. `claude` and `codex` started in a terminal get the same treatment as `agy` (the lead's default, accepted by saying A+B).
+5. A click on an `agy` card with no terminal open opens a terminal tab in the conversation's folder (when it exists on this machine, else at the home) and starts `agy --conversation ID` in it.
 
-## What the owner decides
+## Steps
 
-1. **Which level is "connected"** (A and B, only A, or C as well).
-2. Whether `claude` and `codex` started in a terminal get the same treatment (the lead's default: yes, they are the same function with another word).
-3. Whether a click on an `agy` card with no terminal open should open a terminal tab running `agy --conversation ID` at once (the lead's default: yes, in the conversation's own folder when it exists on this machine, else the home).
+1. **P04a (level A, the tab knows what runs in it)**: tests first (the host: a fake shell tree where the foreground process is `agy`, `claude`, `codex` and a plain `sleep`, and the answer in `terminal.list`, `terminal.watch` and the window dump; the window: the picture in the tab's caption), the host function (the foreground process group of the pty: the master's `tcgetpgrp`, then `/proc/<pid>/cmdline`, readable by the same user), the picture, gates.
+2. **P04b (level B, the conversations)**: tests first (a synthetic `history.jsonl`: the reader's bounds, a damaged line, a conversation id that is not a plain token, a record file that is group-readable and so ignored as the others are, a card in Chats, a click that starts `agy --conversation ID` in a terminal and focuses the tab where that conversation already runs), the reader in `chats/`, the card and its picture, the click, the guide, gates.
+3. **P04c (the picture in New session)**: tests first (the tile order, five tiles that fit, grey when `agy` is not found), the tile with its icon, the start of `agy` in a new terminal, the guide, gates.
+4. Each phase: mutation checks, the changed-files suite, `cargo xtask check`, the owner's build for `lico gui`, a Korean report. The security limits of the terminal (gaps 2 to 4 of [the security note](20261119_12_person_facing_surfaces_security_note.md)) are not changed by these phases and are not made worse: nothing sends text to an agent, nothing reads a conversation's text, only its title line, folder, id and time.
+
+## What the owner decided
+
+See the section above: levels A and B now, C later; the `agy` picture between Claude and Codex; `claude` and `codex` alike; a click on a card opens a terminal with `agy --conversation ID`.
 
 ## Not decided here
 
