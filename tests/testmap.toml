@@ -21,6 +21,7 @@
 "tests/test_admin_controls.py" = ["cli", "gui", "host"]
 "tests/test_adapter_contract.py" = []
 "tests/test_build_commit.py" = []
+"tests/test_measure_tree.py" = []
 "tests/test_capture_cli.py" = ["cli"]
 "tests/test_clipboard_read.py" = ["cli"]
 "tests/test_clipboard_write.py" = ["cli", "gui", "host"]

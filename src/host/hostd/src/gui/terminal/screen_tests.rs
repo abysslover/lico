@@ -330,27 +330,22 @@ fn the_caption_is_the_title_else_the_folders_name_else_the_id_and_is_short() {
 }
 
 #[test]
-fn the_header_says_the_terminal_is_not_fenced_and_when_it_has_ended() {
-    let h = header("bash", "/work/a", true);
+fn the_header_says_the_terminal_is_not_fenced() {
+    let h = header("bash", "/work/a");
     assert!(h.starts_with("terminal | bash | /work/a") && h.contains("not fenced: it runs as you"), "{h}");
-    assert!(!h.contains("ended"));
-    assert!(header("bash", "/work/a", false).contains("| ended"));
-    assert!(header("", "/w", true).starts_with("terminal | shell | /w"), "no title: the word shell");
+    assert!(header("", "/w").starts_with("terminal | shell | /w"), "no title: the word shell");
 }
 
 #[test]
 fn the_bottom_row_says_what_matters_most_now() {
-    let keys = status_row(true, None, 0, "");
+    let keys = status_row(0, "");
     for needle in ["Ctrl+Shift+C copy", "Ctrl+Shift+V paste", "Shift+PgUp/PgDn history", "Ctrl+Shift+W close"] {
         assert!(keys.contains(needle), "{needle}: {keys}");
     }
     assert!(keys.chars().count() < 100, "one row of the default window, not two: {keys}");
-    assert!(status_row(true, None, 12, "").contains("history: 12 lines up"));
-    assert!(status_row(true, None, 1, "").contains("history: 1 line up"));
-    assert!(status_row(true, None, 12, "").contains("Shift+End returns"));
-    assert_eq!(status_row(true, None, 0, "\u{d55c}"), "composing: \u{d55c}");
-    assert!(status_row(true, None, 5, "\u{d55c}").starts_with("composing"), "what is being composed is said before the history");
-    assert_eq!(status_row(false, Some(0), 0, "x"), "the shell ended (exit 0): Enter closes this tab", "an ended shell says so before anything");
-    assert_eq!(status_row(false, Some(137), 9, ""), "the shell ended (exit 137): Enter closes this tab");
-    assert_eq!(status_row(false, None, 0, ""), "the shell ended: Enter closes this tab");
+    assert!(status_row(12, "").contains("history: 12 lines up"));
+    assert!(status_row(1, "").contains("history: 1 line up"));
+    assert!(status_row(12, "").contains("Shift+End returns"));
+    assert_eq!(status_row(0, "\u{d55c}"), "composing: \u{d55c}");
+    assert!(status_row(5, "\u{d55c}").starts_with("composing"), "what is being composed is said before the history");
 }

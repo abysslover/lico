@@ -12,6 +12,7 @@ import pytest
 
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import files_under, private_dir
+from lico_measure.sweep import end_all
 
 from tests.test_claude_adapter import argv_of, claude_host, lines_of, new_claude, records, status_of
 from tests.test_codex_adapter import let_the_old_helper_write, wait_for
@@ -114,6 +115,13 @@ def world():
             yield World(directory, host, log, received)
         finally:
             host.stop()
+
+
+@pytest.fixture(autouse=True)
+def end_the_sessions_of_the_test(world):
+    """What a test made is not there for the next: a session is a program, and the host of the file keeps it until the file is done (lico_measure/sweep.py)."""
+    yield
+    end_all(world.conn)
 
 
 def test_a_session_is_given_a_private_config_file_the_allowed_tools_and_a_token_that_is_written_nowhere_else(world):

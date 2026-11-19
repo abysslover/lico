@@ -248,16 +248,21 @@ def test_a_terminal_tab_closes_by_its_cross_by_ctrl_shift_w_and_by_the_end_of_it
             wait_for(lambda: term(w)["tabs"] == [])
             assert conn.call(op="terminal.list")["terminals"] == [], "the shell ended with its tab"
 
-            # a shell that ends keeps its tab, says so in the status row, and Enter closes the tab
+            # a shell that ends takes its tab with it, and the host's terminal with it (the host keeps an ended one until it is closed): with `exit` nothing is said,
+            # with a failure the header's line says how it ended
+            open_by_menu(w)
+            w.type_text("exit")
+            w.key("Return")
+            wait_for(lambda: term(w)["tabs"] == [] and not term(w)["shown"])
+            wait_for(lambda: conn.call(op="terminal.list")["terminals"] == [])
+            assert "shell ended" not in (w.ui()["header"] or ""), w.ui()["header"]
             open_by_menu(w)
             w.type_text("exit 3")
             w.key("Return")
-            ended = wait_for(lambda: (t := term(w)) and t["status"].startswith("the shell ended") and t)
-            assert "exit 3" in ended["status"] and "Enter closes this tab" in ended["status"] and ended["header"].endswith("| not fenced: it runs as you") and " | ended | " in ended["header"], ended
-            shot(w, "8_shell_ended.png")
-            w.key("Return")
-            wait_for(lambda: term(w)["tabs"] == [])
-            assert not term(w)["shown"]
+            wait_for(lambda: term(w)["tabs"] == [] and not term(w)["shown"])
+            wait_for(lambda: conn.call(op="terminal.list")["terminals"] == [])
+            wait_for(lambda: "The terminal's shell ended (exit 3)." in (w.ui()["header"] or ""))
+            shot(w, "8_shell_ended_tab_gone.png")
 
 
 def test_a_terminal_that_the_host_already_has_is_adopted_by_the_window_and_the_browser_and_the_terminal_do_not_share_the_page():
@@ -291,44 +296,67 @@ def test_a_terminal_that_the_host_already_has_is_adopted_by_the_window_and_the_b
             assert back["tabs"][0]["seq"] >= shown["tabs"][0]["seq"]
 
 
-def test_the_fourth_icon_of_the_wizard_asks_for_a_folder_and_starts_a_terminal_there_and_a_refused_start_says_why():
+def test_a_shell_that_ended_while_no_window_looked_is_closed_in_the_host_and_gets_no_tab():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+
+        def before(w: ProductWindow) -> None:
+            conn = Conn(w.socket)
+            assert conn.call(op="terminal.open", cols=80, rows=24)["tab"] == "t1"
+            conn.call(op="terminal.input", tab="t1", text="exit\n")
+            wait_for(lambda: [r["running"] for r in conn.call(op="terminal.list")["terminals"]] == [False])      # the host keeps it, ended, until somebody closes it
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
+            wait_for(lambda: (t := term(w)) and t["listed"])
+            wait_for(lambda: Conn(w.socket).call(op="terminal.list")["terminals"] == [])      # the window gave the host's place back
+            assert term(w)["tabs"] == [] and not term(w)["shown"], "an ended shell is not adopted"
+
+
+def new_session_button(w: ProductWindow) -> None:
+    """The plus of the toolbar (Ctrl+N is the shell's while a terminal is shown)."""
+    w.proc.stdin.write("load\n")
+    w.proc.stdin.flush()
+    wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["toolbar"]["buttons"][0]["rect"])
+    w.click(*centre(next(b for b in w.ui()["toolbar"]["buttons"] if b["id"] == "new_session")["rect"]))
+
+
+def test_the_fourth_icon_opens_a_terminal_at_once_in_the_current_folder_with_no_step():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         project = root.resolve() / "project"
         project.mkdir()
-        with ProductWindow(**rig(root)) as w:
-            w.proc.stdin.write("load\n")
-            w.proc.stdin.flush()
-            wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["toolbar"]["buttons"][0]["rect"])
-            w.click(*centre(next(b for b in w.ui()["toolbar"]["buttons"] if b["id"] == "new_session")["rect"]))
+
+        def before(w: ProductWindow) -> None:
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="files")["ok"] == 1
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
+            new_session_button(w)
             first = wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]) and p)
             tiles = first["form"]["tiles"]
             assert [t["provider"] for t in tiles] == ["claude", "codex", "local", "terminal"] and tiles[3]["enabled"], tiles
             w.click(*centre(tiles[3]["rect"]))
-            second = wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["wizard"] and p["form"]["wizard"]["page"] == 1 and p)
-            assert second["title"] == "New session - step 2 of 2 - Terminal folder", second["title"]
-            assert second["form"]["wizard"]["terminal"] is True and second["form"]["wizard"]["pages"] == 2 and second["text_entry"], second
-            said = "\n".join(second["body"])
-            assert "(empty: your home folder)" in said and "Start terminal  (Enter)" in said, second["body"]
-            shot(w, "10_wizard_terminal_folder.png")
-            w.type_text(str(project))
-            w.key("Return")
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["header"] and "lico$" in "\n".join(u["terminal"]["lines"] or []) and u["terminal"])
-            assert str(project) in started["header"] and started["tabs"][0]["cwd"] == str(project), started["header"]
+            assert str(project) in started["header"] and started["tabs"][0]["cwd"] == str(project), "the folder Directories is on: " + started["header"]
             assert str(project) in run(w, "pwd", str(project) + "\n")
+            shot(w, "10_terminal_from_the_icon.png")
 
-            # a folder that is not there is refused by the host and the window says why, with no tab made
-            w.click(*centre(next(b for b in w.ui()["toolbar"]["buttons"] if b["id"] == "new_session")["rect"]))      # Ctrl+N is the shell's while a terminal is shown
+    # the folder Directories is on is not one of this machine: the person's home, not a refusal
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+
+        def before(w: ProductWindow) -> None:
+            gone = root / "gone"
+            gone.mkdir()
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(gone), last_view="files")["ok"] == 1      # the host keeps only a folder that exists
+            gone.rmdir()                                                                                          # and it is gone when the window starts
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
+            new_session_button(w)
             wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]))
             w.click(*centre(w.ui()["panel"]["form"]["tiles"][3]["rect"]))
-            wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["wizard"] and p["form"]["wizard"]["page"] == 1)
-            w.type_text(str(root / "not-there"))
-            w.key("Return")
-            time.sleep(1.0)
-            u = w.ui()
-            assert len(u["terminal"]["tabs"]) == 1, "a refused start makes no tab"
-            assert "that folder cannot be used for a terminal (folder_missing)" in (u["header"] or ""), u["header"]
-            assert u["panel"] is None, "the screen closed: the answer is the window's line, not a form to fix"
+            home = str(Path(w.directory) / "home")
+            started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
+            assert started["tabs"][0]["cwd"] == home, started["tabs"]
 
 
 def test_korean_composes_in_the_terminal_and_the_shell_gets_the_committed_text_only():

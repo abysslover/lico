@@ -12,6 +12,7 @@ import pytest
 
 from lico_measure.p02 import ProtoConn
 from lico_measure.rig import private_dir
+from lico_measure.sweep import end_all
 from lico_protocol import v1
 
 from tests.account_helpers import account
@@ -37,11 +38,10 @@ def world():
 
 @pytest.fixture(autouse=True)
 def tidy(world):
-    """What the agents made in one test is not there for the next: the caps count every session that agents made and that is running."""
+    """What a test made is not there for the next: the caps count every session that agents made and that is running, and a session is a program that the host
+    of the file keeps until the file is done (lico_measure/sweep.py)."""
     yield
-    for row in rows(world):
-        if "made by" in row.get("name", ""):
-            world.conn.call(op="session.purge", session=row["session"], generation=row["generation"])
+    end_all(world.conn)
 
 
 def call(config, tool, **arguments):

@@ -148,17 +148,50 @@ fn what_is_typed_waits_for_the_shell_in_order_and_is_joined_while_one_request_is
     assert!(!a.ui.terminal.input_inflight && a.ui.terminal.queue.is_empty());
 }
 
-#[test]
-fn nothing_is_sent_to_an_ended_shell_and_the_row_says_how_to_leave() {
-    let mut a = shown();
-    let gen = tab(&a).gen;
+/// The reply of a watch that says the shell has ended with `exit`.
+fn ended(a: &mut App, exit: Value) {
+    let gen = tab(a).gen;
     let mut reply = screen("t1", 4, &["bye"]);
-    (reply["running"], reply["exit"]) = (json!(false), json!(3));
-    watch(&mut a, gen, reply);
-    assert!(a.terminal_commit("x"), "the text is taken (the tab is shown) and goes nowhere");
-    assert!(a.ui.terminal.queue.is_empty());
-    assert!(a.terminal_status_row().contains("the shell ended (exit 3)") && a.terminal_status_row().contains("Enter closes this tab"), "{}", a.terminal_status_row());
-    assert!(a.terminal_header().unwrap().contains("ended"));
+    (reply["running"], reply["exit"]) = (json!(false), exit);
+    watch(a, gen, reply);
+}
+
+#[test]
+fn a_shell_that_ended_takes_its_tab_with_it_and_says_how_only_when_it_did_not_end_well() {
+    let mut a = shown();
+    a.ui.flash = Some("kept".into());
+    ended(&mut a, json!(0));
+    assert!(a.ui.terminal.tabs.is_empty() && !a.terminal_active(), "an exit 0 closes the tab by itself");
+    assert_eq!(a.ui.flash.as_deref(), Some("kept"), "and says nothing: what was on the line stays");
+
+    let mut b = shown();
+    ended(&mut b, json!(3));
+    assert!(b.ui.terminal.tabs.is_empty() && !b.terminal_active());
+    assert_eq!(b.ui.flash.as_deref(), Some("The terminal's shell ended (exit 3)."), "a failure is told");
+
+    let mut c = shown();
+    ended(&mut c, Value::Null);
+    assert!(c.ui.terminal.tabs.is_empty());
+    assert_eq!(c.ui.flash.as_deref(), Some("The terminal's shell ended."), "an end by a signal has no code");
+}
+
+#[test]
+fn the_end_of_one_of_two_shells_leaves_the_other_tab_in_front() {
+    let mut a = shown();
+    a.on_terminal_async(TermJob::List, listed(&[("t1", "/w"), ("t2", "/w")]));
+    ended(&mut a, json!(0));
+    let ids: Vec<&str> = a.ui.terminal.tabs.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["t2"], "only the tab of the ended shell goes");
+}
+
+#[test]
+fn a_shell_that_ended_while_no_window_looked_is_not_adopted() {
+    let mut a = app(1.0, false);
+    let mut reply = listed(&[("t1", "/w"), ("t2", "/w")]);
+    reply["terminals"][0]["running"] = json!(false);
+    a.on_terminal_async(TermJob::List, reply);
+    let ids: Vec<&str> = a.ui.terminal.tabs.iter().map(|t| t.id.as_str()).collect();
+    assert_eq!(ids, ["t2"], "a running shell is adopted as a tab, an ended one is not");
 }
 
 #[test]
@@ -248,33 +281,19 @@ fn grid_at(a: &mut App) {
 #[test]
 fn a_key_is_the_shells_unless_a_menu_or_a_composition_has_it() {
     let mut a = shown();
-    assert!(a.terminal_key(Logical::Char("l"), Some("l"), plain(), false, false));
+    assert!(a.terminal_key(Logical::Char("l"), Some("l"), plain(), false));
     assert_eq!(queued(&a), [("t1".to_string(), b"l".to_vec())]);
     a.ui.terminal.queue.clear();
     a.preedit = "\u{d55c}".into();
-    assert!(a.terminal_key(Logical::Char("x"), Some("x"), plain(), false, false), "a composition owns the keys: they are taken");
+    assert!(a.terminal_key(Logical::Char("x"), Some("x"), plain(), false), "a composition owns the keys: they are taken");
     assert!(a.ui.terminal.queue.is_empty(), "and none of them reaches the shell");
     a.preedit.clear();
     a.ui.menu_open = Some(1);
-    assert!(!a.terminal_key(Logical::Char("x"), Some("x"), plain(), false, false), "an open dropdown has the keys first");
+    assert!(!a.terminal_key(Logical::Char("x"), Some("x"), plain(), false), "an open dropdown has the keys first");
     assert!(a.ui.terminal.queue.is_empty());
     a.ui.menu_open = None;
-    assert!(!a.terminal_key(Logical::Char("x"), Some("x"), Held { logo: true, ..plain() }, false, false), "the logo key goes on to the window");
+    assert!(!a.terminal_key(Logical::Char("x"), Some("x"), Held { logo: true, ..plain() }, false), "the logo key goes on to the window");
     assert!(a.ui.terminal.queue.is_empty());
-}
-
-#[test]
-fn on_an_ended_shell_every_key_is_taken_and_only_enter_closes_the_tab() {
-    let mut a = shown();
-    let gen = tab(&a).gen;
-    let mut reply = screen("t1", 4, &["bye"]);
-    (reply["running"], reply["exit"]) = (json!(false), json!(0));
-    watch(&mut a, gen, reply);
-    assert!(a.terminal_key(Logical::Char("x"), Some("x"), plain(), false, false));
-    assert!(a.terminal_key(Logical::Named(NamedKey::ArrowUp), None, plain(), false, false));
-    assert!(a.ui.terminal.queue.is_empty() && a.ui.terminal.tabs.len() == 1, "nothing is sent and the tab stays");
-    assert!(a.terminal_key(Logical::Named(NamedKey::Enter), None, plain(), false, true));
-    assert!(a.ui.terminal.tabs.is_empty() && !a.terminal_active(), "Enter closes it");
 }
 
 #[test]
@@ -282,13 +301,13 @@ fn the_keys_that_are_licos_act_once_the_history_keys_repeat_and_a_page_is_a_scre
     let mut a = shown();
     holding(&mut a, 200, 176, json!({}));
     let pgup = Logical::Named(NamedKey::PageUp);
-    assert!(a.terminal_key(pgup, None, held(false, true), false, false));
+    assert!(a.terminal_key(pgup, None, held(false, true), false));
     assert_eq!(tab(&a).scroll, 23, "a page back is the 24 rows of the screen less one, so that a line of what was read stays");
-    assert!(a.terminal_key(pgup, None, held(false, true), true, false), "held down it goes on");
+    assert!(a.terminal_key(pgup, None, held(false, true), true), "held down it goes on");
     assert_eq!(tab(&a).scroll, 46);
-    assert!(a.terminal_key(Logical::Char("w"), Some("W"), held(true, true), true, false), "the key is Lico's even when it repeats");
+    assert!(a.terminal_key(Logical::Char("w"), Some("W"), held(true, true), true), "the key is Lico's even when it repeats");
     assert_eq!(a.ui.terminal.tabs.len(), 1, "but a held Ctrl+Shift+W closes nothing");
-    assert!(a.terminal_key(Logical::Char("w"), Some("W"), held(true, true), false, false));
+    assert!(a.terminal_key(Logical::Char("w"), Some("W"), held(true, true), false));
     assert!(a.ui.terminal.tabs.is_empty(), "pressed once it closes the tab");
 }
 
@@ -362,14 +381,23 @@ fn the_wheel_moves_the_history_three_lines_a_step_and_on_the_alternate_screen_it
 }
 
 #[test]
-fn a_terminal_from_the_menu_starts_in_the_folder_of_the_selected_session_else_at_home() {
+fn a_terminal_starts_in_the_current_folder_the_sessions_else_the_one_directories_is_on_else_at_home() {
+    let (here, elsewhere) = (std::env::temp_dir(), std::env::current_dir().unwrap());
+    let (here, elsewhere) = (here.to_str().unwrap().to_string(), elsewhere.to_str().unwrap().to_string());
     let mut a = app(1.0, false);
-    assert_eq!(a.terminal_start_dir(), None, "no session: the host's home");
-    a.ui.rows = vec![Row { session: "s1".into(), cwd: "/work/api".into(), ..Default::default() }];
+    assert_eq!(a.terminal_start_dir(), None, "no session and no folder: the host's home");
+    a.ui.saved_cwd = elsewhere.clone();
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(elsewhere.as_str()), "no session: the folder Directories is on");
+    a.ui.saved_cwd = "/no/such/folder/here".into();
+    assert_eq!(a.terminal_start_dir(), None, "a folder this machine has not: the home");
+    a.ui.saved_cwd = elsewhere.clone();
+    a.ui.rows = vec![Row { session: "s1".into(), cwd: here.clone(), ..Default::default() }];
     a.session = "s1".into();
-    assert_eq!(a.terminal_start_dir().as_deref(), Some("/work/api"));
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(here.as_str()), "a session in front: its own folder, before Directories");
     a.ui.rows[0].cwd.clear();
-    assert_eq!(a.terminal_start_dir(), None, "a session with no folder: the home");
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(elsewhere.as_str()), "a session with no folder: Directories");
+    a.ui.rows[0] = Row { session: "s1".into(), cwd: here, ssh_host: "box".into(), ..Default::default() };
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(elsewhere.as_str()), "a session on an ssh host has a folder of another machine: not used");
 }
 
 #[test]

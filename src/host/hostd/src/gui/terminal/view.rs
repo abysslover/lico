@@ -149,9 +149,11 @@ impl App {
         self.terminal_open(cwd);
     }
 
-    /// The folder a terminal from the menu starts in: the selected session's, none (the host's home) when no session is.
+    /// The folder a terminal starts in, from the menu and from the Terminal icon: the current one, that is the folder of the session in front, else the one Directories is on (`M23-P03a`),
+    /// when it is a folder of this machine (a session or a Directories on an ssh host is not); none (the host's home) when there is none.
     pub(super) fn terminal_start_dir(&self) -> Option<String> {
-        self.selected_row().map(|r| r.cwd.clone()).filter(|c| !c.is_empty())
+        let session = self.selected_row().filter(|r| r.ssh_host.is_empty()).map(|r| r.cwd.as_str()).filter(|c| !c.is_empty());
+        session.or(Some(self.ui.saved_cwd.as_str()).filter(|c| !c.is_empty())).filter(|d| std::path::Path::new(d).is_dir()).map(str::to_string)
     }
 
     /// Shows a terminal: whatever was shown gives way (a panel, a session, a browser tab with its address draft parked), and the shown tab asks for its screen again.
@@ -200,6 +202,18 @@ impl App {
         self.terminal_drop(id);
     }
 
+    /// The shell of a tab has ended (`M23-P03a`): the tab goes away by itself, the host is told to give the terminal's place back, and a person who did not end it with `exit` (a failure, a
+    /// signal) is told how it ended on the header's line.
+    fn terminal_ended(&mut self, id: &str, exit: Option<i64>) {
+        self.terminal_close_ui(id);
+        match exit {
+            Some(0) => {}
+            Some(n) => self.ui.flash = Some(format!("The terminal's shell ended (exit {n}).")),
+            None => self.ui.flash = Some("The terminal's shell ended.".into()),
+        }
+        self.dirty = true;
+    }
+
     /// The answers of the host to what this module asked.
     pub(crate) fn on_terminal_async(&mut self, job: TermJob, reply: Value) {
         let ok = reply["ok"] == json!(1);
@@ -228,6 +242,10 @@ impl App {
                     if id.is_empty() || self.terminal_tab(&id).is_some() {
                         continue;
                     }
+                    if row["running"] == json!(false) {
+                        self.terminal_close_ui(&id); // a shell that ended while no window was looking: its table place is given back, and it gets no tab
+                        continue;
+                    }
                     let size = (row["cols"].as_u64().unwrap_or(80) as u16, row["rows"].as_u64().unwrap_or(24) as u16);
                     self.ui.terminal.tabs.push(TTab::new(id, row["cwd"].as_str().unwrap_or("").into(), row["title"].as_str().unwrap_or("").into(), size));
                 }
@@ -239,15 +257,20 @@ impl App {
                     return; // the answer of a watch that was replaced (a scroll, or the tab shown again)
                 }
                 t.watching = false;
+                let mut ended = None;
                 match (ok, Screen::parse(&reply)) {
                     (true, Some(screen)) => {
                         t.size = (screen.cols, screen.rows);
                         (t.seq, t.ask, t.scroll) = (screen.seq, screen.seq, screen.scroll);
                         t.rearm = screen.scroll == 0;
+                        ended = (!screen.running).then_some(screen.exit);
                         t.screen = screen;
                     }
                     _ if error == "unknown_tab" => self.terminal_drop(&tab),
                     _ => {}
+                }
+                if let Some(exit) = ended {
+                    self.terminal_ended(&tab, exit);
                 }
                 self.dirty = true;
             }
@@ -341,7 +364,7 @@ impl App {
 
     /// Bytes for the shell of the shown tab: typing returns to the live screen and ends a selection; joined with what already waits for the same tab, in order.
     fn terminal_send(&mut self, bytes: Vec<u8>) {
-        let Some(t) = self.shown_tab().filter(|t| t.screen.running) else { return };
+        let Some(t) = self.shown_tab() else { return };
         let (id, scrolled) = (t.id.clone(), t.scroll > 0);
         if bytes.is_empty() {
             return;
@@ -396,8 +419,7 @@ impl App {
         }
     }
 
-    /// The keys of the terminal view (D4): the shell gets every key but Lico's few. A composition in progress owns the keys. A shell that has ended takes none, except Enter, which
-    /// closes the tab.
+    /// The keys of the terminal view (D4): the shell gets every key but Lico's few. A composition in progress owns the keys.
     pub(crate) fn terminal_hotkey(&mut self, event: &KeyEvent) -> bool {
         let m = &self.ui.mods;
         let held = Held { ctrl: m.control_key(), shift: m.shift_key(), alt: m.alt_key(), logo: m.super_key() };
@@ -407,17 +429,15 @@ impl App {
             _ => Logical::Other,
         };
         let text = event.text.as_ref().map(|t| t.to_string());
-        let enter = matches!(&event.logical_key, Key::Named(winit::keyboard::NamedKey::Enter));
-        self.terminal_key(logical, text.as_deref(), held, event.repeat, enter)
+        self.terminal_key(logical, text.as_deref(), held, event.repeat)
     }
 
     /// `terminal_hotkey` with what it takes from the event (a test cannot make a `KeyEvent`): whether the key is the terminal's, and the effect.
-    pub(super) fn terminal_key(&mut self, logical: Logical<'_>, text: Option<&str>, held: Held, repeat: bool, enter: bool) -> bool {
+    pub(super) fn terminal_key(&mut self, logical: Logical<'_>, text: Option<&str>, held: Held, repeat: bool) -> bool {
         let Some(tab) = self.shown_tab().map(|t| t.id.clone()) else { return false };
         if self.terminal_overlay_open() {
             return false; // a dropdown, a popup or an approval has the keys first
         }
-        let running = self.shown_tab().is_none_or(|t| t.screen.running);
         match keys::route(logical, text, held, &self.terminal_modes()) {
             Routed::Pass => false,
             Routed::Lico(action) => {
@@ -428,12 +448,6 @@ impl App {
             }
             Routed::Send(bytes) => {
                 if !self.preedit.is_empty() {
-                    return true;
-                }
-                if !running {
-                    if enter {
-                        self.terminal_close_ui(&tab);
-                    }
                     return true;
                 }
                 self.terminal_send(bytes);
@@ -564,12 +578,12 @@ impl App {
     pub(crate) fn terminal_header(&self) -> Option<String> {
         let t = self.shown_tab()?;
         let title = if t.screen.title.is_empty() { t.title.as_str() } else { t.screen.title.as_str() };
-        Some(screen::header(title, &t.cwd, t.screen.running))
+        Some(screen::header(title, &t.cwd))
     }
 
     /// The one row under the grid.
     pub(crate) fn terminal_status_row(&self) -> String {
-        self.shown_tab().map_or_else(String::new, |t| screen::status_row(t.screen.running, t.screen.exit, t.scroll, &self.preedit))
+        self.shown_tab().map_or_else(String::new, |t| screen::status_row(t.scroll, &self.preedit))
     }
 
     /// The items of the hint line of the window while a terminal is shown (the window's own Ctrl+N and Ctrl+A are the shell's here).

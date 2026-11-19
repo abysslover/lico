@@ -63,6 +63,7 @@ class Tree:
         self.window_kinds = set()
         self.run_peak = 0
         self.run_peak_at = ""
+        self.run_peak_split = {}           # child of the root -> bytes of its own subtree, at the run's peak (who held it)
         self.where = ""
 
     def sample(self):
@@ -89,7 +90,20 @@ class Tree:
             self.window_peak = max(self.window_peak, total)
             if total > self.run_peak:
                 self.run_peak, self.run_peak_at = total, self.where
+                self.run_peak_split = self.split(found, counted)
             return total
+
+    def split(self, found, counted):
+        """The bytes of each direct child of the root with everything below it."""
+        out = {}
+        for pid in counted:
+            if pid == self.root:
+                continue
+            top = pid
+            while found[top][0] != self.root and found[top][0] in counted:
+                top = found[top][0]
+            out[top] = out.get(top, 0) + found[pid][2] * PAGE
+        return out
 
     def reset_window(self):
         with self.lock:

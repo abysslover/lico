@@ -32,6 +32,7 @@ from .ledger import INTERVAL, Tree
 REPO = testmap.REPO
 LOGS = REPO / "private" / "suite"
 COMPILE_JOBS = "2"        # rustc at opt-level 2 on the text libraries takes over a GiB each: a rebuild of the dependencies on all cores broke the memory bound
+TEST_THREADS = "4"        # the unit tests of the program run at most this many at a time (the default is one a core, 24 here): measured 2026-11-19, the run held 875 MiB with 24 and 569 MiB with 4, 17 s and 39 s
 
 
 def budget(root=REPO):
@@ -123,7 +124,7 @@ def cargo_job(filters, out):
     job.log = out / "cargo.log"
     job.extra_env = {"CARGO_NET_OFFLINE": "true", "CARGO_HOME": str(REPO / "private" / "cargo-home"),
                      "CARGO_TARGET_DIR": str(receipts.build_root() / "host_hostd_test"), "CARGO_BUILD_JOBS": COMPILE_JOBS,
-                     "LICO_BIN": str(receipts.build_root() / "host_hostd" / "release" / "lico")}      # the real program, for the unit tests that start it (helper::tests)
+                     "LICO_BIN": str(receipts.build_root() / "host_hostd" / "release" / "lico"), "RUST_TEST_THREADS": TEST_THREADS}      # the real program, for the unit tests that start it (helper::tests)
     job.argv = ["cargo", "test", "--bin", "lico", *(["--", *filters] if filters else [])]      # cargo takes one filter; libtest takes any number after --
     return job
 
@@ -277,6 +278,8 @@ def run(args):
     for n in range(workers):
         slots.put(n + 1)
     began = time.monotonic()                                 # the cold-run limit counts from here: the tests, not the build
+    build_peak = tree.run_peak                               # the build (rustc and the linker, 1.2 GiB) is alone: the peak of the tests is judged from here
+    tree.run_peak, tree.run_peak_at, tree.run_peak_split = 0, "", {}
 
     def worker():
         while True:
@@ -319,6 +322,9 @@ def run(args):
     table = budget()
     slow = over_budget(rows, table)
     peak = round(tree.run_peak / 2 ** 20, 1)
+    build_peak_mib = round(build_peak / 2 ** 20, 1)
+    named = {job.pid: job.name for job in finished if getattr(job, "pid", None)}
+    peak_split = sorted(((named.get(pid, "the suite's own build"), round(held / 2 ** 20)) for pid, held in tree.run_peak_split.items()), key=lambda kv: -kv[1])
     broken = []                                              # judged before any receipt: a run the guards refuse (exit 3) leaves nothing the next run can skip
     if slow:
         broken.append(f"{len(slow)} test(s) over their budget")
@@ -326,6 +332,8 @@ def run(args):
         broken.append(f"the cold run took {wall:.0f} s, the limit is {table['cold_run_s']} s")
     if peak > table["peak_rss_mib"]:
         broken.append(f"the peak memory {peak} MiB is over the bound of {table['peak_rss_mib']} MiB")
+    if build_peak_mib > table["peak_rss_mib"]:
+        broken.append(f"the build's peak memory {build_peak_mib} MiB is over the bound of {table['peak_rss_mib']} MiB")
     seen = {job.name: job.seconds for job in finished if job.ledger}
     for job in finished:
         if job.ledger and passed(job, acceptance_only):
@@ -342,7 +350,7 @@ def run(args):
             receipts.forget("cargo")
     receipts.save_durations(seen)
 
-    document = {"total_s": round(wall, 1), "peak_rss_mib": peak, "peak_at": tree.run_peak_at, "workers": workers,
+    document = {"total_s": round(wall, 1), "peak_rss_mib": peak, "build_peak_rss_mib": build_peak_mib, "peak_at": tree.run_peak_at, "peak_split_mib": dict(peak_split), "workers": workers,
                 "files": len(todo), "skipped_by_receipt": len(skipped) + int(cargo_skipped), "build_s": round(build_s, 1),
                 "tests": sorted(rows, key=lambda r: -r.get("wall_s", 0))}
     if args.ledger:
@@ -353,7 +361,9 @@ def run(args):
     for row in rows:
         outcomes[row.get("outcome", "unknown")] = outcomes.get(row.get("outcome", "unknown"), 0) + 1
     print(f"\n{len(rows)} tests in {len(todo)} files on {workers} worker(s): {', '.join(f'{n} {k}' for k, n in sorted(outcomes.items()))}; "
-          f"{len(skipped) + int(cargo_skipped)} skipped (receipt); {wall:.1f} s; peak {peak} MiB (all workers together) {tree.run_peak_at}; {build_line}")
+          f"{len(skipped) + int(cargo_skipped)} skipped (receipt); {wall:.1f} s; peak {peak} MiB (all workers together) {tree.run_peak_at}; {build_line}, its peak {build_peak_mib} MiB")
+    if peak_split:
+        print("the peak was held by: " + ", ".join(f"{name} {held} MiB" for name, held in peak_split))
     for seconds, nodeid, limit in slow:
         print(f"over budget: {seconds:.1f} s > {limit} s  {nodeid}")
     for line in broken:

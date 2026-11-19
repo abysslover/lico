@@ -413,7 +413,7 @@ def test_the_budget_names_the_tests_over_their_limit_by_the_longest_matching_ent
 
 def test_the_checked_in_budget_has_a_default_a_cold_run_limit_and_a_reason_for_every_exception():
     table = suite.budget()
-    assert table["default_s"] == 15 and table["cold_run_s"] == 180 and table["peak_rss_mib"] <= 2048
+    assert table["default_s"] == 15 and table["cold_run_s"] == 180 and table["peak_rss_mib"] <= 1536
     for entry in table.get("allow", []):
         assert entry["seconds"] > table["default_s"] and entry["reason"].strip() and (testmap.REPO / entry["test"].split("::")[0]).exists(), entry
 

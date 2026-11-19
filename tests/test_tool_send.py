@@ -19,6 +19,7 @@ from lico_measure.p02 import HOSTD_DIR, start
 from lico_measure.rig import private_dir
 
 from lico_measure.p02 import ProtoConn
+from lico_measure.sweep import end_all
 from lico_protocol import v1
 
 from tests.test_claude_adapter import FIXTURE, SIM, records, sent_users, status_of, user_text
@@ -48,6 +49,13 @@ def world():
             yield World(directory, host, log, received)
         finally:
             host.stop()
+
+
+@pytest.fixture(autouse=True)
+def end_the_sessions_of_the_test(world):
+    """What a test made is not there for the next: a session is a program, and the host of the file keeps it until the file is done (lico_measure/sweep.py)."""
+    yield
+    end_all(world.conn)
 
 
 def call(config, name, **arguments):

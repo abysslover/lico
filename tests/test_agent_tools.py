@@ -28,6 +28,7 @@ from tests.test_clipboard_read import make_png
 from tests.test_codex_adapter import usual_umask, wait_for
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import ProtoConn as Conn
+from lico_measure.sweep import end_all
 from tests.test_card_window import ready
 from tests.test_claude_adapter import new_claude
 from tests.test_new_session_screen import claude_args
@@ -81,6 +82,13 @@ def world(screen):
             yield World(directory, host, log, received)
         finally:
             host.stop()
+
+
+@pytest.fixture(autouse=True)
+def end_the_sessions_of_the_test(world):
+    """What a test made is not there for the next: a session is a program, and the host of the file keeps it until the file is done (lico_measure/sweep.py)."""
+    yield
+    end_all(world.conn)
 
 
 @pytest.fixture(scope="module")

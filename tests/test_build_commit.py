@@ -135,3 +135,13 @@ def test_cargo_is_told_to_build_again_when_the_commit_or_the_variable_changes_in
         git(pkg, "commit", "-q", "-a", "-m", "second")
         after = run(script, pkg)["commit"]
         assert after == git(pkg, "rev-parse", "--short=7", "HEAD") and after != before
+
+
+def test_every_path_cargo_is_told_to_watch_exists_in_the_real_package(script):
+    """A watched path that is missing counts as changed on every build: cargo then compiles and links the whole program again each time, and the suite's cargo
+    job did so in the middle of the window tests (a link of over a GiB). The paths in the checkout's own git folder come from git and are left out here."""
+    package = BUILD_RS.parent
+    found = run(script, package)
+    missing = [p for p in found["rerun"] if ".git" not in Path(p).parts and not (package / p).exists()]
+    assert not missing, f"cargo is told to watch what does not exist: {missing}"
+    assert len(found["rerun"]) >= 7, found["rerun"]

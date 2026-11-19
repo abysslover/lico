@@ -391,19 +391,12 @@ pub(crate) fn caption(title: &str, cwd: &str, id: &str) -> String {
 }
 
 /// The header of the window while a terminal is shown.
-pub(crate) fn header(title: &str, cwd: &str, running: bool) -> String {
-    let state = if running { "" } else { " | ended" };
-    format!("terminal | {}{} | {cwd} | not fenced: it runs as you", if title.trim().is_empty() { "shell" } else { title.trim() }, state)
+pub(crate) fn header(title: &str, cwd: &str) -> String {
+    format!("terminal | {} | {cwd} | not fenced: it runs as you", if title.trim().is_empty() { "shell" } else { title.trim() })
 }
 
-/// The one row under the grid: what is Lico's among the keys, what the person is composing, how far back the view is, or that the shell has ended.
-pub(crate) fn status_row(running: bool, exit: Option<i64>, scroll: usize, composing: &str) -> String {
-    if !running {
-        return match exit {
-            Some(n) => format!("the shell ended (exit {n}): Enter closes this tab"),
-            None => "the shell ended: Enter closes this tab".into(),
-        };
-    }
+/// The one row under the grid: what is Lico's among the keys, what the person is composing, or how far back the view is.
+pub(crate) fn status_row(scroll: usize, composing: &str) -> String {
     if !composing.is_empty() {
         return format!("composing: {composing}");
     }

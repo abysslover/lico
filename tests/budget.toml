@@ -3,7 +3,7 @@
 
 default_s = 15          # wall seconds of one test (setup + call + teardown)
 cold_run_s = 180        # the whole suite, nothing skipped by receipt, build not counted
-peak_rss_mib = 2048     # all workers together (resident sets of the whole process tree, shared pages counted once per process)
+peak_rss_mib = 1536     # all workers together (resident sets of the whole process tree, shared pages counted once per process); the tests and the build are judged apart. Lowered from 2048 on 2026-11-19 (M23-P03a): measured 1161 for the tests and 1176 for the build, a run went over 2000 before the causes were fixed
 
 [[allow]]
 test = "tests/test_memory_guard_window.py::test_with_the_owners_switch_on_an_idle_red_session_is_closed_and_resumed_by_the_guard_and_nothing_else_is_touched"

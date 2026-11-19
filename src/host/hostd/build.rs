@@ -9,8 +9,9 @@ use std::process::Command;
 fn main() {
     let dir = std::env::var_os("CARGO_MANIFEST_DIR").map_or_else(|| PathBuf::from("."), PathBuf::from);
     println!("cargo:rerun-if-env-changed=LICO_COMMIT");
-    // the sources, because a change in them is what `-dirty` looks at; a directory is scanned by cargo as a whole (the target directory is not in the package)
-    for path in ["build.rs", "Cargo.toml", "../../Cargo.toml", "../../Cargo.lock", "NOTICES.txt", "build-release.sh", "src"] {
+    // the sources, because a change in them is what `-dirty` looks at; a directory is scanned by cargo as a whole (the target directory is not in the package).
+    // Every path must exist: cargo takes a missing one as changed on every build and compiles and links the whole program again each time (tests/test_build_commit.py)
+    for path in ["build.rs", "Cargo.toml", "../../../Cargo.toml", "../../../Cargo.lock", "NOTICES.txt", "build-release.sh", "src"] {
         println!("cargo:rerun-if-changed={path}");
     }
     watch_the_checkout(&dir);

@@ -259,7 +259,7 @@ fn no_row_of_the_one_page_form_is_lost_in_the_wizard() {
             let all = f.all_rows();
             (all, f.fields())
         };
-        app.with_form(|_, f| f.wiz = Some(Wiz { page: 2, home: false, terminal: false }));
+        app.with_form(|_, f| f.wiz = Some(Wiz { page: 2, home: false }));
         let second = app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().fields();
         let mut seen: Vec<String> = first.iter().chain(&second).filter(|r| !matches!(r, Field::Back | Field::Next)).map(|r| format!("{r:?}")).collect();
         let mut wanted: Vec<String> = one_page.iter().filter(|r| **r != Field::Provider).map(|r| format!("{r:?}")).collect();
@@ -456,7 +456,7 @@ fn the_wizard_steps_and_their_text_fit_a_window_of_600_pixels() {
     }
 }
 
-// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- the terminal icon (`M23-P03`)
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- the terminal icon (`M23-P03`, `M23-P03a`)
 
 #[test]
 fn the_terminal_icon_needs_no_account_and_has_the_fourth_place() {
@@ -469,55 +469,25 @@ fn the_terminal_icon_needs_no_account_and_has_the_fourth_place() {
 }
 
 #[test]
-fn choosing_the_terminal_goes_to_one_more_step_that_asks_for_the_folder_and_nothing_else() {
-    let mut app = both();
+fn choosing_the_terminal_opens_a_shell_at_once_with_no_step_and_no_account() {
+    let mut app = opened(false, &[]);
     app.wizard_pick(3);
-    assert_eq!(page(&app), 1);
-    assert_eq!(rows(&app), ["Folder", "Recent(0)", "Recent(1)", "Back", "Next"], "no account, worktree, name, model or permission row");
-    assert_eq!(title(&app), "New session - step 2 of 2 - Terminal folder");
-    assert_eq!(form(&app)["focus"], "Folder");
-    assert_eq!(form(&app)["wizard"]["pages"], 2);
-    assert_eq!(form(&app)["wizard"]["terminal"], true);
-    assert!(app.text_mode(), "the folder row takes text");
-    let (_, body) = app.panel_view().unwrap();
-    let said = body.join("\n");
-    assert!(said.contains("(empty: your home folder)"), "{said}");
-    assert!(said.contains("Start terminal") && said.contains("not fenced"), "{said}");
-    assert!(!said.contains("Home session") && !said.contains("scratch workspace"), "{said}");
-}
-
-#[test]
-fn the_terminal_is_started_by_next_and_by_enter_on_a_folder_that_is_a_full_path_or_empty() {
-    let mut app = both();
-    app.wizard_pick(3);
-    app.ed.put("relative/dir");
-    app.wizard_next();
-    assert_eq!(page(&app), 1);
-    assert!(app.ui.panel.is_some() && notice(&app).contains("full path"), "a folder that is not a full path is refused on the step: {}", notice(&app));
-    assert!(rows(&app).len() == 5 && app.wizard_value_of_next().contains("not yet"), "{}", app.wizard_value_of_next());
-    app.ed.clear();
-    app.ed.put("/work/one");
-    assert_eq!(app.wizard_value_of_next(), "Start terminal  (Enter)");
-    app.form_enter();
-    assert!(app.ui.panel.is_none(), "Enter on the folder starts the terminal and the panel is gone");
+    assert!(app.ui.panel.is_none(), "the panel is gone: the Terminal icon has no step after it");
     assert!(app.ui.flash.as_deref().is_some_and(|f| f.contains("terminal refused")), "(no host answers here, and the window says so): {:?}", app.ui.flash);
-    let mut again = both();
-    again.wizard_pick(3);
-    again.wizard_next(); // an empty folder is the person's home
-    assert!(again.ui.panel.is_none(), "an empty folder is allowed: the host opens the shell at home");
+    let mut with_accounts = both();
+    with_accounts.wizard_pick(3);
+    assert!(with_accounts.ui.panel.is_none(), "the same with accounts: nothing is asked");
 }
 
 #[test]
-fn back_from_the_terminal_step_puts_the_focus_on_its_icon_and_another_icon_is_not_a_terminal() {
+fn another_icon_is_still_a_step_and_the_focus_returns_to_it_on_back() {
     let mut app = both();
-    app.wizard_pick(3);
-    assert!(app.wizard_escape());
-    assert_eq!((page(&app), form(&app)["focus"].as_str().unwrap()), (0, "Pick(3)"), "the focus is on the terminal icon");
     app.wizard_pick(0);
     assert_eq!(page(&app), 1);
-    assert_eq!(rows(&app).first().map(String::as_str), Some("Account"), "Claude again: its own rows");
+    assert_eq!(rows(&app).first().map(String::as_str), Some("Account"), "Claude: its own rows");
     assert_eq!(title(&app), "New session - step 2 of 3 - Account and folder");
-    assert_eq!(form(&app)["wizard"]["terminal"], false);
+    assert!(app.wizard_escape());
+    assert_eq!((page(&app), form(&app)["focus"].as_str().unwrap()), (0, "Pick(0)"), "the focus is on the icon that was chosen");
 }
 
 #[test]
@@ -528,12 +498,4 @@ fn left_and_right_go_round_the_four_icons() {
     assert_eq!(form(&app)["focus"], "Pick(0)", "after the fourth, the first");
     app.form_cycle(-1);
     assert_eq!(form(&app)["focus"], "Pick(3)", "and before the first, the fourth");
-}
-
-impl App {
-    /// The text of the Next row on the terminal's step.
-    fn wizard_value_of_next(&self) -> String {
-        let p = self.ui.panel.as_ref().unwrap();
-        self.wizard_value(p, p.form.as_ref().unwrap(), Field::Next)
-    }
 }
