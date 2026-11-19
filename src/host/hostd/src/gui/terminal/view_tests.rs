@@ -381,7 +381,7 @@ fn the_wheel_moves_the_history_three_lines_a_step_and_on_the_alternate_screen_it
 }
 
 #[test]
-fn a_terminal_starts_in_the_current_folder_the_sessions_else_the_one_directories_shows_else_the_last_one_kept_else_at_home() {
+fn a_terminal_starts_in_the_folder_on_the_left_else_the_sessions_else_the_last_one_kept_else_at_home() {
     let (here, elsewhere) = (std::env::temp_dir(), std::env::current_dir().unwrap());
     let (here, elsewhere) = (here.to_str().unwrap().to_string(), elsewhere.to_str().unwrap().to_string());
     let mut a = app(1.0, false);
@@ -393,7 +393,7 @@ fn a_terminal_starts_in_the_current_folder_the_sessions_else_the_one_directories
     a.ui.saved_cwd = elsewhere.clone();
     a.ui.rows = vec![Row { session: "s1".into(), cwd: here.clone(), ..Default::default() }];
     a.session = "s1".into();
-    assert_eq!(a.terminal_start_dir().as_deref(), Some(here.as_str()), "a session in front: its own folder, before Directories");
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(here.as_str()), "a session in front and Directories shows none: the session's own folder");
     a.ui.rows[0].cwd.clear();
     assert_eq!(a.terminal_start_dir().as_deref(), Some(elsewhere.as_str()), "a session with no folder: the last folder kept");
     a.ui.rows[0] = Row { session: "s1".into(), cwd: here, ssh_host: "box".into(), ..Default::default() };
@@ -401,7 +401,7 @@ fn a_terminal_starts_in_the_current_folder_the_sessions_else_the_one_directories
 }
 
 #[test]
-fn the_folder_directories_shows_is_the_start_folder_and_it_wins_over_the_last_one_kept_but_not_over_the_session_in_front() {
+fn the_folder_directories_shows_is_the_start_folder_and_it_wins_over_the_last_one_kept_and_over_the_session_in_front() {
     let (shown, kept) = (std::env::temp_dir(), std::env::current_dir().unwrap());
     let (shown, kept) = (shown.to_str().unwrap().to_string(), kept.to_str().unwrap().to_string());
     assert_ne!(shown, kept, "the two folders of this test differ");
@@ -424,8 +424,13 @@ fn the_folder_directories_shows_is_the_start_folder_and_it_wins_over_the_last_on
     a.ui.sidebar.unreachable = false;
     a.ui.rows = vec![Row { session: "s1".into(), cwd: kept.clone(), ..Default::default() }];
     a.session = "s1".into();
-    a.ui.sidebar.cwd = shown;
-    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "a session in front: its own folder, before the one Directories shows");
+    a.ui.sidebar.cwd = shown.clone();
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(shown.as_str()), "the owner's word: the folder on the left decides, also with a session in front");
+    a.ui.sidebar.global_scope = true;
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the left shows no folder of this machine (Home): the session in front's");
+    a.ui.sidebar.global_scope = false;
+    a.ui.sidebar.ssh_host = Some("box".into());
+    assert_eq!(a.terminal_start_dir().as_deref(), Some(kept.as_str()), "the left is on another machine: the session in front's");
 }
 
 #[test]

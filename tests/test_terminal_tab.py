@@ -402,6 +402,36 @@ def test_a_terminal_starts_in_the_folder_directories_shows_also_when_the_person_
             assert started["tabs"][0]["cwd"] == str(project / "inner"), "the folder the person moved to, not the one kept from before: " + str(started["tabs"])
 
 
+def test_a_terminal_starts_in_the_folder_on_the_left_also_when_a_session_is_in_front():
+    """The owner's report (2026-11-19, after M23-P03c): however the start folder is decided on the left, the shell starts elsewhere. A session in front won over the folder Directories shows;
+    the folder on the left decides now, and the session's own folder is used only when the left shows none of this machine's."""
+    from tests.account_helpers import account
+    from tests.gui_helpers import open_form
+    from tests.test_new_session_screen import claude_args
+
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = root.resolve() / "project"
+        (project / "inner").mkdir(parents=True)
+        args, _received = claude_args(directory)
+
+        def work_account(w: ProductWindow) -> None:
+            account(Conn(w.socket), "Work", "claude")
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="start")["ok"] == 1
+
+        with ProductWindow(**rig(root, host_args=args, before_window=work_account)) as w:
+            open_form(w)
+            w.key("ctrl+u")                                          # the folder row starts from the folder that was kept
+            w.type_text(str(project))
+            w.key("Return")
+            wait_for(lambda: (u := w.ui())["panel"] is None and len(u["rows"]) == 1)
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project) and s["loading"] is None and any(e["name"] == "inner" and e["rect"] for e in s["entries"]) and s)
+            w.click(*centre(next(e for e in side["entries"] if e["name"] == "inner")["rect"]))
+            wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project / "inner") and s["loading"] is None)
+            started = terminal_from_the_icon(w)
+            assert started["tabs"][0]["cwd"] == str(project / "inner"), "the folder on the left, not the session's " + str(project) + ": " + str(started["tabs"])
+
+
 def test_korean_composes_in_the_terminal_and_the_shell_gets_the_committed_text_only():
     from lico_measure.ime import SENTENCE_KEYS
 
