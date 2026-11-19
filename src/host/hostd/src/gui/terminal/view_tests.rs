@@ -7,8 +7,9 @@ use winit::event::MouseScrollDelta;
 use winit::keyboard::NamedKey;
 
 use super::keys::{Held, Lico, Logical};
-use super::screen::Sel;
+use super::screen::{self, Screen, Sel};
 use super::super::scroll_oracle::app;
+use super::super::ui::icons::Icon;
 use super::super::ui::Row;
 use super::super::App;
 use super::view::{text_request, TermJob};
@@ -442,4 +443,46 @@ fn the_text_of_a_selection_is_asked_for_from_its_first_end_to_its_last_whichever
     assert_eq!(text_request("t1", right_to_left), want, "a drag from the right to the left asks for the same text");
     let same_line = Sel { anchor: (7, 12), focus: (7, 3) };
     assert_eq!(text_request("t2", same_line), json!({"op": "terminal.text", "tab": "t2", "from": [7, 3], "to": [7, 12]}), "on one line the columns are ordered too");
+}
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------- the agent in the foreground (M23-P04a)
+
+#[test]
+fn a_screen_names_its_agent_only_when_it_is_one_of_the_three_the_host_names() {
+    let with = |agent: Value| {
+        let mut v = screen("t1", 1, &["x"]);
+        v["agent"] = agent;
+        Screen::parse(&v).unwrap().agent
+    };
+    assert_eq!([with(json!("claude")), with(json!("codex")), with(json!("agy"))], [Some("claude"), Some("codex"), Some("agy")]);
+    for other in [json!("vim"), json!("Claude"), json!(""), json!(7), json!(null), json!(["agy"])] {
+        assert_eq!(with(other.clone()), None, "{other}");
+    }
+    assert_eq!(Screen::parse(&screen("t1", 1, &["x"])).unwrap().agent, None, "an answer with no word says none");
+}
+
+#[test]
+fn a_tab_has_the_agent_the_list_and_then_the_latest_watch_told_and_a_plain_tab_keeps_its_caption() {
+    let mut a = app(1.0, false);
+    let mut rows = listed(&[("t1", "/work/one"), ("t2", "/work/two")]);
+    rows["terminals"][0]["agent"] = json!("agy");
+    rows["terminals"][1]["agent"] = json!("vim");
+    a.on_terminal_async(TermJob::List, rows);
+    assert_eq!([a.terminal_tab_agent("t1"), a.terminal_tab_agent("t2"), a.terminal_tab_agent("t9")], [Some("agy"), None, None], "the list's word, only one of the three, and an unknown tab has none");
+    // the shown tab is the one that is watched: a watch's word replaces the list's, a null takes it away
+    a.terminal_activate("t1");
+    let gen = tab(&a).gen;
+    let mut claude = screen("t1", 2, &["x"]);
+    claude["agent"] = json!("claude");
+    watch(&mut a, gen, claude);
+    assert_eq!(a.terminal_tab_agent("t1"), Some("claude"));
+    assert_eq!(a.terminal_strip()[..2], [("t1".to_string(), "one".to_string(), true, Some(Icon::Claude)), ("t2".to_string(), ">_ two".to_string(), false, None)], "the picture takes the place of the text that says terminal");
+    watch(&mut a, gen, screen("t1", 3, &["x"]));
+    assert_eq!(a.terminal_tab_agent("t1"), None, "the program ended");
+    // the caption is what it was; the picture takes the place of the text that says terminal
+    assert_eq!(a.terminal_tab_entries()[0].1, ">_ one");
+    assert_eq!(a.terminal_strip()[0], ("t1".to_string(), ">_ one".to_string(), true, None), "a plain terminal is as it was");
+    assert_eq!(screen::without_prompt(">_ one"), "one");
+    assert_eq!(screen::without_prompt("one"), "one", "a caption without it is left as it is");
 }

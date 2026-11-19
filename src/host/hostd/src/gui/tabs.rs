@@ -239,7 +239,10 @@ impl App {
             })
             .collect();
         let browser_entries: Vec<(String, String, bool, bool)> = self.ui.browser.tabs.iter().map(|t| (t.id.clone(), super::super::browser_view::caption(t), self.browser_active() && self.ui.browser.active.as_deref() == Some(t.id.as_str()), t.local)).collect();
-        let terminal_entries = self.terminal_tab_entries();
+        // `M23-P04a`: a terminal tab in which an agent runs shows the agent's picture where the text `>_` was
+        let strip = self.terminal_strip();
+        let terminal_entries: Vec<(String, String, bool)> = strip.iter().map(|(id, cap, shown, _)| (id.clone(), cap.clone(), *shown)).collect();
+        let terminal_pictures: Vec<Option<super::icons::Icon>> = strip.iter().map(|e| e.3).collect();
         let ensure = std::mem::take(&mut self.ui.tab_ensure_visible);
         let active_idx = entries.iter().position(|e| e.3);
 
@@ -273,7 +276,9 @@ impl App {
             .map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w)
             .collect();
         let browser_widths: Vec<f32> = browser_entries.iter().map(|(_, cap, ..)| controls.width(fs, cap) + 14.0 * s + close_w).collect();
-        let terminal_widths: Vec<f32> = terminal_entries.iter().map(|(_, cap, _)| controls.width(fs, cap) + 14.0 * s + close_w).collect();
+        let picture_side = (by1 - by0 - 2.0 * s).max(8.0); // the picture of an agent in a terminal tab: a square the height of the tab, less a margin
+        let terminal_widths: Vec<f32> =
+            terminal_entries.iter().zip(&terminal_pictures).map(|((_, cap, _), picture)| controls.width(fs, cap) + 14.0 * s + close_w + if picture.is_some() { picture_side + 4.0 * s } else { 0.0 }).collect();
         let total_w: f32 = widths.iter().chain(&call_widths).chain(&browser_widths).chain(&terminal_widths).map(|w| *w + 3.0 * s).sum();
         let all_fit = self.ui.tab_scroll == 0 && total_w <= (tabs_limit_x - (x_left + 6.0 * s)).max(0.0);
         let show_nav = (!entries.is_empty() || !call_entries.is_empty() || !browser_entries.is_empty() || !terminal_entries.is_empty()) && !all_fit;
@@ -429,7 +434,7 @@ impl App {
                 controls.target(crect, Action::CloseBrowserTab(bid.clone()));
                 tx = rx1 + 3.0 * s;
             }
-            for ((tid, cap, selected), tw) in terminal_entries.iter().zip(&terminal_widths) {
+            for (((tid, cap, selected), tw), picture) in terminal_entries.iter().zip(&terminal_widths).zip(&terminal_pictures) {
                 if tx + close_w + 16.0 * s > tabs_limit_x {
                     break;
                 }
@@ -441,11 +446,18 @@ impl App {
                     controls::fill(buf, width, height, [trect[0], trect[1], trect[2], trect[1] + 2.0 * s], 0xFF5C_C46B);
                 }
                 let crect = [rx1 - close_w - 2.0 * s, by0 + 2.0 * s, rx1 - 2.0 * s, by1];
-                controls.text(fs, swash, buf, width, height, tx + 7.0 * s, by0 + s, (crect[0] - 2.0 * s) as i32, cap, if *selected { ink } else { green });
+                let (fill_colour, ink_colour) = (if *selected { 0xFF1D_3324 } else { 0xFF16_2219 }, if *selected { 0xFFEC_F1F8 } else { 0xFF9B_D98E });
+                let prect = picture.map(|icon| {
+                    let r = [tx + 5.0 * s, by0 + s, tx + 5.0 * s + picture_side, by0 + s + picture_side];
+                    super::icons::draw(buf, width, height, icon, r, ink_colour, fill_colour);
+                    r
+                });
+                let text_x = tx + 7.0 * s + prect.map_or(0.0, |r| r[2] - r[0] + 4.0 * s);
+                controls.text(fs, swash, buf, width, height, text_x, by0 + s, (crect[0] - 2.0 * s) as i32, cap, if *selected { ink } else { green });
                 controls.target(trect, Action::TerminalTab(tid.clone()));
                 controls.text(fs, swash, buf, width, height, crect[0] + 4.0 * s, by0 + s, crect[2] as i32, "\u{00d7}", muted);
                 controls.target(crect, Action::CloseTerminalTab(tid.clone()));
-                self.ui.terminal.tab_geom.push((tid.clone(), trect, crect));
+                self.ui.terminal.tab_geom.push((tid.clone(), trect, crect, prect));
                 tx = rx1 + 3.0 * s;
             }
         }

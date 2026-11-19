@@ -2,6 +2,7 @@
 //! seven socket-only operations (`terminal.open`, `.list`, `.close`, `.input`, `.resize`, `.watch`, `.text`). It plugs in through the driver port (`driver::register_ops`) and is
 //! registered once, from the root; no hub names it. The only file that calls the system is `pty.rs`.
 
+mod agent;
 mod encode;
 mod ops;
 mod pty;

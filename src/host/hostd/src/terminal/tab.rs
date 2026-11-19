@@ -2,6 +2,7 @@
 //! (polls the master, feeds the emulator, writes the emulator's answers back to the shell) and a waiter (the shell's end). Nothing here polls on a timer for a client: a watch
 //! sleeps on the condition variable until the number moves.
 
+use super::agent;
 use super::encode;
 use super::pty::{self, Master, ReadResult, WriteError};
 use crate::procs;
@@ -182,11 +183,24 @@ impl Tab {
         });
     }
 
+    /// The agent (`claude`, `codex` or `agy`) in the foreground of the pty now, or none (M23-P04a). Worked out when an answer is made, from the pty's foreground group and that
+    /// group's command line; nothing is kept. Once the shell has ended the pty has no foreground group (the system takes it away with the session's leader, whatever program still
+    /// holds the pty), so an ended terminal says none; the test `a_shell_that_ended_has_no_agent` holds the system to that.
+    fn agent(&self) -> Option<&'static str> {
+        if self.is_closed() {
+            return None;
+        }
+        self.master.foreground_group().and_then(agent::of_group)
+    }
+
     /// The row of the list.
     pub fn row(&self) -> Value {
         let st = self.lock();
         let (cols, rows) = st.term.size();
-        json!({"tab": self.id, "cwd": self.cwd, "shell": self.shell, "pid": self.pid, "title": st.term.title(), "cols": cols, "rows": rows, "running": st.running, "exit": st.exit, "started": self.started})
+        json!({
+            "tab": self.id, "cwd": self.cwd, "shell": self.shell, "pid": self.pid, "title": st.term.title(), "cols": cols, "rows": rows, "running": st.running, "exit": st.exit,
+            "started": self.started, "agent": self.agent(),
+        })
     }
 
     /// Waits (with no timeout) until the change number is above `seq`, then tells the screen `scroll` rows above the bottom. A closed tab is `unknown_tab`.
@@ -213,7 +227,7 @@ impl Tab {
             "modes": encode::modes(st.term.modes()),
             "scroll": view.scroll, "top": view.top, "total": view.total,
             "lines": lines, "wrapped": view.wrapped, "bells": st.term.bells(),
-            "running": st.running, "exit": st.exit,
+            "running": st.running, "exit": st.exit, "agent": self.agent(),
         })
     }
 

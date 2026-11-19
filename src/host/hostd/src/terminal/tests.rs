@@ -253,6 +253,12 @@ fn plain_folder(path: &str) -> Result<String, &'static str> {
 
 impl Rig {
     fn new() -> Rig {
+        Rig::with_watchdog(12)
+    }
+
+    /// A rig whose watchdog closes every terminal after `seconds` (a test that starts several programs one after another needs more than the 12 seconds of the usual one when the machine's
+    /// disks are busy: a program that is not in the cache takes seconds to start).
+    fn with_watchdog(seconds: u64) -> Rig {
         let guard = serial();
         eventually("no pty is held from an earlier test", Duration::from_secs(5), || pty_fds() == 0);
         let dir = std::env::temp_dir().join(format!("lico_term_{}", crate::core::random_hex(6)));
@@ -269,7 +275,7 @@ impl Rig {
         let (terminals, finished) = (Terminals::new(), Arc::new(AtomicBool::new(false)));
         let (watched, flag) = (terminals.clone(), finished.clone());
         std::thread::spawn(move || {
-            for _ in 0..120 {
+            for _ in 0..seconds * 10 {
                 if flag.load(Ordering::SeqCst) {
                     return;
                 }
@@ -773,3 +779,5 @@ fn a_close_releases_the_watches_at_once_even_when_the_shell_is_slow_to_end() {
     assert_eq!(waiting.join().unwrap(), Err("unknown_tab"));
     eventually("the kill after the second ends the group, so that the test leaves nothing behind", Duration::from_secs(4), || !alive(shell));
 }
+
+mod agent_tests;

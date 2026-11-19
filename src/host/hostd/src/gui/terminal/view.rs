@@ -60,6 +60,9 @@ impl TTab {
     }
 }
 
+/// What the tab row drew for one terminal tab: its id, the tab's box, its close box and, when an agent runs in it, the picture's box.
+pub(crate) type TabGeom = (String, [f32; 4], [f32; 4], Option<[f32; 4]>);
+
 #[derive(Default)]
 pub(crate) struct TermState {
     pub tabs: Vec<TTab>,
@@ -79,7 +82,7 @@ pub(crate) struct TermState {
     pub labels: Controls,
     pub first_pixel: u32,
     /// Where the tab row drew each terminal tab in the last frame: the id, the tab's box and its close box (the dump says them; a test clicks there).
-    pub tab_geom: Vec<(String, [f32; 4], [f32; 4])>,
+    pub tab_geom: Vec<TabGeom>,
 }
 
 /// The most bytes of input joined into one request while one is in flight, and the most one paste request carries (the host takes 64 KiB).
@@ -250,7 +253,9 @@ impl App {
                         continue;
                     }
                     let size = (row["cols"].as_u64().unwrap_or(80) as u16, row["rows"].as_u64().unwrap_or(24) as u16);
-                    self.ui.terminal.tabs.push(TTab::new(id, row["cwd"].as_str().unwrap_or("").into(), row["title"].as_str().unwrap_or("").into(), size));
+                    let mut tab = TTab::new(id, row["cwd"].as_str().unwrap_or("").into(), row["title"].as_str().unwrap_or("").into(), size);
+                    tab.screen.agent = screen::agent_word(row.get("agent"));
+                    self.ui.terminal.tabs.push(tab);
                 }
                 self.dirty = true;
             }
@@ -594,6 +599,24 @@ impl App {
         vec!["Terminal: your keys go to the shell", "Ctrl+Shift+C copy", "Ctrl+Shift+V paste", "Ctrl+Tab next session", "Ctrl+Shift+W close"]
     }
 
+    /// The agent the host last named for the tab `id` (its list's row, then each watch of it), if any. A tab that is not shown is not watched, so it keeps the word it had.
+    pub(crate) fn terminal_tab_agent(&self, id: &str) -> Option<&'static str> {
+        self.ui.terminal.tabs.iter().find(|t| t.id == id)?.screen.agent
+    }
+
+    /// The tabs of the strip (`M23-P04a`): the id, the caption, whether it is the one shown, and the picture of the agent that runs in it; with a picture the caption lacks the text
+    /// `>_` that says terminal (the picture is said in its place).
+    pub(crate) fn terminal_strip(&self) -> Vec<(String, String, bool, Option<super::super::ui::icons::Icon>)> {
+        self.terminal_tab_entries()
+            .into_iter()
+            .map(|(id, caption, shown)| {
+                let picture = self.terminal_tab_agent(&id).and_then(super::super::ui::icons::Icon::of_agent);
+                let caption = if picture.is_some() { screen::without_prompt(&caption).to_string() } else { caption };
+                (id, caption, shown, picture)
+            })
+            .collect()
+    }
+
     /// The tabs of the row: the id, the caption, whether it is the one shown.
     pub(crate) fn terminal_tab_entries(&self) -> Vec<(String, String, bool)> {
         let shown = self.terminal_active().then(|| self.ui.terminal.active.clone()).flatten();
@@ -688,6 +711,7 @@ impl App {
             "lines": shown.map(|x| x.screen.plain_lines()),
             "tabs": t.tabs.iter().map(|x| json!({
                 "rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.1), "close_rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.2),
+                "agent": x.screen.agent, "picture_rect": t.tab_geom.iter().find(|g| g.0 == x.id).and_then(|g| g.3),
                 "id": x.id, "cwd": x.cwd, "caption": screen::caption(if x.screen.title.is_empty() { &x.title } else { &x.screen.title }, &x.cwd, &x.id), "seq": x.seq, "gen": x.gen, "watching": x.watching,
                 "scroll": x.scroll, "size": [x.size.0, x.size.1], "cols": x.screen.cols, "rows": x.screen.rows, "title": x.screen.title, "running": x.screen.running, "exit": x.screen.exit,
                 "cursor": x.screen.cursor.map(|(r, c)| json!([r, c])), "top": x.screen.top, "total": x.screen.total, "painted": x.painted,

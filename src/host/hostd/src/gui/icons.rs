@@ -19,6 +19,8 @@ pub(crate) enum Icon {
     Local,
     /// A screen with the prompt `>_` cut out of it (a terminal).
     Terminal,
+    /// An upward chevron over a dot (an `agy` session or the program `agy` in a terminal tab, `M23-P04a`): a shape of our own, like the others.
+    Agy,
     /// A chevron pointing left, a chevron pointing right and an arc with an arrowhead (the browser bar's back, forward and reload, `M22-P05a`).
     Back,
     Forward,
@@ -37,14 +39,25 @@ impl Icon {
             Icon::Codex => "codex",
             Icon::Local => "local",
             Icon::Terminal => "terminal",
+            Icon::Agy => "agy",
             Icon::Back => "back",
             Icon::Forward => "forward",
             Icon::Reload => "reload",
         }
     }
 
+    /// The picture of a program the host names in a terminal (`claude`, `codex`, `agy`); none for any other word.
+    pub(crate) fn of_agent(word: &str) -> Option<Icon> {
+        match word {
+            "claude" => Some(Icon::Claude),
+            "codex" => Some(Icon::Codex),
+            "agy" => Some(Icon::Agy),
+            _ => None,
+        }
+    }
+
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 11] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Back, Icon::Forward, Icon::Reload];
+    pub(crate) const ALL: [Icon; 12] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Back, Icon::Forward, Icon::Reload];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -170,6 +183,13 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             stroke(&mut put, (ax + ah, mid), (ax, mid + ah), tc, ground);
             let uy = (mid + ah - tc * 0.5).round();
             put((x0 + side * 0.50).round(), uy, (x0 + side * 0.80).round(), uy + tc, ground);
+        }
+        Icon::Agy => {
+            // an upward chevron (an apex in the middle, an arm down to each side) with a dot under the apex: the picture is as wide and as tall as the others' box
+            let foot_y = y0 + side * 0.62;
+            stroke(&mut put, (cx, y0 + t * 0.5), (x0 + t * 0.5, foot_y), t, ink);
+            stroke(&mut put, (cx, y0 + t * 0.5), (x1 - t * 0.5, foot_y), t, ink);
+            disc(&mut put, (cx, y1 - side * 0.11), side * 0.10, ink);
         }
         Icon::Back | Icon::Forward => {
             // a chevron: two strokes meeting at a tip on the middle row, as wide as it is tall (a `<` or a `>`)
@@ -320,7 +340,7 @@ mod tests {
     #[test]
     fn the_pictures_have_the_pieces_they_are_made_of() {
         // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
-        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1)];
+        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Agy, 2), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1)];
         for (icon, n) in want {
             let (buf, _) = canvas_n(icon, 128);
             assert_eq!(pieces(&buf, 128), n, "{icon:?}");
@@ -337,6 +357,33 @@ mod tests {
             let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
             assert!(max_x - min_x + 1 >= 56 && max_y - min_y + 1 >= 56, "{icon:?} reaches out: x {min_x}..{max_x}, y {min_y}..{max_y}");
         }
+    }
+
+    #[test]
+    fn the_three_programs_a_terminal_can_name_have_their_pictures_and_no_other_word_has_one() {
+        assert_eq!([Icon::of_agent("claude"), Icon::of_agent("codex"), Icon::of_agent("agy")], [Some(Icon::Claude), Some(Icon::Codex), Some(Icon::Agy)]);
+        for other in ["", "vim", "Claude", "local", "terminal"] {
+            assert_eq!(Icon::of_agent(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn the_agy_picture_is_an_upward_chevron_over_a_dot_that_fills_the_box() {
+        let (buf, _) = canvas_n(Icon::Agy, 128);
+        let px = inked_n(&buf, 128);
+        let (min_x, max_x) = (px.iter().map(|p| p.0).min().unwrap(), px.iter().map(|p| p.0).max().unwrap());
+        let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
+        assert!(max_x - min_x + 1 >= 56 && max_y - min_y + 1 >= 56, "it reaches out like the others: x {min_x}..{max_x}, y {min_y}..{max_y}");
+        let row = |y: usize| (0..128).filter(|&x| buf[y * 128 + x] == INK).collect::<Vec<usize>>();
+        // the apex is one narrow place at the top and in the middle; the feet are far apart, lower; the dot is the last rows, in the middle
+        let top = row(min_y);
+        assert!(!top.is_empty() && top.iter().all(|&x| (50..78).contains(&x)), "the apex is in the middle: {top:?}");
+        let feet = row(min_y + (max_y - min_y) * 55 / 100);
+        assert!(feet.iter().min().copied().unwrap() < 50 && feet.iter().max().copied().unwrap() > 78, "the two arms are apart lower down: {feet:?}");
+        let last = row(max_y);
+        assert!(!last.is_empty() && last.iter().all(|&x| (50..78).contains(&x)), "the dot is in the middle: {last:?}");
+        // a clear row between the chevron and the dot (two pieces)
+        assert!((min_y..=max_y).any(|y| row(y).is_empty()), "a gap between the chevron and the dot");
     }
 
     #[test]

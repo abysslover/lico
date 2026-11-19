@@ -51,6 +51,7 @@ extern "C" {
     fn poll(fds: *mut PollFd, count: u64, timeout_ms: i32) -> i32;
     fn prctl(option: i32, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> i32;
     fn setsid() -> i32;
+    fn tcgetpgrp(fd: i32) -> i32;
     fn signal(signum: i32, handler: usize) -> usize;
 }
 
@@ -121,6 +122,14 @@ impl Master {
             return Err(io::Error::last_os_error());
         }
         Ok(())
+    }
+
+    /// The process group in the foreground of the pty (`tcgetpgrp`: the group the terminal's keys, Ctrl+C among them, go to; its leader's pid), or none when the pty has none (the
+    /// shell has ended) or the call fails. Read-only (M23-P04a).
+    pub fn foreground_group(&self) -> Option<i32> {
+        // SAFETY: a plain system call on a descriptor this struct owns; it reads a number and changes nothing.
+        let group = unsafe { tcgetpgrp(self.file.as_raw_fd()) };
+        (group > 0).then_some(group)
     }
 
     /// The size the pty has now, `(cols, rows)` (what the tests read back).

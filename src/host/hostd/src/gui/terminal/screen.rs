@@ -169,11 +169,13 @@ pub(crate) struct Screen {
     pub lines: Vec<Vec<Run>>,
     pub running: bool,
     pub exit: Option<i64>,
+    /// The program in the foreground that the host named (`claude`, `codex` or `agy`), if any (`M23-P04a`).
+    pub agent: Option<&'static str>,
 }
 
 impl Default for Screen {
     fn default() -> Screen {
-        Screen { seq: 0, cols: 0, rows: 0, title: String::new(), cursor: None, modes: Wire::default(), scroll: 0, top: 0, total: 0, lines: Vec::new(), running: true, exit: None }
+        Screen { seq: 0, cols: 0, rows: 0, title: String::new(), cursor: None, modes: Wire::default(), scroll: 0, top: 0, total: 0, lines: Vec::new(), running: true, exit: None, agent: None }
     }
 }
 
@@ -218,6 +220,7 @@ impl Screen {
             lines,
             running: v.get("running").and_then(Value::as_bool).unwrap_or(true),
             exit: v.get("exit").and_then(Value::as_i64),
+            agent: agent_word(v.get("agent")),
         })
     }
 
@@ -387,7 +390,25 @@ pub(crate) fn caption(title: &str, cwd: &str, id: &str) -> String {
     if name.chars().count() > 20 {
         cut.push('\u{2026}');
     }
-    format!(">_ {cut}")
+    format!("{PROMPT}{cut}")
+}
+
+/// The text a terminal's caption begins with.
+const PROMPT: &str = ">_ ";
+
+/// The caption without the text that says it is a terminal (the tab shows a picture in its place when an agent runs in it).
+pub(crate) fn without_prompt(caption: &str) -> &str {
+    caption.strip_prefix(PROMPT).unwrap_or(caption)
+}
+
+/// The program the host named in the foreground: one of the three it ever names, else none (a word of another kind, or of a host that has no such word, is none).
+pub(crate) fn agent_word(v: Option<&Value>) -> Option<&'static str> {
+    match v?.as_str()? {
+        "claude" => Some("claude"),
+        "codex" => Some("codex"),
+        "agy" => Some("agy"),
+        _ => None,
+    }
 }
 
 /// The header of the window while a terminal is shown.

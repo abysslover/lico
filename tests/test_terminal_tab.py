@@ -448,3 +448,32 @@ def test_korean_composes_in_the_terminal_and_the_shell_gets_the_committed_text_o
             shot(w, "11_korean_composition.png")
             w.key("Return")
             wait_for(lambda: any(line.strip().startswith("안녕하세요") and not line.startswith("lico$") for line in text(w).splitlines()))
+
+
+def test_a_tab_shows_the_picture_of_the_agent_that_runs_in_it_and_the_text_again_when_it_ends():
+    """M23-P04a: a program named `agy` (a script of that name that prints and waits: what the host sees is the foreground group of the pty and its command line) runs in the shell of a
+    real window; the host names it, the window draws its picture where the text `>_` was, and when the program is ended with Ctrl+C the tab is as a plain terminal's again. Claude and
+    Codex are named by the same rule (the Rust tests); the host's own answers are `terminal.list` and `terminal.watch`."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        with ProductWindow(**rig(root)) as w:
+            conn = Conn(w.socket)
+            open_by_menu(w)
+            plain = tab(w)
+            assert plain["agent"] is None and plain["picture_rect"] is None, plain
+            run(w, f"printf '#!/bin/sh\\necho agent-up\\nsleep 30\\n' > {root}/agy; chmod +x {root}/agy; echo $((40+2))", "\n42\n")
+            w.type_text(f"{root}/agy")
+            w.key("Return")
+            wait_for(lambda: "agent-up" in text(w))
+            named = wait_for(lambda: (t := tab(w)) and t["agent"] == "agy" and t["picture_rect"] and t)
+            # the host says the same in its list; the picture is inked in the tab (bright pixels in its rectangle), at the left of the tab, left of where the text begins
+            assert [r["agent"] for r in conn.call(op="terminal.list")["terminals"]] == ["agy"]
+            left, top, right, bottom = (int(v) for v in named["picture_rect"])
+            assert named["rect"][0] < left and right - left >= 8 and bottom - top >= 8, named
+            assert w.bright(left, top, right, bottom, 200) > 20, "the picture is drawn"
+            shot(w, "8_agent_in_a_tab.png")
+            # Ctrl+C ends the script (the foreground group of an interactive shell): the prompt is back and the tab is a plain terminal's
+            w.key("ctrl+c")
+            wait_for(lambda: (t := tab(w)) and t["agent"] is None and t["picture_rect"] is None and text(w).rstrip().endswith("lico$"))
+            assert [r["agent"] for r in conn.call(op="terminal.list")["terminals"]] == [None]
+
