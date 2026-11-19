@@ -1,7 +1,7 @@
 # M23 — A Terminal In Lico: Run An Agent In It, And It Comes Into Lico
 
 - Status: in_progress (2026-11-18); the owner named the first step in the chat the same day: **choose Terminal in New session** (P01 to P03, P03a and P03b below are done; the owner looked at P03 with `lico gui` on 2026-11-19 and P03a is what the owner asked for then: the icon opens a shell at once, a shell that ends closes its tab, and the suite's memory brought down); the agent that comes into Lico from a terminal is a later phase, after the terminal works
-- Version: 2.6.0
+- Version: 2.7.0
 - Project: Lico
 - Updated: 2026-11-19
 
@@ -19,7 +19,7 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 
 | # | Question | Answer | Why |
 |---|---|---|---|
-| Q1 | How does Lico learn that an agent started in a terminal? | **Not decided; a later phase (P04), after the terminal works.** Candidates stay as written: a Lico variable in the shell's environment that points at the host, a wrapper command (`lico run claude`), the provider's own record files (M11 reads them already) | the owner's first step is the terminal itself; the host owning the shell (D2) keeps every candidate open |
+| Q1 | How does Lico learn that an agent started in a terminal? | **Not decided; the P04 plan note (2026-11-19) proposes the provider's own record files and the terminal's foreground process, and waits for the owner's choice of level.** Candidates stay as written: a Lico variable in the shell's environment that points at the host, a wrapper command (`lico run claude`), the provider's own record files (M11 reads them already) | the owner's first step is the terminal itself; the host owning the shell (D2) keeps every candidate open |
 | Q2 | Terminal emulation: crate, size, memory, frame cost | **Written anew as a std-only component `lico-vt`** (the parser, the grid, the scrollback, the keys), and the pty through `extern "C"` as the rest of the host does (no `libc` crate, no new dependency). Memory: the scrollback is bounded by cells (about 10 MB at most), a screen of 120 x 40 is about 80 KB; the window draws only the rows it shows | the project pins exact versions and keeps few; the emulator is plain, testable code with no display; the component rules ask for a spec first and a receipt |
 | Q3 | Security: a terminal is a shell for the person | The shell runs as the person with their environment, **not** in the host's fence (the browser tab's engine is fenced, a shell is not). The tab says so in its hint row and the wizard says it on its last step; the credentials of Lico are never put in the shell's environment | the provider's own permission model is what an agent in it obeys; Lico must not suggest a fence that is not there |
 | Q4 | Does it replace the session tab? | **No: it sits beside it**, as the browser tab does (D1); the owner decides later whether one kind of tab is wanted | smaller and reversible; "simpler" can come after both exist |
@@ -43,7 +43,7 @@ A terminal tab in the window runs a shell. The person chooses it in the New sess
 | M23-P03a | after the owner's look: the Terminal icon opens a shell at once in the current folder (no wizard step), a shell that ends closes its own tab, and the suite's memory inspected and brought down (the build script's missing paths that made cargo rebuild the program every time, the sessions a test file kept alive, the unit tests' threads) | [Plan](../../../plans/202611/20261119/20261119_02_M23-P03a_terminal_start_and_suite_memory_plan.md) | done (`46da95f`) |
 | M23-P03b | the suite's time and build memory after the owner's word that the limit must not be tight: the guard's 30 s quiet time shortened for the test that waited it (`LICO_GUARD_TYPING_QUIET_MS`), three duplicate tests removed, the debug information of the unit tests' binary cut to the lines (the build's peak 1727 to about 1160 MiB), the budget table with no exception left | [Plan](../../../plans/202611/20261119/20261119_03_M23-P03b_test_diet_plan.md) | done |
 | M23-P03c | the owner's report after P06: a new terminal opened at the home, not in the working directory; the start folder is now the session in front's, else the folder Directories shows (which `last_cwd` did not follow), else the last one kept | [Plan](../../../plans/202611/20261119/20261119_08_M23-P03c_terminal_start_folder_plan.md) | done (`ecc8772`) |
-| M23-P04 | an agent started in a terminal comes into Lico (Q1): research first, then a plan | written after P03 and the owner's look | idea |
+| M23-P04 | an agent started in a terminal comes into Lico (Q1): research done (`agy` is not connected today; three levels of "connected"), the plan proposes A (the tab knows what runs in it) and B (the agent's conversations in Chats, one click back into a terminal) first; the owner chooses the level | [Plan](../../../plans/202611/20261119/20261119_10_M23-P04_agent_in_terminal_plan.md) | plan written, waits for the owner's choice |
 
 The order with M22: the owner named the terminal first and asked for the browser address bar after it, so M23-P01 to P03 come before M22-P05 (the browser tab) and M22-P06 (the guide and the release `0.8.0`, which then ships both).
 
