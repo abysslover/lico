@@ -149,11 +149,14 @@ impl App {
         self.terminal_open(cwd);
     }
 
-    /// The folder a terminal starts in, from the menu and from the Terminal icon: the current one, that is the folder of the session in front, else the one Directories is on (`M23-P03a`),
-    /// when it is a folder of this machine (a session or a Directories on an ssh host is not); none (the host's home) when there is none.
+    /// The folder a terminal starts in, from the menu and from the Terminal icon: the current one, that is the folder of the session in front, else the folder Directories shows now
+    /// (`M23-P03c`: the one the person moved to, which `saved_cwd` does not follow), else the last folder the window kept (`M23-P03a`); the first of them that is a folder of this
+    /// machine (a session or a Directories on an ssh host is not, nor the Global scope, nor a listing that failed). None, the host's home, when there is none.
     pub(super) fn terminal_start_dir(&self) -> Option<String> {
-        let session = self.selected_row().filter(|r| r.ssh_host.is_empty()).map(|r| r.cwd.as_str()).filter(|c| !c.is_empty());
-        session.or(Some(self.ui.saved_cwd.as_str()).filter(|c| !c.is_empty())).filter(|d| std::path::Path::new(d).is_dir()).map(str::to_string)
+        let sb = &self.ui.sidebar;
+        let session = self.selected_row().filter(|r| r.ssh_host.is_empty()).map(|r| r.cwd.as_str());
+        let shown = Some(sb.cwd.as_str()).filter(|_| sb.ssh_host.is_none() && !sb.global_scope && !sb.unreachable);
+        [session, shown, Some(self.ui.saved_cwd.as_str())].into_iter().flatten().find(|d| !d.is_empty() && std::path::Path::new(d).is_dir()).map(str::to_string)
     }
 
     /// Shows a terminal: whatever was shown gives way (a panel, a session, a browser tab with its address draft parked), and the shown tab asks for its screen again.

@@ -84,19 +84,25 @@ def set_clipboard(w: ProductWindow, value: str) -> None:
 def test_the_session_menu_opens_a_terminal_whose_shell_answers_what_is_typed_and_whose_grid_is_the_size_of_the_pty():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
-        with ProductWindow(**rig(root)) as w:
+        work = root.resolve() / "work"
+        work.mkdir()
+
+        def before(w: ProductWindow) -> None:
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(work), last_view="start")["ok"] == 1
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
             conn = Conn(w.socket)
             t = open_by_menu(w)
-            home = str(Path(w.directory) / "home")
+            home = str(work)                                       # the folder Directories shows (M23-P03c): the terminal starts there, not at the home
             assert t["active"] == "t1" and t["listed"] and [x["id"] for x in t["tabs"]] == ["t1"], t
             assert t["header"] == f"terminal | shell | {home} | not fenced: it runs as you", t["header"]
             assert t["status"].startswith("Ctrl+Shift+C copy") and t["status"].endswith("Ctrl+Shift+W close") and len(t["status"]) < 100, t["status"]   # one row of the default window: it does not wrap
-            assert t["tabs"][0]["caption"] == ">_ home" and t["tabs"][0]["running"] and t["tabs"][0]["cwd"] == home, t["tabs"][0]
+            assert t["tabs"][0]["caption"] == ">_ work" and t["tabs"][0]["running"] and t["tabs"][0]["cwd"] == home, t["tabs"][0]
             shot(w, "1_terminal_opened.png")
 
-            # the shell is the person's, started by the host in the folder of the home; what is typed comes back from the shell, never from the window
+            # the shell is the person's, started by the host in the folder it was asked for; what is typed comes back from the shell, never from the window
             assert "42" in run(w, "echo hi $((6*7))", "hi 42")
-            assert home in run(w, "pwd", Path(home).name + "\n").replace("\n", ""), "the shell starts in the folder the host was asked for (the home)"
+            assert home in run(w, "pwd", Path(home).name + "\n").replace("\n", ""), "the shell starts in the folder the host was asked for"
             rows = conn.call(op="terminal.list")["terminals"]
             assert [r["tab"] for r in rows] == ["t1"] and rows[0]["cwd"] == home, rows
 
@@ -340,7 +346,7 @@ def test_the_fourth_icon_opens_a_terminal_at_once_in_the_current_folder_with_no_
             assert str(project) in run(w, "pwd", str(project) + "\n")
             shot(w, "10_terminal_from_the_icon.png")
 
-    # the folder Directories is on is not one of this machine: the person's home, not a refusal
+    # the kept folder is gone: Directories falls back to a folder that exists, and the terminal starts where Directories is (M23-P03c), not a refusal
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
 
@@ -351,12 +357,49 @@ def test_the_fourth_icon_opens_a_terminal_at_once_in_the_current_folder_with_no_
             gone.rmdir()                                                                                          # and it is gone when the window starts
 
         with ProductWindow(**rig(root, before_window=before)) as w:
+            wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] and s["loading"] is None and s["load_count"] > 0)
             new_session_button(w)
             wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]))
             w.click(*centre(w.ui()["panel"]["form"]["tiles"][3]["rect"]))
-            home = str(Path(w.directory) / "home")
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
-            assert started["tabs"][0]["cwd"] == home, started["tabs"]
+            shown = w.ui()["sidebar"]["cwd"]
+            assert shown and Path(shown).is_dir() and started["tabs"][0]["cwd"] == shown, (shown, started["tabs"])
+
+
+def terminal_from_the_icon(w: ProductWindow) -> dict:
+    """The toolbar's New session icon and then the Terminal picture: the shell is opened at once; returns the terminal's state when it is shown."""
+    new_session_button(w)
+    wait_for(lambda: (p := w.ui()["panel"]) and p["form"] and p["form"]["tiles"] and all(t["rect"] for t in p["form"]["tiles"]))
+    w.click(*centre(w.ui()["panel"]["form"]["tiles"][3]["rect"]))
+    return wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
+
+
+def test_a_terminal_starts_in_the_folder_directories_shows_also_when_the_person_moved_there_and_nothing_was_kept():
+    """The owner's report (2026-11-19): a terminal always opened at home. What the window keeps as the last folder (`last_cwd`) follows a session or the Files screen only, so a person who
+    only moves in Directories left it empty or old, and the start folder fell back to the home. The folder Directories shows decides, in both of these cases."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        with ProductWindow(**rig(root)) as w:                       # no folder was kept: the sidebar starts where the host puts it
+            shown = wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] and s["loading"] is None and s["load_count"] > 0 and s["cwd"])
+            home = str(Path(w.directory) / "home")
+            assert shown != home, "the test needs a folder that is not the home"
+            started = terminal_from_the_icon(w)
+            assert started["tabs"][0]["cwd"] == shown, (shown, started["tabs"])
+
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = root.resolve() / "project"
+        (project / "inner").mkdir(parents=True)
+
+        def before(w: ProductWindow) -> None:
+            assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="start")["ok"] == 1
+
+        with ProductWindow(**rig(root, before_window=before)) as w:
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project) and s["loading"] is None and any(e["name"] == "inner" and e["rect"] for e in s["entries"]) and s)
+            w.click(*centre(next(e for e in side["entries"] if e["name"] == "inner")["rect"]))
+            wait_for(lambda: (s := w.ui()["sidebar"]) and s["cwd"] == str(project / "inner") and s["loading"] is None)
+            started = terminal_from_the_icon(w)
+            assert started["tabs"][0]["cwd"] == str(project / "inner"), "the folder the person moved to, not the one kept from before: " + str(started["tabs"])
 
 
 def test_korean_composes_in_the_terminal_and_the_shell_gets_the_committed_text_only():
