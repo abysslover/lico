@@ -1,6 +1,6 @@
 # M24-P01 Report — Phase 0: What The Window Asks Of A Person, And What An Agent Can Reach
 
-- Status: done (research, no code); waits for the owner's picks (section G)
+- Status: done (research, no code); the owner's picks are in (section G)
 - Version: 1.0.0
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md) (draft 0.1.0)
 - Read: the code at `701f73c` and the **names** (never the values) of the agents' own settings files on this machine. Nothing was run in the window, nothing measured; what is not measured is said in section H.
@@ -132,7 +132,9 @@ The owner chose that a tool for typing and clicking in every pane is on by defau
 2. **Which sessions get the pane tools** (section F, 1).
 3. **The account screen** (section B): the cards and the five small pictures as written, or another shape.
 
-After the picks: the plans of M24-P02 (one touch) and the rest, each with its own prefix yes.
+**Answered by the owner, 2026-11-24, by the questions in the chat: all three as the lead recommended.** (1) The menu: the lead's classification stands (show 9, key only 16, hide 21, drop 4: `New session options...`, `New terminal tab`, the nine session jumps, `Hidden files`). (2) The pane tools go to **every session of Lico**, like the other eleven tools. (3) The account screen is a card per account with five small pictures and a plus card.
+
+Next: the plans of M24-P02 (one touch) and the rest, each with its own prefix yes.
 
 ## H. Not measured or not traced here
 
