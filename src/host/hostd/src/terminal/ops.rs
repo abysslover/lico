@@ -95,10 +95,27 @@ pub fn valid(op: &str, request: &Map<String, Value>) -> bool {
     fields && one_payload && required.iter().all(|k| request.contains_key(*k))
 }
 
-/// The environment of the shell: the host's own, without the `LICO_*` names (a terminal is not given what the host was given) except `LICO_SOCKET` (so that `lico` finds its host
-/// from inside), with `TERM` and `COLORTERM` as the emulator speaks them.
+/// The names of the host's environment that a shell is given (M23-P09): where things are, who and what language the person is, the display and the input method, the ssh agent's
+/// socket, the person's chosen editor and pager, and the names that point an interactive shell at the person's own start-up files (`ENV` of `sh`, `ZDOTDIR` of `zsh`, `INPUTRC` of the
+/// line editor; `BASH_ENV` is left out on purpose: it names a file that every non-interactive `bash` a program starts would run). Everything else the host was started with (the keys a person exported for one program, the tokens a launcher hands its children, a
+/// proxy address with a password in it) stays out; the person's own start-up files add what they want to every shell.
+const SHELL_ENV_NAMES: [&str; 24] = [
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TZ", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "EDITOR", "VISUAL", "PAGER",
+    "DESKTOP_SESSION", "XMODIFIERS", "GTK_IM_MODULE", "QT_IM_MODULE", "ENV", "ZDOTDIR", "INPUTRC",
+];
+/// The locale categories and the base directories of the desktop are whole families of names that name places and languages, not secrets.
+const SHELL_ENV_PREFIXES: [&str; 2] = ["LC_", "XDG_"];
+
+/// Whether a shell is given the host's variable of this name: a listed name or a name of a listed family, matched exactly (in its case), and `LICO_SOCKET` (so that `lico` finds its host
+/// from inside: it is the person's own socket, which a program that runs as the person reaches by its path anyway).
+fn given_to_shell(name: &str) -> bool {
+    name == "LICO_SOCKET" || SHELL_ENV_NAMES.contains(&name) || SHELL_ENV_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+}
+
+/// The environment of the shell: the names of the short list above out of the host's own (no other `LICO_*` name: a terminal is not given what the host was given), with `TERM` and
+/// `COLORTERM` as the emulator speaks them.
 pub fn child_env(vars: impl IntoIterator<Item = (String, String)>) -> Vec<(String, String)> {
-    let mut out: Vec<(String, String)> = vars.into_iter().filter(|(k, _)| (!k.starts_with("LICO_") || k == "LICO_SOCKET") && k != "TERM" && k != "COLORTERM").collect();
+    let mut out: Vec<(String, String)> = vars.into_iter().filter(|(k, _)| given_to_shell(k)).collect();
     out.push(("TERM".into(), "xterm-256color".into()));
     out.push(("COLORTERM".into(), "truecolor".into()));
     out

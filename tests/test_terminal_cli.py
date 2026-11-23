@@ -48,13 +48,14 @@ def alive(pid: int) -> bool:
     return not stat_line.rsplit(") ", 1)[1].startswith("Z")
 
 
-def host_in(directory: str, ignoring=()):
-    """A host with its own folder; `ignoring`: signals the host is started ignoring (what `nohup` does to the hang-up, and what an ignored signal passes on through `exec`)."""
+def host_in(directory: str, ignoring=(), env=None):
+    """A host with its own folder; `ignoring`: signals the host is started ignoring (what `nohup` does to the hang-up, and what an ignored signal passes on through `exec`); `env`: variables
+    the host process is started with besides its usual ones."""
     token_file = os.path.join(directory, "http.token")
     old = {s: signal.signal(s, signal.SIG_IGN) for s in ignoring}
     try:
         with usual_umask():
-            host, _ = start(directory, extra=["--http-port", "auto", "--http-token-file", token_file], sessions=0, producing=0, history=0, retain=1000)
+            host, _ = start(directory, extra=["--http-port", "auto", "--http-token-file", token_file], sessions=0, producing=0, history=0, retain=1000, env_overrides=env)
     finally:
         for s, handler in old.items():
             signal.signal(s, handler)
@@ -204,3 +205,24 @@ def test_a_shell_starts_with_the_default_action_for_the_signals_its_host_ignores
     hang_up, interrupt, quit_ = 1 << (signal.SIGHUP - 1), 1 << (signal.SIGINT - 1), 1 << (signal.SIGQUIT - 1)
     assert parent & hang_up, f"the premise: the host was started ignoring the hang-up ({parent:x})"
     assert own & (hang_up | interrupt | quit_) == 0, f"the shell was started ignoring signals ({own:x})"
+
+
+def test_a_shell_is_not_given_the_hosts_secrets_but_is_given_what_a_person_needs():
+    """M23-P09: the shell gets a short list of names. The host is started with canary variables that look like what a launcher or a person's keys put in an environment; none of them
+    may reach the shell, and `HOME`, `PATH` and the locale still do. The test prints only the names it asks about, never the environment."""
+    canary = "P09-CANARY-NOT-A-SECRET"
+    secret_names = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "HF_TOKEN", "AWS_SECRET_ACCESS_KEY", "ORCA_AGENT_HOOK_TOKEN", "LICO_TOKEN", "P09_PROBE", "https_proxy"]
+    with private_dir() as directory:
+        host, _ = host_in(directory, env={**{name: canary for name in secret_names}, "LANG": "C.UTF-8"})
+        try:
+            asked = " ".join(secret_names)
+            body = (f"for n in {asked}; do eval \"v=\\${{$n-unset}}\"; printf '%s=%s\\n' \"$n\" \"$v\"; done; "
+                    "printf 'home=%s path=%s lang=%s\\n' \"${HOME:+set}\" \"${PATH:+set}\" \"${LANG:+set}\"; printf 'end\\n'; read hold")
+            tab = term_json(host, "open", "--shell", script(directory, body))["tab"]
+            shown = wait_for(lambda: (t := term(host, "show", tab, "--text")[1]) and "\nend" in t and t)
+        finally:
+            host.stop()
+    assert canary not in shown, "a canary variable of the host reached the shell"
+    for name in secret_names:
+        assert f"{name}=unset" in shown, f"{name} is not unset in the shell:\n{shown}"
+    assert "home=set path=set lang=set" in shown, shown

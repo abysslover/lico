@@ -90,18 +90,29 @@ fn vars(list: &[(&str, &str)]) -> Vec<(String, String)> {
 }
 
 #[test]
-fn the_shell_gets_the_hosts_environment_without_what_the_host_was_given() {
-    let env = ops::child_env(vars(&[("PATH", "/bin"), ("HOME", "/h"), ("LICO_TOKEN", "x"), ("LICO_SOCKET", "/s"), ("LICO_", "y"), ("TERM", "dumb"), ("COLORTERM", "no"), ("LICOX", "kept")]));
+fn the_shell_gets_a_short_list_of_names_and_nothing_else_of_the_hosts_environment() {
+    // the list is spelt out here, not read from the program: a name added or dropped there shows here
+    let kept = [
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LANGUAGE", "TZ", "TMPDIR", "DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "SSH_AUTH_SOCK", "EDITOR", "VISUAL", "PAGER",
+        "DESKTOP_SESSION", "XMODIFIERS", "GTK_IM_MODULE", "QT_IM_MODULE", "ENV", "ZDOTDIR", "INPUTRC", "LC_ALL", "LC_CTYPE", "LC_X", "XDG_RUNTIME_DIR", "XDG_SESSION_TYPE", "XDG_DATA_DIRS", "XDG_X", "LICO_SOCKET",
+    ];
+    let dropped = [
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "HF_TOKEN", "GITHUB_TOKEN", "AWS_SECRET_ACCESS_KEY", "ORCA_AGENT_HOOK_TOKEN", "ORCA_BITBUCKET_API_TOKEN", "http_proxy", "HTTPS_PROXY", "GIT_ASKPASS",
+        "SSH_ASKPASS", "LICO_TOKEN", "LICO_", "LICOX", "LICO_SOCKETX", "NOT_LC_ALL", "MY_XDG_X", "BASH_ENV", "ENVIRON", "INPUTRC2", "LC", "LCX", "XDG", "XDGX", "PATHX", "HOMEWORK", "path", "home", "Display", "lang", "xdg_runtime_dir", "lc_all",
+    ];
+    let host: Vec<(String, String)> = kept.iter().chain(dropped.iter()).map(|k| (k.to_string(), format!("value-of-{k}"))).chain(vars(&[("TERM", "dumb"), ("COLORTERM", "no")])).collect();
+    let env = ops::child_env(host);
     let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.as_str());
-    assert_eq!(get("PATH"), Some("/bin"));
-    assert_eq!(get("HOME"), Some("/h"));
-    assert_eq!(get("LICOX"), Some("kept"), "only the LICO_ names go");
-    assert_eq!(get("LICO_SOCKET"), Some("/s"), "so that `lico` finds its host from inside");
-    assert_eq!(get("LICO_TOKEN"), None);
-    assert_eq!(get("LICO_"), None);
+    for k in kept {
+        assert_eq!(get(k), Some(format!("value-of-{k}").as_str()), "{k} arrives as it is");
+    }
+    for k in dropped {
+        assert_eq!(get(k), None, "{k} does not arrive");
+    }
     assert_eq!(get("TERM"), Some("xterm-256color"));
     assert_eq!(get("COLORTERM"), Some("truecolor"));
     assert_eq!(env.iter().filter(|(k, _)| k == "TERM").count(), 1, "not twice");
+    assert_eq!(env.len(), kept.len() + 2, "nothing else arrives: the list and the two names Lico sets");
 }
 
 #[test]
@@ -508,13 +519,13 @@ fn the_folder_is_the_hosts_check_of_a_folder_and_the_default_is_the_home() {
 }
 
 #[test]
-fn the_shell_has_the_hosts_environment_the_terminal_variables_and_no_lico_credential() {
+fn the_shell_has_the_terminal_variables_and_the_socket_and_none_of_the_hosts_other_names() {
     let rig = Rig::new();
     // `cargo test` gives its own process the CARGO_* names; the host of this rig was given none of them, so the shell must have none (the shell starts from nothing but what the host has)
     let tab = rig.open("printf 'T=%s C=%s F=%s S=%s X=%s K=%s\\n' \"$TERM\" \"$COLORTERM\" \"$FOO\" \"$LICO_SOCKET\" \"${LICO_SECRET-gone}\" \"$(env | grep -c '^CARGO_')\"; exit 0");
     let w = rig.until(&tab, "the end", |w| w["running"] == json!(false));
     let text = screen(&w);
-    assert!(text.contains("T=xterm-256color C=truecolor F=bar S=/the/socket X=gone K=0"), "{text}");
+    assert!(text.contains("T=xterm-256color C=truecolor F= S=/the/socket X=gone K=0"), "FOO was a variable of the host, not on the short list: {text}");
 }
 
 #[test]
