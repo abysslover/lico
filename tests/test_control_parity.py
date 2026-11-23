@@ -96,6 +96,7 @@ def test_capabilities_matches_across_socket_cli_and_http():
                 "clipboard_read",
                 "clipboard_write",
                 "computer",
+                "pane",
                 "llm_endpoints",
             }
             for route in (

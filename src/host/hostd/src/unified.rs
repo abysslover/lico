@@ -18,6 +18,7 @@ mod browser_cli;
 mod clipwrite;
 mod codex;
 mod computer;
+mod pane;
 mod core;
 mod create;
 mod credcmd;

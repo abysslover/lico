@@ -27,6 +27,7 @@
 "tests/test_clipboard_write.py" = ["cli", "gui", "host"]
 "tests/test_one_touch_window.py" = ["gui", "host"]
 "tests/test_account_screen.py" = ["gui", "host"]
+"tests/test_pane_tool.py" = ["host"]
 "tests/test_agy_chats.py" = ["gui", "host"]
 "tests/test_agy_tile.py" = ["gui", "host"]
 "tests/test_picture_input.py" = ["host"]
@@ -161,6 +162,8 @@ calls = ["host"]
 capture = ["cli"]
 clipboard = ["cli", "gui"]     # the command (cli) and the safe open the window uses for a picture file (gui)
 clipwrite = ["host"]
+pane = ["host"]
+pane_tests = ["host"]
 pasted = ["host"]
 screentools = ["host"]     # the agent tools capture, clipboard_read and clipboard_write (S07a); runs in the host
 vdisplay = ["cli", "host"]

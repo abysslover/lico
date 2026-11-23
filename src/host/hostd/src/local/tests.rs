@@ -125,7 +125,7 @@ fn a_message_streams_the_answer_into_the_log_and_both_sides_into_the_record() {
     assert_eq!(body["messages"][0]["role"], "system");
     assert_eq!(body["messages"][1], json!({"role": "user", "content": "hi lico"}));
     let names: Vec<&str> = body["tools"].as_array().unwrap().iter().map(|t| t["function"]["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "llm_endpoints"], "the host's tools, in its order, without clipboard writing while that is switched off");
+    assert_eq!(names, ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "pane", "llm_endpoints"], "the host's tools, in its order, without clipboard writing while that is switched off");
     assert_eq!(fake.requests()[0].header("authorization"), None, "no key unless the server asks for one");
 }
 

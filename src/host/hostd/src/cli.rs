@@ -27,7 +27,8 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
                  list the Claude and Codex chats (earlier conversations) with full offset/limit pagination; --all: every folder and Anon in one list, newest first (this machine only)\n\
   llm discover [--ssh-host HOST] [--all-users]\n\
                  find OpenAI-compatible and Ollama servers on the listening ports of this machine (or an ssh host): read-only, on demand\n\
-  browser open URL [--local] | list | close ID | shot ID FILE\n\
+  browser open URL [--local] | list | close ID | shot ID FILE | go ID ADDRESS | nav ID back|forward|reload | type ID TEXT\n\
+  browser input ID move X Y | down X Y BUTTON | up X Y BUTTON | wheel X Y DELTA | key_down KEY CODE | key_up KEY CODE\n\
                  a browser tab (http or https; the engine is installed by itself the first time, the command waits for that and says so; it is started with the first tab and ended with the last; --local lets that tab reach this computer's own addresses; shot writes the newest frame to a new PNG)\n\
   terminal open [--cwd DIR] [--shell PATH] [--size COLSxROWS] | list | close ID | send ID TEXT [--enter] | show ID [--scroll N] [--text] | resize ID COLSxROWS\n\
                  a terminal: your own shell on a pty, with no window yet (it runs as you; only this socket opens one, never the HTTP door); show prints the screen (--text: as plain text)\n\

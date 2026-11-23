@@ -1,4 +1,4 @@
-//! `lico browser ...` (M17-P06): the command line builds the request of the four browser operations from its arguments and sends it over the socket; the host answers it
+//! `lico browser ...` (M17-P06, M24-P05): the command line builds the request of a browser operation from its arguments (`open`, `list`, `close`, `shot`, and since M24-P05 `go`, `nav`, `type` and `input`, the person's input: the tool `pane` does the same) and sends it over the socket; the host answers it
 //! exactly as it answers the same request over `POST /v1`. This module only builds the request (it names no other module of the program).
 
 use serde_json::{json, Value};
@@ -46,8 +46,22 @@ pub fn request(args: &[&str], cwd: &Path) -> Result<Value, &'static str> {
             let path = if Path::new(file).is_absolute() { Path::new(file).to_path_buf() } else { cwd.join(file) };
             Ok(json!({"op": "browser.shot", "tab": tab, "path": path.to_string_lossy()}))
         }
+        ["go", tab, address] => Ok(json!({"op": "browser.go", "tab": tab, "address": address})),
+        ["nav", tab, action @ ("back" | "forward" | "reload")] => Ok(json!({"op": "browser.nav", "tab": tab, "action": action})),
+        ["type", tab, text] => Ok(json!({"op": "browser.input", "tab": tab, "kind": "text", "text": text})),
+        ["input", tab, "move", x, y] => Ok(json!({"op": "browser.input", "tab": tab, "kind": "move", "x": whole(x)?, "y": whole(y)?})),
+        ["input", tab, kind @ ("down" | "up"), x, y, button @ ("left" | "middle" | "right")] => {
+            Ok(json!({"op": "browser.input", "tab": tab, "kind": kind, "x": whole(x)?, "y": whole(y)?, "button": button, "clicks": 1}))
+        }
+        ["input", tab, "wheel", x, y, delta] => Ok(json!({"op": "browser.input", "tab": tab, "kind": "wheel", "x": whole(x)?, "y": whole(y)?, "delta": whole(delta)?})),
+        ["input", tab, kind @ ("key_down" | "key_up"), key, code] => Ok(json!({"op": "browser.input", "tab": tab, "kind": kind, "key": key, "code": code})),
         _ => Err("usage"),
     }
+}
+
+/// A whole number of the command line (a pixel, a wheel step).
+fn whole(text: &str) -> Result<i64, &'static str> {
+    text.parse::<i64>().map_err(|_| "usage")
 }
 
 #[cfg(test)]
@@ -62,7 +76,7 @@ mod tests {
     #[test]
     fn each_command_builds_the_request_the_operation_accepts() {
         crate::browser::register();
-        let cwd = Path::new("/home/u");
+        let cwd = Path::new("/work/u");
         for (args, want) in [
             (vec!["open", "https://a.test/"], json!({"op": "browser.open", "url": "https://a.test/"})),
             (vec!["open", "http://localhost:8000/", "--local"], json!({"op": "browser.open", "url": "http://localhost:8000/", "local": true})),
@@ -70,7 +84,17 @@ mod tests {
             (vec!["list"], json!({"op": "browser.list"})),
             (vec!["close", "b3"], json!({"op": "browser.close", "tab": "b3"})),
             (vec!["shot", "b3", "/tmp/a.png"], json!({"op": "browser.shot", "tab": "b3", "path": "/tmp/a.png"})),
-            (vec!["shot", "b3", "pics/a.png"], json!({"op": "browser.shot", "tab": "b3", "path": "/home/u/pics/a.png"})),
+            (vec!["shot", "b3", "pics/a.png"], json!({"op": "browser.shot", "tab": "b3", "path": "/work/u/pics/a.png"})),
+            (vec!["go", "b1", "https://a.test/x"], json!({"op": "browser.go", "tab": "b1", "address": "https://a.test/x"})),
+            (vec!["nav", "b1", "back"], json!({"op": "browser.nav", "tab": "b1", "action": "back"})),
+            (vec!["nav", "b2", "reload"], json!({"op": "browser.nav", "tab": "b2", "action": "reload"})),
+            (vec!["type", "b1", "hello"], json!({"op": "browser.input", "tab": "b1", "kind": "text", "text": "hello"})),
+            (vec!["input", "b1", "move", "10", "20"], json!({"op": "browser.input", "tab": "b1", "kind": "move", "x": 10, "y": 20})),
+            (vec!["input", "b1", "down", "10", "20", "left"], json!({"op": "browser.input", "tab": "b1", "kind": "down", "x": 10, "y": 20, "button": "left", "clicks": 1})),
+            (vec!["input", "b1", "up", "10", "20", "right"], json!({"op": "browser.input", "tab": "b1", "kind": "up", "x": 10, "y": 20, "button": "right", "clicks": 1})),
+            (vec!["input", "b1", "wheel", "10", "20", "-120"], json!({"op": "browser.input", "tab": "b1", "kind": "wheel", "x": 10, "y": 20, "delta": -120})),
+            (vec!["input", "b1", "key_down", "Enter", "Enter"], json!({"op": "browser.input", "tab": "b1", "kind": "key_down", "key": "Enter", "code": "Enter"})),
+            (vec!["input", "b1", "key_up", "Enter", "Enter"], json!({"op": "browser.input", "tab": "b1", "kind": "key_up", "key": "Enter", "code": "Enter"})),
         ] {
             let got = request(&args, cwd).unwrap();
             assert_eq!(got, want, "{args:?}");
@@ -80,8 +104,8 @@ mod tests {
 
     #[test]
     fn anything_else_is_a_usage_error() {
-        let cwd = Path::new("/home/u");
-        for bad in [vec![], vec!["open"], vec!["open", "a", "b"], vec!["open", "a", "--local", "--local"], vec!["open", "a", "--other"], vec!["list", "x"], vec!["close"], vec!["close", "b1", "b2"], vec!["shot", "b1"], vec!["shot"], vec!["nothing"]] {
+        let cwd = Path::new("/work/u");
+        for bad in [vec![], vec!["open"], vec!["open", "a", "b"], vec!["open", "a", "--local", "--local"], vec!["open", "a", "--other"], vec!["list", "x"], vec!["close"], vec!["close", "b1", "b2"], vec!["go"], vec!["go", "b1"], vec!["go", "b1", "a", "b"], vec!["nav", "b1", "sideways"], vec!["nav", "b1"], vec!["type", "b1"], vec!["type", "b1", "a", "b"], vec!["input", "b1"], vec!["input", "b1", "press"], vec!["input", "b1", "move", "a", "1"], vec!["input", "b1", "move", "1"], vec!["input", "b1", "down", "1", "2"], vec!["input", "b1", "down", "1", "2", "left", "x"], vec!["input", "b1", "down", "1", "2", "thumb"], vec!["input", "b1", "wheel", "1", "2"], vec!["input", "b1", "key_down", "Enter"], vec!["shot", "b1"], vec!["shot"], vec!["nothing"]] {
             assert_eq!(request(&bad, cwd), Err("usage"), "{bad:?}");
         }
     }

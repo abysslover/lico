@@ -104,10 +104,10 @@ def test_the_list_names_create_with_optional_kind_prompt_name_scope_and_resume(w
     sid, _ = world.session()
     status, body = rpc(world.config(sid), "tools/list", {})
     tools = {t["name"]: t for t in body["result"]["tools"]}
-    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "llm_endpoints"]
+    assert status == 200 and list(tools) == ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "pane", "llm_endpoints"]
     schema = tools["create"]["inputSchema"]
     assert "required" not in schema and sorted(schema["properties"]) == ["account", "kind", "name", "prompt", "resume", "scope"], schema      # no raw cwd, mode, account, model, effort or `from`
-    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5120
+    assert len(json.dumps(body["result"], separators=(",", ":"))) <= 5840
 
 
 def test_a_create_waits_for_the_person_and_one_yes_makes_one_session_in_the_folder_of_the_caller_in_auto_bypass_mode_and_tells_the_caller(world):
