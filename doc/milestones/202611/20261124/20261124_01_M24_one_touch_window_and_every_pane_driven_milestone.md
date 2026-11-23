@@ -1,7 +1,7 @@
 # M24 — One Touch To Start, Few Words, And Every Pane Can Be Driven By An Agent
 
 - Status: in_progress (2026-11-24); G1 approved by the owner in the chat on 2026-11-24 ("승인, P01부터"); P01 (the Phase 0 report, no code) is done and the owner's picks are in (the menu as the lead classified it, the pane tools to every session, the account screen as cards with five small pictures); nothing is implemented yet. The research below is read from the code and from the names (never the values) of the agents' own settings.
-- Version: 0.3.0
+- Version: 0.4.0
 - Project: Lico
 - Updated: 2026-11-24
 - Follows: [M23](../20261118/20261118_02_M23_terminal_agents_milestone.md) (P08 and P09 are the last security phases of it); level C of M23-P04 (`agy` as a Lico session) comes after this milestone, in the owner's order of 2026-11-24.
@@ -38,7 +38,7 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 | Phase | What | The person can inspect |
 |---|---|---|
 | M24-P01 | **(done 2026-11-24, [report](../../../reports/202611/20261124/20261124_01_M24-P01_phase0_one_touch_menu_and_panes_report.md); the owner's picks came the same day)** **Phase 0 report, no code**: the menu inventory (every one of the 55 commands: what it does, where else it is reachable, whether the toolbar already has it); every word a person meets between "New session" and a running session, and on the account screen; per agent, which names of its own settings carry the model, the permission mode and the folder, and what Lico must still ask because the agent does not say; what "driven by an agent" means for each pane (session, terminal, browser, files, calls) and what each costs; then STOP for the owner's picks | a report with the inventory as a table the owner marks keep, hide or drop |
-| M24-P02 | **One touch**: the four session pictures start a session at once (the default account, the folder on the left, a name Lico makes, the agent's own model and permission); what a person may want to change is changed in the session afterwards, with a picture each, not before | click Claude: a running session in one step |
+| M24-P02 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_03_M24-P02_one_touch_start_plan.md); code `dee3dd9`; the owner's look is next)** **One touch**: the four session pictures start a session at once (the default account, the folder on the left, a name Lico makes, the agent's own model and permission); what a person may want to change is changed in the session afterwards, with a picture each, not before | click Claude: a running session in one step |
 | M24-P03 | **The account screen in pictures**: the account list as cards with the provider's picture and a state disc, the sign-in as the shortest path the provider allows, almost no words | the account screen with no sentence on it |
 | M24-P04 | **The menu on show is the owner's short list**; what is not on it is reached from one place (a search box or a "more" entry: to decide in P01) | the menu bar with the owner's list |
 | M24-P05 | **Every pane can be driven by an agent**: tools for the terminal tab (read the screen, type, keys) and the browser tab (read, click, type) with the same grant or ask as the screen tools; the CLI and the tool channel say the same | an agent types `ls` into a terminal tab after the person granted it, and cannot without |
