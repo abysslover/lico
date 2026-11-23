@@ -3,7 +3,7 @@
 
 use super::ops::tests::world;
 use super::ops::valid;
-use super::pages_ops::note;
+use super::pages_ops::{note, to_reopen};
 use crate::driver::Ops;
 use crate::pages::{load, remember, Page, FILE};
 use serde_json::{json, Map, Value};
@@ -79,4 +79,24 @@ fn reopen_opens_the_newest_remembered_page_that_no_tab_shows_and_forget_empties_
     assert_eq!(load(&dir), vec![]);
     assert_eq!(call("browser.forget", json!({})).unwrap()["forgotten"], json!(0));
     assert_eq!(call("browser.reopen", json!({})), Err("no_page"));
+}
+
+// ---- M23-P08 ----
+
+#[test]
+fn a_page_with_a_secret_in_its_address_is_not_noted_and_the_fragment_is_not_kept() {
+    let dir = state("secret_note");
+    assert_eq!(note(&dir, false, true, "https://a.test/reset?token=abc", "Reset", 1), Err("secret_address"));
+    assert!(!dir.join(FILE).exists(), "nothing was written");
+    assert_eq!(note(&dir, false, true, "https://a.test/inbox#access_token=abc", "Inbox", 2), Ok(()));
+    assert_eq!(load(&dir), vec![Page { address: "https://a.test/inbox".into(), title: "Inbox".into(), time: 2 }]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_tab_that_shows_a_remembered_page_with_a_fragment_is_still_showing_it() {
+    let list = vec![Page { address: "https://a.test/x".into(), title: "A".into(), time: 3 }, Page { address: "https://b.test/".into(), title: "B".into(), time: 2 }];
+    let shown = vec!["https://a.test/x#top".to_string()];
+    assert_eq!(to_reopen(&list, &shown).map(|p| p.address.as_str()), Some("https://b.test/"), "the page the tab shows is passed over although the tab says a fragment");
+    assert_eq!(to_reopen(&list, &[]).map(|p| p.address.as_str()), Some("https://a.test/x"));
 }

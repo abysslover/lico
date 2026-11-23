@@ -29,9 +29,9 @@ pub(super) fn note(dir: &Path, local: bool, ready: bool, url: &str, title: &str,
     pages::remember(dir, url, title, now)
 }
 
-/// The newest remembered page (the list is newest first) that none of `shown` addresses is.
+/// The newest remembered page (the list is newest first) that none of `shown` addresses is; a shown address is taken without its fragment, as the list keeps it.
 pub(super) fn to_reopen<'a>(pages: &'a [Page], shown: &[String]) -> Option<&'a Page> {
-    pages.iter().find(|p| !shown.contains(&p.address))
+    pages.iter().find(|p| !shown.iter().any(|s| pages::strip_fragment(s) == p.address))
 }
 
 impl Browser {

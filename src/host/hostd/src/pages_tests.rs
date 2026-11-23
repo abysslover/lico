@@ -1,6 +1,6 @@
 //! M22-P05c: the remembered pages (the store): what is kept, in what order, how many, and how the file is read and written.
 
-use super::pages::{forget, load, remember, Page, FILE, MAX_FILE, MAX_PAGES, MAX_TITLE};
+use super::pages::{forget, load, remember, strip_fragment, Page, FILE, MAX_FILE, MAX_PAGES, MAX_TITLE};
 use std::os::unix::fs::{symlink, PermissionsExt};
 use std::path::{Path, PathBuf};
 
@@ -153,5 +153,149 @@ fn many_threads_remembering_at_once_lose_nothing() {
         h.join().unwrap();
     }
     assert_eq!(load(&dir).len(), 40);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---- M23-P08: no secret in a remembered address ----
+
+#[test]
+fn the_part_after_a_hash_is_never_kept_and_addresses_that_differ_only_there_are_one_page() {
+    let dir = state("fragment");
+    remember(&dir, "https://a.test/cb#access_token=SECRET123&type=bearer", "Signed in", 1).unwrap();
+    remember(&dir, "https://a.test/cb#other", "Signed in", 2).unwrap();
+    remember(&dir, "https://b.test/x?q=1#top", "B", 3).unwrap();
+    remember(&dir, "https://c.test/#", "C", 4).unwrap();
+    assert_eq!(load(&dir), vec![page("https://c.test/", "C", 4), page("https://b.test/x?q=1", "B", 3), page("https://a.test/cb", "Signed in", 2)], "cut, and the two of a.test are one entry");
+    let text = std::fs::read_to_string(dir.join(FILE)).unwrap();
+    assert!(!text.contains("SECRET123") && !text.contains('#'), "nothing of the fragment reaches the file: {text}");
+    assert_eq!(strip_fragment("https://a.test/x#top"), "https://a.test/x");
+    assert_eq!(strip_fragment("https://a.test/x"), "https://a.test/x");
+    assert_eq!(strip_fragment("https://a.test/x?q=#"), "https://a.test/x?q=");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_page_whose_address_carries_a_secret_by_name_is_not_remembered_at_all() {
+    let dir = state("secret");
+    for bad in [
+        "https://a.test/cb?token=1",
+        "https://a.test/cb?access_token=1",
+        "https://a.test/cb?accessToken=1",
+        "https://a.test/cb?id_token=1&x=2",
+        "https://a.test/cb?x=1&API_KEY=2",
+        "https://a.test/cb?api-key=2",
+        "https://a.test/cb?apikey=2",
+        "https://a.test/cb?code=4%2F0AX&state=s",
+        "https://a.test/cb?client_secret=1",
+        "https://a.test/cb?password=",
+        "https://a.test/cb?Passwd=1",
+        "https://a.test/cb?pass=1",
+        "https://a.test/cb?sig=1",
+        "https://a.test/cb?X-Amz-Signature=1",
+        "https://a.test/cb?X-Amz-Security-Token=1",
+        "https://a.test/cb?sid=1",
+        "https://a.test/cb?sessionid=1",
+        "https://a.test/cb?JSESSIONID=1",
+        "https://a.test/cb?PHPSESSID=1",
+        "https://a.test/cb?auth=1",
+        "https://a.test/cb?authToken=1",
+        "https://a.test/cb?magic=1",
+        "https://a.test/cb?invite=1",
+        "https://a.test/cb?ticket=ST-1",
+        "https://a.test/cb?otp=123456",
+        "https://a.test/cb?jwt=a.b.c",
+        "https://a.test/cb?reset_password_token=1",
+        "https://a.test/cb?to%6Ben=1",
+        "https://a.test/cb?a=1;token=2",
+        "https://a.test/cb?authCode=1",
+        "https://a.test/cb?sessionKey=1",
+        "https://a.test/cb?a=1&&token",
+        "https://a.test/app;jsessionid=ABC123/next",
+        "https://a.test/app;v=1;sessionid=ABC123",
+    ] {
+        assert_eq!(remember(&dir, bad, "t", 1), Err("secret_address"), "{bad} is a secret's address");
+    }
+    assert!(!dir.join(FILE).exists(), "not one of them was written");
+    assert_eq!(remember(&dir, "ftp://a.test/?token=1", "t", 1), Err("bad_address"), "a bad address is still the other refusal");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn ordinary_names_are_kept_because_a_name_is_split_into_words_not_searched_for_letters() {
+    let dir = state("ordinary");
+    let good = [
+        "https://a.test/s?q=rust",
+        "https://a.test/s?query=rust&page=2&lang=ko",
+        "https://a.test/s?keyword=a",
+        "https://a.test/s?author=b",
+        "https://a.test/s?encoding=utf8",
+        "https://a.test/s?design=1",
+        "https://a.test/s?signup=1",
+        "https://a.test/s?statement=1",
+        "https://a.test/s?passenger=1",
+        "https://a.test/s?zipcode=06000",
+        "https://a.test/s?monkeys=1",
+        "https://a.test/s?id=5&sort=new",
+        "https://a.test/a;v=1/b",
+        "https://a.test/token/page",
+        "https://a.test/s?",
+        "https://a.test/s?q=100%",
+        "https://a.test/s?%6",
+        "https://a.test/s?%",
+        "https://a.test/s?tokenizer=1",
+        "https://a.test/s?=x",
+    ];
+    for (i, g) in good.iter().enumerate() {
+        remember(&dir, g, "t", i as u64).unwrap_or_else(|e| panic!("{g} is an ordinary address: {e}"));
+    }
+    assert_eq!(load(&dir).len(), good.len(), "all kept, each as it was written");
+    assert_eq!(load(&dir)[0].address, "https://a.test/s?=x");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_file_of_an_older_run_has_its_secret_pages_hidden_and_its_fragments_cut_and_the_next_write_drops_them() {
+    let dir = state("older");
+    let text = r#"{"v":1,"pages":[
+        {"address":"https://a.test/cb?token=SECRET123","title":"Reset","time":9},
+        {"address":"https://b.test/x#access_token=SECRET456","title":"B","time":8},
+        {"address":"https://b.test/x","title":"B plain","time":7},
+        {"address":"https://c.test/","title":"C","time":6}]}"#;
+    put(&dir, text, 0o600);
+    assert_eq!(load(&dir), vec![page("https://b.test/x", "B", 8), page("https://c.test/", "C", 6)], "the secret page is not there; the fragment is cut and the same page is one entry");
+    remember(&dir, "https://d.test/", "D", 10).unwrap();
+    let written = std::fs::read_to_string(dir.join(FILE)).unwrap();
+    assert!(!written.contains("SECRET"), "the next write leaves no secret in the file: {written}");
+    assert_eq!(load(&dir).len(), 3);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn every_word_of_the_list_and_every_ending_is_a_secrets_name() {
+    let dir = state("words");
+    // the list is spelt out here, not read from the program: a word changed or dropped there shows here
+    for word in [
+        "token", "secret", "password", "passwd", "pwd", "pass", "passcode", "auth", "authorization", "session", "sessionid", "sessid", "sid", "sig", "signature", "key", "apikey", "code", "otp", "jwt",
+        "ticket", "credential", "credentials", "bearer", "magic", "invite", "csrf",
+    ] {
+        assert_eq!(remember(&dir, &format!("https://a.test/cb?{word}=1"), "t", 1), Err("secret_address"), "the word {word}");
+        assert_eq!(remember(&dir, &format!("https://a.test/cb?{}=1", word.to_ascii_uppercase()), "t", 1), Err("secret_address"), "the word {word} in capitals");
+        // not the last word of its name: only the list of words can see it here, not the endings
+        assert_eq!(remember(&dir, &format!("https://a.test/cb?{word}_x=1"), "t", 1), Err("secret_address"), "the word {word} first in a name");
+        assert_eq!(remember(&dir, &format!("https://a.test/cb?{}_X=1", word.to_ascii_uppercase()), "t", 1), Err("secret_address"), "the word {word} in capitals first in a name");
+    }
+    // a name written as one word that ends with one of the endings
+    for name in ["accesstoken", "clientsecret", "newpassword", "userpasswd", "myapikey", "JSESSIONID", "PHPSESSID"] {
+        assert_eq!(remember(&dir, &format!("https://a.test/cb?{name}=1"), "t", 1), Err("secret_address"), "the name {name}");
+    }
+    assert!(!dir.join(FILE).exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_secret_that_stands_after_the_hash_goes_with_the_fragment_and_does_not_refuse_the_page() {
+    let dir = state("route");
+    remember(&dir, "https://d.test/app#/inbox?token=zzz", "App", 1).unwrap();
+    assert_eq!(load(&dir), vec![page("https://d.test/app", "App", 1)], "a page that routes by its fragment is the page before it");
     let _ = std::fs::remove_dir_all(&dir);
 }
