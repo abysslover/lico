@@ -50,6 +50,8 @@ pub enum Action {
     WindowMax,
     LlmPick(usize),
     WizardPick(usize),
+    /// A click on one of the five pictures of an account's page, which is the key `.0` (`M24-P03`).
+    AccountAct(char),
     /// A click on box `.1` of the row at line `.0` of the wizard's second or third step (`M22-P07`).
     WizardChoose(usize, usize),
     SidebarFilter,

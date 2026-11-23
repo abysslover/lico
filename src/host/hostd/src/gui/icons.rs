@@ -25,6 +25,12 @@ pub(crate) enum Icon {
     Back,
     Forward,
     Reload,
+    /// A key (sign in, `M24-P03`), a pencil (rename), a star (the default), a bin (remove) and a bin with a cross on it (remove and end its sessions): the five pictures of an account's page.
+    Key,
+    Pencil,
+    Star,
+    Trash,
+    TrashX,
 }
 
 impl Icon {
@@ -43,6 +49,11 @@ impl Icon {
             Icon::Back => "back",
             Icon::Forward => "forward",
             Icon::Reload => "reload",
+            Icon::Key => "key",
+            Icon::Pencil => "pencil",
+            Icon::Star => "star",
+            Icon::Trash => "trash",
+            Icon::TrashX => "trash_x",
         }
     }
 
@@ -57,7 +68,7 @@ impl Icon {
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 12] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Back, Icon::Forward, Icon::Reload];
+    pub(crate) const ALL: [Icon; 17] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -79,6 +90,26 @@ fn disc(put: &mut Put, c: (f32, f32), r: f32, col: u32) {
         let dy = y + 0.5 - c.1;
         let half = (r * r - dy * dy).max(0.0).sqrt();
         put((c.0 - half).round(), y, (c.0 + half).round(), y + 1.0, col);
+    }
+}
+
+/// The inside of a polygon (even-odd), one row of pixels at a time.
+fn polygon(put: &mut Put, pts: &[(f32, f32)], col: u32) {
+    let (top, bottom) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.1), b.max(p.1)));
+    for y in (top.floor() as i32)..(bottom.ceil() as i32) {
+        let yc = y as f32 + 0.5;
+        let mut xs: Vec<f32> = (0..pts.len())
+            .filter_map(|i| {
+                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                ((a.1 <= yc && b.1 > yc) || (b.1 <= yc && a.1 > yc)).then(|| a.0 + (yc - a.1) / (b.1 - a.1) * (b.0 - a.0))
+            })
+            .collect();
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        for pair in xs.chunks(2) {
+            if let [from, to] = pair {
+                put(from.round(), y as f32, to.round(), y as f32 + 1.0, col);
+            }
+        }
     }
 }
 
@@ -215,6 +246,50 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             let (tip, wing) = ((end.0 + side * 0.04, end.1 - side * 0.34), side * 0.26);
             stroke(&mut put, tip, (end.0 - wing, end.1 - side * 0.04), t, ink);
             stroke(&mut put, tip, (end.0 + wing, end.1 - side * 0.04), t, ink);
+        }
+        Icon::Key => {
+            // a ring with a hole of the button's colour at the left, a shaft to the right and two teeth hanging from the shaft's end
+            let (rr, ring) = (side * 0.27, (x0 + side * 0.27, cy));
+            disc(&mut put, ring, rr, ink);
+            disc(&mut put, ring, side * 0.11, ground);
+            put(ring.0 + rr * 0.7, cy - t * 0.5, x1, cy - t * 0.5 + t, ink);
+            put(x1 - t, cy, x1, cy + side * 0.24, ink);
+            put(x1 - side * 0.26 - t, cy, x1 - side * 0.26, cy + side * 0.17, ink);
+        }
+        Icon::Pencil => {
+            // a slanted body from the top right, a point at the bottom left and a line under the point to write on
+            let w = side * 0.24;
+            stroke(&mut put, (x1 - side * 0.12, y0 + side * 0.12), (x0 + side * 0.36, y1 - side * 0.36), w, ink);
+            polygon(&mut put, &[(x0 + side * 0.22, y1 - side * 0.44), (x0 + side * 0.44, y1 - side * 0.22), (x0, y1 - t - 1.0)], ink);
+            put(x0 + side * 0.34, y1 - t * 0.8, x1, y1, ink);
+        }
+        Icon::Star => {
+            let (outer, c) = (side * 0.52, (cx, cy + side * 0.05));
+            let inner = outer * 0.42;
+            let pts: Vec<(f32, f32)> = (0..10)
+                .map(|i| {
+                    let (a, r) = ((-90.0 + 36.0 * i as f32).to_radians(), if i % 2 == 0 { outer } else { inner });
+                    (c.0 + r * a.cos(), c.1 + r * a.sin())
+                })
+                .collect();
+            polygon(&mut put, &pts, ink);
+        }
+        Icon::Trash | Icon::TrashX => {
+            // a lid with a handle over a bin that narrows towards the bottom; the bin has two grooves, or a cross when it also ends the sessions
+            let lid_y = y0 + side * 0.16;
+            put(x0 + side * 0.04, lid_y, x1 - side * 0.04, lid_y + t, ink);
+            put(cx - side * 0.15, y0, cx + side * 0.15, lid_y, ink);
+            put(cx - side * 0.15 + t, y0 + t, cx + side * 0.15 - t, lid_y, ground);
+            let top = lid_y + t + 1.0;
+            polygon(&mut put, &[(x0 + side * 0.12, top), (x1 - side * 0.12, top), (x1 - side * 0.20, y1), (x0 + side * 0.20, y1)], ink);
+            let (a, b) = (top + side * 0.14, y1 - side * 0.12);
+            if icon == Icon::TrashX {
+                stroke(&mut put, (cx - side * 0.15, a), (cx + side * 0.15, b), t * 0.8, ground);
+                stroke(&mut put, (cx + side * 0.15, a), (cx - side * 0.15, b), t * 0.8, ground);
+            } else {
+                put(cx - side * 0.15 - 1.0, a, cx - side * 0.15 + 1.0, b, ground);
+                put(cx + side * 0.15 - 1.0, a, cx + side * 0.15 + 1.0, b, ground);
+            }
         }
     }
 }

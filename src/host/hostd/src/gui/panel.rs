@@ -351,7 +351,7 @@ impl App {
 
     pub(crate) fn panel_json(&self) -> Value {
         match (self.panel_view(), self.ui.panel.as_ref()) {
-            (Some((title, body)), Some(p)) => json!({"open": true, "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error, "form": self.form_json(), "files": self.files_json()}),
+            (Some((title, body)), Some(p)) => json!({"open": true, "acct": self.acct_json(), "title": title, "body": body, "text_entry": self.text_mode(), "step": p.step as u8, "input": self.shown_input(), "input_len": self.ed.text().chars().count(), "error": p.last_error, "form": self.form_json(), "files": self.files_json()}),
             _ => Value::Null,
         }
     }

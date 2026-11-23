@@ -70,6 +70,7 @@ impl App {
         }
         self.picker_paint(buf, width, height, list_w, s);
         self.cards_paint(buf, width, height, list_w, s);
+        self.account_paint(buf, width, height, list_w, s);
     }
 
     /// The wizard's icons, over the blank lines of its first step (from the top of the first to the bottom of the last that is on screen), each a target of its own.

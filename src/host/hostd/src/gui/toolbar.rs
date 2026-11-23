@@ -15,6 +15,8 @@ use super::super::App;
 mod picker;
 #[path = "wizard_cards.rs"]
 mod wizard_cards;
+#[path = "account_cards.rs"]
+mod account_cards;
 
 pub struct ToolBtn {
     pub label: String,
@@ -37,6 +39,8 @@ pub struct ToolbarGeom {
     pub tile_hover: Option<usize>,
     /// The boxes of the wizard's second and third step as the window drew them last: for each row's line, the rectangle of each of its boxes (`M22-P07`, see `wizard_cards.rs`).
     pub cards: Vec<(usize, Vec<[f32; 4]>)>,
+    /// The cards of the account list as the window drew them last (`M24-P03`); the pictures of an account's page are in `tiles`.
+    pub acct: Vec<[f32; 4]>,
 }
 
 /// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).

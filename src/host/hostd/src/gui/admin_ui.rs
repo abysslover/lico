@@ -7,7 +7,7 @@ use super::confirm::{Act, Ask};
 use super::{Panel, Step};
 
 impl App {
-    pub(super) fn acct_display(&self, a: &(String, String, String, bool)) -> String {
+    pub(crate) fn acct_display(&self, a: &(String, String, String, bool)) -> String {
         self.ui.ssh_hosts.get(&a.0).map_or_else(|| a.2.clone(), |h| format!("{} [ssh: {h}]", a.2))
     }
 
@@ -72,7 +72,7 @@ impl App {
         self.dirty = true;
     }
 
-    pub(super) fn accounts_or_label_click(&mut self, line: usize) -> bool {
+    pub(crate) fn accounts_or_label_click(&mut self, line: usize) -> bool {
         let Some(p) = self.ui.panel.as_ref() else { return false };
         match p.step {
             Step::Label => {
