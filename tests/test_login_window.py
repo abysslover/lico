@@ -40,7 +40,7 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             assert screen["title"].startswith("New session - step 1 of 3") and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
             assert [t["provider"] for t in screen["form"]["tiles"]][1] == "agy"                                  # M23-P04c: the second picture; whether it is grey depends on the machine's PATH, which this test does not own
             assert [t["enabled"] for t in screen["form"]["tiles"] if t["provider"] != "agy"] == [False, True, True, True]      # no Claude account here; Codex, Local LLM and Terminal can be chosen
-            xdo(xvfb.display, "key", "Return")                                # the icon with the focus (Codex, the last provider) is chosen
+            xdo(xvfb.display, "key", "shift+Return")                          # the icon with the focus (Codex, the last provider) is chosen with the options (a plain Enter starts at once, M24-P02)
             screen = panel_of(client, lambda p: p["form"]["wizard"]["page"] == 1)
             assert any("< Work (default) >" in line for line in screen["body"])
             xdo(xvfb.display, "key", "Up")                                    # from the folder row to the account row
@@ -57,7 +57,7 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             # a new account is made on the screen, with the input line as its text field, and backing out creates no session
             xdo(xvfb.display, "key", "ctrl+n")
             assert panel_of(client, lambda p: p["form"] is not None)["form"]["account"] == work      # the screen starts from what was used last
-            xdo(xvfb.display, "key", "Return")                                # Codex is chosen
+            xdo(xvfb.display, "key", "shift+Return")                          # Codex is chosen with the options
             panel_of(client, lambda p: p["form"]["wizard"]["page"] == 1)
             xdo(xvfb.display, "key", "Up")
             xdo(xvfb.display, "key", "Right")                                 # after the last account: add a new one

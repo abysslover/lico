@@ -166,7 +166,7 @@ impl App {
     /// session with no folder in front, or a click on the Home row, turns the scope on and the list goes on showing a folder), else the folder of the session in front (when the left lists none
     /// of this machine's: an ssh host, a failed listing, nothing yet), else the last folder the window kept (`M23-P03a`); the first of them that is a folder of this machine. None, the host's
     /// home, when there is none.
-    pub(super) fn terminal_start_dir(&self) -> Option<String> {
+    pub(crate) fn terminal_start_dir(&self) -> Option<String> {
         let sb = &self.ui.sidebar;
         let session = self.selected_row().filter(|r| r.ssh_host.is_empty()).map(|r| r.cwd.as_str());
         let shown = Some(sb.cwd.as_str()).filter(|_| sb.ssh_host.is_none() && !sb.unreachable);

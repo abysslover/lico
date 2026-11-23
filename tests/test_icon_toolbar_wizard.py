@@ -5,6 +5,7 @@ answers (still at File > New session options...). A private Xvfb, synthetic home
 
 from __future__ import annotations
 
+import subprocess
 import time
 from pathlib import Path
 
@@ -16,6 +17,14 @@ from tests.gui_helpers import centre, menu_click
 from tests.llm_fixtures import FakeServer, openai_models, write_proc
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
+
+
+def _shift_click(w: ProductWindow, x: float, y: float) -> None:
+    """A click with Shift held: M24-P02 made a plain click on a picture start the session at once, and Shift is the way into the second and third step (the options)."""
+    wid = w.window_id()
+    since = w.frames()
+    subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "keydown", "shift", "click", "1", "keyup", "shift"], env=w.env, check=True)
+    w.settle(since, 0.20)
 
 
 def _rig(root: Path, accounts: list[tuple[str, str]], extra: tuple[str, ...] = ()):
@@ -144,7 +153,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             _panel(w, lambda p: p["form"]["focus"] == "Pick(1)")
             w.key("Left")
             _panel(w, lambda p: p["form"]["focus"] == "Pick(0)")
-            w.key("Return")
+            w.key("shift+Return")  # Shift+Enter chooses with the options (a plain Enter starts the session at once: `test_one_touch_window`)
 
             # step two: the account and the folder (what the form's rows say), Back and Next
             second = _step(w, 1)
@@ -165,7 +174,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             w.key("Escape")
             _step(w, 0)
             assert conn.call(op="status")["sessions"] == [], "choosing creates nothing"
-            w.key("Return")
+            w.key("shift+Return")
             _step(w, 1)
             w.key("Return")
             _step(w, 2)
@@ -245,7 +254,7 @@ def test_the_house_opens_the_same_wizard_for_a_home_session_with_no_folder_and_s
             w.click(*centre(_button(w, "new_home")["rect"]))
             first = _step(w, 0)
             assert first["title"] == "New Home session - step 1 of 3 - Choose" and first["form"]["wizard"]["home"] is True
-            w.click(*centre(first["form"]["tiles"][0]["rect"]))
+            _shift_click(w, *centre(first["form"]["tiles"][0]["rect"]))
             second = _step(w, 1)
             assert second["title"] == "New Home session - step 2 of 3 - Account" and second["form"]["focus"] == "Account" and second["text_entry"] is False, second["title"]
             assert not any(line.lstrip("> ").startswith(("Folder", "Recent")) for line in second["body"]), second["body"]
@@ -272,7 +281,7 @@ def test_the_second_and_third_step_paint_chips_and_cards_and_a_click_on_one_choo
             conn = Conn(w.socket)
             _ready(w)
             w.click(*centre(_button(w, "new_session")["rect"]))
-            w.click(*centre(_step(w, 0)["form"]["tiles"][0]["rect"]))
+            _shift_click(w, *centre(_step(w, 0)["form"]["tiles"][0]["rect"]))
             w.type_text(str(project))                                     # the folder is typed: its row stays text
             two = _boxes(w, 1)
             account = two["Account"]
@@ -313,7 +322,7 @@ def test_the_second_and_third_step_paint_chips_and_cards_and_a_click_on_one_choo
             # the next wizard offers the folder just used as a card: a click on it takes it into the folder row
             w.key("ctrl+n")
             _step(w, 0)
-            w.key("Return")
+            w.key("shift+Return")
             again = _boxes(w, 1)
             card = next(c for c in again["panel"]["form"]["cards"] if c["items"][0]["text"] == str(project))   # (the first recent folder carries the word `recent`)
             assert card["chips"] is False and card["items"][0]["chosen"] is True

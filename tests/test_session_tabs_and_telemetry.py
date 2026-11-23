@@ -118,7 +118,7 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             assert uf["telemetry"]["shown"] is False  # hidden while modal panel owns prompt row
 
             # M22-P04b: the wizard: the icon that has the focus, Next on the account step (it says what a Home session is), then Enter on the name row launches the Home session
-            _fast_key(w, "Return")
+            _fast_key(w, "shift+Return")                                  # (a plain Enter starts the Home session at once, M24-P02)
             us = wait_for(lambda: (u := w.ui()) and u["panel"] and u["panel"]["form"]["wizard"]["page"] == 1 and u)
             assert any("Home session" in line for line in us["panel"]["body"])
             _fast_key(w, "Return")

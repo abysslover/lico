@@ -172,6 +172,43 @@ impl App {
         self.form_resume();
     }
 
+    /// A click, Enter or Space on a picture (`M24-P02`, one touch): the session is started at once when the form's own answers allow it (`one_touch`); Shift is the old way, step two.
+    pub(super) fn wizard_touch(&mut self, i: usize) {
+        let options = self.ui.mods.shift_key();
+        self.pick(i, !options);
+    }
+
+    /// The old way into step two, which the tests of the steps use (`wizard_touch` with Shift held does the same in the window).
+    #[cfg(test)]
+    pub(super) fn wizard_pick(&mut self, i: usize) {
+        self.pick(i, false);
+    }
+
+    /// Whether the session can be started from the form as the pick leaves it without asking the person anything: nothing for the form's own check to say, and an account that is not on an
+    /// ssh host (the folder of this machine is no folder of that host, and that start is asynchronous with a notice of its own).
+    fn one_touch_ready(&self) -> bool {
+        self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))).is_some_and(|(p, f)| !self.ui.ssh_hosts.contains_key(&p.account) && self.form_problem(p, f).is_none())
+    }
+
+    /// One touch (`M24-P02`): the folder is the one on the left (the rule of the Terminal and `agy` pictures; a Home session has none, and when the left lists no folder of this machine the form's own
+    /// stays), then the start when `one_touch_ready`. A start the host refuses leaves the person on step two with the reason in the notice. True when a start was made.
+    fn one_touch(&mut self) -> bool {
+        let home = self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).and_then(|f| f.wiz).is_some_and(|w| w.home);
+        if let Some(dir) = self.terminal_start_dir().filter(|_| !home) {
+            self.with_form(|_, f| f.folder = dir); // (the step the person may be shown next looks at the folder again: `wizard_go`)
+        }
+        if !self.one_touch_ready() {
+            return false;
+        }
+        self.form_start();
+        if self.wizard_page() == Some(0) {
+            // a start that worked has closed the panel: this one did not, so the rows are shown with the reason the start left (the step clears the notice, so it is put back)
+            let why = self.ui.panel.as_ref().map(|p| p.notice.clone()).unwrap_or_default();
+            self.wizard_go(1);
+            self.with_form(|p, _| p.notice = why);
+        }
+        true
+    }
     pub(super) fn wizard_page(&self) -> Option<usize> {
         self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).and_then(|f| f.wiz).map(|w| w.page)
     }
@@ -195,7 +232,7 @@ impl App {
 
     /// An icon was chosen (a click, Enter or Space): its provider is the form's, and the wizard goes on to the account and folder (Local LLM: the server, which is looked for at once). The
     /// icon of a provider with no account is not taken: it has the focus and says why. The Terminal icon goes on to nothing: the panel closes and a shell opens in the current folder.
-    pub(super) fn wizard_pick(&mut self, i: usize) {
+    fn pick(&mut self, i: usize, touch: bool) {
         let Some(kind) = PICKS.get(i).copied().filter(|_| self.wizard_page() == Some(0)) else { return };
         let usable = self.ui.panel.as_ref().is_some_and(|p| p.tile_enabled(kind));
         if !usable {
@@ -225,6 +262,9 @@ impl App {
             }
             p.notice.clear();
         });
+        if touch && self.one_touch() {
+            return;
+        }
         self.wizard_go(1);
         if look {
             self.form_scan();
@@ -282,7 +322,7 @@ impl App {
     /// Space and a click on the focused row of the wizard's own: an icon, Back or Next.
     pub(super) fn wizard_act(&mut self) {
         match self.focused() {
-            Some(Field::Pick(i)) => self.wizard_pick(i),
+            Some(Field::Pick(i)) => self.wizard_touch(i),
             Some(Field::Back) => self.wizard_back(),
             Some(Field::Next) => self.wizard_next(),
             _ => {}
@@ -309,7 +349,7 @@ impl App {
     /// A click on one of the painted icons (`Action::WizardPick`).
     pub(crate) fn wizard_click(&mut self, action: &Action) -> bool {
         match action {
-            Action::WizardPick(i) => self.wizard_pick(*i),
+            Action::WizardPick(i) => self.wizard_touch(*i),
             Action::WizardChoose(line, i) => drop(self.wizard_choose(*line, *i)), // (a click beside the boxes of a row is no choice, and is not a click on the row's hidden text either)
             _ => return false,
         }
@@ -509,3 +549,6 @@ impl App {
 #[cfg(test)]
 #[path = "newsession_wizard_tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "newsession_touch_tests.rs"]
+mod touch_tests;

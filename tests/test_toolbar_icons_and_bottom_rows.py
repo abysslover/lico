@@ -97,7 +97,7 @@ def test_a_home_session_has_the_caption_h_and_a_telemetry_strip_that_says_home_a
 
             w.click(*_centre(next(b for b in u["toolbar"]["buttons"] if b["id"] == "new_home")["rect"]))
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Home session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
-            w.key("Return")  # the icon that has the focus
+            w.key("shift+Return")  # the icon that has the focus, with the options (a plain Enter starts the Home session at once, M24-P02)
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 1 and x)
             w.key("Return")  # Next
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 2 and x)
