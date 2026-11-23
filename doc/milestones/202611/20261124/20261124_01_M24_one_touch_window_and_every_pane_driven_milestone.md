@@ -1,7 +1,7 @@
 # M24 — One Touch To Start, Few Words, And Every Pane Can Be Driven By An Agent
 
 - Status: in_progress (2026-11-24); G1 approved by the owner in the chat on 2026-11-24 ("승인, P01부터"); P01 (the Phase 0 report, no code) is done and the owner's picks are in (the menu as the lead classified it, the pane tools to every session, the account screen as cards with five small pictures); nothing is implemented yet. The research below is read from the code and from the names (never the values) of the agents' own settings.
-- Version: 0.6.0
+- Version: 0.7.0
 - Project: Lico
 - Updated: 2026-11-24
 - Follows: [M23](../20261118/20261118_02_M23_terminal_agents_milestone.md) (P08 and P09 are the last security phases of it); level C of M23-P04 (`agy` as a Lico session) comes after this milestone, in the owner's order of 2026-11-24.
@@ -41,7 +41,7 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 | M24-P02 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_03_M24-P02_one_touch_start_plan.md); code `dee3dd9`; the owner's look is next)** **One touch**: the four session pictures start a session at once (the default account, the folder on the left, a name Lico makes, the agent's own model and permission); what a person may want to change is changed in the session afterwards, with a picture each, not before | click Claude: a running session in one step |
 | M24-P03 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_04_M24-P03_account_screen_in_pictures_plan.md), code `45e6caf`; the owner's look is next)** **The account screen in pictures**: the account list as cards with the provider's picture and a state disc, the sign-in as the shortest path the provider allows, almost no words | the account screen with no sentence on it |
 | M24-P04 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_05_M24-P04_menu_diet_plan.md), code `1b9b7a8`; the owner's look is next)** **The menu on show is the owner's short list**; what is not on it is reached from one place (a search box or a "more" entry: to decide in P01) | the menu bar with the owner's list |
-| M24-P05 | **Every pane can be driven by an agent**: tools for the terminal tab (read the screen, type, keys) and the browser tab (read, click, type) with the same grant or ask as the screen tools; the CLI and the tool channel say the same | an agent types `ls` into a terminal tab after the person granted it, and cannot without |
+| M24-P05 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_06_M24-P05_pane_tool_plan.md), code `189f098`; the cue and the off switch are P05b)** **Every pane can be driven by an agent**: tools for the terminal tab (read the screen, type, keys) and the browser tab (read, click, type) with the same grant or ask as the screen tools; the CLI and the tool channel say the same | an agent types `ls` into a terminal tab after the person granted it, and cannot without |
 | M24-P06 | The guide, the README, the CHANGELOG, the report and the release | |
 
 ## Questions for the owner (the lead's recommendations first)
