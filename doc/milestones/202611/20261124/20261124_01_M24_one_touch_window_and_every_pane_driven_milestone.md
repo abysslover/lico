@@ -1,7 +1,7 @@
 # M24 — One Touch To Start, Few Words, And Every Pane Can Be Driven By An Agent
 
-- Status: draft (2026-11-24); waits for the owner's G1. Nothing is implemented; the research below is read from the code and from the names (never the values) of the agents' own settings.
-- Version: 0.1.0
+- Status: in_progress (2026-11-24); G1 approved by the owner in the chat on 2026-11-24 ("승인, P01부터"); P01 (the Phase 0 report, no code) is done and waits for the owner's picks; nothing is implemented. The research below is read from the code and from the names (never the values) of the agents' own settings.
+- Version: 0.2.0
 - Project: Lico
 - Updated: 2026-11-24
 - Follows: [M23](../20261118/20261118_02_M23_terminal_agents_milestone.md) (P08 and P09 are the last security phases of it); level C of M23-P04 (`agy` as a Lico session) comes after this milestone, in the owner's order of 2026-11-24.
@@ -37,7 +37,7 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 
 | Phase | What | The person can inspect |
 |---|---|---|
-| M24-P01 | **Phase 0 report, no code**: the menu inventory (every one of the 55 commands: what it does, where else it is reachable, whether the toolbar already has it); every word a person meets between "New session" and a running session, and on the account screen; per agent, which names of its own settings carry the model, the permission mode and the folder, and what Lico must still ask because the agent does not say; what "driven by an agent" means for each pane (session, terminal, browser, files, calls) and what each costs; then STOP for the owner's picks | a report with the inventory as a table the owner marks keep, hide or drop |
+| M24-P01 | **(done 2026-11-24, [report](../../../reports/202611/20261124/20261124_01_M24-P01_phase0_one_touch_menu_and_panes_report.md); waits for the owner's marks on the menu and two picks)** **Phase 0 report, no code**: the menu inventory (every one of the 55 commands: what it does, where else it is reachable, whether the toolbar already has it); every word a person meets between "New session" and a running session, and on the account screen; per agent, which names of its own settings carry the model, the permission mode and the folder, and what Lico must still ask because the agent does not say; what "driven by an agent" means for each pane (session, terminal, browser, files, calls) and what each costs; then STOP for the owner's picks | a report with the inventory as a table the owner marks keep, hide or drop |
 | M24-P02 | **One touch**: the four session pictures start a session at once (the default account, the folder on the left, a name Lico makes, the agent's own model and permission); what a person may want to change is changed in the session afterwards, with a picture each, not before | click Claude: a running session in one step |
 | M24-P03 | **The account screen in pictures**: the account list as cards with the provider's picture and a state disc, the sign-in as the shortest path the provider allows, almost no words | the account screen with no sentence on it |
 | M24-P04 | **The menu on show is the owner's short list**; what is not on it is reached from one place (a search box or a "more" entry: to decide in P01) | the menu bar with the owner's list |
@@ -48,7 +48,7 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 
 | # | Question | Recommendation |
 |---|---|---|
-| Q1 | **Gate on an agent that types or clicks in a pane** (R6) | The tool exists for every pane; a use is **granted for a time per pane** by one click on a card in the window (as the real screen is), never on by default; reading a pane's screen is asked less strictly than typing. The alternatives: always on for the main agent (fast, the agent is then the person's shell), or reading only (safe, no typing) |
+| Q1 | **Gate on an agent that types or clicks in a pane** (R6) | **Decided by the owner, 2026-11-24: always allowed by default** (the lead had recommended a grant for a time per pane by one click on a card, as the real screen has; the owner chose otherwise). The lead's additions that are not gates (a cue in the pane while an agent types, a record in the audit log, one owner-only switch and a key to stop it) are in the P01 report, section F, for the owner to keep or drop; which sessions get the tools is open |
 | Q2 | **Defaults of a one-touch session** (R3, R4) | Account: the default account of the provider (else the one used last). Folder: the one on the left. Name: made by Lico. Model, effort, permission: what the agent's own settings say, else the agent's own default; **never** the "skip all prompts" mode unless the person turned it on in the agent's own settings |
 | Q3 | **Where does the person change what they did not choose?** | In the session tab, by pictures in its header (model, permission, memory), not before the start |
 | Q4 | **The menu** (R5) | The inventory first (P01); the owner marks each command keep, hide or drop; hide = reachable from one search entry, drop = removed with its test and its guide line |
