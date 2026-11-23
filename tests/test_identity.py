@@ -6,6 +6,7 @@ import subprocess
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO
 
+from tests.gui_helpers import menu_click
 from tests.test_stale_host import status
 
 
@@ -20,11 +21,10 @@ def test_the_title_the_about_panel_and_the_command_line_say_which_build_this_is(
         version, commit = found.groups()
         build = status(w)["build"]                                                   # the host this window started runs the window's own build
         assert re.fullmatch(r"[0-9a-f]{16}", build)
-        w.key("alt+h")
-        assert menu(w)["open"] == 3
-        w.key("Down")
-        assert "About Lico" in menu(w)["items"][menu(w)["selected"]]["label"]
-        w.key("Return")
+        w.key("alt+m")                                                               # M24-P04: About Lico is on the menu More
+        assert menu(w)["open"] == 4
+        w.key("Escape")
+        menu_click(w, 4, "About Lico")
         panel = w.ui()["panel"]
         assert panel["title"] == "About Lico" and f"Lico {version} (commit {commit}, build {build})" in panel["body"], panel
         for form in ("version", "--version"):

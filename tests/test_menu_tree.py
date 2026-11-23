@@ -1,4 +1,5 @@
-"""M22-P04a: the menus are trees and New session offers three modes. The Session and View dropdowns open with their groups closed (a heading opens and closes in place, by a click and by the keys),
+"""M22-P04a, M24-P04: the menus are trees and New session offers three modes. After the diet of M24-P04 the four menus hold only what the owner kept on show and the menu `More` holds the rest as
+groups: it opens with its groups closed (a heading opens and closes in place, by a click and by the keys),
 no entry of any menu is lost, and the New session form shows Claude, Codex and Local LLM on one row; choosing Local LLM makes the one look for model servers on this machine at once and lists what it
 found, while opening the form and choosing Codex look at nothing. A private Xvfb, synthetic homes, mocked providers, a fake server on a loopback port listed by a process table the test wrote."""
 
@@ -17,18 +18,15 @@ from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
 from tests.test_running_elsewhere_window import _centre
 
-SESSION_GROUPS = ["Browser pages", "Go to", "This session", "Share", "Tools", "Approvals", "Edit"]
-VIEW_GROUPS = ["Find", "Scroll", "Show", "Text size", "Settings"]
+MORE = 4
+MORE_GROUPS = ["Browser pages", "This session", "Tools", "Show", "Text size", "Settings"]
+SESSION_SHOWN = ["New Home session", "New browser tab", "Permission mode:", "Send to session...", "Hand over conversation..."]
 
-# every entry the menus had before the trees, by the start of its label (nothing was removed)
-SESSION_ENTRIES = [
-    "New Home session", "New browser tab", "New local browser tab", "New terminal tab", "Reopen closed tab", "Clear remembered pages", "Next session", "Previous session", "Start screen", "Resume session", "Rebind account...", "Permission mode:", "Rename session",
-    "Close session", "Delete session", "Send to session...", "Hand over conversation...", "Find Local LLM servers...", "Allow approval", "Deny approval", "Copy selected", "Cut selection", "Paste",
-    "Virtual display:", "Stop real-screen control",
-]
-VIEW_ENTRIES = [
-    "Working directory files", "Left sidebar:", "Hidden files:", "Find in conversation", "Search all sessions", "Older output", "Newer output", "Newest output", "Group sessions:",
-    "Internal events:", "Text size: larger", "Text size: smaller", "Text size: 14 px", "Capture screen to input", "Agent clipboard write:", "Desktop notifications:",
+# every entry that is hidden (M24-P04, the owner's classification of 2026-11-24: twenty-one), by the start of its label
+MORE_ENTRIES = [
+    "New local browser tab", "Reopen closed tab", "Clear remembered pages", "Start screen", "Resume session", "Rebind account...", "Rename session", "Delete session", "Find Local LLM servers...",
+    "Virtual display:", "Group sessions:", "Internal events:", "Text size: larger", "Text size: smaller", "Text size: 14 px", "Capture screen to input", "Agent clipboard write:", "Desktop notifications:",
+    "Use existing Claude Code login", "Use existing Codex login", "About Lico",
 ]
 
 
@@ -62,7 +60,7 @@ def _rig(root: Path):
     return c_args, setup
 
 
-def test_the_session_and_view_dropdowns_open_with_closed_groups_and_a_heading_opens_in_place_and_no_entry_is_lost():
+def test_the_four_menus_show_a_few_entries_and_more_opens_with_closed_groups_and_a_heading_opens_in_place_and_no_hidden_entry_is_lost():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         c_args, setup = _rig(root)
@@ -71,44 +69,49 @@ def test_the_session_and_view_dropdowns_open_with_closed_groups_and_a_heading_op
             w.proc.stdin.flush()
             wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["sidebar"]["shown"] and x)
 
-            # File and Help have no group; Session and View open with their groups closed and the entries that stay on the dropdown
+            # the four menus have no group: File, Session, View and Help show only what was kept on show
             file_menu = _open(w, 0)
-            assert [i["label"] for i in file_menu["items"]] == ["New session", "New session options...", "Accounts", "Quit"] and file_menu["groups"] == [], file_menu["items"]
+            assert [i["label"] for i in file_menu["items"]] == ["New session", "Accounts"] and file_menu["groups"] == [], file_menu["items"]
             _close(w)
             session = _open(w, 1)
-            heads = [i["label"] for i in session["items"] if i["kind"] == "group"]
-            assert heads == SESSION_GROUPS and [g["label"] for g in session["groups"]] == SESSION_GROUPS, heads
-            assert all(i["depth"] == 0 and (i["open"] is False if i["kind"] == "group" else True) for i in session["items"]), session["items"]
-            assert len(session["items"]) <= 12, [i["label"] for i in session["items"]]  # was 35 rows
+            assert [i["label"].split(":")[0] for i in session["items"]] == [p.split(":")[0] for p in SESSION_SHOWN] and session["groups"] == [], [i["label"] for i in session["items"]]
             assert session["items"][0]["label"] == "New Home session" and session["selected"] == 0
+            _close(w)
+            assert [i["label"] for i in _open(w, 2)["items"]] == ["Working directory files"]
+            _close(w)
+            assert [i["label"] for i in _open(w, 3)["items"]] == ["Keys"]
+            _close(w)
+
+            # More opens with its groups closed and the entries that stay on the dropdown
+            more = _open(w, MORE)
+            heads = [i["label"] for i in more["items"] if i["kind"] == "group"]
+            assert heads == MORE_GROUPS and [g["label"] for g in more["groups"]] == MORE_GROUPS, heads
+            assert all(i["depth"] == 0 and (i["open"] is False if i["kind"] == "group" else True) for i in more["items"]), more["items"]
+            assert len(more["items"]) <= 12, [i["label"] for i in more["items"]]
 
             # a click on a heading opens it in place: its entries follow it, indented, and the menu stays open
-            share = next(i for i in session["items"] if i["label"] == "Share")
-            w.click(*_centre(share["rect"]))
-            opened = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and any(i["label"] == "Send to session..." for i in m["items"]) and all(b["rect"] for b in m["items"]) and m)
+            group = next(i for i in more["items"] if i["label"] == "This session")
+            w.click(*_centre(group["rect"]))
+            opened = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == MORE and any(i["label"] == "Rename session" for i in m["items"]) and all(b["rect"] for b in m["items"]) and m)
             labels = [i["label"] for i in opened["items"]]
-            at = labels.index("Share")
-            assert labels[at + 1:at + 3] == ["Send to session...", "Hand over conversation..."], labels
-            assert [i["depth"] for i in opened["items"][at:at + 3]] == [0, 1, 1] and opened["items"][at]["open"] is True
-            assert opened["items"][at + 1]["group"] == "Share" and opened["items"][at + 1]["rect"][0] >= opened["items"][at]["rect"][0], opened["items"][at:at + 3]
-            assert opened["items"][at + 1]["enabled"] is False and opened["items"][at + 1]["reason"], "with no session open the entry says why it is greyed"
+            at = labels.index("This session")
+            assert labels[at + 1:at + 5] == ["Resume session", "Rebind account...", "Rename session", "Delete session"], labels
+            assert [i["depth"] for i in opened["items"][at:at + 5]] == [0, 1, 1, 1, 1] and opened["items"][at]["open"] is True
+            assert opened["items"][at + 1]["group"] == "This session" and opened["items"][at + 1]["rect"][0] >= opened["items"][at]["rect"][0], opened["items"][at:at + 3]
+            assert opened["items"][at + 3]["enabled"] is False and opened["items"][at + 3]["reason"], "with no session open the entry says why it is greyed"
             w.click(*_centre(opened["items"][at]["rect"]))
-            wait_for(lambda: not any(i["label"] == "Send to session..." for i in w.ui()["menu"]["items"]))
-            assert w.ui()["menu"]["open"] == 1
+            wait_for(lambda: not any(i["label"] == "Rename session" for i in w.ui()["menu"]["items"]))
+            assert w.ui()["menu"]["open"] == MORE
             _close(w)
 
-            # nothing is lost: with every group open each entry the old menus had is there
-            _open(w, 1)
-            shown = _open_every_group(w, 1)
-            assert [p for p in SESSION_ENTRIES if not any(label.startswith(p) for label in shown)] == [], shown
-            _close(w)
-            view = _open(w, 2)
-            assert [i["label"] for i in view["items"] if i["kind"] == "group"] == VIEW_GROUPS, view["items"]
-            shown = _open_every_group(w, 2)
-            assert [p for p in VIEW_ENTRIES if not any(label.startswith(p) for label in shown)] == [], shown
+            # nothing hidden is lost: with every group open each of the twenty-one entries is there
+            _open(w, MORE)
+            shown = _open_every_group(w, MORE)
+            assert [p for p in MORE_ENTRIES if not any(label.startswith(p) for label in shown)] == [], shown
+            assert len(shown) == 21, shown
             _close(w)
             # the dropdown opens closed again
-            again = _open(w, 1)
+            again = _open(w, MORE)
             assert all(i["open"] is False for i in again["items"] if i["kind"] == "group")
             _close(w)
 
@@ -121,8 +124,8 @@ def test_the_keys_open_and_close_a_group_and_run_an_entry_in_it():
             w.proc.stdin.write("load\n")
             w.proc.stdin.flush()
             wait_for(lambda: (x := w.ui()) and x["toolbar"]["shown"] and x["sidebar"]["shown"] and x)
-            w.key("alt+s")
-            session = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and m["items"] and m)
+            w.key("alt+m")
+            session = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == MORE and m["items"] and m)
             tools = next(i for i, row in enumerate(session["items"]) if row["label"] == "Tools")
             for _ in range(32):  # Down moves over the rows that can act (a heading always can) until the selection is on Tools
                 if w.ui()["menu"]["selected"] == tools:
@@ -131,24 +134,24 @@ def test_the_keys_open_and_close_a_group_and_run_an_entry_in_it():
                 time.sleep(0.15)
             assert w.ui()["menu"]["selected"] == tools
             w.key("Right")  # Right on a closed heading opens it (it does not go to the next menu)
-            opened = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and m["items"][tools]["open"] is True and m)
+            opened = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == MORE and m["items"][tools]["open"] is True and m)
             assert opened["selected"] == tools and opened["items"][tools + 1]["label"] == "Find Local LLM servers...", [i["label"] for i in opened["items"]]
             w.key("Down")
             wait_for(lambda: w.ui()["menu"]["selected"] == tools + 1)
             w.key("Left")  # Left on an entry of an open group closes the group and goes back to its heading
-            closed = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and m["items"][tools]["open"] is False and m)
+            closed = wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == MORE and m["items"][tools]["open"] is False and m)
             assert closed["selected"] == tools
-            w.key("Left")  # Left on a closed heading goes to the menu before (File)
-            wait_for(lambda: w.ui()["menu"]["open"] == 0)
+            w.key("Left")  # Left on a closed heading goes to the menu before (Help)
+            wait_for(lambda: w.ui()["menu"]["open"] == 3)
             w.key("Right")
-            wait_for(lambda: w.ui()["menu"]["open"] == 1)
+            wait_for(lambda: w.ui()["menu"]["open"] == MORE)
             for _ in range(32):
                 if w.ui()["menu"]["selected"] == tools:
                     break
                 w.key("Down")
                 time.sleep(0.15)
             w.key("Return")  # Enter on a heading opens it
-            wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == 1 and m["items"][tools]["open"] is True)
+            wait_for(lambda: (m := w.ui()["menu"]) and m["open"] == MORE and m["items"][tools]["open"] is True)
             w.key("Down")
             wait_for(lambda: w.ui()["menu"]["selected"] == tools + 1)
             w.key("Return")  # Enter on an entry runs it: the dialog that looks for servers opens and the menu closes

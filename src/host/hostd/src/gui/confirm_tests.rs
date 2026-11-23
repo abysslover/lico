@@ -105,7 +105,7 @@ fn a_yes_the_host_does_not_carry_out_leaves_the_session_the_list_and_the_draft_a
 
 #[test]
 fn the_menu_says_why_an_action_cannot_be_asked_for_now() {
-    let reason = |app: &App, label: &str| app.menu_entries(1).into_iter().find(|e| e.label == label).map(|e| e.reason);
+    let reason = |app: &App, label: &str| app.all_entries(1).into_iter().find(|e| e.label == label).map(|e| e.reason);
     let mut app = open("disconnected", "", "");
     assert_eq!((reason(&app, "Close session"), reason(&app, "Rename session"), reason(&app, "Delete session")), (Some(Some("the session is already closed")), Some(None), Some(None)));
     app.ui.rows[0].state = "running".into();

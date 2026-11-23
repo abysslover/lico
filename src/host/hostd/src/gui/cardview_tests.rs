@@ -672,16 +672,14 @@ fn one_shot_screen_and_clipboard_tools_never_send_session_keep_on_allow() {
 
 #[test]
 fn the_menu_entries_of_the_answers_say_why_they_wait_until_the_dwell_is_over_and_the_question_of_the_program_has_none() {
-    let entry = |app: &App, label: &str| app.menu_entries(1).into_iter().find(|e| e.label == label).map(|e| e.reason).unwrap();
+    let entry = |app: &App, label: &str| app.all_entries(1).into_iter().find(|e| e.label == label).map(|e| e.reason).unwrap();
     for ms in [0, 799] {
         let mut app = fresh_card();
         drawn_ms_ago(&mut app, ms);
         for label in ["Allow approval", "Deny approval"] {
             assert_eq!(entry(&app, label), Some("the card has just come up"), "{label} at {ms} ms");
         }
-        let index = app.menu_entries(1).iter().position(|e| e.label == "Allow approval").unwrap();
-        app.menu_run(1, index); // an entry that cannot act says why on the first row, and asks nothing of the host
-        assert_eq!(app.ui.flash.as_deref(), Some("Allow approval: the card has just come up"));
+        app.answer_approval(true); // the key and the button wait for the dwell too: nothing is asked of the host
         assert_eq!(app.ui.rows[0].approvals.len(), 1);
     }
     let app = with_card();

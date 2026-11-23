@@ -7,7 +7,10 @@ import time
 from lico_measure.ime import _focus
 from lico_measure.rig import Client
 from tests.test_codex_adapter import wait_for
-from tests.test_first_view import click, ui
+from tests.test_first_view import click, ui, xdo
+
+
+MORE = 4  # the menu `More` (M24-P04): File 0, Session 1, View 2, Help 3, More 4
 
 
 def centre(rect):
@@ -60,7 +63,19 @@ def menu_reveal(w, index, matches):
         m = w.ui()["menu"]
         return m if m["open"] == index and m["items"] and all(b["rect"] for b in m["items"]) else None
 
-    return reveal(read, lambda rect: w.click(*centre(rect)), matches)
+    try:
+        return reveal(read, lambda rect: w.click(*centre(rect)), matches)
+    except StopIteration:
+        # M24-P04: what was hidden from the four menus is on `More`: the entry is looked for there (the menu that was open is closed, `More` is opened)
+        w.key("Escape")
+        wait_for(lambda: w.ui()["menu"]["open"] is None)
+        w.click(*centre(w.ui()["menu"]["titles"][MORE]["rect"]))
+
+        def read_more():
+            m = w.ui()["menu"]
+            return m if m["open"] == MORE and m["items"] and all(b["rect"] for b in m["items"]) else None
+
+        return reveal(read_more, lambda rect: w.click(*centre(rect)), matches)
 
 
 def client_reveal(client, display, index, text):
@@ -69,14 +84,35 @@ def client_reveal(client, display, index, text):
         m = ui(client)["menu"]
         return m if m["open"] == index and m["items"] and all(b["rect"] for b in m["items"]) else None
 
-    return reveal(read, lambda rect: click_at(display, *centre(rect)), lambda label: text in label)
+    try:
+        return reveal(read, lambda rect: click_at(display, *centre(rect)), lambda label: text in label)
+    except StopIteration:
+        # M24-P04: the entry is on `More` (the fifth menu) when it was hidden from the four
+        xdo(display, "key", "Escape")
+        wait_for(lambda: ui(client)["menu"]["open"] is None)
+        click_at(display, *centre(ui(client)["menu"]["titles"][MORE]["rect"]))
+
+        def read_more():
+            m = ui(client)["menu"]
+            return m if m["open"] == MORE and m["items"] and all(b["rect"] for b in m["items"]) else None
+
+        return reveal(read_more, lambda rect: click_at(display, *centre(rect)), lambda label: text in label)
 
 
 def menu_entry(w, index, prefix, keep_open=False):
-    """M22-P04: the toolbar is three icons; what its text buttons did is in the menus. Opens menu `index` (File 0, Session 1, View 2, Help 3) of a `ProductWindow` and returns the entry whose
+    """M22-P04: the toolbar is three icons; what its text buttons did is in the menus. Opens menu `index` (File 0, Session 1, View 2, Help 3, More 4) of a `ProductWindow` and returns the entry whose
     label starts with `prefix` (in a group that is closed, after opening the group); the menu is closed again unless `keep_open`."""
-    w.click(*centre(w.ui()["menu"]["titles"][index]["rect"]))
-    entry = menu_reveal(w, index, lambda label: label.startswith(prefix))
+    entry = None
+    for menu in dict.fromkeys([index, MORE]):  # M24-P04: what was hidden from the four menus is on `More`: an entry that is not on menu `index` is looked for there
+        w.click(*centre(w.ui()["menu"]["titles"][menu]["rect"]))
+        try:
+            entry = menu_reveal(w, menu, lambda label: label.startswith(prefix))
+            break
+        except StopIteration:
+            w.key("Escape")
+            wait_for(lambda: w.ui()["menu"]["open"] is None)
+    if entry is None:
+        raise AssertionError(f"no menu entry starts with {prefix!r}")
     if not keep_open:
         w.key("Escape")
         wait_for(lambda: w.ui()["menu"]["open"] is None)
@@ -89,9 +125,9 @@ def menu_click(w, index, prefix):
 
 
 def open_form(w):
-    """M22-P04b: Ctrl+N and the plus of the toolbar open the new-session wizard (three icons first); the one-page form, every row on one screen, is File > New session options...
+    """M22-P04b: Ctrl+N and the plus of the toolbar open the new-session wizard (three icons first); the one-page form, every row on one screen, is Ctrl+Shift+O (M24-P04: the menu line is gone)
     Returns its panel once it is open."""
-    menu_click(w, 0, "New session options")
+    w.key("ctrl+shift+o")  # M24-P04: the line File > New session options... is gone from the menu; its key stays
     return wait_for(lambda: (p := w.ui()["panel"]) and p["form"] is not None and p["form"]["wizard"] is None and p)
 
 

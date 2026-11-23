@@ -165,11 +165,16 @@ def test_gui_account_rename_session_rebind_and_permission_mode_toggle():
             state = ui(client, lambda u: "mode: asks for approval" in u["header"])
             assert "Permission mode: asks for approval." in state["header"]
 
+            xdo(xvfb.display, "key", "alt+m")  # M24-P04: Rebind account... is on the menu More, in the group This session
+            ui(client, lambda u: drawn(u, 4))
+            rebind = client_reveal(client, xvfb.display, 4, "Rebind account...")
+            assert rebind["enabled"] is False and rebind["reason"] == "close the session first"
+            xdo(xvfb.display, "key", "Escape")
+            ui(client, lambda u: u["menu"]["open"] is None)
             xdo(xvfb.display, "key", "alt+s")
             ui(client, lambda u: drawn(u, 1))
-            reveal_in = lambda text: client_reveal(client, xvfb.display, 1, text)  # M22-P04a: the Session menu is a tree: both entries are in the group This session
+            reveal_in = lambda text: client_reveal(client, xvfb.display, 1, text)
             assert reveal_in("Permission mode: approval")["enabled"] is True
-            assert reveal_in("Rebind account...")["enabled"] is False and reveal_in("Rebind account...")["reason"] == "close the session first"
             click_at(xvfb.display, *centre(reveal_in("Permission mode: approval")["rect"]))
             ui(client, lambda u: "mode: auto (permissions skipped)" in u["header"])
 

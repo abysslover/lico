@@ -265,11 +265,8 @@ def test_gui_hidden_files_toggle_via_toolbar_key_and_menu_persists():
             assert [e["name"] for e in u_off["panel"]["files"]["entries"]] == ["src", "main.rs"]
             assert conn.call(op="status")["settings"].get("show_hidden") is None
 
-            # 4. Toggle back ON via `View > Hidden files: hidden` menu item and preview `.hidden_note.md`
-            w.click(*_centre(u_off["menu"]["titles"][2]["rect"]))  # View menu (index 2)
-            hid_item = menu_reveal(w, 2, lambda label: label.startswith("Hidden files:"))  # M22-P04a: in the group Show
-            assert hid_item["enabled"] is True
-            w.click(*_centre(hid_item["rect"]))
+            # 4. Toggle back ON with the key (M24-P04: the line `View > Hidden files` is gone from the menu; the toolbar button of the Files panel and the key stay) and preview `.hidden_note.md`
+            _fast_key(w, "period")
             u_on2 = wait_for(lambda: (u := w.ui())["panel"]["files"]["show_hidden"] is True and u)
 
             # Row 0: `+ New`, Row 1: `..`, Row 2: `.git/`, Row 3: `src/`, Row 4: `.hidden_note.md`

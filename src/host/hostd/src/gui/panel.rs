@@ -422,6 +422,13 @@ impl App {
                             self.panel_open(Step::Accounts);
                             return true;
                         }
+                        'o' if self.ui.mods.shift_key() => {
+                            // the one-page form of the new session: no line of any menu since `M24-P04`, the key stays
+                            if !event.repeat {
+                                self.form_open();
+                            }
+                            return true;
+                        }
                         'r' => {
                             self.resume_session();
                             return true;

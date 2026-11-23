@@ -14,7 +14,7 @@ from pathlib import Path
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import LICO, ProtoConn as Conn
 from lico_measure.rig import private_dir
-from tests.gui_helpers import centre, menu_click_when_enabled
+from tests.gui_helpers import centre
 from tests.test_codex_adapter import usual_umask, wait_for
 
 SCREENS = Path(os.environ["LICO_P03_SCREENS"]) if os.environ.get("LICO_P03_SCREENS") else None
@@ -46,8 +46,9 @@ def tab(w: ProductWindow, tab_id: str = "t1") -> dict:
 
 
 def open_by_menu(w: ProductWindow) -> dict:
-    """File, Session, View, Help: the Session menu's `New terminal tab` opens a terminal and shows it; returns the state once the shell has printed its prompt."""
-    menu_click_when_enabled(w, 1, "New terminal tab")
+    """A terminal is opened and shown (since `M24-P04` by the Terminal picture of New session: the line `Session > New terminal tab` is gone from the menu); returns the state once the shell has
+    printed its prompt."""
+    terminal_from_the_icon(w)
     return wait_for(lambda: (t := term(w)) and t["shown"] and "lico$" in "\n".join(t["lines"] or []) and t)
 
 
@@ -229,8 +230,8 @@ def test_a_terminal_tab_closes_by_its_cross_by_ctrl_shift_w_and_by_the_end_of_it
             conn = Conn(w.socket)
             open_by_menu(w)
             run(w, "echo first-tab", "first-tab\n")
-            # a second tab from the menu: both are in the row, the new one is shown, and the first one keeps its screen on the host
-            menu_click_when_enabled(w, 1, "New terminal tab")
+            # a second tab from the picture: both are in the row, the new one is shown, and the first one keeps its screen on the host
+            terminal_from_the_icon(w)
             two = wait_for(lambda: (t := term(w)) and t["active"] == "t2" and "lico$" in "\n".join(t["lines"] or []) and t)
             assert [x["id"] for x in two["tabs"]] == ["t1", "t2"] and "first-tab" not in text(w)
             assert all(x["rect"] and x["close_rect"] for x in two["tabs"]), two["tabs"]

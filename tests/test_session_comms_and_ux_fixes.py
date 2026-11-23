@@ -253,11 +253,9 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                     and len(u["layout"]["lines"]) >= 5
                     else None
                 )
-                # M22-P04: the toolbar is three icons; `Send to session` and `Copy` are entries of the Session menu (Copy is greyed until something is selected)
+                # M22-P04: the toolbar is three icons; `Send to session` is an entry of the Session menu
                 send0 = menu_entry(w, 1, "Send to session")
                 assert send0["enabled"] is False and send0["reason"] == "nothing to send: type in the input box or select lines"
-                copy0 = menu_entry(w, 1, "Copy selected")
-                assert copy0["enabled"] is False and copy0["reason"] == "nothing is selected"
                 assert [b["id"] for b in ui0["toolbar"]["buttons"]] == ["accounts", "new_session", "new_home", "new_browser"]
                 assert reader.selection_owner("CLIPBOARD") == 0 and reader.selection_owner("PRIMARY") == 0
 
@@ -276,10 +274,10 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                 assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
                 assert reader.selection_owner("PRIMARY") == 0
                 copied_after_drag = ui_sel["copied"]
-                assert menu_entry(w, 1, "Copy selected")["enabled"] is True and menu_entry(w, 1, "Send to session")["enabled"] is True
+                assert menu_entry(w, 1, "Send to session")["enabled"] is True
 
-                # Click the menu entry `Copy selected lines`: owns CLIPBOARD with exact UTF-8 selection, leaves PRIMARY untouched
-                menu_click(w, 1, "Copy selected")
+                # Ctrl+C (M24-P04: the line `Copy selected lines` is gone from the menu): owns CLIPBOARD with exact UTF-8 selection, leaves PRIMARY untouched
+                w.key("ctrl+c")
                 wait_for(lambda: w.ui()["copied"] > copied_after_drag or None)
                 assert reader.selection_text("CLIPBOARD") == ui_sel["selection"]
                 assert reader.selection_owner("PRIMARY") == 0

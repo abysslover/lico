@@ -187,8 +187,8 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             assert st1_by_id[s_codex]["tokens"] == {"input": 2510000, "output": 4200}
 
             # Open About panel, then click Claude tab directly -> closes panel & switches to Claude!
-            w.key("alt+h")
-            mh = wait_for(lambda: (u := w.ui()) and u["menu"]["open"] == 3 and u["menu"]["items"] and u)
+            w.key("alt+m")  # M24-P04: About Lico is on the menu More
+            mh = wait_for(lambda: (u := w.ui()) and u["menu"]["open"] == 4 and u["menu"]["items"] and u)
             about_item = next(i for i in mh["menu"]["items"] if "About" in i["label"])
             w.click(*_centre(about_item["rect"]))
             wait_for(lambda: (u := w.ui()) and u["panel"] and u["panel"]["title"] == "About Lico")

@@ -109,9 +109,9 @@ def test_gui_workspace_grouping_rolls_worktrees_up_and_font_size_persists_across
             ui(client, lambda u: u["settings"]["font_px"] == 15)
             xdo(xvfb.display, "key", "ctrl+equal")
             ui(client, lambda u: u["settings"]["font_px"] == 16)
-            xdo(xvfb.display, "key", "alt+v")
-            ui(client, lambda u: drawn(u, 2))
-            reveal_in = lambda text: client_reveal(client, xvfb.display, 2, text)  # M22-P04a: the View menu is a tree: the entries are in the groups Show and Text size
+            xdo(xvfb.display, "key", "alt+m")
+            ui(client, lambda u: drawn(u, 4))
+            reveal_in = lambda text: client_reveal(client, xvfb.display, 4, text)  # M24-P04: the entries are on the menu More, in the groups Show and Text size
             assert reveal_in("Group sessions: workspace")["enabled"] is True
             assert reveal_in("Text size: 14 px (reset)")["enabled"] is True
             click_at(xvfb.display, *centre(reveal_in("Text size: larger")["rect"]))

@@ -56,8 +56,9 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
 
             # the menus: no entry says Global; the Session menu has the new entries with their keys
             session_menu = _menu_labels(w, 1)
-            assert "New Home session" in session_menu and "New browser tab" in session_menu and "New local browser tab" in session_menu, session_menu
-            for index in range(4):
+            assert "New Home session" in session_menu and "New browser tab" in session_menu, session_menu
+            assert "New local browser tab" in _menu_labels(w, 4), "M24-P04: the local tab is on the menu More"
+            for index in range(5):
                 assert not any("Global" in label for label in _menu_labels(w, index)), index
 
             # a click on each icon opens what it says (M22-P04b: the plus and the house open the wizard, on its first step)

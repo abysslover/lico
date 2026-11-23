@@ -185,8 +185,8 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             assert (entry["cwd"], entry["name"], entry["account"], entry["provider"]) == (str(project), "api", made["Work"], "claude"), entry
             assert state["selected"] == entry["session"]
 
-            # the one-page form is still there, with every row, in the File menu
-            menu_click(w, 0, "New session options")
+            # the one-page form is still there, with every row, on its key (M24-P04: the line of the File menu is gone)
+            w.key("ctrl+shift+o")
             plain = _panel(w, lambda p: p["form"] is not None)
             assert plain["title"] == "New session" and plain["form"]["wizard"] is None and plain["form"]["tiles"] is None, plain["title"]
             rows = [line.lstrip("> ").split()[0] for line in plain["body"] if line.strip()]

@@ -10,27 +10,23 @@ use winit::keyboard::{Key, NamedKey};
 
 use super::panel::confirm::Act;
 use super::panel::Step;
-use super::ui::Row;
 use super::App;
 
-pub const TITLES: [&str; 4] = ["File", "Session", "View", "Help"];
+pub const TITLES: [&str; 5] = ["File", "Session", "View", "Help", "More"];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Cmd {
     NewSession,
-    NewSessionOptions,
     NewGlobalSession,
     NewBrowser,
     NewLocalBrowser,
     ReopenTab,
     ForgetPages,
-    NewTerminal,
     Accounts,
     Quit,
     Next,
     Prev,
     Start,
-    GoTo(usize),
     Allow,
     Deny,
     Resume,
@@ -104,23 +100,49 @@ pub enum RowKind {
     Group(&'static str, bool), // the group and whether it is open
 }
 
-/// The group an entry is classified into, or none for an entry that stays on the dropdown itself.
+/// The group an entry is classified into, or none for an entry that stays on the dropdown itself. Only what the menu `More` holds is grouped (`M24-P04`): the four menus have a few entries each.
 pub(crate) fn group_of(cmd: Cmd) -> Option<&'static str> {
     Some(match cmd {
         Cmd::ReopenTab | Cmd::ForgetPages => "Browser pages",
-        Cmd::Next | Cmd::Prev | Cmd::GoTo(_) => "Go to",
-        Cmd::Resume | Cmd::Rebind | Cmd::ToggleMode | Cmd::Rename | Cmd::Close | Cmd::Delete => "This session",
-        Cmd::SendTo | Cmd::HandOver => "Share",
-        Cmd::FindLlm | Cmd::ToggleVirtualDisplay | Cmd::StopRealScreen => "Tools",
-        Cmd::Allow | Cmd::Deny => "Approvals",
-        Cmd::Copy | Cmd::Cut | Cmd::Paste => "Edit",
-        Cmd::FindConversation | Cmd::SearchAll => "Find",
-        Cmd::Older | Cmd::Newer | Cmd::Newest => "Scroll",
+        Cmd::Resume | Cmd::Rebind | Cmd::Rename | Cmd::Delete => "This session",
+        Cmd::FindLlm | Cmd::ToggleVirtualDisplay => "Tools",
         Cmd::FontLarger | Cmd::FontSmaller | Cmd::FontReset => "Text size",
-        Cmd::ToggleHiddenFiles | Cmd::ToggleGroupBy | Cmd::ToggleEvents => "Show",
+        Cmd::ToggleGroupBy | Cmd::ToggleEvents => "Show",
         Cmd::ToggleClipWrite | Cmd::ToggleNotifications | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
         _ => return None,
     })
+}
+
+/// What the menu does with a command (`M24-P04`, the owner's classification of 2026-11-24): `Show` stays on its menu, `Key` has no line (its key and the control of its pane stay), `Hide` goes to
+/// the menu `More`. (The fourth place of the owner's classification, `Drop`, is not a place: the commands that were dropped are gone, with their lines.)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Place {
+    Show,
+    Key,
+    Hide,
+}
+
+pub(crate) fn place_of(cmd: Cmd) -> Place {
+    match cmd {
+        Cmd::NewSession | Cmd::Accounts | Cmd::NewGlobalSession | Cmd::NewBrowser | Cmd::ToggleMode | Cmd::SendTo | Cmd::HandOver | Cmd::Files | Cmd::Keys => Place::Show,
+        Cmd::Quit
+        | Cmd::Next
+        | Cmd::Prev
+        | Cmd::Close
+        | Cmd::Allow
+        | Cmd::Deny
+        | Cmd::Copy
+        | Cmd::Cut
+        | Cmd::Paste
+        | Cmd::StopRealScreen
+        | Cmd::ToggleSidebar
+        | Cmd::FindConversation
+        | Cmd::SearchAll
+        | Cmd::Older
+        | Cmd::Newer
+        | Cmd::Newest => Place::Key,
+        _ => Place::Hide,
+    }
 }
 
 impl App {
@@ -128,8 +150,15 @@ impl App {
         Entry { label: label.to_string(), key, cmd, reason }
     }
 
-    /// The entries of one menu, each with what keeps it from acting now (if anything).
+    /// The entries of one menu: the four menus show only what the owner kept on show, and `More` (the fifth) holds what was hidden, from every menu, in the order they had.
     pub(crate) fn menu_entries(&self, menu: usize) -> Vec<Entry> {
+        let want = if menu < 4 { Place::Show } else { Place::Hide };
+        let from: Vec<usize> = if menu < 4 { vec![menu] } else { (0..4).collect() };
+        from.into_iter().flat_map(|m| self.all_entries(m)).filter(|e| place_of(e.cmd) == want).collect()
+    }
+
+    /// The entries of one of the four menus as they were before the diet of `M24-P04`, each with what keeps it from acting now (if anything).
+    pub(crate) fn all_entries(&self, menu: usize) -> Vec<Entry> {
         let panel = self.ui.panel.is_some();
         let sessions = self.ui.numbered.len();
         let shown = !self.session.is_empty();
@@ -138,7 +167,6 @@ impl App {
         match menu {
             0 => vec![
                 Self::entry("New session", "Ctrl+N", Cmd::NewSession, None),
-                Self::entry("New session options...", "", Cmd::NewSessionOptions, None),
                 Self::entry("Accounts", "Ctrl+A", Cmd::Accounts, None),
                 Self::entry("Quit", "Ctrl+Q", Cmd::Quit, None),
             ],
@@ -148,19 +176,12 @@ impl App {
                     Self::entry("New Home session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
                     Self::entry("New browser tab", "", Cmd::NewBrowser, panel_reason),
                     Self::entry("New local browser tab", "", Cmd::NewLocalBrowser, panel_reason),
-                    Self::entry("New terminal tab", "", Cmd::NewTerminal, panel_reason),
                     Self::entry("Reopen closed tab", "", Cmd::ReopenTab, panel_reason),
                     Self::entry("Clear remembered pages", "", Cmd::ForgetPages, panel_reason),
                     Self::entry("Next session", "Ctrl+Tab", Cmd::Next, two),
                     Self::entry("Previous session", "Ctrl+Shift+Tab", Cmd::Prev, two),
                     Self::entry("Start screen", "Esc", Cmd::Start, panel_reason.or(none_open)),
                 ];
-                for (i, id) in self.ui.numbered.iter().enumerate().take(9) {
-                    let row = self.ui.rows.iter().find(|r| &r.session == id);
-                    let title = row.map_or_else(|| id.chars().take(7).collect(), Row::name);
-                    let what = row.map_or(String::new(), |r| format!("{} / {}", r.provider, self.row_label(r)));
-                    v.push(Entry { label: format!("Session {}  {title}  {what}", i + 1), key: ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6", "Alt+7", "Alt+8", "Alt+9"][i], cmd: Cmd::GoTo(i), reason: None });
-                }
                 let pending = if self.approval_row_any_panel().is_some() { panel_reason.or(if self.answers_live() { None } else { Some("the card has just come up") }) } else { Some("no approval is pending") };
                 let mode_label = match self.selected_row().map(|r| r.mode.as_str()) {
                     Some("default") => "Permission mode: approval",
@@ -196,11 +217,6 @@ impl App {
             }
             2 => {
                 let fpx = self.font_px() as i64;
-                let files_or_none = if panel && self.ui.panel.as_ref().is_some_and(|p| p.step != Step::Files) {
-                    Some("close the open panel first")
-                } else {
-                    None
-                };
                 let mut v = vec![
                     Self::entry("Working directory files", "Ctrl+E", Cmd::Files, None),
                 ];
@@ -218,12 +234,6 @@ impl App {
                     Self::entry("Older output", "Page Up", Cmd::Older, panel_reason.or(none_open)),
                     Self::entry("Newer output", "Page Down", Cmd::Newer, panel_reason.or(none_open)),
                     Self::entry("Newest output", "End", Cmd::Newest, panel_reason.or(none_open)),
-                    Entry {
-                        label: format!("Hidden files: {}", if self.ui.show_hidden { "shown" } else { "hidden" }),
-                        key: "Ctrl+H",
-                        cmd: Cmd::ToggleHiddenFiles,
-                        reason: files_or_none,
-                    },
                     Entry {
                         label: format!("Group sessions: {}", if self.ui.group_by_workspace { "workspace" } else { "account" }),
                         key: "Ctrl+Shift+G",
@@ -347,13 +357,11 @@ impl App {
     pub(crate) fn run_cmd(&mut self, cmd: Cmd) {
         match cmd {
             Cmd::NewSession => self.form_open_wizard(false),
-            Cmd::NewSessionOptions => self.form_open(),
             Cmd::NewGlobalSession => self.form_open_wizard(true),
             Cmd::NewBrowser => self.browser_prompt(false),
             Cmd::NewLocalBrowser => self.browser_prompt(true),
             Cmd::ReopenTab => self.browser_reopen(),
             Cmd::ForgetPages => self.browser_forget_pages(),
-            Cmd::NewTerminal => self.terminal_open_here(),
             Cmd::Accounts => self.panel_open(Step::Accounts),
             Cmd::Quit => self.quit = true,
             Cmd::Next => {
@@ -365,14 +373,6 @@ impl App {
                 self.step_session(-1);
             }
             Cmd::Start => self.go_start(),
-            Cmd::GoTo(i) => {
-                if let Some(id) = self.ui.numbered.get(i).cloned() {
-                    self.panel_close();
-                    if id != self.session {
-                        self.switch_to(&id);
-                    }
-                }
-            }
             Cmd::Allow => self.answer_approval(true),
             Cmd::Deny => self.answer_approval(false),
             Cmd::Resume => self.resume_session(),
@@ -443,7 +443,7 @@ impl App {
                 return true;
             }
             _ if alt && !ctrl => {
-                if let Some(i) = letter.and_then(|ch| ['f', 's', 'v', 'h'].iter().position(|&l| l == ch)) {
+                if let Some(i) = letter.and_then(|ch| ['f', 's', 'v', 'h', 'm'].iter().position(|&l| l == ch)) {
                     self.menu_open_at(i);
                     return true;
                 }

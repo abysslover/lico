@@ -35,9 +35,9 @@ def page_cards(w: ProductWindow) -> list[dict]:
 
 
 def pages_menu(w: ProductWindow, label: str) -> None:
-    """The Session menu's group `Browser pages` (the tree opens its groups closed): the heading is opened and then the entry clicked."""
-    w.click(*centre(w.ui()["menu"]["titles"][1]["rect"]))
-    m = wait_for(lambda: (x := w.ui()["menu"]) and x["open"] == 1 and x["items"] and all(b["rect"] for b in x["items"]) and x)
+    """The group `Browser pages` of the menu More (M24-P04; the tree opens its groups closed): the heading is opened and then the entry clicked."""
+    w.click(*centre(w.ui()["menu"]["titles"][4]["rect"]))
+    m = wait_for(lambda: (x := w.ui()["menu"]) and x["open"] == 4 and x["items"] and all(b["rect"] for b in x["items"]) and x)
     head = next(i for i in m["items"] if i["kind"] == "group" and i["label"] == "Browser pages")
     if head["open"] is False:
         w.click(*centre(head["rect"]))

@@ -448,7 +448,7 @@ def test_the_real_window_takes_a_written_text_to_the_clipboard_when_y_allows_it_
 
 def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the_claude_input_box():
     centre = lambda r: ((r[0] + r[2]) // 2, (r[1] + r[3]) // 2)
-    item = lambda m, prefix: menu_reveal(w, 2, lambda label: label.startswith(prefix))  # M22-P04a: the View menu is a tree: the entry in a closed group is shown first
+    item = lambda m, prefix: menu_reveal(w, 4, lambda label: label.startswith(prefix))  # M24-P04: these entries are on the menu More (a tree: the entry in a closed group is shown first)
     fkey = lambda w, *k: subprocess.run(["xdotool", "key", *k], env=w.env, check=True)
     fclick = lambda w, wid, x, y: subprocess.run(["xdotool", "mousemove", "--window", wid, str(int(x)), str(int(y)), "click", "1"], env=w.env, check=True)
     with private_dir() as directory:
@@ -463,8 +463,8 @@ def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the
             assert w.ui()["settings"] == {"clipboard_write": False, "notifications": True, "group_by": "account", "font_px": 14, "show_events": False}
             assert "clipboard_write" not in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
             # toggle Agent clipboard write ON from the View menu (no hand-written settings.json)
-            fkey(w, "alt+v")
-            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            fkey(w, "alt+m")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 4 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
             assert item(m, "Agent clipboard write")["label"] == "Agent clipboard write: off"
             fclick(w, wid, *centre(item(m, "Agent clipboard write")["rect"]))
             wait_for(lambda: w.ui()["settings"]["clipboard_write"] is True)
@@ -472,15 +472,15 @@ def test_the_view_menu_switches_clipboard_write_and_captures_the_screen_into_the
             settings_file = Path(w.directory) / "state" / "lico" / "settings.json"
             assert stat.S_IMODE(settings_file.stat().st_mode) == 0o600
             # toggle it back OFF from the View menu
-            fkey(w, "alt+v")
-            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            fkey(w, "alt+m")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 4 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
             assert item(m, "Agent clipboard write")["label"] == "Agent clipboard write: on"
             fclick(w, wid, *centre(item(m, "Agent clipboard write")["rect"]))
             wait_for(lambda: w.ui()["settings"]["clipboard_write"] is False)
             assert "clipboard_write" not in [t["name"] for t in rpc(cfg, "tools/list", {})[1]["result"]["tools"]]
             # capture the screen directly into the Claude input box via View -> Capture screen to input
-            fkey(w, "alt+v")
-            m = wait_for(lambda: w.ui()["menu"]["open"] == 2 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
+            fkey(w, "alt+m")
+            m = wait_for(lambda: w.ui()["menu"]["open"] == 4 and all(b["rect"] for b in w.ui()["menu"]["items"]) and w.ui()["menu"])
             cap_entry = item(m, "Capture screen to input")
             assert cap_entry["enabled"] is True and cap_entry["key"] == "Ctrl+Shift+P"
             fclick(w, wid, *centre(cap_entry["rect"]))

@@ -52,7 +52,7 @@ def click_menu(w: ProductWindow, index: int, label: str) -> None:
 def click_new_tab(w: ProductWindow, local: bool = False) -> None:
     """M22-P04: the tab row has no `+B` and `+BL`; the browser icon of the toolbar opens a tab, the Session menu opens one that keeps no history."""
     if local:
-        click_menu(w, 1, "New local browser tab")
+        click_menu(w, 4, "New local browser tab")  # M24-P04: on the menu `More`
     else:
         w.click(*centre(next(b for b in w.ui()["toolbar"]["buttons"] if b["id"] == "new_browser")["rect"]))
 

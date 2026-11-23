@@ -32,10 +32,10 @@ def drawn(u, which):
     return m["open"] == which and bool(m["items"]) and all(b["rect"] for b in m["titles"] + m["items"])
 
 
-def test_a_closed_bar_with_four_titles_is_drawn_inside_the_window_and_not_clipped():
+def test_a_closed_bar_with_five_titles_is_drawn_inside_the_window_and_not_clipped():
     with ProductWindow() as w:
         m = menu(w)
-        assert [t["label"] for t in m["titles"]] == ["File", "Session", "View", "Help"] and m["open"] is None
+        assert [t["label"] for t in m["titles"]] == ["File", "Session", "View", "Help", "More"] and m["open"] is None   # M24-P04: the fifth menu holds what was hidden
         rects = [t["rect"] for t in m["titles"]]
         assert all(a[2] <= b[0] for a, b in zip(rects, rects[1:]))                      # no two title boxes overlap
         assert rects[0][0] >= 4 and rects[-1][2] <= 1200 - 4 and all(r[1] == 0 or r[1] >= 0 for r in rects)
@@ -51,7 +51,7 @@ def test_f10_and_alt_letters_open_menus_arrows_and_enter_run_and_greyed_entries_
     with ProductWindow() as w:
         w.key("F10")
         m = menu(w)
-        assert m["open"] == 0 and [i["label"] for i in m["items"]][:4] == ["New session", "New session options...", "Accounts", "Quit"] and item(m, "New session")["key"] == "Ctrl+N"
+        assert m["open"] == 0 and [i["label"] for i in m["items"]] == ["New session", "Accounts"] and item(m, "New session")["key"] == "Ctrl+N"   # M24-P04: Quit and the one-page form have no line any more
         before = w.bright_total()
         w.key("Down")
         assert menu(w)["selected"] == 1 and w.bright_total() != 0 and before > 0
@@ -63,13 +63,10 @@ def test_f10_and_alt_letters_open_menus_arrows_and_enter_run_and_greyed_entries_
         w.key("alt+s")
         m = menu(w)
         assert m["open"] == 1
-        # M22-P04a: the menu is a tree; each of these is in a group that a click on its heading opens, and an opened group moves the rows under it, so the box of `Next session` is read last
-        reveal_in = lambda text: menu_reveal(w, 1, lambda label: text in label)
-        allow, copy = reveal_in("Allow"), reveal_in("Copy")
-        assert allow["reason"] == "no approval is pending" and copy["reason"] == "nothing is selected"
-        nxt = reveal_in("Next session")
-        assert nxt["enabled"] is False and nxt["reason"] == "needs two sessions"
-        assert w.bright(int(nxt["rect"][0]), int(nxt["rect"][1]), int(nxt["rect"][2]), int(nxt["rect"][3]), threshold=70) > 50       # drawn (dim), with its reason beside it
+        # M24-P04: the Session menu has a few entries and no group; the keys of the lines that were taken out (Allow, Copy, Next session...) are tested where their panes are
+        send = menu_reveal(w, 1, lambda label: "Send to session" in label)
+        assert send["enabled"] is False and send["reason"] == "no session is open"
+        assert w.bright(int(send["rect"][0]), int(send["rect"][1]), int(send["rect"][2]), int(send["rect"][3]), threshold=70) > 50       # drawn (dim), with its reason beside it
         w.key("Right")
         assert menu(w)["open"] == 2
         w.key("Escape")
@@ -92,9 +89,9 @@ def test_clicks_open_a_menu_run_an_entry_close_on_a_click_elsewhere_and_a_greyed
         w.click(*centre(menu(w)["titles"][1]["rect"]))
         m = menu(w)
         assert m["open"] == 1
-        w.click(*centre(menu_reveal(w, 1, lambda label: "Next session" in label)["rect"]))   # greyed (in the group Go to): nothing happens but the reason is shown
+        w.click(*centre(menu_reveal(w, 1, lambda label: "Send to session" in label)["rect"]))   # greyed: nothing happens but the reason is shown
         state = w.ui()
-        assert state["menu"]["open"] is None and "needs two sessions" in state["header"] and state["panel"] is None
+        assert state["menu"]["open"] is None and "no session is open" in state["header"] and state["panel"] is None
         w.click(*centre(menu(w)["titles"][2]["rect"]))
         assert menu(w)["open"] == 2
         w.click(700, 500)                                                                # a click elsewhere closes it
@@ -109,7 +106,8 @@ def menu_client(host, display):
     return client
 
 
-def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pending_approval():
+def test_with_sessions_the_menu_has_no_session_rows_and_the_alt_numbers_switch_them():
+    """M24-P04: the nine rows `Session 1`..`Session 9` and the lines Allow, Deny and Next session are gone from the menus (the tabs, the keys and the approval card do their work); the Alt numbers switch."""
     with private_dir() as directory:
         xvfb = Xvfb()
         host = client = None
@@ -122,38 +120,17 @@ def test_with_sessions_the_menu_switches_them_and_allow_and_deny_follow_the_pend
             state = ui(client, lambda u: len(u["rows"]) == 3)
             order = [r[2] for r in state["layout"]["rows"]]
             xdo(xvfb.display, "key", "alt+s")
-            ui(client, lambda u: drawn(u, 1))
-            def drawn_menu():
-                u = ui(client)
-                return u["menu"] if drawn(u, 1) else None
-
-            reveal_in = lambda text: reveal(drawn_menu, lambda rect: click_at(xvfb.display, *centre(rect)), lambda label: text in label)
-            # M22-P04a: the menu is a tree: each entry is in a group, shown by a click on its heading
-            allow = reveal_in("Allow")
-            assert allow["enabled"] is False and reveal_in("Next session")["enabled"] and reveal_in("Session 1")["key"] == "Alt+1"
-            rect = reveal_in("Session 2")["rect"]
-            click_at(xvfb.display, *centre(rect))
-            assert ui(client, lambda u: u["selected"] == order[1])["selected"] == order[1]
-            xdo(xvfb.display, "key", "alt+s")
-            ui(client, lambda u: drawn(u, 1))
-            click_at(xvfb.display, *centre(reveal_in("Next session")["rect"]))
-            assert ui(client, lambda u: u["selected"] == order[2])["selected"] == order[2]
-            xdo(xvfb.display, "key", "alt+s")
-            ui(client, lambda u: u["menu"]["open"] == 1)
-            xdo(xvfb.display, "key", "Escape")
-            conn.call(op="input", session=order[2], generation=1, request_id="a", text="fixture")
-            wait_for(lambda: status_of(conn, order[2]).get("approvals"))
-            xdo(xvfb.display, "key", "alt+s")
-            ui(client, lambda u: drawn(u, 1))
-            wait_for(lambda: reveal_in("Allow")["enabled"])
             m = ui(client, lambda u: drawn(u, 1))["menu"]
-            click_at(xvfb.display, *centre(reveal_in("Allow")["rect"]))
-            wait_for(lambda: len(responses(received)) == 1)
-            assert responses(received)[0]["response"]["behavior"] == "allow"
-            for scale_check in (m,):                                                     # every box lies inside the window, clear of the margins
-                for entry in scale_check["items"]:
-                    r = entry["rect"]
-                    assert r[0] >= 0 and r[2] <= 1200 - 4 and r[3] <= 800
+            labels = [i["label"] for i in m["items"]]
+            assert not any(label.startswith("Session ") or label in ("Allow approval", "Deny approval", "Next session", "Previous session") for label in labels), labels
+            xdo(xvfb.display, "key", "Escape")
+            xdo(xvfb.display, "key", "alt+2")
+            assert ui(client, lambda u: u["selected"] == order[1])["selected"] == order[1]
+            xdo(xvfb.display, "key", "alt+3")
+            assert ui(client, lambda u: u["selected"] == order[2])["selected"] == order[2]
+            for entry in m["items"]:                                                     # every box lies inside the window, clear of the margins
+                r = entry["rect"]
+                assert r[0] >= 0 and r[2] <= 1200 - 4 and r[3] <= 800
         finally:
             if client and client.proc.poll() is None:
                 client.kill()
@@ -180,7 +157,8 @@ def test_at_scale_two_the_bar_and_the_open_menu_keep_inside_the_window_and_do_no
             xdo(xvfb.display, "key", "F10")
             m = ui(client, lambda u: drawn(u, 0))["menu"]
             titles = [t["rect"] for t in m["titles"]]
-            assert all(a[2] <= b[0] for a, b in zip(titles, titles[1:])) and titles[0][0] >= 8 and titles[-1][2] <= 1200 - 8
+            icon = ui(client)["window_btn"]["rect"]                                              # the window is 2400 pixels wide at the doubled scale: the titles end before its own icon
+            assert all(a[2] <= b[0] for a, b in zip(titles, titles[1:])) and titles[0][0] >= 8 and titles[-1][2] <= icon[0]
             for entry in m["items"]:
                 r = entry["rect"]
                 assert r[0] >= 0 and r[2] <= 1200 - 8 and r[3] <= 800 and r[1] >= titles[0][3] - 1      # right and left margins kept at the doubled scale; below the bar

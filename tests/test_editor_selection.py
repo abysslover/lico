@@ -51,13 +51,8 @@ def test_mouse_click_drag_shift_selection_copy_cut_undo_redo_and_ctrl_a_accounts
             sel_state = ui(client, lambda u: u["editor"]["selection"] == "gamma" and len(u["editor"]["sel_rects"]) == 1)
             assert sel_state["editor"]["selection_range"] == [11, 16]
 
-            xdo(display, "key", "alt+s")
-            ui(client, lambda u: drawn(u, 1))
-            copy = client_reveal(client, display, 1, "Copy")  # M22-P04a: the Session menu is a tree: Copy and Cut are in the group Edit
-            assert copy["label"] == "Copy selected text" and copy["enabled"] is True
-            assert client_reveal(client, display, 1, "Cut selection")["enabled"] is True
-            # M22-P04a: the clicks that opened the menu and its group kept the prompt selection, so a click on the entry copies it (a click in a menu used to clear the selection first)
-            click_at(display, *centre(client_reveal(client, display, 1, "Copy")["rect"]))
+            # M24-P04: the lines Copy, Cut and Paste are gone from the Session menu (the keys stay): Ctrl+C copies the prompt selection
+            xdo(display, "key", "ctrl+c")
             ui(client, lambda u: u["menu"]["open"] is None and u["copied"] == 1 and "Copied selection." in u["header"])
             assert _clipboard_utf8(display) == "gamma"
 

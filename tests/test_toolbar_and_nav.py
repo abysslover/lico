@@ -107,9 +107,9 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             assert "Fix side\u2026" in u1["list_text"] and s_new[:7] not in u1["list_text"], u1["list_text"]
 
             # 1. Open Help > About Lico via menu click, then click s_new in left sidebar -> About closes & s_new opens immediately!
-            m_help = u1["menu"]["titles"][3]["rect"]
+            m_help = u1["menu"]["titles"][4]["rect"]  # M24-P04: About Lico is on the menu More
             w.click(*_centre(m_help))
-            u_menu = wait_for(lambda: (u := w.ui())["menu"]["open"] == 3 and all(i["rect"] for i in u["menu"]["items"]) and u)
+            u_menu = wait_for(lambda: (u := w.ui())["menu"]["open"] == 4 and all(i["rect"] for i in u["menu"]["items"]) and u)
             about_rect = next(i["rect"] for i in u_menu["menu"]["items"] if "About Lico" in i["label"])
             w.click(*_centre(about_rect))
             wait_for(lambda: (p := w.ui()["panel"]) is not None and p["title"] == "About Lico")
@@ -173,8 +173,8 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             wait_for(lambda: (u := w.ui()) and "mode: asks for approval" in u["header"] and u)
             assert menu_entry(w, 1, "Permission mode:")["label"] == "Permission mode: approval"
 
-            # View menu 'Find in conversation' -> opens in-session search bar; Escape closes it
-            menu_click(w, 2, "Find in conversation")
+            # Ctrl+F (M24-P04: the line `View > Find in conversation` is gone from the menu) -> opens in-session search bar; Escape closes it
+            _fast_key(w, "ctrl+f")
             wait_for(lambda: w.ui()["search"] is not None)
             _fast_key(w, "Escape")
             wait_for(lambda: w.ui()["search"] is None)
@@ -192,4 +192,4 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             menu_click(w, 1, "Resume session")
             wait_for(lambda: status_of(conn, s_closed)["state"] == "running")
             _reload(w)
-            wait_for(lambda: menu_entry(w, 1, "Close session")["enabled"] is True)
+            wait_for(lambda: status_of(conn, s_closed)["state"] == "running" and w.ui()["selected"] == s_closed)  # (M24-P04: `Close session` has no menu line to probe; the session is running again)
