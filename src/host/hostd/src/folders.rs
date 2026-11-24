@@ -69,7 +69,7 @@ pub fn derive_auto_title(text: &str) -> Option<String> {
     for raw in text.lines() {
         let cleaned: String = raw.chars().filter(|c| !refused_char(*c)).collect();
         let trimmed = cleaned.trim();
-        if trimmed.is_empty() || trimmed.starts_with('/') || trimmed.starts_with("[from session ") || trimmed.starts_with("[a long line ") {
+        if trimmed.is_empty() || crate::injected::not_a_title_line(trimmed) {
             continue;
         }
         let compact = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");

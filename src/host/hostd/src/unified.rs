@@ -42,6 +42,7 @@ mod ident;
 mod inbox_read;
 mod ipc;
 mod keyring;
+mod injected;
 mod leads;
 mod llm;
 mod guard;

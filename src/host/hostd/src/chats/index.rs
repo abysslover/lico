@@ -502,6 +502,38 @@ mod tests {
     }
 
     #[test]
+    fn a_command_its_output_and_orcas_wake_up_are_no_first_question_in_the_head_of_a_chat() {
+        let home = scratch("injected");
+        let wake_up = "You have 1 orchestration message. Run `orca orchestration check --terminal term_1`.";
+        let command = "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>";
+        let user = |cwd: Option<&str>, text: &str| {
+            let mut v = serde_json::json!({"type": "user", "message": {"role": "user", "content": text}});
+            if let Some(cwd) = cwd {
+                v["cwd"] = serde_json::json!(cwd);
+            }
+            v.to_string()
+        };
+        let dir = home.join("projects").join("p");
+        fs::create_dir_all(&dir).unwrap();
+        let head = [user(Some("/work/a"), command), user(None, "<local-command-stdout>Kept model as `Sonnet`</local-command-stdout>"), user(None, wake_up)];
+        let only = dir.join("cl-only.jsonl");
+        fs::write(&only, head.join("\n") + "\n").unwrap();
+        assert_eq!(head_claude(&only).unwrap().2, "claude (cl-only)", "nothing of the person's in it: the provider and the id");
+        let asked = dir.join("cl-asked.jsonl");
+        fs::write(&asked, head.join("\n") + "\n" + &user(None, "plan the release") + "\n").unwrap();
+        assert!(head_claude(&asked).unwrap().2.starts_with("plan the release"), "the first thing the person said is the title");
+
+        let day = home.join("sessions");
+        fs::create_dir_all(&day).unwrap();
+        let x = day.join("rollout-2026-11-12T10-00-00-019a7654-1234-7000-8000-abcdef123456.jsonl");
+        let codex = |text: &str| serde_json::json!({"type": "event_msg", "payload": {"type": "user_message", "message": text}}).to_string();
+        let item = serde_json::json!({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": wake_up}]}}).to_string();
+        fs::write(&x, ["{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/work/b\"}}".to_string(), item, codex(wake_up), codex("fix the sidebar")].join("\n") + "\n").unwrap();
+        assert!(head_codex(&x).unwrap().2.starts_with("fix the sidebar"), "the wake-up sentence typed into the terminal is no question, as a record or as an event");
+        fs::remove_dir_all(&home).unwrap();
+    }
+
+    #[test]
     fn a_home_is_read_through_its_registry_slot_and_a_second_read_sees_the_change() {
         let home = scratch("slot");
         claude_record(&home, "p", "cl-a", "/work/a", "first", 1_000);

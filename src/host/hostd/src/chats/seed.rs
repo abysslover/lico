@@ -380,3 +380,33 @@ pub fn seed_resumed_transcript(shared: &Shared, s: &mut Session, resume_id: &str
     }
     s.last_active_at = crate::session::now_secs();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_transcript_of_a_resumed_claude_chat_has_what_was_said_and_not_the_markup_of_a_command_or_orcas_wake_up() {
+        let text = r#"{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>"}}
+{"type":"user","message":{"role":"user","content":"<local-command-stdout>Kept model as `Sonnet`</local-command-stdout>"}}
+{"type":"user","message":{"role":"user","content":"You have 1 orchestration message. Run `orca orchestration check --terminal term_1`."}}
+{"type":"user","message":{"role":"user","content":"<command-name>/orchestration</command-name>\n<command-args>fix the bug</command-args>"}}
+{"type":"user","message":{"role":"user","content":"plan the release"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+"#;
+        let turns = read_turns_from_jsonl("claude", std::io::Cursor::new(text.as_bytes().to_vec()));
+        assert_eq!(turns, vec![(true, "/orchestration fix the bug".to_string()), (true, "plan the release".to_string()), (false, "done".to_string())]);
+        assert_eq!(turns.iter().filter(|(user, _)| *user).find_map(|(_, first)| derive_auto_title(first)).as_deref(), Some("plan the release"), "a command with words is no title, as before");
+    }
+
+    #[test]
+    fn the_transcript_of_a_resumed_codex_chat_has_no_wake_up_sentence_either_as_a_record_or_as_an_event() {
+        let wake_up = "You have 1 orchestration message. Run `orca orchestration check`.";
+        let item = |text: &str| json!({"type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": text}]}}).to_string();
+        let event = |text: &str| json!({"type": "event_msg", "payload": {"type": "user_message", "message": text}}).to_string();
+        let both = [item(wake_up), item("fix the sidebar")].join("\n");
+        assert_eq!(read_turns_from_jsonl("codex", std::io::Cursor::new(both.into_bytes())), vec![(true, "fix the sidebar".to_string())]);
+        let events = [event(wake_up), event("fix the sidebar")].join("\n");
+        assert_eq!(read_turns_from_jsonl("codex", std::io::Cursor::new(events.into_bytes())), vec![(true, "fix the sidebar".to_string())]);
+    }
+}

@@ -87,6 +87,18 @@ not json at all
     }
 
     #[test]
+    fn a_command_without_words_its_output_and_orcas_wake_up_are_no_turn_and_a_command_with_words_is_one() {
+        let text = r#"{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>"}}
+{"type":"user","message":{"role":"user","content":"<local-command-stdout>Kept model as `Sonnet`</local-command-stdout>"}}
+{"type":"user","message":{"role":"user","content":"You have 1 orchestration message. Run `orca orchestration check --terminal term_1`."}}
+{"type":"user","message":{"role":"user","content":"<command-name>/orchestration</command-name>\n<command-args>fix the bug</command-args>"}}
+{"type":"user","message":{"role":"user","content":"plan the release"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+"#;
+        assert_eq!(count_lines("claude", lines(text)), Some(3), "the command with words, the question and the answer");
+    }
+
+    #[test]
     fn codex_counts_messages_and_not_the_programs_own_context() {
         let text = r#"{"type":"session_meta","payload":{"id":"x","cwd":"/w"}}
 {"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n<cwd>/w</cwd>"}]}}

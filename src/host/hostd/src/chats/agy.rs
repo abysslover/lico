@@ -177,6 +177,20 @@ mod tests {
     }
 
     #[test]
+    fn orcas_wake_up_is_no_title_and_a_conversation_of_nothing_else_has_the_id_for_a_title() {
+        let wake_up = "You have 1 orchestration message. Run `orca orchestration check`.";
+        let (home, _) = home_with(&[
+            line(wake_up, 1_700_000_001_000, "/w", Some(A)),
+            line("the real question", 1_700_000_002_000, "/w", Some(A)),
+            line(wake_up, 1_700_000_003_000, "/w", Some(B)),
+        ]);
+        let got = load(home.path());
+        assert_eq!(got.iter().find(|c| c.id == A).unwrap().title, "the real question", "the wake-up sentence came first and is not the title");
+        let b = got.iter().find(|c| c.id == B).unwrap();
+        assert_eq!(item(b.clone()).title, "agy (22222222)", "nothing but the sentence: the provider and the first eight characters of the id");
+    }
+
+    #[test]
     fn a_time_that_is_plainly_in_seconds_is_taken_as_seconds() {
         let (home, _) = home_with(&[line("q", 1_700_000_123, "/w", Some(A))]);
         assert_eq!(load(home.path())[0].updated, 1_700_000_123);

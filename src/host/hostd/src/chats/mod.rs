@@ -147,6 +147,7 @@ pub(super) fn is_codex_system_text(text: &str) -> bool {
         || t.starts_with("<user_instructions>")
         || t.starts_with("<INSTRUCTIONS>")
         || t.starts_with("# AGENTS.md instructions")
+        || crate::injected::orchestration_wakeup(t)
 }
 
 fn codex_stem_id(stem: &str) -> Option<String> {
@@ -166,7 +167,13 @@ pub(super) fn claude_msg_text(v: &Value, is_user: bool) -> Option<String> {
         return None;
     }
     match v.pointer("/message/content") {
-        Some(Value::String(s)) if !s.trim().is_empty() => Some(s.clone()),
+        Some(Value::String(s)) if !s.trim().is_empty() => {
+            if is_user {
+                crate::injected::person_text(s)
+            } else {
+                Some(s.clone())
+            }
+        }
         Some(Value::Array(blocks)) => {
             let mut parts = Vec::new();
             let mut has_non_tool = false;
@@ -175,7 +182,7 @@ pub(super) fn claude_msg_text(v: &Value, is_user: bool) -> Option<String> {
                 if kind == "text" {
                     has_non_tool = true;
                     if let Some(t) = b.get("text").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
-                        parts.push(t);
+                        parts.extend(if is_user { crate::injected::person_text(t) } else { Some(t.to_string()) });
                     }
                 } else if kind != "tool_result" {
                     has_non_tool = true;
@@ -638,5 +645,54 @@ mod tests {
         assert_eq!(codex_stem_id("-bad"), None);
         assert!(is_codex_system_text("<environment_context>\n<cwd>/w</cwd>"));
         assert!(!is_codex_system_text("Fix pagination in sidebar"));
+    }
+
+    const COMMAND: &str = "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>";
+    const WAKE_UP: &str = "You have 1 orchestration message. Run `orca orchestration check --terminal term_1`.";
+
+    fn user(content: Value) -> Value {
+        json!({"type": "user", "message": {"role": "user", "content": content}})
+    }
+
+    #[test]
+    fn what_a_program_wrote_for_the_person_is_no_message_of_a_claude_chat_and_what_the_person_typed_is() {
+        for markup in [
+            COMMAND,
+            "<local-command-stdout>Kept model as `Sonnet`</local-command-stdout>",
+            "<local-command-stderr>no such command</local-command-stderr>",
+            "<local-command-caveat>The command below was run directly in Claude Code</local-command-caveat>",
+            "<task-notification>\n<task-id>a1</task-id>\n</task-notification>",
+            "<teammate-message teammate_id=\"x\">hello</teammate-message>",
+            WAKE_UP,
+            "You have 2 orchestration messages. Run `orca orchestration check`. A preview of the first one follows.",
+            "  \n You have 1 orchestration message.",
+        ] {
+            assert_eq!(claude_msg_text(&user(json!(markup)), true), None, "{markup}");
+            assert_eq!(claude_msg_text(&user(json!([{"type": "text", "text": markup}])), true), None, "{markup} as a block");
+        }
+        assert_eq!(
+            claude_msg_text(&user(json!("<command-message>orchestration</command-message>\n<command-name>/orchestration</command-name>\n<command-args>fix the bug</command-args>")), true).as_deref(),
+            Some("/orchestration fix the bug"),
+            "a command with words keeps the words, as the person typed them"
+        );
+        assert_eq!(claude_msg_text(&user(json!([{"type": "text", "text": WAKE_UP}, {"type": "text", "text": "the real question"}])), true).as_deref(), Some("the real question"), "a block of markup next to a block of words");
+        for said in ["the real question", "You have 3 apples", "Do you have 1 orchestration message?", "please explain the <command-name> tag", "<b>bold</b> text"] {
+            assert_eq!(claude_msg_text(&user(json!(said)), true).as_deref(), Some(said), "{said}");
+        }
+        let agent = json!({"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": WAKE_UP}]}});
+        assert_eq!(claude_msg_text(&agent, false).as_deref(), Some(WAKE_UP), "only what stands for the person is judged: an agent's answer is kept");
+    }
+
+    #[test]
+    fn orcas_wake_up_is_no_prompt_of_a_codex_chat_and_no_line_that_can_title_a_chat() {
+        assert!(is_codex_system_text(WAKE_UP));
+        assert!(is_codex_system_text("You have 4 orchestration messages. Run `orca orchestration check`."));
+        assert!(!is_codex_system_text("You have 3 apples"));
+        for line in [COMMAND, WAKE_UP, "<local-command-stdout>Kept model</local-command-stdout>", "<task-notification>x</task-notification>", "<teammate-message id=\"y\">x</teammate-message>"] {
+            assert_eq!(derive_auto_title(line), None, "{line}");
+        }
+        assert_eq!(derive_auto_title(&format!("{COMMAND}\nthe real question")).as_deref(), Some("the real question"), "the lines of markup are passed over as a slash line is");
+        assert_eq!(derive_auto_title("You have 3 apples").as_deref(), Some("You have 3 apples"));
+        assert_eq!(clean_title(WAKE_UP, "agy", "11111111-aaaa"), "agy (11111111)", "a chat of nothing else has the provider and the id for a title");
     }
 }
