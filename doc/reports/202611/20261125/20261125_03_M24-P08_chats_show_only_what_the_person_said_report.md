@@ -2,7 +2,7 @@
 
 - Version: 1.0.0
 - Date: 2026-11-25
-- Branch: `phase/M24-P08-chats-only-what-was-said` from `phase/M24-P07-agent-pane-pause` (`88750bd`); code `CODE_SHA`; not pushed (P07 and P08 are published together, on the owner's word)
+- Branch: `phase/M24-P08-chats-only-what-was-said` from `phase/M24-P07-agent-pane-pause` (`88750bd`); code `d01f923`; not pushed (P07 and P08 are published together, on the owner's word)
 - Source: the owner's word in the chat on 2026-11-25, before the push of P07 (quoted in the [plan](../../../plans/202611/20261125/20261125_03_M24-P08_chats_show_only_what_the_person_said_plan.md))
 - Labels: MEASURED (a run), READ (from the code or the plan), COMPUTED.
 
@@ -30,7 +30,7 @@
 - A host test (`tests/test_chats_only_what_was_said.py`): a real host, a synthetic Claude home and an `agy` history, `session.chats`: the titles and the counts are what the table says and no markup and no sentence is in the answer. With the rule switched off it fails with the symptom of the owner's words (title `<command-na...`, `4` turns instead of `2`).
 - **Mutation checks**: `20` mutants of the rule (the number, the plural, the white space, each markup, the command's words, the slash, the element's text, each title line, each reader, the side that is judged), the unit tests of the chats, the rule and the titles: all `20` killed. One survived the first time (a number is needed: `You have  orchestration message` with two spaces and no number) and a case for it was added.
 - `cargo xtask check`, the module-graph tests (`19`) and clippy (nothing new in the changed files) pass.
-- The commit hook: HOOK_RESULT
+- **The commit hook refused once**: the new test file was not listed in `tests/testmap.toml` (my omission, `tests/test_selection.py`); that run had `598` of `599` tests green in `166.6 s`, peak `1,023.7 MiB`, no bound exceeded. The second run passed (`39` tests run, the rest taken from the receipt of the first). Nothing was bypassed.
 
 ## 4. What is not decided (the owner's) and known limits
 

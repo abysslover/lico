@@ -1,6 +1,6 @@
 # M24-P08 Plan — Chats Show Only What The Person Said
 
-- Status: in_progress (2026-11-25)
+- Status: done (2026-11-25), code `d01f923`; not pushed (the prefix `phase/M24-P08-` was approved by the owner at commit time)
 - Version: 1.0.0
 - Branch: `phase/M24-P08-chats-only-what-was-said` from `phase/M24-P07-agent-pane-pause` (`88750bd`; P07 is not pushed, so the two phases are published together)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row before the publication of P07
@@ -43,14 +43,22 @@ The title of a chat whose only records are those is what it is for any chat with
 
 ## Steps
 
-1. [ ] **Tests first**, run red where the code they call exists: the reading function (`claude_msg_text`, `is_codex_system_text`), the heads of a Claude and a Codex transcript (`head_claude`, `head_codex`), the count (`turns::count_lines`), the transcript read for a resume (`read_turns_from_jsonl`), the `agy` history (`agy::load`) and `derive_auto_title`; the host test (`session.chats` over a synthetic home).
-2. [ ] **The module** `injected.rs` (`person_text`, `orchestration_wakeup`, `not_a_title_line`) and the three call sites; `testmap.toml` entry.
-3. [ ] **Mutation checks** of the new rule (one edit at a time, the file restored and checked).
-4. [ ] **Words**: the guide `doc/manual_end_to_end.md` (what Chats shows), the protocol note is unchanged (no field changed).
-5. [ ] `cargo xtask check` and the module-graph tests by hand (the module graph must stay at the pinned cycle), the changed-files suite through the commit hook.
-6. [ ] **The owner's build** (`lico gui` shows the last commit); the report.
+1. [x] **Tests first**, run red where the code they call exists: the reading function (`claude_msg_text`, `is_codex_system_text`), the heads of a Claude and a Codex transcript (`head_claude`, `head_codex`), the count (`turns::count_lines`), the transcript read for a resume (`read_turns_from_jsonl`), the `agy` history (`agy::load`) and `derive_auto_title`; the host test (`session.chats` over a synthetic home).
+2. [x] **The module** `injected.rs` (`person_text`, `orchestration_wakeup`, `not_a_title_line`) and the three call sites; `testmap.toml` entry.
+3. [x] **Mutation checks** of the new rule (one edit at a time, the file restored and checked).
+4. [x] **Words**: the guide `doc/manual_end_to_end.md` (what Chats shows), the protocol note is unchanged (no field changed).
+5. [x] `cargo xtask check` and the module-graph tests by hand (the module graph must stay at the pinned cycle), the changed-files suite through the commit hook.
+6. [x] **The owner's build** (`lico gui` shows the last commit); the report.
 
 ## Not decided here
 
 - Push, pull request and merge (the owner's word; P07 and P08 are published together). Level C and G3 are as before.
 - Whether `[PRI-HANDOFF]` prompts should be hidden as well (D4).
+
+## Results (2026-11-25)
+
+- **Tests first, run red**: `7` unit tests were written against the readers that already existed and all `7` failed before the module was wired; they pass after (`53` tests of `chats::`, `injected::` and `folders::`; the host unit tests are `1142`). The new module's own tests were written with it.
+- **The commit** `d01f923` (13 files, `+428 -5`): `injected.rs` (`person_text`, `orchestration_wakeup`, `not_a_title_line`), its three call sites (`claude_msg_text`, `is_codex_system_text`, `derive_auto_title`; `folders.rs` stays at its `800` lines), the host test `tests/test_chats_only_what_was_said.py`, the entry of the module and of the test in `tests/testmap.toml`, the guide `1.22.0`, the plan and the report. D1 to D5 held as written; no limit was raised and no version was bumped.
+- **Mutation checks**: `20` mutants, all killed (one survived the first time: a number is needed, `You have  orchestration message`; a case was added and it was killed). The host test also fails with the rule switched off, with the symptom of the owner's words (title `<command-na...`, `4` turns instead of `2`).
+- **The module graph**: `247` modules (one more), the cycle of the hubs stays at `50`; `cargo xtask check`, the module-graph tests (`19`) and clippy (nothing new in the changed files) pass.
+- **The commit hook refused once**: the new test file was not listed in `tests/testmap.toml` (`tests/test_selection.py`, my omission); the same run had `598` of `599` tests green in `166.6 s`, peak `1,023.7 MiB` (no bound exceeded). The second run passed (`39` tests run, the rest taken from the receipt of the first). Nothing was bypassed.
