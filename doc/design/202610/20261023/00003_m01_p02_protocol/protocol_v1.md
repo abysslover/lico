@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.11
+Version: 0.1.12
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -212,6 +212,14 @@ The setting `clipboard_write` (SF-06) governs the agent tool `clipboard_write` o
 person's approval per call): off unless the file `settings.json` in the host's state folder (the parent of the handoff folder) is a regular file of the user,
 at most 4096 bytes, not writable by group or others, holding a JSON object whose `clipboard_write` is the boolean `true`. Anything else, a missing file included,
 is off. It is read at each use, reported in `status` under `"settings": {"clipboard_write": bool}`, and toggled over the local socket by `{"op": "settings.set", "clipboard_write": bool}` (used by the window's View menu; never exposed on HTTP or the tool connection).
+
+The setting `agent_panes` (M24-P05b) is the person's switch for the tool `pane` (M24-P05): **on by default** (the owner's answer of 2026-11-24), so a missing file, a file without the key and `true`
+are on, and any doubt about a file that is there is **off** (not a regular file, a link, writable by group or others, not a JSON object, a value that is no boolean). It is read at every
+`tools/list`, every `tools/call` and every `status`, so a change needs no restart; off, the tool is not listed, a call of it is refused (`off: ...`) and the status carries no cue.
+`status` reports it in `"settings": {"agent_panes": bool}` and, always, `"pane_cues": [{"tab": "t1", "by": "<session name>", "did": "typed", "ms": 1200}, ...]`: what agents did in
+the person's pane tabs during the last eight seconds (`did` is one of `typed`, `pressed a key`, `clicked`, `went to a page`, `opened this tab`; `ms` is how old the act is, because the
+window's clock is not the host's; never what was typed). `{"op": "settings.set", "agent_panes": false}` also forgets every cue. Like `clipboard_write` it is toggled over the local socket only
+(`lico settings --agent-panes on|off`, the window's `More > Settings` and its stop key `Ctrl+Alt+Esc`), never over HTTP or the tool connection.
 
 ## Pasted picture (M02-P04 S05a)
 
