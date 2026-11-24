@@ -1,9 +1,9 @@
 # M24 — One Touch To Start, Few Words, And Every Pane Can Be Driven By An Agent
 
-- Status: in_progress (2026-11-24); G1 approved by the owner in the chat on 2026-11-24 ("승인, P01부터"); P01 (the Phase 0 report, no code) is done and the owner's picks are in (the menu as the lead classified it, the pane tools to every session, the account screen as cards with five small pictures); nothing is implemented yet. The research below is read from the code and from the names (never the values) of the agents' own settings.
-- Version: 0.8.0
+- Status: implemented (2026-11-25), release `0.8.1` built (`481eda0`), the release not pushed, inspection by the owner (G3) pending; before that in_progress (2026-11-24); G1 approved by the owner in the chat on 2026-11-24 ("승인, P01부터"); P01 (the Phase 0 report, no code) is done and the owner's picks are in (the menu as the lead classified it, the pane tools to every session, the account screen as cards with five small pictures); nothing is implemented yet. The research below is read from the code and from the names (never the values) of the agents' own settings.
+- Version: 0.9.0
 - Project: Lico
-- Updated: 2026-11-24
+- Updated: 2026-11-25
 - Follows: [M23](../20261118/20261118_02_M23_terminal_agents_milestone.md) (P08 and P09 are the last security phases of it); level C of M23-P04 (`agy` as a Lico session) comes after this milestone, in the owner's order of 2026-11-24.
 
 ## The owner's words (the source, in the chat, 2026-11-24)
@@ -42,7 +42,7 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 | M24-P03 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_04_M24-P03_account_screen_in_pictures_plan.md), code `45e6caf`; the owner's look is next)** **The account screen in pictures**: the account list as cards with the provider's picture and a state disc, the sign-in as the shortest path the provider allows, almost no words | the account screen with no sentence on it |
 | M24-P04 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_05_M24-P04_menu_diet_plan.md), code `1b9b7a8`; the owner's look is next)** **The menu on show is the owner's short list**; what is not on it is reached from one place (a search box or a "more" entry: to decide in P01) | the menu bar with the owner's list |
 | M24-P05 | **(done 2026-11-24, [plan](../../../plans/202611/20261124/20261124_06_M24-P05_pane_tool_plan.md), code `189f098`; P05b, the cue, the off switch and the stop key, [plan](../../../plans/202611/20261124/20261124_07_M24-P05b_agent_pane_switch_plan.md), code `f0c7f6a`)** **Every pane can be driven by an agent**: tools for the terminal tab (read the screen, type, keys) and the browser tab (read, click, type) with the same grant or ask as the screen tools; the CLI and the tool channel say the same | an agent types `ls` into a terminal tab after the person granted it, and cannot without |
-| M24-P06 | The guide, the README, the CHANGELOG, the report and the release as **`0.8.1`** (a patch: the owner's rule of 2026-11-24 is that the minor is raised only for a real minor change, which level C is) | |
+| M24-P06 | **(done 2026-11-25, [plan](../../../plans/202611/20261125/20261125_01_M24-P06_release_plan.md), [report](../../../reports/202611/20261125/20261125_01_M24-P06_one_touch_window_panes_driven_and_0_8_1_report.md); the version in `4a2ff4a`, the Codex pin in `481eda0`; not pushed)** The guide, the README, the CHANGELOG, the report and the release as **`0.8.1`** (a patch: the owner's rule of 2026-11-24 is that the minor is raised only for a real minor change, which level C is) | `lico --version` says `lico 0.8.1`; the CHANGELOG entry and the report |
 
 ## Questions for the owner (the lead's recommendations first)
 
@@ -61,4 +61,9 @@ The order: "P08, P09, UI 단순화 -> 레벨 C로 가면 됨". Then, asked what 
 
 ## When done
 
-(Filled in at the milestone's close.)
+Written 2026-11-25, when the six phases were done; the owner's acceptance (G3) is still to come.
+
+- **Done**: a click on Claude, Codex or Local LLM starts a session at once (P02); the account screen is cards and five pictures (P03); the menus show nine lines and a fifth menu `More` holds the rest (P04); an agent can list, read, type, press keys, click, go to a page and open a tab in the person's terminal and browser tabs, on for every Lico session (P05), with a cue in the pane's header, a switch that is on by default and a stop key, Ctrl+Alt+Esc (P05b); the release is `lico 0.8.1` (P06, a patch by the owner's rule: the minor moves with level C). The owner's answers of 2026-11-24 are built as given (Q1 the gate: always allowed by default; Q4 the menu: the lead's classification; the pane tools go to every Lico session; the account screen is cards with five small pictures); Q2 (the defaults of a one-touch session) is built as the lead recommended and the owner has not said otherwise.
+- **Not done**: the wizard's remaining words (the second and third screens are still there for what cannot start by itself, and for Shift); a cue in the tab strip; a pause instead of the stop key's switch; a test of the `pane` tool against a running browser engine; Q3 (where a person changes the model and the permission after the start: a picture each in the session's header) was not built, the agent's own settings are used.
+- **What it cost the checks**: the cycle of the hubs grew from `48` to `50` modules (`pane`, `mcp`), the build's peak after a version change is over its bound by `14 MiB`, the cold run of the suite is at the edge of its `180 s` at the machine's usual load, and a changed-files run does not select the tools' tests (the [M24 report](../../../reports/202611/20261125/20261125_01_M24-P06_one_touch_window_panes_driven_and_0_8_1_report.md) sections 4 and 5).
+- **The owner's**: G3 for M16 to M24; push, pull request and merge of the release; the open items of the report's section 5.
