@@ -3,21 +3,21 @@
  "provider": "codex",
  "path": "codex app-server over standard input and output (JSON lines)",
  "version": {
-  "cli": "0.169.0",
+  "cli": "0.172.0",
   "pinned": true,
-  "checked": "2026-11-17",
+  "checked": "2026-11-25",
   "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
-  "fixtures_recorded_with": "0.163.0 (still valid against the 0.169.0 schema, checked by the contract test)"
+  "fixtures_recorded_with": "0.163.0 (still valid against the 0.172.0 schema, checked by the contract test)"
  },
  "protocol_schema": {
   "generated_with": "codex app-server generate-json-schema",
   "sha256": {
-   "ClientRequest.json": "e3e0ba22dec2b229df277fac2de7405c71a351cda248ff6e6bf3620fe5a7f70b",
-   "ServerRequest.json": "58df585160941977d6e7a0ce458750b0c0d37987ce326fc4c880bf1dfbd3802f",
-   "ServerNotification.json": "e6b1ad0b95fe3b1ebe3875d4a011aaece6f5b626e4810eab5cacb410bceece3f",
+   "ClientRequest.json": "84e65e42389d5b084664b18ddeedf30db7375a9d466787ff6efabd102f98ea65",
+   "ServerRequest.json": "b66ea26aed97cf0e5bfc63f7676056cd7a2377321e45db5ce4c8d9e5f66b3693",
+   "ServerNotification.json": "0aac0098efb5d5c201cf88c770c9a0aeab6ec0473cb117a994e0a5c2a44d781b",
    "ClientNotification.json": "706cf248d75027c84a3c63348d0ed507182e8eba40069dd17541793de029145a"
   },
-  "client_requests": 109,
+  "client_requests": 110,
   "server_requests": [
    "account/chatgptAuthTokens/refresh",
    "applyPatchApproval",
@@ -30,7 +30,7 @@
    "item/tool/requestUserInput",
    "mcpServer/elicitation/request"
   ],
-  "server_notifications": 86
+  "server_notifications": 87
  },
  "handshake": [
   "initialize",
