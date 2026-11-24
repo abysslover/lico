@@ -408,8 +408,8 @@ fn serve_one(mut stream: TcpStream, shared: &Arc<Shared>, port: u16, limits: &Li
         Err(status) => return refuse(&mut stream, status, "", if status == 413 { TOO_LARGE } else { "bad request" }),
     };
     // the person's setting is read for each message, so that switching it needs no restart (SF-06)
-    let writing = crate::clipboard::settings::clipboard_write_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir));
-    let big = match mcp::handle_with(&request.body, writing, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
+    let switches = mcp::Switches::read(&shared.cfg.handoff_dir);
+    let big = match mcp::handle_with(&request.body, switches, &mut |name, arguments| run(shared, &session, name, arguments), &mut || begin(&credential)) {
         Outcome::Accepted => {
             http::write_response(&mut stream, 202, "", "");
             false

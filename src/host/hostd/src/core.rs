@@ -70,7 +70,7 @@ pub struct Shared {
     pub started: Instant,
     pub pending_creates: AtomicUsize,
     pub accounts: Mutex<crate::accounts::Accounts>,
-    pub logins: crate::login::Logins, pub clip: crate::clipwrite::Relay, pub calls: crate::call_room::CallStore, // the second: the clipboard writes that wait for a window
+    pub logins: crate::login::Logins, pub clip: crate::clipwrite::Relay, pub calls: crate::call_room::CallStore, pub panes: crate::pane::Touches, // the second: the clipboard writes that wait for a window
 }
 
 pub type Reply = Result<Map<String, Value>, &'static str>;
@@ -283,7 +283,7 @@ pub fn status(shared: &Shared) -> Reply {
     crate::pending::sweep_all(shared); // a request that has waited too long ends here, and its asker is told
     let list: Vec<Arc<Mutex<Session>>> = shared.sessions.read().unwrap().clone();
     let entries: Vec<Value> = list.iter().map(|s| status_entry(shared, &s.lock().unwrap())).collect();
-    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "calls": crate::call_room::status_json(shared), "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared)})))
+    Ok(obj(json!({"pid": std::process::id(), "build": build_id(), "logins_running": crate::login::running_count(shared), "sessions": entries, "calls": crate::call_room::status_json(shared), "host_memory": crate::memory::host_json(), "settings": crate::clipboard::settings::status_json(&shared.cfg.handoff_dir), "real_screen": crate::computer::real::status_json(shared), "pane_cues": crate::pane::cues_json(shared)})))
 }
 
 /// Which executable this process runs: a hash of its own file as it was started (a replaced file on disk does not change it), so a window and a host

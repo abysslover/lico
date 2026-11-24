@@ -109,20 +109,14 @@ impl App {
         false
     }
 
+    /// The one stop key of the window stops what agents do on their own: real-screen control, and (`M24-P05b`) the agents' control of the panes.
     pub(crate) fn stop_real_screen(&mut self) {
         let reply = self.host_call(json!({"op": "real_screen.stop"}));
         self.ui.real_screen.clear();
+        let real = (reply["ok"] == json!(1)).then(|| reply["stopped"].as_u64().unwrap_or(0));
+        let panes = self.stop_agent_panes();
         self.send("{\"op\":\"status\"}");
-        if reply["ok"] == json!(1) {
-            let n = reply["stopped"].as_u64().unwrap_or(0);
-            self.ui.flash = Some(if n > 0 {
-                "Real-screen control stopped.".into()
-            } else {
-                "Real-screen control was already off.".into()
-            });
-        } else {
-            self.ui.flash = Some("Could not stop real-screen control.".into());
-        }
+        self.ui.flash = Some(super::pane_cue::stop_note(real, panes));
         self.dirty = true;
     }
 

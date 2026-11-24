@@ -190,3 +190,149 @@ fn the_listing_names_each_tab_with_the_few_fields_an_agent_needs_and_says_that_t
     assert_eq!((none["terminals"].clone(), none["browser"].clone()), (json!([]), json!([])), "a host with neither answers an empty listing");
 }
 
+
+// ---------------------------------------------------------------- the cue and the switch (M24-P05b)
+
+use std::time::Duration;
+
+#[test]
+fn an_action_that_changes_a_tab_has_a_word_for_the_header_and_list_and_read_have_none() {
+    assert_eq!([did_word("type"), did_word("key"), did_word("click"), did_word("go"), did_word("open")], [Some("typed"), Some("pressed a key"), Some("clicked"), Some("went to a page"), Some("opened this tab")]);
+    for none in ["list", "read", "", "reboot", "Type"] {
+        assert_eq!(did_word(none), None, "{none:?}");
+    }
+}
+
+#[test]
+fn a_touch_shows_with_its_age_until_it_is_eight_seconds_old_and_not_after() {
+    let (touches, t0) = (Touches::default(), Instant::now());
+    touches.note("t1", "Claude 1", "typed", t0);
+    assert_eq!(touches.cues(t0), vec![json!({"tab": "t1", "by": "Claude 1", "did": "typed", "ms": 0})]);
+    assert_eq!(touches.cues(t0 + Duration::from_millis(1234)), vec![json!({"tab": "t1", "by": "Claude 1", "did": "typed", "ms": 1234})]);
+    assert_eq!(touches.cues(t0 + Duration::from_millis(CUE_MS - 1)).len(), 1, "one millisecond before the end it shows");
+    assert!(touches.cues(t0 + Duration::from_millis(CUE_MS)).is_empty(), "at the end it does not");
+    assert!(touches.cues(t0 + Duration::from_secs(60)).is_empty());
+    assert_eq!(CUE_MS, 8000);
+}
+
+#[test]
+fn the_last_touch_of_a_tab_is_the_one_shown_and_each_tab_has_its_own_in_the_order_of_the_ids() {
+    let (touches, t0) = (Touches::default(), Instant::now());
+    touches.note("b1", "Codex", "clicked", t0);
+    touches.note("t2", "Claude 1", "typed", t0 + Duration::from_millis(100));
+    touches.note("b1", "Claude 1", "went to a page", t0 + Duration::from_millis(500)); // the second touch of b1 comes after t2's: the order of the cues is the tabs', not the order the touches came in
+    let got = touches.cues(t0 + Duration::from_millis(600));
+    assert_eq!(got, vec![json!({"tab": "b1", "by": "Claude 1", "did": "went to a page", "ms": 100}), json!({"tab": "t2", "by": "Claude 1", "did": "typed", "ms": 500})]);
+}
+
+#[test]
+fn the_touches_kept_are_few_and_the_old_ones_go_when_a_new_one_comes() {
+    let (touches, t0) = (Touches::default(), Instant::now());
+    for i in 0..500 {
+        touches.note(&format!("t{i}"), "Claude 1", "typed", t0);
+    }
+    assert!(touches.len() <= MAX_TOUCHES, "{} kept", touches.len());
+    assert_eq!(MAX_TOUCHES, 64);
+    let late = t0 + Duration::from_millis(CUE_MS + 1);
+    touches.note("b9", "Codex", "clicked", late);
+    assert_eq!(touches.len(), 1, "what is past its time went when the new one came");
+    assert_eq!(touches.cues(late).len(), 1);
+}
+
+#[test]
+fn the_name_in_a_cue_is_the_name_the_person_gave_else_the_title_else_the_id_and_it_is_clean_and_short() {
+    assert_eq!(who_of(Some("Reviewer"), Some("fix the build"), "s0a1b2c3d"), "Reviewer");
+    assert_eq!(who_of(None, Some("fix the build"), "s0a1b2c3d"), "fix the build");
+    assert_eq!(who_of(None, None, "s0a1b2c3d"), "s0a1b2c3d");
+    assert_eq!(who_of(Some("   "), Some("title"), "s1"), "title", "a blank name is none");
+    assert_eq!(who_of(Some("a\u{1b}[31mb\u{202e}c\nd"), None, "s1"), "a[31mbcd", "no control or reordering character reaches the person's header");
+    let long = "x".repeat(40);
+    let got = who_of(Some(&long), None, "s1");
+    assert_eq!((got.chars().count(), got.ends_with('\u{2026}')), (24, true), "cut at 24 characters with a mark: {got}");
+    assert_eq!(who_of(Some(&"y".repeat(24)), None, "s1"), "y".repeat(24), "24 is not cut");
+}
+
+#[test]
+fn the_refusal_while_the_panes_are_off_says_who_decided_and_hints_at_no_way_round() {
+    assert!(SWITCHED_OFF.starts_with("off: the person has switched"), "{SWITCHED_OFF}");
+    for word in ["settings", "lico ", "--agent-panes", "Ctrl+Alt"] {
+        assert!(!SWITCHED_OFF.contains(word), "the answer to an agent does not teach how to undo the person's stop: {SWITCHED_OFF}");
+    }
+}
+
+// ---------------------------------------------------------------- the switch read at each call (M24-P05b)
+
+fn world() -> (Arc<Shared>, std::path::PathBuf) {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::RwLock;
+    let dir = std::env::temp_dir().join(format!("lico_pane_{}", crate::core::random_hex(6)));
+    std::fs::create_dir_all(dir.join("log")).unwrap();
+    std::fs::create_dir_all(dir.join("accounts")).unwrap();
+    let cfg = crate::core::Config {
+        login_bin: None, login_args: Vec::new(), login_timeout: 60, log_dir: dir.join("log"), agent: PathBuf::new(),
+        retain: 500, window: 20, queue_bytes: 1 << 20, payload: 4096, max_sessions: 8, codex: PathBuf::new(), codex_args: Vec::new(),
+        claude: PathBuf::new(), claude_args: Vec::new(), cred_bin: PathBuf::new(), cred_args: Vec::new(), job_bin: PathBuf::new(),
+        cred_dir: dir.join("cred"), workspace_root: dir.join("work"), handoff_dir: dir.join("handoff"),
+        accounts_dir: dir.join("accounts"), registry_dir: dir.join("registry"), ssh_bin: PathBuf::new(), ssh_config: None, text: true, realistic_text: false,
+    };
+    let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap();
+    let shared = Arc::new(Shared {
+        cfg, sessions: RwLock::new(Vec::new()), views: std::sync::Mutex::new(HashMap::new()), started: Instant::now(),
+        pending_creates: AtomicUsize::new(0), accounts: std::sync::Mutex::new(accounts), logins: std::sync::Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(), panes: Default::default(),
+    });
+    (shared, dir)
+}
+
+fn switch(shared: &Shared, on: bool) {
+    crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch { agent_panes: Some(on), ..Default::default() }).unwrap();
+}
+
+#[test]
+fn a_call_while_the_panes_are_off_is_refused_before_anything_is_planned_or_run_and_on_it_goes_through_again() {
+    let (shared, dir) = world();
+    let list = args(json!({"action": "list"}));
+    assert!(matches!(pane(&shared, "s-switch-1", &list), Ok(Answer::Text(_))), "no setting: on");
+    switch(&shared, false);
+    assert_eq!(pane(&shared, "s-switch-1", &list).unwrap_err(), SWITCHED_OFF);
+    assert_eq!(pane(&shared, "s-switch-1", &args(json!({"action": "reboot"}))).unwrap_err(), SWITCHED_OFF, "not even a bad call is judged: the answer is the person's stop");
+    assert_eq!(pane(&shared, "s-switch-1", &args(json!({}))).unwrap_err(), SWITCHED_OFF);
+    switch(&shared, true);
+    assert!(matches!(pane(&shared, "s-switch-1", &list), Ok(Answer::Text(_))), "on again at the next call, no restart");
+    assert!(pane(&shared, "s-switch-1", &args(json!({"action": "reboot"}))).unwrap_err().starts_with("bad_request"), "and a bad call is a bad call again");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_step_that_fails_leaves_no_cue_and_no_cue_is_told_while_the_panes_are_off_nor_after_a_stop() {
+    let (shared, dir) = world();
+    let typed = args(json!({"action": "type", "tab": "t1", "text": "x"}));
+    assert!(pane(&shared, "s-switch-2", &typed).is_err(), "a host without terminals: the step fails");
+    assert_eq!(cues_json(&shared), json!([]), "what did not happen leaves nothing");
+    shared.panes.note("t1", "Claude 1", "typed", Instant::now());
+    assert_eq!(cues_json(&shared).as_array().unwrap().len(), 1, "a touch is told while the panes are on");
+    switch(&shared, false);
+    assert_eq!(cues_json(&shared), json!([]), "off: nothing is told, the person asked for a stop");
+    switch(&shared, true);
+    assert_eq!(cues_json(&shared), json!([]), "and what was done before the stop does not come back with the switch");
+    shared.panes.note("t1", "Claude 1", "typed", Instant::now());
+    assert_eq!(cues_json(&shared).as_array().unwrap().len(), 1, "a new touch is told");
+    // the file changed by hand, not through the host's own stop: the touch is still kept, and still not told
+    crate::clipboard::settings::update_settings(&shared.cfg.handoff_dir, crate::clipboard::settings::Patch { agent_panes: Some(false), ..Default::default() }).unwrap();
+    assert_eq!(shared.panes.len(), 1);
+    assert_eq!(cues_json(&shared), json!([]), "off in the file: nothing is told, whoever changed the file");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_stop_forgets_the_touches_and_switching_on_or_changing_another_setting_does_not() {
+    let (shared, dir) = world();
+    shared.panes.note("t1", "Claude 1", "typed", Instant::now());
+    switch(&shared, true);
+    crate::clipboard::settings::apply_settings(&shared, crate::clipboard::settings::Patch { notifications: Some(false), ..Default::default() }).unwrap();
+    assert_eq!(shared.panes.len(), 1, "only the stop forgets");
+    switch(&shared, false);
+    assert_eq!(shared.panes.len(), 0);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -151,3 +151,14 @@ fn the_named_keys_table_has_the_keys_of_a_terminal_and_not_the_modifiers() {
     assert_eq!(named_key(NamedKey::Shift), None);
     assert_eq!(named_key(NamedKey::Alt), None);
 }
+
+#[test]
+fn ctrl_alt_esc_is_the_windows_stop_key_and_never_goes_to_the_shell_while_the_other_escapes_do() {
+    let both = Held { ctrl: true, alt: true, ..none() };
+    assert!(matches!(go(Logical::Named(NamedKey::Escape), None, both), Routed::Pass), "the key that stops what agents do on their own must reach the window with a terminal in front");
+    assert!(matches!(go(Logical::Named(NamedKey::Escape), None, Held { ctrl: true, alt: true, shift: true, ..none() }), Routed::Pass), "with Shift too");
+    assert_eq!(sent(Logical::Named(NamedKey::Escape), None, none()), b"\x1b");
+    assert_eq!(sent(Logical::Named(NamedKey::Escape), None, alt()), b"\x1b\x1b", "Alt+Esc stays the shell's");
+    assert!(matches!(go(Logical::Named(NamedKey::Escape), None, ctrl()), Routed::Send(_)), "Ctrl+Esc stays the shell's");
+    assert!(matches!(go(Logical::Named(NamedKey::Escape), None, ctrl_shift()), Routed::Send(_)), "Ctrl+Shift+Esc stays the shell's");
+}

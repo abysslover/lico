@@ -194,7 +194,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("clipboard.done", "error") => valid_str(value, 32),
             ("clipboard.done", "bytes") => in_range(value, 0, i64::MAX),
             ("clipboard.done", "width" | "height") => in_range(value, 1, 8000),
-            ("settings.set", "clipboard_write" | "notifications" | "show_hidden") => value.is_boolean(),
+            ("settings.set", "clipboard_write" | "agent_panes" | "notifications" | "show_hidden") => value.is_boolean(),
             ("settings.set", "native_claude" | "native_codex") => matches!(value.as_str(), Some("on" | "off" | "ask")),
             ("settings.set", "group_by") => matches!(value.as_str(), Some("account" | "workspace")),
             ("settings.set", "font_px") => in_range(value, crate::clipboard::settings::MIN_FONT_PX, crate::clipboard::settings::MAX_FONT_PX),
@@ -239,6 +239,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
         && (op != "settings.set"
             || [
                 "clipboard_write",
+                "agent_panes",
                 "notifications",
                 "group_by",
                 "font_px",

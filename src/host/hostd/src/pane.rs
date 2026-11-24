@@ -6,8 +6,8 @@
 //! `plan` is the pure part (an action's arguments to the operations it becomes, or why not); `pane` runs it.
 
 use serde_json::{json, Map, Value};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::calls::{counted, window};
 use crate::capture::out::AGENT_LIMIT;
@@ -23,6 +23,14 @@ const USAGE: &str = "bad_request: pane needs `action` (list, read, type, key, cl
 pub(crate) const MAX_TEXT: usize = 4096;
 /// The longest screen text one `read` of a terminal returns, in bytes.
 const MAX_SCREEN: usize = 16 * 1024;
+/// What an agent gets while the person has switched the panes off (`M24-P05b`). It names no way to undo the stop: that is the person's.
+pub(crate) const SWITCHED_OFF: &str = "off: the person has switched the agents' control of their panes off";
+/// How long a pane's header says that an agent acted there, in milliseconds (`M24-P05b`).
+pub(crate) const CUE_MS: u64 = 8000;
+/// The most tabs whose last touch is kept (a tab has one; the ids are few, this is a ceiling).
+pub(crate) const MAX_TOUCHES: usize = 64;
+/// The longest name of a session in a cue, in characters.
+const MAX_BY: usize = 24;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Pane {
@@ -277,6 +285,89 @@ fn call(shared: &Arc<Shared>, op: &'static str, mut fields: Map<String, Value>) 
     }
 }
 
+/// The word the person's header uses for what an action did, none for the actions that change nothing.
+pub(crate) fn did_word(action: &str) -> Option<&'static str> {
+    match action {
+        "type" => Some("typed"),
+        "key" => Some("pressed a key"),
+        "click" => Some("clicked"),
+        "go" => Some("went to a page"),
+        "open" => Some("opened this tab"),
+        _ => None,
+    }
+}
+
+/// What is shown of a session in a cue: the name the person gave, else its title, else its id; clean of control and reordering characters and cut at 24 characters.
+pub(crate) fn who_of(name: Option<&str>, title: Option<&str>, id: &str) -> String {
+    let clean = |text: &str| text.chars().filter(|c| !crate::folders::refused_char(*c)).collect::<String>().trim().to_string();
+    let chosen = [name, title].into_iter().flatten().map(clean).find(|t| !t.is_empty()).unwrap_or_else(|| id.to_string());
+    if chosen.chars().count() <= MAX_BY {
+        return chosen;
+    }
+    chosen.chars().take(MAX_BY - 1).chain(std::iter::once('\u{2026}')).collect()
+}
+
+struct Touch {
+    tab: String,
+    by: String,
+    did: &'static str,
+    at: Instant,
+}
+
+/// What an agent did last in each tab, for the cue in the pane's header: kept in memory only, never what was typed, and gone eight seconds after.
+#[derive(Default)]
+pub struct Touches(Mutex<Vec<Touch>>);
+
+impl Touches {
+    /// Remember that session `by` did `did` in `tab` at `now`, in place of what the tab had; what is past its time goes, and no more than 64 tabs are kept.
+    pub(crate) fn note(&self, tab: &str, by: &str, did: &'static str, now: Instant) {
+        let mut all = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let limit = Duration::from_millis(CUE_MS);
+        all.retain(|t| t.tab != tab && now.saturating_duration_since(t.at) < limit);
+        if all.len() >= MAX_TOUCHES {
+            all.remove(0);
+        }
+        all.push(Touch { tab: tab.into(), by: by.into(), did, at: now });
+    }
+
+    /// The touches that are still to be shown at `now`, in the order of the tab ids, each with its age in milliseconds (the window's clock is not the host's: it is told how old a cue is).
+    pub(crate) fn cues(&self, now: Instant) -> Vec<Value> {
+        let all = self.0.lock().unwrap_or_else(|p| p.into_inner());
+        let mut shown: Vec<&Touch> = all.iter().filter(|t| now.saturating_duration_since(t.at) < Duration::from_millis(CUE_MS)).collect();
+        shown.sort_by(|a, b| a.tab.cmp(&b.tab));
+        shown.iter().map(|t| json!({"tab": t.tab, "by": t.by, "did": t.did, "ms": now.saturating_duration_since(t.at).as_millis() as u64})).collect()
+    }
+
+    /// Forget every touch: the person switched the control off, and a cue of what was done before must not come back with the switch.
+    pub(crate) fn clear(&self) {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.0.lock().unwrap_or_else(|p| p.into_inner()).len()
+    }
+}
+
+/// The cues for the person's window, as `status` carries them: none while the person has the control switched off (what an agent did before the stop is not news).
+pub(crate) fn cues_json(shared: &Shared) -> Value {
+    if !crate::clipboard::settings::agent_panes_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir)) {
+        return Value::Array(Vec::new());
+    }
+    Value::Array(shared.panes.cues(Instant::now()))
+}
+
+/// The name of the session `caller`, for a cue.
+fn who(shared: &Shared, caller: &str) -> String {
+    match crate::core::find(shared, caller) {
+        Some(found) => {
+            let s = found.lock().unwrap_or_else(|p| p.into_inner());
+            who_of(s.settings.name.as_deref(), s.auto_title.as_deref(), caller)
+        }
+        None => caller.to_string(),
+    }
+}
+
 /// One line on the host's stderr per call (`SF-03`): the tool, the session, the action and the tab, never what was typed or read.
 fn audit(session: &str, action: &str, tab: &str) {
     eprintln!("lico-host: audit tool=pane session={session} action={action} tab={tab}");
@@ -332,6 +423,10 @@ fn read(shared: &Arc<Shared>, tab: &str) -> Result<Answer, String> {
 /// MCP `pane` tool handler.
 pub(crate) fn pane(shared: &Arc<Shared>, caller: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
     counted(window(), caller, Instant::now())?;
+    if !crate::clipboard::settings::agent_panes_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir)) {
+        audit(caller, "refused_off", "-"); // the switch is read at each call: a person's stop is at once, and the tool is not listed either (`mcp::offered`)
+        return Err(SWITCHED_OFF.into());
+    }
     let planned = plan(arguments)?;
     let action = arguments.get("action").and_then(Value::as_str).unwrap_or("");
     audit(caller, action, arguments.get("tab").and_then(Value::as_str).unwrap_or("-"));
@@ -339,11 +434,15 @@ pub(crate) fn pane(shared: &Arc<Shared>, caller: &str, arguments: &Map<String, V
         Plan::List => list(shared),
         Plan::Read(tab) => read(shared, &tab),
         Plan::Steps(steps) => {
-            let mut last = Map::new();
+            let (mut last, did) = (Map::new(), did_word(action));
+            let by = did.map(|_| who(shared, caller));
             for (op, fields) in steps {
                 last = call(shared, op, fields)?;
                 if op == "browser.input" && last.get("sent") == Some(&json!(false)) {
                     return Err("not_shown: the tab took no input: the person's window is not showing it (or its address bar has the focus)".into());
+                }
+                if let (Some(did), Some(by), Some(tab)) = (did, &by, arguments.get("tab").or_else(|| last.get("tab")).and_then(Value::as_str)) {
+                    shared.panes.note(tab, by, did, Instant::now()); // the person's header says so for a few seconds
                 }
             }
             Ok(Answer::Text(json!({"ok": true, "reply": last}).to_string()))

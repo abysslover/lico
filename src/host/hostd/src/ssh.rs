@@ -546,7 +546,7 @@ mod tests {
             accounts: std::sync::Mutex::new(accounts),
             logins: std::sync::Mutex::new(std::collections::HashMap::new()),
             clip: Default::default(),
-            calls: Default::default(),
+            calls: Default::default(), panes: Default::default(),
         }
     }
 

@@ -608,7 +608,7 @@ impl App {
     pub(crate) fn terminal_header(&self) -> Option<String> {
         let t = self.shown_tab()?;
         let title = if t.screen.title.is_empty() { t.title.as_str() } else { t.screen.title.as_str() };
-        Some(screen::header(title, &t.cwd))
+        Some(self.with_pane_cue(screen::header(title, &t.cwd), &t.id))
     }
 
     /// The one row under the grid.

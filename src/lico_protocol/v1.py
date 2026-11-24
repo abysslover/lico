@@ -146,6 +146,7 @@ SETTINGS_BODY = _obj(
         "last_view": {"type": STR, "enum": ["start", "files", "session"]},
         "last_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
         "show_hidden": {"type": BOOL},
+        "agent_panes": {"type": BOOL},    # whether an agent is offered the `pane` tool (M24-P05b): on by default, the host always says
         "native_claude": {"type": STR, "enum": ["on", "off"]},
         "native_codex": {"type": STR, "enum": ["on", "off"]},
         "dir_history": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_HISTORY_ITEM},
@@ -245,7 +246,8 @@ REPLIES = {
                   {**COMMON_REPLY_OPTIONAL, "build": {"type": STR, "max_length": 32}, "logins_running": {"type": INT, "minimum": 0}, "host_memory": MEMORY, "machine_memory": {"type": "object", "required": {"available_kb": {"type": INT, "minimum": 0}, "total_kb": {"type": INT, "minimum": 1}}}, "memory_limits": {"type": "object", "required": {"warn_mb": {"type": INT, "minimum": 1}, "limit_mb": {"type": INT, "minimum": 2}}, "optional": {"stall_s": {"type": INT, "minimum": 0}}},
                    "calls": {"type": "array", "items": CALL_SUMMARY_BODY},
                    "settings": SETTINGS_BODY,
-                   "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})}}),
+                   "real_screen": {"type": "array", "items": _obj({"session": {"type": STR}, "name": {"type": STR, "max_length": MAX_NAME}, "seconds_left": {"type": INT, "minimum": 1}})},
+                   "pane_cues": {"type": "array", "items": _obj({"tab": {"type": STR, "max_length": 16}, "by": {"type": STR, "max_length": MAX_NAME}, "did": {"type": STR, "max_length": 32}, "ms": {"type": INT, "minimum": 0}})}}),    # which pane tab an agent acted in lately and how long ago (M24-P05b); empty when none did
     "session.create": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "generation": {"type": INT, "minimum": 1}},
                            {**COMMON_REPLY_OPTIONAL, "resumed": {"type": BOOL}, "already_open": {"type": BOOL}, "note": {"type": STR, "max_length": 400},
                             "others": {"type": "object", "required": {"total": {"type": INT, "minimum": 0}, "by_account": {"type": "array", "items": {"type": "object",
@@ -504,6 +506,7 @@ REQUESTS = {
         {
             **_COMMON_REQ,
             "clipboard_write": {"type": BOOL},
+            "agent_panes": {"type": BOOL},
             "notifications": {"type": BOOL},
             "group_by": {"type": STR, "enum": ["account", "workspace"]},
             "native_claude": {"type": STR, "enum": ["on", "off", "ask"]},
@@ -660,6 +663,7 @@ def validate_request(op: str, message: dict) -> list[str]:
         k in body
         for k in (
             "clipboard_write",
+            "agent_panes",
             "notifications",
             "group_by",
             "native_claude",

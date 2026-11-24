@@ -124,7 +124,7 @@ pub struct UiState {
     pub card_seen: Option<(String, i64, Instant)>, // the card of the host's own that was last drawn: its session, its id, and the instant of its first frame
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
-    pub clipboard_write: bool, // the host's setting `clipboard_write` (whether the agent tool is offered)
+    pub clipboard_write: bool, pub agent_panes_off: bool, pub pane_cues: Vec<super::pane_cue::PaneCue>, // the host's setting `clipboard_write` (whether the agent tool is offered); `agent_panes` false: the person switched the agents' control of the panes off (on is the default); what agents did lately in which pane tab, as the last `status` said (`M24-P05b`)
     pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, pub show_hidden: bool, // view settings
     pub line_styles: Vec<u8>, // per-buffer-line style tag (`0` non-transcript, `1 + (role & STYLE_MASK)` transcript)
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
@@ -166,7 +166,7 @@ impl App {
         self.ui.rows = rows;
         self.ui.mem.read(&value);
         self.sync_settings(&value["settings"]);
-        self.sync_calls_from_status(&value);
+        self.sync_calls_from_status(&value); self.sync_pane_cues(&value);
         let real_next: Vec<super::realbar::RealEntry> = value["real_screen"].as_array().into_iter().flatten().filter_map(super::realbar::RealEntry::of_json).collect();
         if real_next != self.ui.real_screen {
             self.ui.real_screen = real_next;
@@ -574,7 +574,7 @@ impl App {
             "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
             "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
         });
-        let settings = json!({"clipboard_write": self.ui.clipboard_write, "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
+        let settings = json!({"clipboard_write": self.ui.clipboard_write, "agent_panes": !self.ui.agent_panes_off, "pane_cues": self.ui.pane_cues.iter().map(|c| json!({"tab": c.tab, "by": c.by, "did": c.did})).collect::<Vec<_>>(), "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
         let shown_lines = self.shown_lines_dump();
         let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
         let mut dump = json!({

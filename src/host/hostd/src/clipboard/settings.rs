@@ -31,6 +31,7 @@ pub const FILE_NAME: &str = "settings.json";
 #[derive(Clone, Copy, Default)]
 pub struct Patch<'a> {
     pub clipboard_write: Option<bool>,
+    pub agent_panes: Option<bool>,
     pub notifications: Option<bool>,
     pub group_by: Option<&'a str>,
     pub font_px: Option<i64>,
@@ -49,6 +50,7 @@ impl<'a> Patch<'a> {
     pub fn of_map(map: &'a Map<String, Value>) -> Self {
         Self {
             clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
+            agent_panes: map.get("agent_panes").and_then(Value::as_bool),
             notifications: map.get("notifications").and_then(Value::as_bool),
             group_by: map.get("group_by").and_then(Value::as_str),
             font_px: map.get("font_px").and_then(Value::as_i64),
@@ -173,6 +175,16 @@ pub fn clipboard_write_enabled(path: &Path) -> bool {
     read_object(path).is_some_and(|map| map.get("clipboard_write") == Some(&Value::Bool(true)))
 }
 
+/// Whether an agent may be offered the `pane` tool (`M24-P05b`), judged now from the file at `path`: **on** by default (the owner's answer of 2026-11-24: always allowed), so a file that
+/// is not there, or has no such key, or holds `true`, is on. Any doubt about a file that is there is **off**, because this is the person's way to stop it: a file that cannot be read as the
+/// owner-only JSON object it must be, or a value that is no boolean, never turns the tool back on.
+pub fn agent_panes_enabled(path: &Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        _ => read_object(path).is_some_and(|map| matches!(map.get("agent_panes"), None | Some(Value::Bool(true)))),
+    }
+}
+
 /// Whether desktop notifications (`notify-send`) are on, judged now from `path`. Default `true`; `false` when set to boolean `false` in a valid file.
 pub fn notifications_enabled(path: &Path) -> bool {
     read_object(path).map_or(true, |map| map.get("notifications") != Some(&Value::Bool(false)))
@@ -256,6 +268,7 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     let path = settings_path(handoff_dir);
     let mut out = json!({
         "clipboard_write": clipboard_write_enabled(&path),
+        "agent_panes": agent_panes_enabled(&path),
         "notifications": notifications_enabled(&path),
         "group_by": group_by_value(&path),
         "font_px": font_px_value(&path),
@@ -303,6 +316,9 @@ pub fn status_json(handoff_dir: &Path) -> Value {
 
 /// Validates workspace paths against the host's folder rules (`folders::remember_cwd`) before writing `settings.json`.
 pub fn apply_settings(shared: &crate::core::Shared, patch: Patch<'_>) -> crate::core::Reply {
+    if patch.agent_panes == Some(false) {
+        shared.panes.clear(); // the stop is the person's: what agents did before it is forgotten, and no cue comes back when the control is switched on again
+    }
     if let Some(raw) = patch.last_cwd {
         if !raw.is_empty() {
             let canon = crate::folders::remember_cwd(shared, raw)?;
@@ -315,6 +331,7 @@ pub fn apply_settings(shared: &crate::core::Shared, patch: Patch<'_>) -> crate::
 /// Updates any subset of host settings in `settings.json` atomically (mode 0600, preserving other valid keys; refuses a link or folder).
 pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Reply {
     if patch.clipboard_write.is_none()
+        && patch.agent_panes.is_none()
         && patch.notifications.is_none()
         && patch.group_by.is_none()
         && patch.font_px.is_none()
@@ -384,6 +401,9 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
     let mut map = read_object(&path).unwrap_or_default();
     if let Some(enabled) = patch.clipboard_write {
         map.insert("clipboard_write".into(), Value::Bool(enabled));
+    }
+    if let Some(enabled) = patch.agent_panes {
+        map.insert("agent_panes".into(), Value::Bool(enabled));
     }
     if let Some(enabled) = patch.notifications {
         map.insert("notifications".into(), Value::Bool(enabled));

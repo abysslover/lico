@@ -116,6 +116,7 @@ impl App {
     /// Synchronize host `settings` JSON into `UiState`.
     pub(crate) fn sync_settings(&mut self, settings: &Value) {
         self.ui.clipboard_write = settings["clipboard_write"] == json!(true);
+        self.ui.agent_panes_off = settings["agent_panes"] == json!(false);
         self.ui.notifications_off = settings["notifications"] == json!(false);
         self.ui.show_hidden = settings["show_hidden"] == json!(true);
         let ws = settings["group_by"] == json!("workspace");

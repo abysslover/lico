@@ -60,6 +60,7 @@ pub enum Cmd {
     FontSmaller,
     FontReset,
     ToggleClipWrite,
+    TogglePanes,
     ToggleNotifications,
     FindLlm,
     ToggleNativeClaude,
@@ -108,7 +109,7 @@ pub(crate) fn group_of(cmd: Cmd) -> Option<&'static str> {
         Cmd::FindLlm | Cmd::ToggleVirtualDisplay => "Tools",
         Cmd::FontLarger | Cmd::FontSmaller | Cmd::FontReset => "Text size",
         Cmd::ToggleGroupBy | Cmd::ToggleEvents => "Show",
-        Cmd::ToggleClipWrite | Cmd::ToggleNotifications | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
+        Cmd::ToggleClipWrite | Cmd::TogglePanes | Cmd::ToggleNotifications | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
         _ => return None,
     })
 }
@@ -272,6 +273,12 @@ impl App {
                         reason: panel_reason,
                     },
                     Entry {
+                        label: format!("Agent pane control: {}", if self.ui.agent_panes_off { "off" } else { "on" }),
+                        key: "",
+                        cmd: Cmd::TogglePanes,
+                        reason: panel_reason,
+                    },
+                    Entry {
                         label: format!("Desktop notifications: {}", if self.ui.notifications_off { "off" } else { "on" }),
                         key: "",
                         cmd: Cmd::ToggleNotifications,
@@ -411,6 +418,7 @@ impl App {
             Cmd::FontSmaller => self.step_font_px(-1),
             Cmd::FontReset => self.step_font_px(0),
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
+            Cmd::TogglePanes => self.toggle_agent_panes(),
             Cmd::ToggleNotifications => self.toggle_notifications(),
             Cmd::FindLlm => self.llm_find_open(),
             Cmd::ToggleNativeClaude => self.toggle_native("claude"),

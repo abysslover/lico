@@ -14,10 +14,9 @@ pub struct HostTools {
     pub id: String,
 }
 
-/// The tools the host offers now (the table of `mcp.rs`, with `clipboard_write` only while writing is switched on), as definitions for a model.
+/// The tools the host offers now (the table of `mcp.rs`, with `clipboard_write` only while writing is switched on and `pane` unless the panes are switched off), as definitions for a model.
 pub fn tool_defs(shared: &Shared) -> Vec<ToolDef> {
-    let writing = crate::clipboard::settings::clipboard_write_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir));
-    crate::mcp::list(writing)["tools"]
+    crate::mcp::list(crate::mcp::Switches::read(&shared.cfg.handoff_dir))["tools"]
         .as_array()
         .map(|tools| {
             tools

@@ -511,7 +511,7 @@ impl App {
         if t.local {
             h = format!("{h} | {}", lico_browser_view::LOCAL_NOTE);
         }
-        Some(h)
+        Some(self.with_pane_cue(h, id))
     }
 
     /// The lines of the help (a new tab and F1), painted over the page area.

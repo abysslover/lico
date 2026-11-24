@@ -52,7 +52,7 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   call list [--all] | call show ID | call start --from S1 --to S2 [TEXT|-]\n\
   call say ID TEXT|- [--to SESSION] | call hangup ID | call close ID\n\
                                  manage persistent inter-session Call Rooms (`⇄ A · B`)\n\
-  settings [--clipboard-write on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20] [--native-claude on|off|ask] [--native-codex on|off|ask]\n\
+  settings [--clipboard-write on|off] [--agent-panes on|off] [--notifications on|off] [--group-by account|workspace] [--font-size 12..20] [--native-claude on|off|ask] [--native-codex on|off|ask]\n\
            [--show-hidden on|off] [--last-cwd DIR] [--last-view start|files|session] [--last-session ID]\n\
                                  show or update host and window settings\n\
   session show ID                one session
@@ -518,13 +518,11 @@ pub fn run(args: Vec<String>) {
                 };
                 let mut request = json!({"op": "settings.set"});
                 let mut any = false;
-                if let Some(v) = flag(&args, "--clipboard-write") {
-                    request["clipboard_write"] = json!(parse_on_off(v));
-                    any = true;
-                }
-                if let Some(v) = flag(&args, "--notifications") {
-                    request["notifications"] = json!(parse_on_off(v));
-                    any = true;
+                for (name, key) in [("--clipboard-write", "clipboard_write"), ("--agent-panes", "agent_panes"), ("--notifications", "notifications")] {
+                    if let Some(v) = flag(&args, name) {
+                        request[key] = json!(parse_on_off(v));
+                        any = true;
+                    }
                 }
                 if let Some(v) = flag(&args, "--group-by") {
                     if !matches!(v.as_str(), "account" | "workspace") {

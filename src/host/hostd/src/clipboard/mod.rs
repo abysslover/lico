@@ -17,6 +17,8 @@ pub mod open;
 pub mod settings;
 pub mod write;
 #[cfg(test)]
+mod agent_panes_tests;
+#[cfg(test)]
 mod open_tests;
 #[cfg(test)]
 mod write_tests;

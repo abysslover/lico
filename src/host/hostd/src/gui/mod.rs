@@ -12,7 +12,7 @@ mod editor;
 mod events;
 mod fonts;
 mod mention_popup;
-mod menu;
+mod menu; mod pane_cue; #[cfg(test)] mod pane_cue_tests; // the menus; the agents' control of the panes (the cue, the switch, the stop key's words)
 mod panel;
 mod picture;
 mod realbar;

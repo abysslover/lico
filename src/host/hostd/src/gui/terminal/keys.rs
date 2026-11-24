@@ -97,6 +97,7 @@ pub(crate) fn route(key: Logical<'_>, text: Option<&str>, held: Held, modes: &Mo
             Some('w') => Routed::Lico(Lico::Close),
             _ => Routed::Pass, // the other Ctrl+Shift+letter chords are the window's own namespace
         },
+        Logical::Named(NamedKey::Escape) if held.ctrl && held.alt => Routed::Pass, // the window's own key: it stops what agents do on their own (`realbar.rs`), and never reaches a shell
         Logical::Named(k) => {
             let plain_shift = held.shift && !held.ctrl && !held.alt;
             match k {

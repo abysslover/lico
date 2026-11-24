@@ -28,6 +28,7 @@
 "tests/test_one_touch_window.py" = ["gui", "host"]
 "tests/test_account_screen.py" = ["gui", "host"]
 "tests/test_pane_tool.py" = ["host"]
+"tests/test_pane_switch_window.py" = ["gui", "host"]
 "tests/test_agy_chats.py" = ["gui", "host"]
 "tests/test_agy_tile.py" = ["gui", "host"]
 "tests/test_picture_input.py" = ["host"]

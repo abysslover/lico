@@ -137,3 +137,66 @@ def test_every_call_writes_an_audit_line_that_names_the_tool_the_session_and_the
     assert f"audit tool=pane session={sid} action=type tab={tab}" in heard, heard[-400:]
     assert f"audit tool=pane session={sid} action=list tab=-" in heard
     assert secret not in heard, "what was typed is never in the log"
+
+
+def cues(world, *tabs):
+    """What the host's `status` says agents did lately in the panes (of the tabs named: the host of this module is shared and a cue lasts eight seconds)."""
+    return [c for c in Conn(world.host.socket).call(op="status")["pane_cues"] if not tabs or c["tab"] in tabs]
+
+
+def test_a_type_or_a_key_leaves_a_cue_for_the_persons_window_and_list_read_or_a_refused_call_leave_none(world):
+    sid, _ = world.session()
+    tab = open_terminal(world, "cat")
+    assert cues(world, tab) == []
+    ok(world, sid, action="list")
+    ok(world, sid, action="read", tab=tab)
+    assert cues(world, tab) == [], "looking is not acting"
+    ok(world, sid, action="type", tab=tab, text="hi")
+    [cue] = cues(world, tab)
+    assert (cue["tab"], cue["did"]) == (tab, "typed") and 0 <= cue["ms"] < 8000 and 0 < len(cue["by"]) <= 24, cue
+    ok(world, sid, action="key", tab=tab, key="Return")
+    [cue] = cues(world, tab)
+    assert (cue["tab"], cue["did"]) == (tab, "pressed a key"), "the last thing in the tab is what the header says"
+    text, is_error = pane(world, sid, action="key", tab=tab, key="Hyper+Nothing")
+    assert is_error, text
+    [cue] = cues(world, tab)
+    assert cue["did"] == "pressed a key", "a refused call did nothing, so it leaves nothing"
+    other = open_terminal(world, "cat")
+    ok(world, sid, action="type", tab=other, text="x")
+    assert sorted(c["tab"] for c in cues(world, tab, other)) == sorted([tab, other]), "each tab has its own"
+
+
+def test_the_switch_off_takes_the_tool_out_of_the_list_and_refuses_a_call_and_on_brings_it_back_without_a_restart(world):
+    sid, _ = world.session()
+    tab = open_terminal(world, "cat")
+    names = lambda: [t["name"] for t in rpc(world.config(sid), "tools/list", {})[1]["result"]["tools"]]
+    assert "pane" in names() and Conn(world.host.socket).call(op="status")["settings"]["agent_panes"] is True, "on is the default"
+    set_ = Conn(world.host.socket).call(op="settings.set", agent_panes=False)
+    assert set_["ok"] == 1 and set_["settings"]["agent_panes"] is False, set_
+    assert "pane" not in names() and "computer" in names(), "only that tool goes"
+    status, body = rpc(world.config(sid), "tools/call", {"name": "pane", "arguments": {"action": "type", "tab": tab, "text": "x"}})
+    assert status == 200 and body["error"]["message"] == "unknown tool", body
+    assert "x" not in screen_of(world, tab), "nothing was typed"
+    assert Conn(world.host.socket).call(op="status")["settings"]["agent_panes"] is False
+    again = Conn(world.host.socket).call(op="settings.set", agent_panes=True)
+    assert again["settings"]["agent_panes"] is True
+    assert "pane" in names()
+    ok(world, sid, action="type", tab=tab, text="back")
+    wait_for(lambda: "back" in screen_of(world, tab))
+
+
+def screen_of(world, tab) -> str:
+    reply = Conn(world.host.socket).call(op="terminal.watch", tab=tab, seq=0)
+    return "".join(piece[0] for line in reply["lines"] for piece in line)
+
+
+def test_the_switch_is_a_boolean_and_the_command_line_takes_on_and_off(world):
+    for bad in ("off", 0, None, "false"):
+        reply = Conn(world.host.socket).call(op="settings.set", agent_panes=bad)
+        assert reply["ok"] == 0, (bad, reply)
+    from tests.test_everyday_comfort import cli_run
+    assert cli_run(world.host.socket, "settings", "--agent-panes", "off").returncode == 0
+    assert json.loads(cli_run(world.host.socket, "settings").stdout)["settings"]["agent_panes"] is False
+    assert cli_run(world.host.socket, "settings", "--agent-panes", "maybe").returncode != 0
+    assert cli_run(world.host.socket, "settings", "--agent-panes", "on").returncode == 0
+    assert json.loads(cli_run(world.host.socket, "settings").stdout)["settings"]["agent_panes"] is True

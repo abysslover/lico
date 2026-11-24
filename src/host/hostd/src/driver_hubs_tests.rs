@@ -69,7 +69,7 @@ pub(crate) fn shared(dir: &std::path::Path) -> Arc<Shared> {
     let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap();
     Arc::new(Shared {
         cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(),
-        pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(),
+        pending_creates: AtomicUsize::new(0), accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(), panes: Default::default(),
     })
 }
 

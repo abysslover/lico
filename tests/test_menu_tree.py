@@ -22,10 +22,10 @@ MORE = 4
 MORE_GROUPS = ["Browser pages", "This session", "Tools", "Show", "Text size", "Settings"]
 SESSION_SHOWN = ["New Home session", "New browser tab", "Permission mode:", "Send to session...", "Hand over conversation..."]
 
-# every entry that is hidden (M24-P04, the owner's classification of 2026-11-24: twenty-one), by the start of its label
+# every entry that is hidden (M24-P04, the owner's classification of 2026-11-24: twenty-one; M24-P05b: twenty-two with the switch of the agents' control of the panes), by the start of its label
 MORE_ENTRIES = [
     "New local browser tab", "Reopen closed tab", "Clear remembered pages", "Start screen", "Resume session", "Rebind account...", "Rename session", "Delete session", "Find Local LLM servers...",
-    "Virtual display:", "Group sessions:", "Internal events:", "Text size: larger", "Text size: smaller", "Text size: 14 px", "Capture screen to input", "Agent clipboard write:", "Desktop notifications:",
+    "Virtual display:", "Group sessions:", "Internal events:", "Text size: larger", "Text size: smaller", "Text size: 14 px", "Capture screen to input", "Agent clipboard write:", "Agent pane control:", "Desktop notifications:",
     "Use existing Claude Code login", "Use existing Codex login", "About Lico",
 ]
 
@@ -104,11 +104,11 @@ def test_the_four_menus_show_a_few_entries_and_more_opens_with_closed_groups_and
             assert w.ui()["menu"]["open"] == MORE
             _close(w)
 
-            # nothing hidden is lost: with every group open each of the twenty-one entries is there
+            # nothing hidden is lost: with every group open each of the twenty-two entries is there
             _open(w, MORE)
             shown = _open_every_group(w, MORE)
             assert [p for p in MORE_ENTRIES if not any(label.startswith(p) for label in shown)] == [], shown
-            assert len(shown) == 21, shown
+            assert len(shown) == 22, shown
             _close(w)
             # the dropdown opens closed again
             again = _open(w, MORE)

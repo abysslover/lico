@@ -134,6 +134,23 @@ pub const TOOLS: [Tool; 12] = [
 
 /// The tool that is offered and callable only while the person has switched it on in the settings file (SF-06).
 pub const WRITE_TOOL: &str = "clipboard_write";
+/// The tool that is offered and callable unless the person has switched it off (`M24-P05b`: the setting `agent_panes`, on by default).
+pub const PANE_TOOL: &str = "pane";
+
+/// The person's switches that decide which tools exist, read for each message so that switching needs no restart: `clipboard_write` is offered only with `write`, `pane` only with `panes`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Switches {
+    pub write: bool,
+    pub panes: bool,
+}
+
+impl Switches {
+    /// The switches as the settings file of this host holds them now.
+    pub fn read(handoff_dir: &std::path::Path) -> Self {
+        let path = crate::clipboard::settings::settings_path(handoff_dir);
+        Self { write: crate::clipboard::settings::clipboard_write_enabled(&path), panes: crate::clipboard::settings::agent_panes_enabled(&path) }
+    }
+}
 
 /// One block of a tool's answer.
 #[derive(Debug, PartialEq)]
@@ -212,26 +229,30 @@ fn schema(tool: &Tool) -> Value {
     schema
 }
 
-/// Whether a tool exists for the program now: `clipboard_write` only while writing is switched on.
-fn offered(tool: &Tool, write_enabled: bool) -> bool {
-    tool.name != WRITE_TOOL || write_enabled
+/// Whether a tool exists for the program now: `clipboard_write` only while writing is switched on, `pane` unless the panes are switched off.
+fn offered(tool: &Tool, on: Switches) -> bool {
+    match tool.name {
+        WRITE_TOOL => on.write,
+        PANE_TOOL => on.panes,
+        _ => true,
+    }
 }
 
-pub(crate) fn list(write_enabled: bool) -> Value {
-    let tools: Vec<Value> = TOOLS.iter().filter(|t| offered(t, write_enabled)).map(|t| json!({"name": t.name, "description": t.description, "inputSchema": schema(t)})).collect();
+pub(crate) fn list(on: Switches) -> Value {
+    let tools: Vec<Value> = TOOLS.iter().filter(|t| offered(t, on)).map(|t| json!({"name": t.name, "description": t.description, "inputSchema": schema(t)})).collect();
     json!({"tools": tools})
 }
 
-/// `handle_with` for tools that answer one text, with writing off (the tests of the older tools).
+/// `handle_with` for tools that answer one text, with writing off and the panes on (the tests of the older tools).
 #[cfg(test)]
 pub fn handle(body: &[u8], run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<String, String>, begun: &mut dyn FnMut()) -> Outcome {
-    handle_with(body, false, &mut |name, arguments| run(name, arguments).map(Answer::Text), begun)
+    handle_with(body, Switches { write: false, panes: true }, &mut |name, arguments| run(name, arguments).map(Answer::Text), begun)
 }
 
-/// Handle one message. `write_enabled` is the setting of the person, read for this message: `clipboard_write` is not listed and is an unknown tool without it.
+/// Handle one message. `on` is the person's switches, read for this message: `clipboard_write` is not listed and is an unknown tool without writing, `pane` likewise with the panes off.
 /// `run` performs a tool: its Ok answer is the result, its Err text an error result that the model sees (`isError`).
 /// `begun` is called for each `initialize` request, before it is answered.
-pub fn handle_with(body: &[u8], write_enabled: bool, run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<Answer, String>, begun: &mut dyn FnMut()) -> Outcome {
+pub fn handle_with(body: &[u8], on: Switches, run: &mut dyn FnMut(&str, &Map<String, Value>) -> Result<Answer, String>, begun: &mut dyn FnMut()) -> Outcome {
     let Ok(parsed) = serde_json::from_slice::<Value>(body) else {
         return Outcome::Malformed(failure(Value::Null, -32700, "parse error"));
     };
@@ -260,7 +281,7 @@ pub fn handle_with(body: &[u8], write_enabled: bool, run: &mut dyn FnMut(&str, &
             result(id, json!({"protocolVersion": version, "capabilities": {"tools": {}}, "serverInfo": {"name": "lico", "version": env!("CARGO_PKG_VERSION")}, "instructions": INSTRUCTIONS}))
         }
         "ping" => result(id, json!({})),
-        "tools/list" => result(id, list(write_enabled)),
+        "tools/list" => result(id, list(on)),
         "tools/call" => {
             let name = params.and_then(|p| p.get("name")).and_then(Value::as_str);
             let arguments = match params.and_then(|p| p.get("arguments")) {
@@ -269,7 +290,7 @@ pub fn handle_with(body: &[u8], write_enabled: bool, run: &mut dyn FnMut(&str, &
                 Some(_) => None,
             };
             let (Some(name), Some(arguments)) = (name, arguments) else { return error(id, -32602, "tools/call needs a name and arguments as an object") };
-            if !TOOLS.iter().any(|t| t.name == name && offered(t, write_enabled)) {
+            if !TOOLS.iter().any(|t| t.name == name && offered(t, on)) {
                 return error(id, -32602, "unknown tool");
             }
             let (content, failed) = match run(name, &arguments) {
@@ -331,9 +352,18 @@ mod tests {
         }
     }
 
+    /// The switches of a test: the panes on, writing as said.
+    fn sw(write: bool) -> Switches {
+        Switches { write, panes: true }
+    }
+
     fn listed(write_enabled: bool) -> Value {
+        listed_with(sw(write_enabled))
+    }
+
+    fn listed_with(on: Switches) -> Value {
         let body = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}).to_string();
-        reply(handle_with(body.as_bytes(), write_enabled, &mut |_, _| Ok(Answer::Text(String::new())), &mut || {}))
+        reply(handle_with(body.as_bytes(), on, &mut |_, _| Ok(Answer::Text(String::new())), &mut || {}))
     }
 
     fn names_of(got: &Value) -> Vec<String> {
@@ -360,12 +390,41 @@ mod tests {
     fn a_call_of_clipboard_write_is_an_unknown_tool_while_writing_is_off_and_runs_while_it_is_on() {
         let body = json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "clipboard_write", "arguments": {"text": "x"}}}).to_string();
         let mut ran = Vec::new();
-        let off = reply(handle_with(body.as_bytes(), false, &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
+        let off = reply(handle_with(body.as_bytes(), sw(false), &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
         assert_eq!((off["error"]["code"].clone(), off["error"]["message"].clone(), ran.len()), (json!(-32602), json!("unknown tool"), 0), "as if it did not exist, and nothing ran");
         let nothing = reply(ask(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "no_such_tool"}})));
         assert_eq!(off["error"], nothing["error"], "the same answer as for a name that does not exist");
-        let on = reply(handle_with(body.as_bytes(), true, &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
+        let on = reply(handle_with(body.as_bytes(), sw(true), &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
         assert_eq!((on["result"]["isError"].clone(), ran), (json!(false), vec!["clipboard_write".to_string()]));
+    }
+
+    #[test]
+    fn the_pane_tool_is_not_listed_and_is_an_unknown_tool_while_the_panes_are_switched_off_and_nothing_else_changes() {
+        let off = Switches { write: false, panes: false };
+        assert_eq!(names_of(&listed_with(off)), ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "llm_endpoints"], "only the pane tool is gone");
+        let both = Switches { write: true, panes: false };
+        assert_eq!(names_of(&listed_with(both)), ["sessions", "send", "create", "history", "read_handoff", "rename", "capture", "clipboard_read", "computer", "llm_endpoints", "clipboard_write"], "writing is its own switch");
+        assert_eq!(names_of(&listed_with(Switches { write: false, panes: true })).iter().filter(|n| *n == "pane").count(), 1, "on, it is listed once");
+        let body = json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "pane", "arguments": {"action": "list"}}}).to_string();
+        let mut ran = Vec::new();
+        let refused = reply(handle_with(body.as_bytes(), off, &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
+        let nothing = reply(ask(json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "no_such_tool"}})));
+        assert_eq!((refused["error"].clone(), ran.len()), (nothing["error"].clone(), 0), "as if it did not exist, and nothing ran");
+        let allowed = reply(handle_with(body.as_bytes(), Switches { write: false, panes: true }, &mut |name, _| { ran.push(name.to_string()); Ok(Answer::Text("ran".into())) }, &mut || {}));
+        assert_eq!((allowed["result"]["isError"].clone(), ran), (json!(false), vec!["pane".to_string()]));
+    }
+
+    #[test]
+    fn the_switches_are_read_from_the_settings_file_each_time_and_the_panes_are_on_without_one() {
+        let root = std::env::temp_dir().join(format!("lico-switches-{}", crate::core::random_hex(6)));
+        let handoff = root.join("handoff");
+        std::fs::create_dir_all(&handoff).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: false, panes: true }, "no file: the panes on (the owner's answer), writing off");
+        crate::clipboard::settings::update_settings(&handoff, crate::clipboard::settings::Patch { agent_panes: Some(false), clipboard_write: Some(true), ..Default::default() }).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: true, panes: false });
+        crate::clipboard::settings::update_settings(&handoff, crate::clipboard::settings::Patch { agent_panes: Some(true), ..Default::default() }).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: true, panes: true }, "read again at each message: no restart");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -373,9 +432,9 @@ mod tests {
         let body = json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "capture"}}).to_string();
         let blocks = Answer::Blocks(vec![Block::Text("{\"kind\":\"screen\"}".into()), Block::Image { data: "QUJD".into(), mime: "image/png" }]);
         let mut once = Some(blocks);
-        let got = reply(handle_with(body.as_bytes(), false, &mut |_, _| Ok(once.take().unwrap()), &mut || {}));
+        let got = reply(handle_with(body.as_bytes(), sw(false), &mut |_, _| Ok(once.take().unwrap()), &mut || {}));
         assert_eq!(got["result"], json!({"content": [{"type": "text", "text": "{\"kind\":\"screen\"}"}, {"type": "image", "data": "QUJD", "mimeType": "image/png"}], "isError": false}));
-        let failed = reply(handle_with(body.as_bytes(), false, &mut |_, _| Err("no_display: x".into()), &mut || {}));
+        let failed = reply(handle_with(body.as_bytes(), sw(false), &mut |_, _| Err("no_display: x".into()), &mut || {}));
         assert_eq!(failed["result"], json!({"content": [{"type": "text", "text": "no_display: x"}], "isError": true}), "a failure is one text block, as before");
     }
 

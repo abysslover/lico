@@ -128,7 +128,7 @@ pub(crate) fn world(ids: &[&str]) -> World {
     let accounts = crate::accounts::Accounts::load(&cfg.accounts_dir).unwrap_or_else(|_| panic!("accounts"));
     let shared = Arc::new(Shared {
         cfg, sessions: RwLock::new(Vec::new()), views: Mutex::new(HashMap::new()), started: Instant::now(), pending_creates: AtomicUsize::new(0),
-        accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(),
+        accounts: Mutex::new(accounts), logins: Mutex::new(HashMap::new()), clip: Default::default(), calls: Default::default(), panes: Default::default(),
     });
     std::fs::create_dir_all(path.join("log")).unwrap();
     let mut inputs = HashMap::new();
