@@ -332,7 +332,7 @@ fn the_adapter_of_the_local_kind_and_the_port_stay_outside_the_cycle_of_the_hubs
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src/host/hostd/src/unified.rs");
     let g = graph::analyse(&root).expect("the program's source is read");
     let biggest = g.sccs.iter().map(Vec::len).max().unwrap();
-    assert_eq!(biggest, 48, "the cycle of the hubs is the one measured in M15-P01: a new kind of session must not make it larger");
+    assert_eq!(biggest, 50, "the cycle of the hubs is the one measured in M15-P01 (48) and the two modules that joined it in M24, pane (P05) and mcp (P05b): a new kind of session must not make it larger");
     let in_cycle = |m: &str| g.sccs.iter().any(|c| c.len() > 1 && c.iter().any(|x| x == m));
     assert!(!in_cycle("local") && !in_cycle("driver"), "the adapter and the port are not part of the cycle");
     let importers = |m: &str| g.prod.keys().filter(|(_, to)| to == m).map(|(from, _)| from.as_str()).collect::<Vec<_>>();
@@ -347,7 +347,7 @@ fn the_adapter_of_the_local_kind_and_the_port_stay_outside_the_cycle_of_the_hubs
 fn the_browser_adapter_stays_outside_the_cycle_of_the_hubs_and_only_the_root_names_it() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src/host/hostd/src/unified.rs");
     let g = graph::analyse(&root).expect("the program's source is read");
-    assert_eq!(g.sccs.iter().map(Vec::len).max().unwrap(), 48, "M17-P06 must not make the cycle of the hubs larger (48 before and after)");
+    assert_eq!(g.sccs.iter().map(Vec::len).max().unwrap(), 50, "M17-P06 must not make the cycle of the hubs larger (48 before and after; 50 since the pane tool of M24: pane and mcp)");
     let in_cycle = |m: &str| g.sccs.iter().any(|c| c.len() > 1 && c.iter().any(|x| x == m));
     assert!(!in_cycle("browser"), "the adapter is not part of the cycle");
     let importers = |m: &str| g.prod.keys().filter(|(_, to)| to == m).map(|(from, _)| from.as_str()).collect::<Vec<_>>();
