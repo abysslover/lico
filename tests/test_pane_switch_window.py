@@ -1,9 +1,10 @@
-"""M24-P05b: what the person sees and can do about an agent that drives their panes, in the real window with a real host. An agent's `pane` call (the tool connection of a real session) shows in the
-header of the terminal that is in front for a few seconds, with the one key that stops it; the key (`Ctrl+Alt+Esc`) works with the terminal in front and never reaches the shell, switches the
-control off at the host (the tool is gone from the list and a call is refused) and the menu `More > Settings` switches it on again. The agent is the mocked Claude of the other window tests."""
+"""M24-P05b, M24-P07: what the person sees and can do about an agent that drives their panes, in the real window with a real host. An agent's `pane` call (the tool connection of a real session) shows in the
+header of the terminal that is in front for a few seconds, with the one key that stops it; the key (`Ctrl+Alt+Esc`) works with the terminal in front and never reaches the shell, pauses the
+control for five minutes at the host (the tool is gone from the list and a call is refused; a second press starts the five minutes anew) and the menu `More > Settings` resumes it at once (M24-P07). The agent is the mocked Claude of the other window tests."""
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from lico_measure.captures import ProductWindow
@@ -73,7 +74,9 @@ def test_an_agents_typing_shows_in_the_header_the_stop_key_works_with_the_termin
             wait_for(lambda: conn.call(op="status")["settings"]["agent_panes"] is False)
             u = wait_for(lambda: (x := w.ui()) and x["settings"]["agent_panes"] is False and x)
             assert "stops agents" not in u["terminal"]["header"] and u["settings"]["pane_cues"] == [], "the cue goes with the stop"
-            assert "can no longer type or click" in u["header"] and "More > Settings" in u["header"], u["header"]
+            assert "paused in your panes for 5 minutes" in u["header"] and "More > Settings" in u["header"], u["header"]
+            left = conn.call(op="status")["settings"]["agent_panes_paused"]
+            assert 0 < left <= 300 and u["settings"]["agent_panes_paused"] > 0, "the host says how long is left, and the window knows"
             w.type_text("x")
             w.key("Return")
             screen = wait_for(lambda: (s := _screen(w)) and s.count("x") >= 2 and s)
@@ -84,9 +87,17 @@ def test_an_agents_typing_shows_in_the_header_the_stop_key_works_with_the_termin
             status, body = _pane(config, action="type", tab=tab, text="NOT TYPED")
             assert status == 200 and body["error"]["message"] == "unknown tool", body
 
-            # the menu says it is off and turns it on again, and the tool is back
-            menu_click(w, 4, "Agent pane control: off")
+            # the stop key again is a stop again, never a resume: the five minutes start anew
+            time.sleep(2.2)
+            assert conn.call(op="status")["settings"]["agent_panes_paused"] <= left - 2, "the time runs"
+            w.key("ctrl+alt+Escape")
+            wait_for(lambda: conn.call(op="status")["settings"].get("agent_panes_paused", 0) >= 299)
+            assert conn.call(op="status")["settings"]["agent_panes"] is False and "pane" not in _tools(config)
+
+            # the menu says it is paused and resumes at once, and the tool is back
+            menu_click(w, 4, "Agent pane control: paused")
             wait_for(lambda: conn.call(op="status")["settings"]["agent_panes"] is True)
+            assert "agent_panes_paused" not in conn.call(op="status")["settings"]
             wait_for(lambda: "pane" in _tools(config))
             wait_for(lambda: w.ui()["settings"]["agent_panes"] is True)
             status, body = _pane(config, action="type", tab=tab, text="again")

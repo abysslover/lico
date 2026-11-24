@@ -32,6 +32,8 @@ pub const FILE_NAME: &str = "settings.json";
 pub struct Patch<'a> {
     pub clipboard_write: Option<bool>,
     pub agent_panes: Option<bool>,
+    /// `true`: pause the agents' control of the panes for `PAUSE_SECS` (the window's stop key, `M24-P07`); `false`: end a pause.
+    pub agent_panes_pause: Option<bool>,
     pub notifications: Option<bool>,
     pub group_by: Option<&'a str>,
     pub font_px: Option<i64>,
@@ -51,6 +53,7 @@ impl<'a> Patch<'a> {
         Self {
             clipboard_write: map.get("clipboard_write").and_then(Value::as_bool),
             agent_panes: map.get("agent_panes").and_then(Value::as_bool),
+            agent_panes_pause: map.get("agent_panes_pause").and_then(Value::as_bool),
             notifications: map.get("notifications").and_then(Value::as_bool),
             group_by: map.get("group_by").and_then(Value::as_str),
             font_px: map.get("font_px").and_then(Value::as_i64),
@@ -175,14 +178,57 @@ pub fn clipboard_write_enabled(path: &Path) -> bool {
     read_object(path).is_some_and(|map| map.get("clipboard_write") == Some(&Value::Bool(true)))
 }
 
-/// Whether an agent may be offered the `pane` tool (`M24-P05b`), judged now from the file at `path`: **on** by default (the owner's answer of 2026-11-24: always allowed), so a file that
-/// is not there, or has no such key, or holds `true`, is on. Any doubt about a file that is there is **off**, because this is the person's way to stop it: a file that cannot be read as the
-/// owner-only JSON object it must be, or a value that is no boolean, never turns the tool back on.
-pub fn agent_panes_enabled(path: &Path) -> bool {
-    match std::fs::symlink_metadata(path) {
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
-        _ => read_object(path).is_some_and(|map| matches!(map.get("agent_panes"), None | Some(Value::Bool(true)))),
+/// How long the stop key pauses the agents' control of the panes (`M24-P07`): the owner asked for a pause in place of an off for good, and five minutes is the lead's default (one place to change).
+pub const PAUSE_SECS: u64 = 300;
+
+/// The agents' control of the panes as the person has left it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PanesState {
+    /// Offered and callable.
+    On,
+    /// Not offered and refused: switched off for good, or a doubt about the file (`M24-P05b`).
+    Off,
+    /// Not offered and refused for `secs_left` more seconds (`M24-P07`), then on again by itself.
+    Paused { secs_left: u64 },
+}
+
+fn clock() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// The state of the `pane` tool's switch (`M24-P05b`, `M24-P07`), judged from the file at `path` as of `now` (seconds since the epoch). It is **on** by default (the owner's answer of 2026-11-24:
+/// always allowed), so a file that is not there, or has no such key, or holds `true`, is on. Any doubt about a file that is there is **off**, because this is the person's way to stop it: a file
+/// that cannot be read as the owner-only JSON object it must be, a value that is no boolean, a pause whose end is no whole number or is further ahead than a pause can be (a clock that went back, or
+/// a hand-written file) never turns the tool on. `agent_panes: false` is off whatever a pause says; a pause is the end time `agent_panes_paused_until` that has not come yet.
+pub fn agent_panes_state_at(path: &Path, now: u64) -> PanesState {
+    let Some(map) = (match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return PanesState::On,
+        _ => read_object(path),
+    }) else {
+        return PanesState::Off;
+    };
+    match map.get("agent_panes") {
+        None | Some(Value::Bool(true)) => {}
+        _ => return PanesState::Off,
     }
+    match map.get("agent_panes_paused_until") {
+        None => PanesState::On,
+        Some(until) => match until.as_u64() {
+            Some(until) if until <= now => PanesState::On,
+            Some(until) if until - now <= PAUSE_SECS => PanesState::Paused { secs_left: until - now },
+            _ => PanesState::Off,
+        },
+    }
+}
+
+/// `agent_panes_state_at` as of the clock now.
+pub fn agent_panes_state(path: &Path) -> PanesState {
+    agent_panes_state_at(path, clock())
+}
+
+/// Whether an agent may be offered the `pane` tool, judged now: only when it is on (not off, not paused).
+pub fn agent_panes_enabled(path: &Path) -> bool {
+    agent_panes_state(path) == PanesState::On
 }
 
 /// Whether desktop notifications (`notify-send`) are on, judged now from `path`. Default `true`; `false` when set to boolean `false` in a valid file.
@@ -276,6 +322,9 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     if show_hidden_enabled(&path) {
         out["show_hidden"] = Value::Bool(true);
     }
+    if let PanesState::Paused { secs_left } = agent_panes_state(&path) {
+        out["agent_panes_paused"] = json!(secs_left); // only while paused; `agent_panes` is false then, which is what an older window reads
+    }
     for (key, provider) in [("native_claude", "claude"), ("native_codex", "codex")] {
         if let Some(word) = native_value(handoff_dir, provider) {
             out[key] = Value::String(word.into());
@@ -316,7 +365,7 @@ pub fn status_json(handoff_dir: &Path) -> Value {
 
 /// Validates workspace paths against the host's folder rules (`folders::remember_cwd`) before writing `settings.json`.
 pub fn apply_settings(shared: &crate::core::Shared, patch: Patch<'_>) -> crate::core::Reply {
-    if patch.agent_panes == Some(false) {
+    if patch.agent_panes == Some(false) || patch.agent_panes_pause == Some(true) {
         shared.panes.clear(); // the stop is the person's: what agents did before it is forgotten, and no cue comes back when the control is switched on again
     }
     if let Some(raw) = patch.last_cwd {
@@ -330,8 +379,14 @@ pub fn apply_settings(shared: &crate::core::Shared, patch: Patch<'_>) -> crate::
 
 /// Updates any subset of host settings in `settings.json` atomically (mode 0600, preserving other valid keys; refuses a link or folder).
 pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Reply {
+    update_settings_at(handoff_dir, patch, clock())
+}
+
+/// `update_settings` with the clock `now` (seconds since the epoch) that a pause is counted from.
+pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> crate::core::Reply {
     if patch.clipboard_write.is_none()
         && patch.agent_panes.is_none()
+        && patch.agent_panes_pause.is_none()
         && patch.notifications.is_none()
         && patch.group_by.is_none()
         && patch.font_px.is_none()
@@ -403,7 +458,17 @@ pub fn update_settings(handoff_dir: &Path, patch: Patch<'_>) -> crate::core::Rep
         map.insert("clipboard_write".into(), Value::Bool(enabled));
     }
     if let Some(enabled) = patch.agent_panes {
-        map.insert("agent_panes".into(), Value::Bool(enabled));
+        map.insert("agent_panes".into(), Value::Bool(enabled)); // on is on and off is off: either ends a pause
+        map.remove("agent_panes_paused_until");
+    }
+    match patch.agent_panes_pause {
+        Some(true) if map.get("agent_panes") != Some(&Value::Bool(false)) => {
+            map.insert("agent_panes_paused_until".into(), json!(now.saturating_add(PAUSE_SECS))); // pressed again: five minutes from now, never an end
+        }
+        Some(false) => {
+            map.remove("agent_panes_paused_until");
+        }
+        _ => {} // a pause asked while off for good is not written: it would wait in the file and come back when the person switches it on
     }
     if let Some(enabled) = patch.notifications {
         map.insert("notifications".into(), Value::Bool(enabled));

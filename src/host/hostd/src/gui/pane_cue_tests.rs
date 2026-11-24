@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::browser_view::BTab;
 use super::menu::{group_of, place_of, Cmd, Place};
-use super::pane_cue::{stop_note, PaneCue, PanesNow};
+use super::pane_cue::{pause_request, stop_note, switch_request, PaneCue, PanesNow};
 use super::scroll_oracle::app;
 use super::terminal::TermJob;
 use super::App;
@@ -132,7 +132,7 @@ fn a_switch_the_host_does_not_take_says_so_and_changes_nothing() {
     a.toggle_agent_panes();
     assert!(!a.ui.agent_panes_off, "no host answered: what the window shows is what it was");
     assert_eq!(a.ui.flash.as_deref(), Some("Could not change the agents' control of your panes."));
-    assert_eq!(a.stop_agent_panes(), PanesNow::Failed, "the stop that no host took says so");
+    assert_eq!(a.pause_agent_panes(), PanesNow::Failed, "the stop that no host took says so");
     assert!(a.ui.pane_cues.is_empty(), "the cues are dropped in any case: the person asked for a stop");
 }
 
@@ -147,16 +147,50 @@ fn the_stop_key_clears_the_cues_before_the_host_has_answered() {
 }
 
 #[test]
-fn the_notice_after_the_stop_key_says_what_was_stopped_and_how_to_turn_the_panes_on_again() {
-    let on_again = "More > Settings turns it on again";
-    let both = stop_note(Some(2), PanesNow::Stopped);
-    assert!(both.starts_with("Real-screen control stopped.") && both.contains("Agents can no longer type or click in your panes") && both.contains(on_again), "{both}");
+fn the_notice_after_the_stop_key_says_what_was_stopped_and_that_the_panes_are_paused_for_five_minutes() {
+    let both = stop_note(Some(2), PanesNow::Paused);
+    assert_eq!(both, "Real-screen control stopped. Agents are paused in your panes for 5 minutes (More > Settings resumes them).");
     assert_eq!(stop_note(Some(1), PanesNow::WasOff), "Real-screen control stopped.");
-    let panes_only = stop_note(Some(0), PanesNow::Stopped);
-    assert!(panes_only.starts_with("Agents can no longer") && !panes_only.contains("Real-screen"), "{panes_only}");
+    let panes_only = stop_note(Some(0), PanesNow::Paused);
+    assert_eq!(panes_only, "Agents are paused in your panes for 5 minutes (More > Settings resumes them).");
     assert_eq!(stop_note(Some(0), PanesNow::WasOff), "Nothing to stop: real-screen control and the agents' control of your panes are off.");
     assert_eq!(stop_note(None, PanesNow::WasOff), "Could not stop real-screen control.");
     let failed = stop_note(None, PanesNow::Failed);
-    assert!(failed.contains("Could not stop real-screen control.") && failed.contains("Could not switch the agents' control of your panes off."), "{failed}");
-    assert!(stop_note(Some(0), PanesNow::Failed).starts_with("Could not switch"), "a stop that failed is not said to have worked");
+    assert!(failed.contains("Could not stop real-screen control.") && failed.contains("Could not pause the agents' control of your panes."), "{failed}");
+    assert!(stop_note(Some(0), PanesNow::Failed).starts_with("Could not pause"), "a stop that failed is not said to have worked");
+}
+
+#[test]
+fn the_stop_key_asks_for_a_pause_and_the_menu_asks_for_the_other_way_from_what_it_is_now() {
+    assert_eq!(pause_request(), json!({"op": "settings.set", "agent_panes_pause": true}), "the stop key never says off for good");
+    assert_eq!(switch_request(false, None), json!({"op": "settings.set", "agent_panes": false}), "on now: off next");
+    assert_eq!(switch_request(true, None), json!({"op": "settings.set", "agent_panes": true}), "off now: on next");
+    assert_eq!(switch_request(false, Some(120)), json!({"op": "settings.set", "agent_panes": true}), "paused now: the entry resumes, it does not switch off");
+    assert_eq!(switch_request(true, Some(120)), json!({"op": "settings.set", "agent_panes": true}));
+}
+
+#[test]
+fn the_window_knows_a_pause_from_the_hosts_settings_and_a_pause_is_not_off_for_good() {
+    let mut a = app(1.0, false);
+    assert_eq!((a.ui.agent_panes_off, a.ui.agent_panes_paused), (false, None));
+    a.ui_status(&status(json!({"agent_panes": false, "agent_panes_paused": 240}), json!([])));
+    assert_eq!((a.ui.agent_panes_off, a.ui.agent_panes_paused), (false, Some(240)), "paused: not off");
+    a.ui_status(&status(json!({"agent_panes": false}), json!([])));
+    assert_eq!((a.ui.agent_panes_off, a.ui.agent_panes_paused), (true, None), "no pause told: off for good");
+    a.ui_status(&status(json!({"agent_panes": true}), json!([])));
+    assert_eq!((a.ui.agent_panes_off, a.ui.agent_panes_paused), (false, None), "the pause ended");
+    a.ui_status(&status(json!({"agent_panes": false, "agent_panes_paused": 0}), json!([])));
+    assert_eq!(a.ui.agent_panes_paused, None, "no seconds left is no pause");
+    a.ui_status(&status(json!({"agent_panes": false, "agent_panes_paused": "soon"}), json!([])));
+    assert_eq!((a.ui.agent_panes_off, a.ui.agent_panes_paused), (true, None), "a word is no pause: off, as any doubt is");
+}
+
+#[test]
+fn the_entry_in_the_menu_more_says_paused_while_the_pause_lasts() {
+    let mut a = app(1.0, false);
+    let label = |a: &App| a.menu_entries(4).into_iter().find(|e| e.cmd == Cmd::TogglePanes).map(|e| e.label);
+    a.ui_status(&status(json!({"agent_panes": false, "agent_panes_paused": 240}), json!([])));
+    assert_eq!(label(&a).as_deref(), Some("Agent pane control: paused"));
+    a.ui_status(&status(json!({"agent_panes": true}), json!([])));
+    assert_eq!(label(&a).as_deref(), Some("Agent pane control: on"), "back to on when the host stops saying it is paused");
 }

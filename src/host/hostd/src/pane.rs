@@ -25,6 +25,8 @@ pub(crate) const MAX_TEXT: usize = 4096;
 const MAX_SCREEN: usize = 16 * 1024;
 /// What an agent gets while the person has switched the panes off (`M24-P05b`). It names no way to undo the stop: that is the person's.
 pub(crate) const SWITCHED_OFF: &str = "off: the person has switched the agents' control of their panes off";
+/// The answer to an agent while the person has paused it (`M24-P07`): it says it is a pause, so that an agent does not take it for a wall, and teaches nothing about undoing it.
+pub(crate) const PAUSED: &str = "paused: the person has paused the agents' control of their panes for a few minutes";
 /// How long a pane's header says that an agent acted there, in milliseconds (`M24-P05b`).
 pub(crate) const CUE_MS: u64 = 8000;
 /// The most tabs whose last touch is kept (a tab has one; the ids are few, this is a ceiling).
@@ -423,9 +425,16 @@ fn read(shared: &Arc<Shared>, tab: &str) -> Result<Answer, String> {
 /// MCP `pane` tool handler.
 pub(crate) fn pane(shared: &Arc<Shared>, caller: &str, arguments: &Map<String, Value>) -> Result<Answer, String> {
     counted(window(), caller, Instant::now())?;
-    if !crate::clipboard::settings::agent_panes_enabled(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir)) {
-        audit(caller, "refused_off", "-"); // the switch is read at each call: a person's stop is at once, and the tool is not listed either (`mcp::offered`)
-        return Err(SWITCHED_OFF.into());
+    match crate::clipboard::settings::agent_panes_state(&crate::clipboard::settings::settings_path(&shared.cfg.handoff_dir)) {
+        crate::clipboard::settings::PanesState::On => {}
+        crate::clipboard::settings::PanesState::Paused { .. } => {
+            audit(caller, "refused_paused", "-"); // read at each call like the switch: the stop key is at once, and the tool is not listed either (`mcp::offered`)
+            return Err(PAUSED.into());
+        }
+        crate::clipboard::settings::PanesState::Off => {
+            audit(caller, "refused_off", "-"); // the switch is read at each call: a person's stop is at once, and the tool is not listed either (`mcp::offered`)
+            return Err(SWITCHED_OFF.into());
+        }
     }
     let planned = plan(arguments)?;
     let action = arguments.get("action").and_then(Value::as_str).unwrap_or("");

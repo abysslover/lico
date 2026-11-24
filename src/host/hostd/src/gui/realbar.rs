@@ -114,7 +114,7 @@ impl App {
         let reply = self.host_call(json!({"op": "real_screen.stop"}));
         self.ui.real_screen.clear();
         let real = (reply["ok"] == json!(1)).then(|| reply["stopped"].as_u64().unwrap_or(0));
-        let panes = self.stop_agent_panes();
+        let panes = self.pause_agent_panes();
         self.send("{\"op\":\"status\"}");
         self.ui.flash = Some(super::pane_cue::stop_note(real, panes));
         self.dirty = true;

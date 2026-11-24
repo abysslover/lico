@@ -273,7 +273,7 @@ impl App {
                         reason: panel_reason,
                     },
                     Entry {
-                        label: format!("Agent pane control: {}", if self.ui.agent_panes_off { "off" } else { "on" }),
+                        label: format!("Agent pane control: {}", if self.ui.agent_panes_paused.is_some() { "paused" } else if self.ui.agent_panes_off { "off" } else { "on" }),
                         key: "",
                         cmd: Cmd::TogglePanes,
                         reason: panel_reason,

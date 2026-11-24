@@ -116,7 +116,8 @@ impl App {
     /// Synchronize host `settings` JSON into `UiState`.
     pub(crate) fn sync_settings(&mut self, settings: &Value) {
         self.ui.clipboard_write = settings["clipboard_write"] == json!(true);
-        self.ui.agent_panes_off = settings["agent_panes"] == json!(false);
+        self.ui.agent_panes_paused = settings["agent_panes_paused"].as_u64().filter(|left| *left > 0); // a pause: `agent_panes` is false then and the switch is not off for good (`M24-P07`)
+        self.ui.agent_panes_off = settings["agent_panes"] == json!(false) && self.ui.agent_panes_paused.is_none();
         self.ui.notifications_off = settings["notifications"] == json!(false);
         self.ui.show_hidden = settings["show_hidden"] == json!(true);
         let ws = settings["group_by"] == json!("workspace");

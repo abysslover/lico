@@ -146,7 +146,8 @@ SETTINGS_BODY = _obj(
         "last_view": {"type": STR, "enum": ["start", "files", "session"]},
         "last_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
         "show_hidden": {"type": BOOL},
-        "agent_panes": {"type": BOOL},    # whether an agent is offered the `pane` tool (M24-P05b): on by default, the host always says
+        "agent_panes": {"type": BOOL},    # whether an agent is offered the `pane` tool (M24-P05b): on by default, the host always says; false while paused (M24-P07) too
+        "agent_panes_paused": {"type": INT, "minimum": 1, "maximum": 300},    # only while the person has paused it (the stop key, M24-P07): the seconds left
         "native_claude": {"type": STR, "enum": ["on", "off"]},
         "native_codex": {"type": STR, "enum": ["on", "off"]},
         "dir_history": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_HISTORY_ITEM},
@@ -507,6 +508,7 @@ REQUESTS = {
             **_COMMON_REQ,
             "clipboard_write": {"type": BOOL},
             "agent_panes": {"type": BOOL},
+            "agent_panes_pause": {"type": BOOL},   # true: pause the control of the panes for five minutes (the window's stop key, M24-P07); false: end a pause
             "notifications": {"type": BOOL},
             "group_by": {"type": STR, "enum": ["account", "workspace"]},
             "native_claude": {"type": STR, "enum": ["on", "off", "ask"]},
@@ -664,6 +666,7 @@ def validate_request(op: str, message: dict) -> list[str]:
         for k in (
             "clipboard_write",
             "agent_panes",
+            "agent_panes_pause",
             "notifications",
             "group_by",
             "native_claude",

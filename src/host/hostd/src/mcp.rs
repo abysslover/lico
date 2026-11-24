@@ -428,6 +428,22 @@ mod tests {
     }
 
     #[test]
+    fn the_pane_tool_is_not_offered_while_the_person_has_paused_it_and_is_offered_again_when_resumed_or_ended() {
+        let root = std::env::temp_dir().join(format!("lico-switches-{}", crate::core::random_hex(6)));
+        let handoff = root.join("handoff");
+        std::fs::create_dir_all(&handoff).unwrap();
+        let patch = |agent_panes, agent_panes_pause| crate::clipboard::settings::Patch { agent_panes, agent_panes_pause, ..Default::default() };
+        crate::clipboard::settings::update_settings(&handoff, patch(None, Some(true))).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: false, panes: false }, "paused: not offered, as when off");
+        assert_eq!(names_of(&listed_with(Switches::read(&handoff))).iter().filter(|n| *n == "pane").count(), 0, "and not in the list");
+        crate::clipboard::settings::update_settings(&handoff, patch(None, Some(false))).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: false, panes: true }, "resumed: offered at the next message, no restart");
+        crate::clipboard::settings::update_settings_at(&handoff, patch(None, Some(true)), 1).unwrap();
+        assert_eq!(Switches::read(&handoff), Switches { write: false, panes: true }, "a pause whose end is past is not one");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn an_answer_of_blocks_is_a_content_array_with_the_text_first_and_an_image_block_that_names_its_media_type() {
         let body = json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "capture"}}).to_string();
         let blocks = Answer::Blocks(vec![Block::Text("{\"kind\":\"screen\"}".into()), Block::Image { data: "QUJD".into(), mime: "image/png" }]);

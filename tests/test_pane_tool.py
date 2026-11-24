@@ -185,6 +185,32 @@ def test_the_switch_off_takes_the_tool_out_of_the_list_and_refuses_a_call_and_on
     wait_for(lambda: "back" in screen_of(world, tab))
 
 
+def test_a_pause_takes_the_tool_out_of_the_list_for_a_time_and_a_resume_or_the_end_of_it_brings_it_back(world):
+    """M24-P07: the stop key's pause, over the host's own socket: the same reading of the file as the switch."""
+    sid, _ = world.session()
+    tab = open_terminal(world, "cat")
+    names = lambda: [t["name"] for t in rpc(world.config(sid), "tools/list", {})[1]["result"]["tools"]]
+    paused = Conn(world.host.socket).call(op="settings.set", agent_panes_pause=True)
+    assert paused["ok"] == 1 and paused["settings"]["agent_panes"] is False and 0 < paused["settings"]["agent_panes_paused"] <= 300, paused
+    assert "pane" not in names() and "computer" in names(), "only that tool goes"
+    status, body = rpc(world.config(sid), "tools/call", {"name": "pane", "arguments": {"action": "type", "tab": tab, "text": "x"}})
+    assert status == 200 and body["error"]["message"] == "unknown tool", body
+    assert "x" not in screen_of(world, tab), "nothing was typed"
+    status = Conn(world.host.socket).call(op="status")["settings"]
+    assert status["agent_panes"] is False and status["agent_panes_paused"] > 0
+    resumed = Conn(world.host.socket).call(op="settings.set", agent_panes_pause=False)
+    assert resumed["ok"] == 1 and resumed["settings"]["agent_panes"] is True and "agent_panes_paused" not in resumed["settings"], resumed
+    assert "pane" in names()
+    ok(world, sid, action="type", tab=tab, text="back")
+    wait_for(lambda: "back" in screen_of(world, tab))
+    # off for good wins over a pause and tells nothing of one
+    Conn(world.host.socket).call(op="settings.set", agent_panes=False)
+    off = Conn(world.host.socket).call(op="settings.set", agent_panes_pause=True)
+    assert off["settings"]["agent_panes"] is False and "agent_panes_paused" not in off["settings"], off
+    Conn(world.host.socket).call(op="settings.set", agent_panes=True)
+    assert "pane" in names(), "switched on: on, with no pause waiting in the file"
+
+
 def screen_of(world, tab) -> str:
     reply = Conn(world.host.socket).call(op="terminal.watch", tab=tab, seq=0)
     return "".join(piece[0] for line in reply["lines"] for piece in line)

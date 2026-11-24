@@ -1,10 +1,11 @@
 //! The person's side of the agents' control of the panes (`M24-P05b`): the cue in a pane's header while an agent acts there, the switch that turns the control off and on, and what the stop key
-//! (`Ctrl+Alt+Esc`, which also stops real-screen control) says. The host decides what is current (a touch is told for eight seconds) and sends it with each `status`, so the window keeps no clock:
+//! (`Ctrl+Alt+Esc`, which also stops real-screen control and pauses the control of the panes for a few minutes, `M24-P07`) says. The host decides what is current (a touch is told for eight seconds) and sends it with each `status`, so the window keeps no clock:
 //! a cue is shown until the next status that does not carry it.
 
 use serde_json::{json, Value};
 
 use super::App;
+use crate::clipboard::settings::PAUSE_SECS;
 
 /// The longest name of a session in a cue, in characters.
 const MAX_BY: usize = 24;
@@ -33,10 +34,28 @@ impl PaneCue {
     }
 }
 
+/// The request of the stop key (`M24-P07`): a pause of the agents' control of the panes, never an off for good.
+pub(crate) fn pause_request() -> Value {
+    json!({"op": "settings.set", "agent_panes_pause": true})
+}
+
+/// The window's settings as its dump says them: `agent_panes_paused` (the seconds left) only while the control is paused, as the host says it.
+pub(crate) fn with_pause(mut settings: Value, paused: Option<u64>) -> Value {
+    if let Some(left) = paused {
+        settings["agent_panes_paused"] = json!(left);
+    }
+    settings
+}
+
+/// The request of the menu entry `Agent pane control`: the other way from what it is now; while paused it resumes (on), it does not switch off.
+pub(crate) fn switch_request(off: bool, paused: Option<u64>) -> Value {
+    json!({"op": "settings.set", "agent_panes": off || paused.is_some()})
+}
+
 /// What the stop key did to the agents' control of the panes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PanesNow {
-    Stopped,
+    Paused,
     WasOff,
     Failed,
 }
@@ -49,11 +68,11 @@ pub(crate) fn stop_note(real: Option<u64>, panes: PanesNow) -> String {
         None => "Could not stop real-screen control.",
     };
     let panes_part = match panes {
-        PanesNow::Stopped => "Agents can no longer type or click in your panes (More > Settings turns it on again).",
-        PanesNow::WasOff => "",
-        PanesNow::Failed => "Could not switch the agents' control of your panes off.",
+        PanesNow::Paused => format!("Agents are paused in your panes for {} minutes (More > Settings resumes them).", PAUSE_SECS / 60),
+        PanesNow::WasOff => String::new(),
+        PanesNow::Failed => "Could not pause the agents' control of your panes.".into(),
     };
-    let parts: Vec<&str> = [real_part, panes_part].into_iter().filter(|p| !p.is_empty()).collect();
+    let parts: Vec<&str> = [real_part, panes_part.as_str()].into_iter().filter(|p| !p.is_empty()).collect();
     if parts.is_empty() {
         "Nothing to stop: real-screen control and the agents' control of your panes are off.".into()
     } else {
@@ -84,22 +103,21 @@ impl App {
         }
     }
 
-    /// Switch the agents' control of the panes off at the host and drop the cues; the person's stop is at once, the host reads it at each call.
-    pub(crate) fn stop_agent_panes(&mut self) -> PanesNow {
+    /// Pause the agents' control of the panes at the host and drop the cues; the person's stop is at once, the host reads it at each call, and it ends by itself (`M24-P07`).
+    pub(crate) fn pause_agent_panes(&mut self) -> PanesNow {
         let was_on = !self.ui.agent_panes_off;
-        let reply = self.host_call(json!({"op": "settings.set", "agent_panes": false}));
+        let reply = self.host_call(pause_request());
         self.ui.pane_cues.clear();
         if reply["ok"] != json!(1) {
             return PanesNow::Failed;
         }
         self.sync_settings(&reply["settings"]);
-        if was_on { PanesNow::Stopped } else { PanesNow::WasOff }
+        if was_on { PanesNow::Paused } else { PanesNow::WasOff }
     }
 
     /// The menu entry `Agent pane control`: the other way from what it is now.
     pub(crate) fn toggle_agent_panes(&mut self) {
-        let next = self.ui.agent_panes_off; // off now: on next
-        let reply = self.host_call(json!({"op": "settings.set", "agent_panes": next}));
+        let reply = self.host_call(switch_request(self.ui.agent_panes_off, self.ui.agent_panes_paused));
         if reply["ok"] == json!(1) {
             self.sync_settings(&reply["settings"]);
             self.send("{\"op\":\"status\"}");

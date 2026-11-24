@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.12
+Version: 0.1.13
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -220,6 +220,15 @@ are on, and any doubt about a file that is there is **off** (not a regular file,
 the person's pane tabs during the last eight seconds (`did` is one of `typed`, `pressed a key`, `clicked`, `went to a page`, `opened this tab`; `ms` is how old the act is, because the
 window's clock is not the host's; never what was typed). `{"op": "settings.set", "agent_panes": false}` also forgets every cue. Like `clipboard_write` it is toggled over the local socket only
 (`lico settings --agent-panes on|off`, the window's `More > Settings` and its stop key `Ctrl+Alt+Esc`), never over HTTP or the tool connection.
+
+The stop key **pauses** the control instead of switching it off for good (M24-P07, the owner's answer of 2026-11-25): `{"op": "settings.set", "agent_panes_pause": true}` writes the end of a pause,
+`agent_panes_paused_until` (seconds since the epoch), five minutes ahead of the host's clock into the same file, and also forgets every cue; `"agent_panes_pause": false` ends a pause. While the end
+has not come the state is **paused**: the tool is not listed, a call of it is refused (`paused: ...`, told apart from `off: ...`), the status carries no cue, and `status` reports
+`"settings": {"agent_panes": false, "agent_panes_paused": <seconds left, 1 to 300>}` (the second field only while paused; an older window reads the first and shows it as off). The end
+passes by itself and the control is on again, with no one doing anything. A press of the stop key during a pause starts the five minutes anew, it never resumes. Writing `agent_panes`
+(`true` or `false`) removes a pause, so that on is on at once and a pause does not wait in the file for the next switch-on; `agent_panes: false` is off whatever a pause says, and a pause asked
+while it is off for good is not written. Any doubt about the end is **off**, as every doubt is: a value that is no whole number, or an end more than five minutes ahead of the clock (a clock that went
+back, a hand-written file). No command-line word pauses it (`lico settings --agent-panes on|off` only).
 
 ## Pasted picture (M02-P04 S05a)
 

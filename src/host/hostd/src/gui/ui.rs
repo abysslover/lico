@@ -124,7 +124,7 @@ pub struct UiState {
     pub card_seen: Option<(String, i64, Instant)>, // the card of the host's own that was last drawn: its session, its id, and the instant of its first frame
     pub clicked: Option<(std::time::Instant, String)>, // the last click on a row of the list: a second one soon after is a double click
     pub mem: memrow::Look, // the host's and the window's own memory, and the row under the mouse
-    pub clipboard_write: bool, pub agent_panes_off: bool, pub pane_cues: Vec<super::pane_cue::PaneCue>, // the host's setting `clipboard_write` (whether the agent tool is offered); `agent_panes` false: the person switched the agents' control of the panes off (on is the default); what agents did lately in which pane tab, as the last `status` said (`M24-P05b`)
+    pub clipboard_write: bool, pub agent_panes_off: bool, pub agent_panes_paused: Option<u64>, pub pane_cues: Vec<super::pane_cue::PaneCue>, // the host's setting `clipboard_write` (whether the agent tool is offered); `agent_panes` false: the person switched the agents' control of the panes off (on is the default), or paused it for `agent_panes_paused` more seconds (`M24-P07`); what agents did lately in which pane tab, as the last `status` said (`M24-P05b`)
     pub notifications_off: bool, pub group_by_workspace: bool, pub font_px: u8, pub show_events: bool, pub show_hidden: bool, // view settings
     pub line_styles: Vec<u8>, // per-buffer-line style tag (`0` non-transcript, `1 + (role & STYLE_MASK)` transcript)
     pub seen_finished: HashMap<String, i64>, // last seen `finished_seq` per viewed session
@@ -574,7 +574,7 @@ impl App {
             "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
             "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
         });
-        let settings = json!({"clipboard_write": self.ui.clipboard_write, "agent_panes": !self.ui.agent_panes_off, "pane_cues": self.ui.pane_cues.iter().map(|c| json!({"tab": c.tab, "by": c.by, "did": c.did})).collect::<Vec<_>>(), "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
+        let settings = json!({"clipboard_write": self.ui.clipboard_write, "agent_panes": !self.ui.agent_panes_off && self.ui.agent_panes_paused.is_none(), "pane_cues": self.ui.pane_cues.iter().map(|c| json!({"tab": c.tab, "by": c.by, "did": c.did})).collect::<Vec<_>>(), "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
         let shown_lines = self.shown_lines_dump();
         let memory = json!({"total": memrow::total(&self.ui.rows, &self.ui.mem), "hover": self.ui.mem.hover});
         let mut dump = json!({
@@ -586,7 +586,7 @@ impl App {
             "visible": [self.ui.window_span.0, self.ui.window_span.1], "selection": self.selection_text(), "copied": self.ui.copied,
             "panel": self.panel_json(), "menu": self.menu_json(), "toolbar": self.toolbar_json(), "tabs": self.tabs_json(), "telemetry": self.telemetry_json(), "sidebar": self.sidebar_json(), "calls": self.calls_json(), "mention_popup": self.mention_popup_json(), "frame": frame,
             "path_bar": self.path_bar_json(), "window_btn": self.window_btn_json(), "hint": self.hint_text(1200 * 2, 1.0), "list_text": self.ui.list_sig, "window_title": self.desired_window_title(),
-            "search": self.search_json(), "memory": memory, "settings": settings, "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
+            "search": self.search_json(), "memory": memory, "settings": super::pane_cue::with_pause(settings, self.ui.agent_panes_paused), "workspace_state": self.workspace_state_json(), "real_screen": self.real_screen_json(),
             "input": self.shown_input(), "editor": self.editor_json(),
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,

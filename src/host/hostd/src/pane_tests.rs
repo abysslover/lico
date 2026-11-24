@@ -336,3 +336,59 @@ fn a_stop_forgets_the_touches_and_switching_on_or_changing_another_setting_does_
     assert_eq!(shared.panes.len(), 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ---------------------------------------------------------------- the pause (M24-P07)
+
+fn pause_now(shared: &Shared) {
+    crate::clipboard::settings::apply_settings(shared, crate::clipboard::settings::Patch { agent_panes_pause: Some(true), ..Default::default() }).unwrap();
+}
+
+#[test]
+fn the_refusal_while_the_panes_are_paused_says_it_is_a_pause_by_the_person_and_hints_at_no_way_round() {
+    assert!(PAUSED.starts_with("paused: the person has paused"), "{PAUSED}");
+    assert_ne!(PAUSED, SWITCHED_OFF, "a pause and an off are told apart");
+    for word in ["settings", "lico ", "--agent-panes", "Ctrl+Alt"] {
+        assert!(!PAUSED.contains(word), "the answer to an agent does not teach how to undo the person's stop: {PAUSED}");
+    }
+}
+
+#[test]
+fn a_call_while_the_panes_are_paused_is_refused_before_anything_is_planned_and_goes_through_when_the_pause_ends_or_is_ended() {
+    let (shared, dir) = world();
+    let list = args(json!({"action": "list"}));
+    pause_now(&shared);
+    assert_eq!(pane(&shared, "s-pause-1", &list).unwrap_err(), PAUSED);
+    assert_eq!(pane(&shared, "s-pause-1", &args(json!({"action": "reboot"}))).unwrap_err(), PAUSED, "not even a bad call is judged: the answer is the person's stop");
+    // the person resumes at once (the menu): the next call goes through, no restart
+    crate::clipboard::settings::apply_settings(&shared, crate::clipboard::settings::Patch { agent_panes: Some(true), ..Default::default() }).unwrap();
+    assert!(matches!(pane(&shared, "s-pause-1", &list), Ok(Answer::Text(_))), "resumed");
+    // a pause that ended by itself: its end is in the past
+    crate::clipboard::settings::update_settings_at(&shared.cfg.handoff_dir, crate::clipboard::settings::Patch { agent_panes_pause: Some(true), ..Default::default() }, 1).unwrap();
+    assert!(matches!(pane(&shared, "s-pause-1", &list), Ok(Answer::Text(_))), "ended by itself");
+    // off for good is still told as off
+    switch(&shared, false);
+    assert_eq!(pane(&shared, "s-pause-1", &list).unwrap_err(), SWITCHED_OFF);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_pause_forgets_the_touches_and_no_cue_is_told_while_paused_nor_after_it() {
+    let (shared, dir) = world();
+    shared.panes.note("t1", "Claude 1", "typed", Instant::now());
+    assert_eq!(cues_json(&shared).as_array().unwrap().len(), 1);
+    pause_now(&shared);
+    assert_eq!(shared.panes.len(), 0, "the stop is the person's: what agents did before it is forgotten");
+    assert_eq!(cues_json(&shared), json!([]), "nothing is told while paused");
+    crate::clipboard::settings::apply_settings(&shared, crate::clipboard::settings::Patch { agent_panes: Some(true), ..Default::default() }).unwrap();
+    assert_eq!(cues_json(&shared), json!([]), "and what was done before the pause does not come back with the resume");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_resume_does_not_forget_what_was_touched() {
+    let (shared, dir) = world();
+    shared.panes.note("t1", "Claude 1", "typed", Instant::now());
+    crate::clipboard::settings::apply_settings(&shared, crate::clipboard::settings::Patch { agent_panes_pause: Some(false), ..Default::default() }).unwrap();
+    assert_eq!(shared.panes.len(), 1, "only a pause forgets, a resume does not");
+    let _ = std::fs::remove_dir_all(&dir);
+}
