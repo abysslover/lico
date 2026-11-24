@@ -72,6 +72,13 @@ def test_large_directory_pagination_toolbar_keys_wheel_and_top_row_visibility():
                 and u
             )
             f1 = u1["panel"]["files"]
+            # M24-P09: at this text size the doubled icons and the Files screen's six words do not fit one row, so the icons give way (square, never under the old side) before any button is pushed out
+            title = u1["menu"]["titles"][0]["rect"]
+            scale = (title[3] - title[1]) / (u1["settings"]["font_px"] + 8)
+            old_side = (u1["settings"]["font_px"] + 5) * scale
+            for b in u1["toolbar"]["buttons"][:4]:
+                wd, ht = b["rect"][2] - b["rect"][0], b["rect"][3] - b["rect"][1]
+                assert abs(wd - ht) <= 1 and wd >= old_side - 1 and wd <= 2 * old_side + 1, (b["id"], b["rect"], old_side)
             assert f1["page"] == 1
             assert f1["total_pages"] > 10
             assert u1["visible"][0] == 0, f"top row clipped at font_px=20: visible={u1['visible']}"

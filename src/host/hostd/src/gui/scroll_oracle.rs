@@ -161,8 +161,8 @@ fn lines(from: i64, count: usize) -> Vec<String> {
 }
 
 fn script(scale: f32) {
-    // the window has about 40 rows at every scale, so that a burst of twelve lines leaves old lines on the screen
-    let size = if scale == 1.0 { (1000, 620) } else if scale == 2.0 { (1500, 1400) } else { (1100, 800) };
+    // the window has about 40 rows at every scale, so that a burst of twelve lines leaves old lines on the screen (M24-P09: the toolbar is 36 px taller at scale 2, so the window is 40 px taller)
+    let size = if scale == 1.0 { (1000, 620) } else if scale == 2.0 { (1500, 1440) } else { (1100, 800) };
     let mut p = Pair::new(size, scale);
     p.full("the first frame", Cause::First);
     p.push(&lines(0, 60));

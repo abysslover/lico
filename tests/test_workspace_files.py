@@ -220,6 +220,12 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
                 "prev_page",
                 "next_page",
             ]
+            # M24-P09: the icons are twice the old size but the Files screen's text buttons keep theirs (half an icon: one line and a pixel), centred in the taller row
+            icon = u_files["toolbar"]["buttons"][0]["rect"]
+            for b in u_files["toolbar"]["buttons"][4:]:
+                th = b["rect"][3] - b["rect"][1]
+                assert abs(th - (icon[3] - icon[1]) / 2) <= 2, (b["id"], b["rect"], icon)
+                assert abs((b["rect"][1] + b["rect"][3]) / 2 - (icon[1] + icon[3]) / 2) <= 1, ("centred in the row", b["id"], b["rect"], icon)
 
             # 2. Create a new file on disk -> NO background inotify/timer refresh occurs!
             (proj / "added_on_disk.txt").write_text("created later\n", encoding="utf-8")

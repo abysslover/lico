@@ -43,14 +43,33 @@ pub struct ToolbarGeom {
     pub acct: Vec<[f32; 4]>,
 }
 
-/// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off).
+/// The height of a text button of the toolbar (the Files panel's words): one line and a pixel, as the icons were before `M24-P09`.
+fn text_button_h(s: f32, line_h: f32) -> f32 {
+    line_h * s + s
+}
+
+/// The side of an icon button (`M24-P09`, the owner's word of 2026-11-25): twice what it was, in width and in height. The row's height, the drawing and the hit boxes all use this one number.
+fn icon_side(s: f32, line_h: f32) -> f32 {
+    2.0 * text_button_h(s, line_h)
+}
+
+/// The rectangle of a toolbar button at `x` of width `w` in a row that starts at `y` and is `side` high: an icon is a square of `w` (the whole row at its full size), a text button keeps its own height `text_h`, both centred in the row
+/// (`M24-P09`: the owner asked for the icons to grow, not the words).
+pub(super) fn button_rect(icon: bool, x: f32, w: f32, y: f32, side: f32, text_h: f32) -> [f32; 4] {
+    // an icon is a square of its width (the whole row when the row has the room, `icon_fit`), a text button keeps its own height
+    let h = if icon { w.min(side) } else { text_h.min(side) };
+    let top = y + (side - h) * 0.5;
+    [x, top, x + w, top + h]
+}
+
+/// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off). The toolbar row is its icon side with 2 px above and 3 px below (units of the scale).
 pub fn bar_heights(menu_shown: bool, scale: f32, line_h: f32) -> (f32, f32) {
     if !menu_shown {
         return (0.0, 0.0);
     }
     let s = scale.max(1.0);
     let menu_h = line_h * s + 4.0 * s;
-    let tool_h = line_h * s + 6.0 * s;
+    let tool_h = icon_side(s, line_h) + 5.0 * s;
     (menu_h, menu_h + tool_h)
 }
 
@@ -60,6 +79,20 @@ pub fn bar_heights(menu_shown: bool, scale: f32, line_h: f32) -> (f32, f32) {
 pub(super) fn toolbar_spacing(widths: &[f32], texts: usize, room: f32, s: f32) -> (f32, f32) {
     let need = |pad: f32, gap: f32| widths.iter().sum::<f32>() + texts as f32 * pad * s + widths.len().saturating_sub(1) as f32 * gap * s;
     if need(14.0, 5.0) <= room { (14.0, 5.0) } else { (6.0, 3.0) }
+}
+
+/// The width of an icon button when the row is narrow (`M24-P09`): its full side while the row fits at the tightest spacing, else smaller, as small as `least` (the old side), so that the
+/// buttons at the end of the row (the Files panel's page buttons) are not pushed out by the bigger icons. `text_widths` is the sum of the text buttons' texts, `texts` their number, `room` the
+/// width from the first button to the right edge.
+pub(super) fn icon_fit(full: f32, least: f32, icons: usize, text_widths: f32, texts: usize, room: f32, s: f32) -> f32 {
+    if icons == 0 {
+        return full;
+    }
+    let rest = text_widths + texts as f32 * 6.0 * s + (icons + texts).saturating_sub(1) as f32 * 3.0 * s;
+    if icons as f32 * full + rest <= room {
+        return full;
+    }
+    ((room - rest) / icons as f32).floor().clamp(least.min(full), full)
 }
 
 impl App {
@@ -199,7 +232,8 @@ impl App {
         let host_popup = if menu_open.is_none() { self.files_host_popup_draw_state() } else { None };
         let (maximized, over_icon) = (self.window_is_maximized(), self.ui.win_btn.hover);
         let s = self.ui.scale.max(1.0);
-        let lh = self.line_h() * s;
+        let line_h = self.line_h();
+        let lh = line_h * s;
         let Some(fs) = self.font_system.as_mut() else { return };
         let ink = Color::rgb(0xE0, 0xE0, 0xE0);
         let dim = super::super::panel::sendto::DIM;
@@ -232,16 +266,21 @@ impl App {
         let mut tx = x0 + 6.0 * s;
         let (by0, by1) = (menu_h + 2.0 * s, bar_h - 3.0 * s);
         let side = (by1 - by0).max(1.0);
+        let text_h = text_button_h(s, line_h);
         let hover = self.ui.toolbar_geom.hover;
         let mut tip: Option<String> = None;
-        let widths: Vec<f32> = tool_entries.iter().map(|b| if b.icon.is_some() { side } else { controls.width(fs, &b.label) }).collect();
-        let (pad, gap) = toolbar_spacing(&widths, tool_entries.iter().filter(|b| b.icon.is_none()).count(), width as f32 - 4.0 * s - tx, s);
+        let texts = tool_entries.iter().filter(|b| b.icon.is_none()).count();
+        let room = width as f32 - 4.0 * s - tx;
+        let text_widths: f32 = tool_entries.iter().filter(|b| b.icon.is_none()).map(|b| controls.width(fs, &b.label)).sum();
+        let icon_w = icon_fit(side, text_button_h(s, line_h), tool_entries.len() - texts, text_widths, texts, room, s);
+        let widths: Vec<f32> = tool_entries.iter().map(|b| if b.icon.is_some() { icon_w } else { controls.width(fs, &b.label) }).collect();
+        let (pad, gap) = toolbar_spacing(&widths, texts, room, s);
         for (i, btn) in tool_entries.iter().enumerate() {
-            let bw = if btn.icon.is_some() { side } else { widths[i] + pad * s };
+            let bw = if btn.icon.is_some() { icon_w } else { widths[i] + pad * s };
             if tx + bw > width as f32 - 4.0 * s {
                 break;
             }
-            let r = [tx, by0, tx + bw, by1];
+            let r = button_rect(btn.icon.is_some(), tx, bw, by0, side, text_h);
             let (fill, col) = if btn.reason.is_some() {
                 (0xFF1B_222D, dim)
             } else if btn.active || (btn.icon.is_some() && hover == Some(i)) {

@@ -158,3 +158,44 @@ fn the_toolbar_tightens_its_spacing_before_it_hides_a_button() {
     assert_eq!(toolbar_spacing(&widths, 6, 993.0, 2.0), (6.0, 3.0));
     assert_eq!(toolbar_spacing(&[], 0, 0.0, 1.0), (14.0, 5.0), "no buttons: nothing to tighten");
 }
+
+#[test]
+fn the_toolbar_icons_are_twice_the_old_size_and_the_row_grows_with_them() {
+    use super::toolbar::bar_heights;
+    for (s, line_h) in [(1.0f32, 17.0f32), (1.5, 17.0), (2.0, 21.0), (1.0, 33.0)] {
+        let old_side = line_h * s + s; // M22-P04: one line and a pixel
+        let (menu_h, bar_h) = bar_heights(true, s, line_h);
+        assert_eq!(menu_h, line_h * s + 4.0 * s, "the menu bar is as before");
+        // the icon sits 2 s below the menu bar and 3 s above the bottom of the row (`draw_top_bars`)
+        let side = (bar_h - 3.0 * s) - (menu_h + 2.0 * s);
+        assert!((side - 2.0 * old_side).abs() < 0.01, "twice the old side at scale {s}, line {line_h}: {side} against {old_side}");
+    }
+    assert_eq!(bar_heights(false, 1.0, 17.0), (0.0, 0.0), "no menu, no toolbar");
+    assert_eq!(bar_heights(true, 0.2, 17.0).0, bar_heights(true, 1.0, 17.0).0, "a scale under one counts as one, as before");
+}
+
+#[test]
+fn a_text_button_keeps_its_height_and_is_centred_in_the_taller_row() {
+    use super::toolbar::button_rect;
+    // the row starts at 30 and is 36 high (an icon of 36); a text button is 18 high
+    assert_eq!(button_rect(true, 10.0, 36.0, 30.0, 36.0, 18.0), [10.0, 30.0, 46.0, 66.0], "an icon fills the row");
+    assert_eq!(button_rect(true, 10.0, 24.0, 30.0, 36.0, 18.0), [10.0, 36.0, 34.0, 60.0], "a narrower icon is a square, centred in the row");
+    assert_eq!(button_rect(true, 10.0, 50.0, 30.0, 36.0, 18.0), [10.0, 30.0, 60.0, 66.0], "an icon is never taller than the row");
+    assert_eq!(button_rect(false, 60.0, 80.0, 30.0, 36.0, 18.0), [60.0, 39.0, 140.0, 57.0], "a text button: its own height, 9 px of room above and below");
+    assert_eq!(button_rect(false, 0.0, 10.0, 0.0, 12.0, 18.0), [0.0, 0.0, 10.0, 12.0], "never taller than the row");
+}
+
+#[test]
+fn the_icons_shrink_before_the_last_buttons_of_the_row_are_pushed_out() {
+    use super::toolbar::icon_fit;
+    // four icons of 36 (the old side 18), six text buttons of 636 px of text in all, scale 1: at the tightest spacing the row needs 4 x 36 + 636 + 6 x 6 + 9 x 3 = 843
+    assert_eq!(icon_fit(36.0, 18.0, 4, 636.0, 6, 843.0, 1.0), 36.0, "it fits at the tightest spacing: the full size (the spacing is what gives)");
+    assert_eq!(icon_fit(36.0, 18.0, 4, 636.0, 6, 842.0, 1.0), 35.0, "four pixels short in all: each icon one pixel less (rounded down)");
+    assert_eq!(icon_fit(36.0, 18.0, 4, 636.0, 6, 800.0, 1.0), 25.0, "(800 - 699) / 4 = 25.25");
+    assert_eq!(icon_fit(36.0, 18.0, 4, 636.0, 6, 700.0, 1.0), 18.0, "never below the old side: what does not fit is left out, as before");
+    assert_eq!(icon_fit(36.0, 18.0, 4, 636.0, 6, 0.0, 1.0), 18.0);
+    assert_eq!(icon_fit(36.0, 18.0, 4, 0.0, 0, 50.0, 1.0), 18.0, "the icons alone: 4 x 36 + 3 x 3 = 153 does not fit 50");
+    assert_eq!(icon_fit(36.0, 18.0, 4, 0.0, 0, 153.0, 1.0), 36.0);
+    assert_eq!(icon_fit(36.0, 18.0, 0, 100.0, 1, 10.0, 1.0), 36.0, "no icon: nothing to shrink");
+    assert_eq!(icon_fit(72.0, 36.0, 4, 636.0, 6, 1000.0, 2.0), 59.0, "the scale doubles the padding and the gap, not the texts: 636 + 72 + 54 = 762 and (1000 - 762) / 4 = 59.5");
+}

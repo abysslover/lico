@@ -45,9 +45,16 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
             assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser"]
             assert [b["label"] for b in buttons] == ["Accounts", "New session", "New Home session", "Open browser"]
             assert all(b["enabled"] and b["rect"] for b in buttons)
+            # M24-P09: each icon is a square of TWICE the old side (one text line and a pixel), at any text size or scale: the menu bar's height is (line + 4) x scale, so the old side is
+            # (menu bar - 3 x scale) and the scale is the menu bar's height over (font + 8)
+            font = u["settings"]["font_px"]
+            menu_h = u["menu"]["titles"][0]["rect"][3] - u["menu"]["titles"][0]["rect"][1]
+            scale = menu_h / (font + 8)
+            want = 2 * (font + 5) * scale
             for b in buttons:
                 wd, ht = b["rect"][2] - b["rect"][0], b["rect"][3] - b["rect"][1]
-                assert abs(wd - ht) <= 2 and ht >= 16, (b["id"], b["rect"])
+                assert abs(wd - ht) <= 2 and abs(ht - want) <= 2, (b["id"], b["rect"], want)
+                assert b["rect"][1] >= u["menu"]["titles"][0]["rect"][3], ("below the menu bar", b["id"], b["rect"])
             assert all(a["rect"][2] <= b["rect"][0] for a, b in zip(buttons, buttons[1:])), "left to right, not overlapping"
 
             # the tab row holds tabs only
