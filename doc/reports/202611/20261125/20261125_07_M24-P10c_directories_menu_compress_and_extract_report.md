@@ -1,0 +1,40 @@
+# M24-P10c: Extract and Compress in the Directories menu
+
+- Version: 1.0.0
+- Date: 2026-11-25
+- Branch: `phase/M24-P10c-directories-menu-compress-and-extract` from `phase/M24-P10b-directories-menu-rename-and-delete` (`b82fe30`); code `CODE_SHA`; not pushed (P07 to P10 go out with the release `0.8.2`, under the owner's advance yes of 2026-11-25)
+- Source: the owner's words in the chat on 2026-11-25 (quoted in the [P10a plan](../../../plans/202611/20261125/20261125_05_M24-P10a_directories_menu_plan.md) and in the [plan](../../../plans/202611/20261125/20261125_07_M24-P10c_directories_menu_compress_and_extract_plan.md))
+- Labels: MEASURED (a run), READ (from the code or the plan), COMPUTED.
+
+## 1. What the person sees (MEASURED in the window test; READ from the code)
+
+| | Before (P10b) | Now |
+|---|---|---|
+| The menu on a row | Open terminal, New folder, Rename, Delete | also **Extract** and **Compress**, in the owner's order (six lines) |
+| Compress | no way in the window | makes `name.zip` beside the row (a folder, a file or a link); a taken name takes the first free `name 2.zip`; **nothing is replaced**; a link inside a folder is stored as a link and never followed; the flash says `Compressing name...` and then `Compressed: name.zip`, the list shows the new file |
+| Extract | no way in the window | on a `.zip`, `.tar`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, `.tar.xz` or `.txz` file (capitals too, and a link to such a file, which the list shows as a file) makes a **new folder beside the archive** named like it without its ending (`photos.zip` makes `photos`; a taken name takes `photos 2`); the flash says `Extracting name...` and then `Extracted: photos` |
+| An archive that is not safe | | **refused with its reason and with nothing written**: a member with an absolute name or a `..` part, a link (symbolic or hard), a device or a pipe, more than 100,000 members, a line break or another control character in a name, or sizes that add up to more than 8 GiB; a failure in the middle removes the folder that was made |
+| While one runs | | the window stays usable; the two lines are greyed `an archive is being made` (**one archive at a time**), the other lines of the menu stay usable; a run longer than 30 minutes is stopped and what it made is removed |
+| The empty space, a non-archive | | both greyed `point at a file or folder`; Extract on any other row greyed `not an archive`; `zip is not installed`, `unzip is not installed` and `tar is not installed` when a tool is missing |
+| Another screen open | the question lines were greyed `close the open screen first` | Extract and Compress ask no question, so an open screen does not grey them (the order of the reasons: machine, folder, an archive being made, then the row, then the kind or the missing tool) |
+
+## 2. How it is built (READ)
+
+- `archive.rs` (a new leaf module, std only, 389 lines, 26 unit tests): `kind_of(name)` (the ending and its format), `stem_of`, `free_name(parent, wanted, ending)` (the first of `x`, `x 2`, ... that nothing holds, a dangling link included), the checks of a listing (`member_problem` over the type letters and the names; `zip_listing` and `tar_listing`, which read the tools' own listing strictly, in place: a name that has a line break or a line that does not fit the format is refused, never skipped), `find_tool` (the tool is looked for in a short fixed `PATH` only), `run` (a list of arguments, no shell, a cleared environment with `PATH` and a UTF-8 `LANG`, no input, the folder of the row, a deadline checked every 20 ms that kills the tool, the error text read up to 4 KiB, a flood of output refused), `compress_within(parent, name, limit)` and `extract_within(archive, limit)`.
+- **Compress** works in a hidden folder `.lico-part-<hex>` beside the row and puts the finished `name.zip` in place with a hard link (that refuses a name taken in between; a plain rename is the fallback where a hard link is not possible), and the hidden folder is always removed.
+- **Extract** lists the archive first (`unzip -Z`, or `tar --list --verbose --numeric-owner --quoting-style=escape`), vets the listing, makes the folder with `create_dir` (so a taken name is never entered) and extracts with `unzip -q -n -d` or `tar --extract --no-same-owner --directory`; a failure or a stop removes the folder it made.
+- `dirmenu.rs`: two more `Kind`s; `Ctx` knows whether an archive is being made (`busy`), whether the row is an archive, and which tool is missing; `archive_start` runs the job on a worker thread and sends the answer back as an event (`AsyncJob::Archive` in `jobs.rs`, `on_archive_async` called from `panel.rs`); the flash, the refresh of the list at the end; `dirmenu_json` shows `archive_busy` and the flash to the window tests. The size ratchet holds (`panel.rs` `793`, `sidebar.rs` `794`, `mod.rs` `800`, `ui.rs` untouched).
+- **Said, not hidden:** (1) an archive that holds a link is refused, so the zip that Compress makes of a folder with a link inside can be made but not opened here (it can be opened by hand); (2) the size limit is the listing's own sum: an archive whose listing lies is beyond what `unzip` and `tar` can tell; (3) an archive that holds one top folder is extracted as it is, so `photos.zip` holding `photos/` gives `photos/photos/` (a later option); (4) the mapping of a missing tool to its greyed line cannot be tested in the window, where the tools are installed (it is read from the code and the unit test of the order of the reasons covers the lines, not the tools' search).
+
+## 3. Checks (MEASURED)
+
+- **Tests first**: the `23` archive unit tests that needed the tools were run on stubs and failed (the tests that need `zip` or `tar` say so when the tool is not there and never pass without it); then green. The menu's unit tests (`10` in `dirmenu_tests.rs`) did not compile on the old code and are green. The window tests (`tests/test_directories_menu.py`, now `15`, `4` of them new: Compress a folder, a file and a taken name and read the zip back with `zipfile`; Extract a `.zip`, a `.tar.gz` and a link to an archive and compare the files; an archive that goes up, starts at the root or holds a link refused with nothing written in or outside the folder; a second archive greyed while the first runs on a 240 MiB file) passed at their first run once the code was done; the mutants below show that they bite.
+- **Unit tests over real archives** made by the tools in a temporary tree: a zip, a `.tar.gz`, a `.tar` and a `.txz` round trip; a taken name; `..`, an absolute name, a symbolic and a hard link, a fifo, a sparse member of 8 GiB and a name with a line break (a tar) refused with nothing made and nothing outside; broken archives and a failure in the middle (a member name of 300 bytes) leave no folder; the not-an-archive, gone, folder, dangling-link and relative-path rows; a stopped listing; odd names (`[2024] *final*`, Korean, `-dash.txt`); the tools' listing forged in text.
+- **Mutation checks**: MUTATION_LINE
+- **The commit hook**: HOOK_LINE
+
+## 4. What is not decided (the owner's)
+
+- Other formats (7z, rar) and a choice of the archive's name or format on Compress (a question before it runs) are later, if the owner asks.
+- Whether an archive that holds one top folder should extract without the extra level, and whether an archive with links should be openable with the links as files, are product choices; today the safe default holds.
+- The transcript view, the release `0.8.2` and level C come after; publication is under the owner's advance yes of 2026-11-25 (with the release `0.8.2`).

@@ -1,10 +1,14 @@
-"""M24-P10a: the right-click menu of the Directories list, against a real host (the shell is `/bin/sh`) and a real window on a private Xvfb. The owner's words (2026-11-25): a right click in the
-left Directories list opens a menu; Open terminal is its first line (the one used most), New folder makes a directory. What the Rust tests prove inside the window (the order and the greying of the
-lines, the target of a row, the placement) is not repeated; here the doors are: the right button over a folder row, a file row and the empty space, what the menu holds, a click on a line, the
-keys, a click away, and what lands on the disk and in the terminal."""
+"""M24-P10a, P10b and P10c: the right-click menu of the Directories list, against a real host (the shell is `/bin/sh`) and a real window on a private Xvfb. The owner's words (2026-11-25): a right
+click in the left Directories list opens a menu; Open terminal is its first line (the one used most), then New folder, Rename, Delete, Extract and Compress. What the Rust tests prove inside the
+window (the order and the greying of the lines, the target of a row, the placement, the vetting of an archive) is not repeated; here the doors are: the right button over a folder row, a file row
+and the empty space, what the menu holds, a click on a line, the keys, a click away, and what lands on the disk and in the terminal."""
 
 from __future__ import annotations
 
+import os
+import subprocess
+import tarfile
+import zipfile
 from pathlib import Path
 
 from lico_measure.captures import ProductWindow
@@ -14,7 +18,7 @@ from tests.gui_helpers import centre
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_terminal_tab import rig
 
-LINES = ["Open terminal", "New folder", "Rename", "Delete"]
+LINES = ["Open terminal", "New folder", "Rename", "Delete", "Extract", "Compress"]
 
 
 def start(w: ProductWindow, project: Path) -> dict:
@@ -66,7 +70,8 @@ def test_a_right_click_opens_the_menu_with_open_terminal_first_and_a_click_on_it
 
             m = open_menu_on(w, centre(row(side, "inner")["rect"]))              # a folder row: the folder itself
             assert [i["label"] for i in m["items"]] == LINES, m["items"]
-            assert all(i["enabled"] and i["reason"] is None and i["rect"] for i in m["items"]), m["items"]
+            assert [(i["enabled"], i["reason"]) for i in m["items"]] == [(True, None)] * 4 + [(False, "not an archive"), (True, None)], m["items"]
+            assert all(i["rect"] for i in m["items"]), m["items"]
             assert m["folder"] == str(project / "inner") and m["row"] == ["inner", "dir"], m
             assert m["items"][0]["rect"][3] <= m["items"][1]["rect"][1] + 1, "Open terminal is above New folder"
             assert m["selected"] == 0, "the first usable line is the one Enter runs"
@@ -110,8 +115,10 @@ def test_the_keys_move_over_the_lines_enter_runs_and_escape_or_a_click_away_clos
             w.key("Down")
             assert menu(w)["selected"] == 3
             w.key("Down")
-            assert menu(w)["selected"] == 3, "it stops at the last line"
-            for _ in range(3):
+            assert menu(w)["selected"] == 5, "Extract is greyed on a folder: the selection steps over it to Compress"
+            w.key("Down")
+            assert menu(w)["selected"] == 5, "it stops at the last line"
+            for _ in range(4):
                 w.key("Up")
             assert menu(w)["selected"] == 0
             w.key("Escape")
@@ -226,7 +233,7 @@ def test_the_lines_are_greyed_with_their_reason_on_an_open_screen_and_a_greyed_l
             side = w.ui()["sidebar"]
             m = open_menu_on(w, empty_space(side))
             shut = "close the open screen first"
-            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", False, shut), ("Rename", False, shut), ("Delete", False, shut)], m["items"]
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", False, shut), ("Rename", False, shut), ("Delete", False, shut), ("Extract", False, "point at a file or folder"), ("Compress", False, "point at a file or folder")], m["items"]
             assert m["selected"] == 0
             w.click(*centre(m["items"][1]["rect"]))                              # a greyed line is not run, and the menu closes
             assert menu(w)["open"] is False
@@ -241,7 +248,7 @@ def test_rename_and_delete_are_greyed_on_the_empty_space_with_their_reason_and_a
             side = start(w, project)
             m = open_menu_on(w, empty_space(side))
             point = "point at a file or folder"
-            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, point), ("Delete", False, point)], m["items"]
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, point), ("Delete", False, point), ("Extract", False, point), ("Compress", False, point)], m["items"]
             assert m["selected"] == 0
             w.click(*centre(m["items"][2]["rect"]))
             assert menu(w)["open"] is False and w.ui()["panel"] is None, "a greyed line asks nothing"
@@ -256,7 +263,7 @@ def test_rename_asks_the_new_name_with_the_old_one_on_the_line_and_never_replace
         with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
             side = start(w, project)
             m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
-            assert all(i["enabled"] for i in m["items"]), m["items"]
+            assert all(i["enabled"] for i in m["items"][:4]), m["items"]
             w.click(*centre(m["items"][2]["rect"]))
             panel = wait_for(lambda: (p := w.ui()["panel"]) and p["text_entry"] and p)
             assert "Rename" in panel["title"] and "note.txt" in "\n".join(panel["body"]), panel
@@ -367,6 +374,161 @@ def test_the_home_folder_is_protected_with_its_reason_and_the_menu_still_opens_a
         with ProductWindow(**rig(root, before_window=keep_folder(people), env={"HOME": str(home)})) as w:
             side = start(w, people)
             m = open_menu_on(w, centre(row(side, "me")["rect"]))
-            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, "protected"), ("Delete", False, "protected")], m["items"]
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, "protected"), ("Delete", False, "protected"), ("Extract", False, "not an archive"), ("Compress", True, None)], m["items"]
             w.click(*centre(m["items"][3]["rect"]))
             assert w.ui()["panel"] is None and home.is_dir() and (home / "work").is_dir(), "a protected row asks nothing and loses nothing"
+
+
+def flash_of(w: ProductWindow, start_of: str) -> str:
+    """The one-line notice of the window once it begins with `start_of` (the answer of an archive)."""
+    return wait_for(lambda: (f := menu(w)["flash"]) and f.startswith(start_of) and f)
+
+
+def unzip_names(archive: Path) -> list[str]:
+    """What the system's own `unzip` lists (it reads a Korean name that a plain zip reader garbles)."""
+    return subprocess.run(["unzip", "-Z1", str(archive)], check=True, capture_output=True, text=True).stdout.splitlines()
+
+
+def test_compress_makes_a_zip_beside_the_row_never_replaces_one_and_the_list_shows_it():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        (project / "inner" / "자료.txt").write_text("한글\n")
+        (project / "inner" / "sub").mkdir()
+        (project / "inner" / "sub" / "deep.txt").write_text("deep\n")
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, centre(row(side, "inner")["rect"]))
+            assert m["items"][5]["label"] == "Compress" and m["items"][5]["enabled"], m["items"]
+            w.click(*centre(m["items"][5]["rect"]))
+            assert flash_of(w, "Compressed:") == "Compressed: inner.zip"
+            names = unzip_names(project / "inner.zip")
+            assert {"inner/", "inner/sub/", "inner/sub/deep.txt", "inner/자료.txt"} <= set(names), names
+            assert not [p.name for p in project.iterdir() if p.name.startswith(".")], "no half-made file is left behind"
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and any(e["name"] == "inner.zip" and e["kind"] == "file" for e in s["entries"]) and s)
+            assert menu(w)["archive_busy"] is False
+
+            first = (project / "inner.zip").read_bytes()
+            m = open_menu_on(w, centre(row(side, "inner")["rect"]))              # a second one is a new name; the first is the same bytes
+            w.click(*centre(m["items"][5]["rect"]))
+            assert flash_of(w, "Compressed:") == "Compressed: inner 2.zip"
+            assert (project / "inner.zip").read_bytes() == first and (project / "inner 2.zip").is_file()
+
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and any(e["name"] == "note.txt" for e in s["entries"]) and s)
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))           # a file is compressed under its whole name
+            w.click(*centre(m["items"][5]["rect"]))
+            assert flash_of(w, "Compressed:") == "Compressed: note.txt.zip"
+            assert unzip_names(project / "note.txt.zip") == ["note.txt"]
+
+            m = open_menu_on(w, empty_space(w.ui()["sidebar"]))                  # nothing to compress on the empty space
+            assert (m["items"][5]["enabled"], m["items"][5]["reason"]) == (False, "point at a file or folder")
+
+
+def test_extract_opens_a_zip_and_a_tar_gz_into_new_folders_and_a_taken_name_gets_a_number():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        with zipfile.ZipFile(project / "bundle.zip", "w") as z:
+            z.writestr("docs/a.txt", "alpha\n")
+            z.writestr("docs/b.txt", "beta\n")
+            z.writestr("top.txt", "top\n")
+            z.writestr(zipfile.ZipInfo("empty/"), "")
+        (project / "fake.zip").mkdir()
+        (project / "alias.zip").symlink_to(project / "bundle.zip")
+        payload = root.resolve() / "payload.txt"
+        payload.write_text("tar payload\n")
+        with tarfile.open(project / "data.tar.gz", "w:gz") as t:
+            t.add(payload, arcname="data/payload.txt")
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, centre(row(side, "bundle.zip")["rect"]))
+            assert (m["items"][4]["label"], m["items"][4]["enabled"], m["items"][4]["reason"]) == ("Extract", True, None), m["items"]
+            w.click(*centre(m["items"][4]["rect"]))
+            assert flash_of(w, "Extracted:") == "Extracted: bundle"
+            assert (project / "bundle" / "docs" / "a.txt").read_text() == "alpha\n" and (project / "bundle" / "top.txt").read_text() == "top\n"
+            assert (project / "bundle" / "empty").is_dir()
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and any(e["name"] == "bundle" and e["kind"] == "dir" for e in s["entries"]) and s)
+
+            m = open_menu_on(w, centre(row(side, "bundle.zip")["rect"]))         # again: nothing is replaced, the next free name
+            w.click(*centre(m["items"][4]["rect"]))
+            assert flash_of(w, "Extracted:") == "Extracted: bundle 2"
+            assert (project / "bundle 2" / "top.txt").is_file() and (project / "bundle" / "top.txt").is_file()
+
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and any(e["name"] == "data.tar.gz" for e in s["entries"]) and s)
+            m = open_menu_on(w, centre(row(side, "data.tar.gz")["rect"]))
+            w.click(*centre(m["items"][4]["rect"]))
+            assert flash_of(w, "Extracted:") == "Extracted: data"
+            assert (project / "data" / "data" / "payload.txt").read_text() == "tar payload\n"
+
+            m = open_menu_on(w, centre(row(w.ui()["sidebar"], "note.txt")["rect"]))   # a plain file is no archive: greyed with its reason, a click does nothing
+            assert (m["items"][4]["enabled"], m["items"][4]["reason"]) == (False, "not an archive"), m["items"]
+            before = sorted(p.name for p in project.iterdir())
+            w.click(*centre(m["items"][4]["rect"]))
+            assert menu(w)["open"] is False and sorted(p.name for p in project.iterdir()) == before
+
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and all(e["rect"] for e in s["entries"]) and "fake.zip" in [e["name"] for e in s["entries"]] and s)
+            m = open_menu_on(w, centre(row(side, "fake.zip")["rect"]))           # a folder named like an archive is no archive
+            assert (m["items"][4]["enabled"], m["items"][4]["reason"]) == (False, "not an archive"), m["items"]
+            w.key("Escape")
+            m = open_menu_on(w, centre(row(side, "alias.zip")["rect"]))          # a link to an archive file is listed as a file and read like it
+            assert m["items"][4]["enabled"], m["items"]
+            w.click(*centre(m["items"][4]["rect"]))
+            assert flash_of(w, "Extracted:") == "Extracted: alias"
+            assert (project / "alias" / "top.txt").read_text() == "top\n"
+
+
+def test_an_archive_that_goes_up_starts_at_the_root_or_holds_a_link_is_refused_and_nothing_is_written():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        with zipfile.ZipFile(project / "up.zip", "w") as z:
+            z.writestr("ok.txt", "fine\n")
+            z.writestr("../escaped.txt", "out\n")
+        with zipfile.ZipFile(project / "abs.zip", "w") as z:
+            z.writestr(zipfile.ZipInfo("/escaped-abs.txt"), "out\n")
+        with zipfile.ZipFile(project / "link.zip", "w") as z:
+            link = zipfile.ZipInfo("shortcut")
+            link.create_system = 3
+            link.external_attr = 0o120777 << 16
+            z.writestr(link, "/etc")
+        with tarfile.open(project / "link.tar", "w") as t:
+            info = tarfile.TarInfo("shortcut")
+            info.type = tarfile.SYMTYPE
+            info.linkname = "/etc"
+            t.addfile(info)
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            start(w, project)
+            for name, word in [("up.zip", "goes up"), ("abs.zip", "root"), ("link.zip", "link"), ("link.tar", "link")]:
+                side = wait_for(lambda: (s := w.ui()["sidebar"]) and all(e["rect"] for e in s["entries"]) and s)
+                m = open_menu_on(w, centre(row(side, name)["rect"]))
+                w.click(*centre(m["items"][4]["rect"]))
+                why = flash_of(w, "Not extracted:")
+                assert word in why, (name, why)
+                wait_for(lambda: menu(w)["archive_busy"] is False)
+            assert sorted(p.name for p in project.iterdir()) == ["abs.zip", "inner", "link.tar", "link.zip", "note.txt", "up.zip"], "no folder was made"
+            assert not (project / "escaped.txt").exists() and not (root / "escaped.txt").exists() and not Path("/escaped-abs.txt").exists()
+
+
+def test_a_second_archive_waits_for_the_first_and_the_other_lines_do_not():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        (project / "heavy").mkdir()
+        with open(project / "heavy" / "random.bin", "wb") as out:
+            for _ in range(240):
+                out.write(os.urandom(1 << 20))                                   # about four seconds of zip on this machine
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, centre(row(side, "heavy")["rect"]))
+            w.click(*centre(m["items"][5]["rect"]))
+            wait_for(lambda: menu(w)["archive_busy"] is True)
+            assert menu(w)["flash"] == "Compressing heavy...", "the start is said while it runs"
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
+            busy = "an archive is being made"
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"][4:]] == [("Extract", False, busy), ("Compress", False, busy)], m["items"]
+            assert all(i["enabled"] for i in m["items"][:4]), "the rest of the menu does not wait"
+            w.click(*centre(m["items"][5]["rect"]))                              # a greyed line says why and starts nothing
+            assert menu(w)["flash"] == "Compress: an archive is being made."
+            assert flash_of(w, "Compressed:") == "Compressed: heavy.zip"
+            assert menu(w)["archive_busy"] is False and not (project / "note.txt.zip").exists(), "only the first was made"
+            assert sorted(p.name for p in project.iterdir() if p.name.endswith(".zip")) == ["heavy.zip"]

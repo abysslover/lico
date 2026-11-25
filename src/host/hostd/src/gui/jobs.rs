@@ -18,6 +18,7 @@ pub(crate) enum AsyncJob {
     LocalScan { req_id: u64 },
     Browser(super::browser_view::BrowserJob),
     Terminal(super::terminal::TermJob),
+    Archive { extract: bool },
 }
 
 pub(crate) struct AsyncDone {

@@ -73,7 +73,7 @@ pub struct SidebarState {
     pub truncated: bool,
     pub filter: String,
     pub filter_focused: bool,
-    pub dirmenu: Option<super::dirmenu::DirMenu>, // the right-click menu (`M24-P10a`)
+    pub dirmenu: Option<super::dirmenu::DirMenu>, pub archive_busy: bool, // the right-click menu (`M24-P10a`) and whether an archive is being made (`M24-P10c`)
     pub page: usize,
     pub page_size: usize,
     pub pending_req: u64,

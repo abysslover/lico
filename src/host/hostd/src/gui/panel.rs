@@ -140,6 +140,7 @@ impl App {
             AsyncJob::LlmFind { .. } | AsyncJob::LocalScan { .. } => self.on_llm_async(done.job, done.reply),
             AsyncJob::Browser(job) => self.on_browser_async(job, done.reply),
             AsyncJob::Terminal(job) => self.on_terminal_async(job, done.reply),
+            AsyncJob::Archive { .. } => self.on_archive_async(done.job, done.reply),
             AsyncJob::CallGet { .. } | AsyncJob::CallSay { .. } | AsyncJob::CallAction => self.on_call_async(done.job, done.reply),
         }
     }

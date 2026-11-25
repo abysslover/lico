@@ -21,7 +21,7 @@ mod scroll;
 mod scroll_oracle;
 mod sidebar;
 mod sidebar_calls;
-mod sidebar_nav; mod dirops; mod dirmenu; // the file operations of the Directories menu
+mod sidebar_nav; mod dirops; mod dirmenu; mod archive; // the file operations of the Directories menu
 mod newchat;
 mod jobs;
 mod llm_find;

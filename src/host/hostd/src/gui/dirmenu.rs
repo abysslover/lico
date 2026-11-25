@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use winit::event::{ElementState, KeyEvent, MouseButton};
 use winit::keyboard::{Key, NamedKey};
 
+use super::jobs::{AsyncDone, AsyncJob};
 use super::panel::confirm::{Act, Ask};
 use super::controls::{self, Action, Rect};
 use super::panel::Step;
@@ -16,6 +17,8 @@ pub(crate) enum Kind {
     NewFolder,
     Rename,
     Delete,
+    Extract,
+    Compress,
 }
 
 /// One line of the menu: what it does, its words, and why it cannot be used now (None: it can).
@@ -68,6 +71,14 @@ pub(crate) struct Ctx {
     pub on_row: bool,
     /// That row is the root, the home folder or a folder above it.
     pub protected: bool,
+    /// An archive is being made (one at a time).
+    pub busy: bool,
+    /// The row is a file whose name ends like an archive.
+    pub archive: bool,
+    /// Why that archive cannot be opened here (its tool is not installed).
+    pub unpack_missing: Option<&'static str>,
+    /// `zip` is not installed.
+    pub zip_missing: bool,
 }
 
 /// The path of `name` inside the folder `base` (a folder as the list shows it: with or without a closing slash; the root is `/`).
@@ -89,11 +100,15 @@ pub(crate) fn items(ctx: &Ctx) -> Vec<Item> {
     let base = if ctx.remote { Some("this machine only") } else if !ctx.listed { Some("no folder here") } else { None };
     let asks = base.or(ctx.panel_open.then_some("close the open screen first"));
     let on_row = asks.or((!ctx.on_row).then_some("point at a file or folder")).or(ctx.protected.then_some("protected"));
+    let work = base.or(ctx.busy.then_some("an archive is being made"));
+    let row = work.or((!ctx.on_row).then_some("point at a file or folder"));
     vec![
         Item { kind: Kind::OpenTerminal, label: "Open terminal", reason: base },
         Item { kind: Kind::NewFolder, label: "New folder", reason: asks },
         Item { kind: Kind::Rename, label: "Rename", reason: on_row },
         Item { kind: Kind::Delete, label: "Delete", reason: on_row },
+        Item { kind: Kind::Extract, label: "Extract", reason: row.or((!ctx.archive).then_some("not an archive")).or(ctx.unpack_missing) },
+        Item { kind: Kind::Compress, label: "Compress", reason: row.or(ctx.zip_missing.then_some("zip is not installed")) },
     ]
 }
 
@@ -147,7 +162,8 @@ impl App {
         let sb = &self.ui.sidebar;
         let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
         let protected = target.entry().is_some_and(|e| super::dirops::protected(std::path::Path::new(&e), home.as_deref()));
-        Ctx { remote: sb.ssh_host.is_some(), listed: sb.cwd.starts_with('/') && !sb.unreachable && sb.error.is_none(), panel_open: self.ui.panel.is_some(), on_row: target.row.is_some(), protected }
+        let unpack = target.row.as_ref().filter(|(_, kind)| kind == "file").and_then(|(name, _)| super::archive::kind_of(name));
+        Ctx { remote: sb.ssh_host.is_some(), listed: sb.cwd.starts_with('/') && !sb.unreachable && sb.error.is_none(), panel_open: self.ui.panel.is_some(), on_row: target.row.is_some(), protected, busy: sb.archive_busy, archive: unpack.is_some(), unpack_missing: unpack.and_then(|(format, _)| super::archive::tool_missing(format)), zip_missing: super::archive::zip_missing() }
     }
 
     pub(crate) fn dirmenu_close(&mut self) -> bool {
@@ -242,7 +258,47 @@ impl App {
             Kind::NewFolder => self.new_folder_ask(menu.target.folder),
             Kind::Rename => self.entry_ask(Act::RenameEntry, &menu.target),
             Kind::Delete => self.entry_ask(Act::DeleteEntry, &menu.target),
+            Kind::Extract | Kind::Compress => self.archive_start(item.kind == Kind::Extract, &menu.target),
         }
+    }
+
+    /// Extract or Compress on the row the menu was opened on: one archive at a time, made off the window's thread; the flash says it began and, when the answer comes, how it ended.
+    fn archive_start(&mut self, extract: bool, target: &Target) {
+        let Some((name, _)) = target.row.clone() else { return };
+        if self.ui.sidebar.archive_busy {
+            return;
+        }
+        self.ui.sidebar.archive_busy = true;
+        self.ui.flash = Some(format!("{} {name}...", if extract { "Extracting" } else { "Compressing" }));
+        let parent = std::path::PathBuf::from(&target.parent);
+        let job = AsyncJob::Archive { extract };
+        let work = move || {
+            let done = if extract { super::archive::extract_within(&parent.join(&name), super::archive::RUN_LIMIT).map(|made| made.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()) } else { super::archive::compress_within(&parent, &name, super::archive::RUN_LIMIT) };
+            match done {
+                Ok(made) => json!({"ok": true, "made": made}),
+                Err(why) => json!({"ok": false, "why": why}),
+            }
+        };
+        match self.ui.proxy.clone() {
+            Some(proxy) => {
+                std::thread::spawn(move || {
+                    let _ = proxy.send_event(super::Ev::Async(AsyncDone { job, reply: work() }));
+                });
+            }
+            None => self.on_async_done(AsyncDone { job, reply: work() }),
+        }
+    }
+
+    /// The answer of an archive: the flash says how it ended and the list shows what is there now.
+    pub(crate) fn on_archive_async(&mut self, job: AsyncJob, reply: Value) {
+        let AsyncJob::Archive { extract } = job else { return };
+        self.ui.sidebar.archive_busy = false;
+        self.ui.flash = Some(match (reply["ok"].as_bool(), reply["made"].as_str()) {
+            (Some(true), Some(made)) => format!("{}: {made}", if extract { "Extracted" } else { "Compressed" }),
+            _ => format!("{}: {}.", if extract { "Not extracted" } else { "Not compressed" }, reply["why"].as_str().unwrap_or("it did not finish")),
+        });
+        self.sidebar_refresh();
+        self.dirty = true;
     }
 
     /// The question of Rename and of Delete about the row the menu was opened on: the name on the input line with the old one in it, or the confirmation that says what goes.
@@ -322,9 +378,16 @@ impl App {
 
     /// The menu in the window's dump.
     pub(crate) fn dirmenu_json(&self) -> Value {
-        let Some(m) = self.ui.sidebar.dirmenu.as_ref() else { return json!({"open": false}) };
-        let lines: Vec<Value> = m.items.iter().enumerate().map(|(i, it)| json!({"label": it.label, "enabled": it.enabled(), "reason": it.reason, "rect": m.rects.get(i)})).collect();
-        json!({"open": true, "folder": m.target.folder, "row": m.target.row.as_ref().map(|(n, k)| json!([n, k])), "selected": m.sel, "rect": m.rect, "items": lines})
+        let mut out = match self.ui.sidebar.dirmenu.as_ref() {
+            None => json!({"open": false}),
+            Some(m) => {
+                let lines: Vec<Value> = m.items.iter().enumerate().map(|(i, it)| json!({"label": it.label, "enabled": it.enabled(), "reason": it.reason, "rect": m.rects.get(i)})).collect();
+                json!({"open": true, "folder": m.target.folder, "row": m.target.row.as_ref().map(|(n, k)| json!([n, k])), "selected": m.sel, "rect": m.rect, "items": lines})
+            }
+        };
+        out["archive_busy"] = json!(self.ui.sidebar.archive_busy);
+        out["flash"] = json!(self.ui.flash);
+        out
     }
 
     /// Draws the menu at the pointer, kept inside the left column and the window, and records where its lines are (for the clicks, the hover and the dump).

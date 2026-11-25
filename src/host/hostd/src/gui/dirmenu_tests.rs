@@ -25,9 +25,9 @@ fn a_folder_row_is_the_target_folder_and_anything_else_means_the_folder_the_list
     assert_eq!(target_for("/", Some(("etc", "dir"))).folder, "/etc");
 }
 
-/// A row of the list under the pointer, nothing open, a folder listed, on this machine.
+/// A row of the list under the pointer that is an archive, nothing open, a folder listed, on this machine.
 fn on_a_row() -> Ctx {
-    Ctx { remote: false, listed: true, panel_open: false, on_row: true, protected: false }
+    Ctx { listed: true, on_row: true, archive: true, ..Ctx::default() }
 }
 
 #[test]
@@ -45,10 +45,10 @@ fn the_target_of_a_row_knows_the_folder_the_list_shows_and_so_its_own_path() {
 }
 
 #[test]
-fn the_menu_holds_the_owners_six_lines_in_his_order_as_far_as_they_are_built() {
+fn the_menu_holds_the_owners_six_lines_in_his_order() {
     let all = items(&on_a_row());
-    assert_eq!(labels(&all), ["Open terminal", "New folder", "Rename", "Delete"], "the owner's order: the terminal first, then the folder, the name, the delete");
-    assert_eq!(all.iter().map(|i| i.kind).collect::<Vec<_>>(), [Kind::OpenTerminal, Kind::NewFolder, Kind::Rename, Kind::Delete]);
+    assert_eq!(labels(&all), ["Open terminal", "New folder", "Rename", "Delete", "Extract", "Compress"], "the owner's order: the terminal first, then the folder, the name, the delete, the extract, the compress");
+    assert_eq!(all.iter().map(|i| i.kind).collect::<Vec<_>>(), [Kind::OpenTerminal, Kind::NewFolder, Kind::Rename, Kind::Delete, Kind::Extract, Kind::Compress]);
     assert!(all.iter().all(|i| i.enabled() && i.reason.is_none()));
 }
 
@@ -67,39 +67,40 @@ fn the_empty_space_greys_rename_and_delete_and_a_protected_row_greys_them_with_a
 #[test]
 fn an_ssh_host_greys_every_line_with_its_reason_and_no_listed_folder_greys_them_too() {
     let remote = items(&Ctx { remote: true, ..on_a_row() });
-    assert_eq!(labels(&remote), ["Open terminal", "New folder", "Rename", "Delete"], "the lines stay in their place");
+    assert_eq!(labels(&remote), ["Open terminal", "New folder", "Rename", "Delete", "Extract", "Compress"], "the lines stay in their place");
     assert!(remote.iter().all(|i| i.reason == Some("this machine only")));
     let none = items(&Ctx { listed: false, ..on_a_row() });
     assert!(none.iter().all(|i| i.reason == Some("no folder here")));
     let both = items(&Ctx { remote: true, listed: false, ..on_a_row() });
     assert!(both.iter().all(|i| i.reason == Some("this machine only")), "the machine is the first thing said");
-    let first = items(&Ctx { remote: true, on_row: false, protected: true, panel_open: true, listed: true });
-    assert!(first.iter().all(|i| i.reason == Some("this machine only")), "the machine before the screen, the row and the protection");
+    let first = items(&Ctx { remote: true, on_row: false, protected: true, panel_open: true, busy: true, zip_missing: true, ..on_a_row() });
+    assert!(first.iter().all(|i| i.reason == Some("this machine only")), "the machine before the screen, the row, the protection and the archive in the making");
 }
 
 #[test]
-fn an_open_screen_greys_every_line_that_asks_a_question_but_not_the_terminal() {
+fn an_open_screen_greys_every_line_that_asks_a_question_but_not_the_terminal_and_the_archives() {
     let open = items(&Ctx { panel_open: true, ..on_a_row() });
     assert!(open[0].enabled(), "a terminal can be opened over any screen");
-    for line in &open[1..] {
+    for line in &open[1..4] {
         assert_eq!(line.reason, Some("close the open screen first"), "{}", line.label);
     }
+    assert!(open[4].enabled() && open[5].enabled(), "Extract and Compress ask nothing: the screen is no reason");
     let over_space = items(&Ctx { panel_open: true, on_row: false, ..on_a_row() });
     assert_eq!(over_space[2].reason, Some("close the open screen first"), "the screen is said before the missing row");
 }
 
 #[test]
 fn the_selection_starts_at_the_first_usable_line_and_steps_over_the_greyed_ones_without_wrapping() {
-    let four = items(&on_a_row());
-    assert_eq!(first_enabled(&four), Some(0));
-    assert_eq!((step(&four, 0, true), step(&four, 3, true), step(&four, 3, false), step(&four, 0, false)), (1, 3, 2, 0), "it stops at the ends");
+    let six = items(&on_a_row());
+    assert_eq!(first_enabled(&six), Some(0));
+    assert_eq!((step(&six, 0, true), step(&six, 5, true), step(&six, 3, false), step(&six, 0, false)), (1, 5, 2, 0), "it stops at the ends");
     let over = items(&Ctx { panel_open: true, ..on_a_row() });
-    assert_eq!((step(&over, 0, true), step(&over, 0, false)), (0, 0), "the questions are greyed: Down stays on the terminal line");
+    assert_eq!((step(&over, 0, true), step(&over, 4, false), step(&over, 5, true)), (4, 0, 5), "the questions are greyed: Down goes from the terminal line to Extract, and Up from it back");
     let space = items(&Ctx { on_row: false, ..on_a_row() });
-    assert_eq!((step(&space, 1, true), step(&space, 1, false)), (1, 0), "the two greyed lines at the end are stepped over, and then it stays");
+    assert_eq!((step(&space, 1, true), step(&space, 1, false)), (1, 0), "the greyed lines at the end are stepped over, and then it stays");
     let none = items(&Ctx { remote: true, ..on_a_row() });
     assert_eq!((first_enabled(&none), step(&none, 0, true)), (None, 0), "nothing to select");
-    let mut only_second = four.clone();
+    let mut only_second = six.clone();
     only_second[0].reason = Some("x");
     assert_eq!((first_enabled(&only_second), step(&only_second, 1, false)), (Some(1), 1), "the greyed first line is not stepped to");
 }
@@ -112,4 +113,29 @@ fn the_menu_is_placed_at_the_pointer_and_kept_inside_its_bounds() {
     assert_eq!(place((50.0, 395.0), (100.0, 40.0), bounds), (50.0, 360.0), "too far down: its bottom on the bound");
     assert_eq!(place((-5.0, 5.0), (100.0, 40.0), bounds), (0.0, 20.0), "outside the top left: the corner");
     assert_eq!(place((10.0, 10.0), (500.0, 40.0), bounds), (0.0, 20.0), "wider than the bounds: from the left edge");
+}
+
+#[test]
+fn extract_needs_an_archive_row_and_compress_any_row_and_the_reasons_come_in_their_order() {
+    let archive = items(&on_a_row());
+    assert!(archive[4].enabled() && archive[5].enabled());
+    let plain = items(&Ctx { archive: false, ..on_a_row() });
+    assert_eq!((plain[4].reason, plain[5].reason), (Some("not an archive"), None), "a folder or a plain file can be compressed but not extracted");
+    let space = items(&Ctx { on_row: false, archive: false, ..on_a_row() });
+    assert_eq!((space[4].reason, space[5].reason), (Some("point at a file or folder"), Some("point at a file or folder")), "no row is said before `not an archive`");
+    let busy = items(&Ctx { busy: true, ..on_a_row() });
+    assert_eq!((busy[4].reason, busy[5].reason), (Some("an archive is being made"), Some("an archive is being made")), "one archive at a time");
+    assert!(busy[..4].iter().all(Item::enabled), "the other lines do not wait for an archive");
+    let busy_space = items(&Ctx { busy: true, on_row: false, ..on_a_row() });
+    assert_eq!(busy_space[4].reason, Some("an archive is being made"), "the archive in the making is said before the missing row");
+    let busy_plain = items(&Ctx { busy: true, archive: false, ..on_a_row() });
+    assert_eq!(busy_plain[4].reason, Some("an archive is being made"), "and before `not an archive`");
+    let no_unzip = items(&Ctx { unpack_missing: Some("unzip is not installed"), ..on_a_row() });
+    assert_eq!((no_unzip[4].reason, no_unzip[5].reason), (Some("unzip is not installed"), None), "the tool of an archive is the reason for Extract only");
+    let no_zip = items(&Ctx { zip_missing: true, ..on_a_row() });
+    assert_eq!((no_zip[4].reason, no_zip[5].reason), (None, Some("zip is not installed")), "zip is the reason for Compress only");
+    let plain_no_unzip = items(&Ctx { archive: false, unpack_missing: Some("unzip is not installed"), ..on_a_row() });
+    assert_eq!(plain_no_unzip[4].reason, Some("not an archive"), "a file that is no archive does not need the tool");
+    let no_folder = items(&Ctx { listed: false, busy: true, ..on_a_row() });
+    assert!(no_folder[4..].iter().all(|i| i.reason == Some("no folder here")), "the folder before the archive in the making");
 }
