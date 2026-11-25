@@ -1,6 +1,6 @@
 # M24-P10b Plan — The Directories Menu: Rename And Delete
 
-- Status: in_progress (2026-11-25)
+- Status: done (2026-11-25), code `cc4c684`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P10b-directories-menu-rename-and-delete` from `phase/M24-P10a-directories-menu-terminal-and-new-folder` (`35b95d5`; P07 to P10a are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -28,14 +28,22 @@ The menu of P10a gets its third and fourth line, in the owner's order: **Rename*
 
 ## Steps
 
-1. [ ] **Tests first, run red** (unit and window).
-2. [ ] **The change.**
-3. [ ] **Mutation checks**, one edit at a time on `dirops.rs` and `dirmenu.rs`.
-4. [ ] **Other window tests** that read the left column, the panel or the confirmation still pass.
-5. [ ] **Words**: the guide.
-6. [ ] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red** (unit and window).
+2. [x] **The change.**
+3. [x] **Mutation checks**, one edit at a time on `dirops.rs` and `dirmenu.rs`.
+4. [x] **Other window tests** that read the left column, the panel or the confirmation still pass.
+5. [x] **Words**: the guide.
+6. [x] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here
 
 - Extract and Compress are `M24-P10c`.
 - The rename checks that the new name is free and then moves (two steps; the standard library has no move that refuses to replace): a name made taken in between by another program could be replaced. Said in the report; nothing in this window creates files in the background.
+
+## Results (2026-11-25)
+
+- **Tests first**: the seven new unit tests of `dirops` were run on stubs and failed (all `7`), then green; the menu's unit tests did not compile on the old code and are green; the window tests (`11` in `tests/test_directories_menu.py`) passed at their first run, the mutants show that they bite.
+- **The commit** `cc4c684`: `dirops.rs` (`rename`, `remove`, `describe`, `human_bytes`, `protected`), `dirmenu.rs` (the lines, the target's folder and entry, the questions), `confirm.rs` (`Act::RenameEntry`, `Act::DeleteEntry`, `Ask::detail`), the unit and window tests, the guide `1.25.0`, the plan and the report. D1 to D6 held as written; no limit was raised and no version was bumped.
+- **Mutation checks**: `52` mutants, one edit at a time (the file restored and its checksum compared after every one): `35` of the unit-tested part (`dirops.rs`: the rules of the new name, trimming, the same name, a thing that is gone, a dangling link holding a name, a replacing move, a denied move, the way a folder, a file and a link are removed, how a link is described and counted, the count's bound and its words, the size units and their edges, and the six ways `protected` can go wrong; `dirmenu.rs`: which line is greyed for which reason and in which order, the order of the lines, the target's folder and entry) and `17` of the window part (Rename and Delete swapped, the old name missing from the line, Delete asked on the name line, the lost name after a refusal, the missing refresh after a rename and after a delete, the question left open, the rename aimed into the folder row, the delete aimed at nothing, what the question says, the link and folder words, a row taken for the empty space, nothing protected, the home folder unknown, the host's session rename taking the rename, Y doing nothing). Dangerous mutants (a delete aimed at the folder itself) were left out on purpose: the delete mutant aims at a path that does not exist. All `52` were killed in the end; three needed a second look: the denied-move mutant survived until a unit test of a folder that may not be written was added (as the denied-parent test of New folder, it is skipped for a superuser), one mutant did not compile and was replaced by one that does, and the unreachable branch of `protected` that no input could take was taken out of the code.
+- **The commit hook**: nothing was bypassed or raised. The suite run by hand under the hook's `300 s` limit passed all `270` tests in `83` files but was refused by the suite's own guard because the build's peak memory (the test build after the source change) was `1894 MiB`, over the bound of `1536 MiB`; the bound stays, the run was repeated with the build cached (`270` tests passed in `133.8 s`, peak `956 MiB`, under the `180 s` and `1,536 MiB` limits) and the commit passed from the receipts ("nothing to run: 83 file(s) skipped by receipt").
+- **Next**: `M24-P10c` (Compress and Extract) on its own branch.
