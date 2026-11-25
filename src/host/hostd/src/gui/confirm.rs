@@ -25,6 +25,10 @@ pub enum Act {
     MemoryResume,
     /// The name of a new folder, asked on the input line by the Directories menu (`M24-P10a`); `Ask::cwd` is the folder it is made in.
     NewFolder,
+    /// The new name of a row of the Directories list, asked on the input line (`M24-P10b`); `Ask::cwd` is the folder the list shows and `Ask::title` the old name.
+    RenameEntry,
+    /// The question before a row of the Directories list is removed (`M24-P10b`); the same fields, and `Ask::detail` says what it is.
+    DeleteEntry,
 }
 
 /// The session an action is about, as the window knew it when the action was asked for. The host checks the generation again.
@@ -42,6 +46,8 @@ pub struct Ask {
     pub dirty_confirm: bool,
     /// For `MemoryResume`: the largest process of the session in MB, as the question says it.
     pub mb: u64,
+    /// For `DeleteEntry`: what the row is (a folder with its items, a file with its size, a link), worked out once when the question was asked.
+    pub detail: String,
 }
 
 fn why(error: &str) -> String {
@@ -60,7 +66,7 @@ impl App {
     pub(crate) fn ask_reason(&self, act: Act) -> Option<&'static str> {
         match (act, self.selected_row().map(|r| r.state.as_str())) {
             (_, None) => Some("no session is open"),
-            (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete | Act::NewFolder, _) => None,
+            (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete | Act::NewFolder | Act::RenameEntry | Act::DeleteEntry, _) => None,
             (Act::Close, Some("disconnected")) => Some("the session is already closed"),
             (Act::Close, Some(_)) => Some("the session has ended"),
             (Act::MemoryResume, Some("running")) => None,
@@ -139,6 +145,7 @@ impl App {
             worktree_exists: row.worktree_exists && act != Act::MemoryResume, // the question has one answer: the worktree is kept
             dirty_confirm: false,
             mb: row.max_rss_kb / 1024,
+            detail: String::new(),
         };
         if matches!(act, Act::Close | Act::CloseTab) && !ask.working && !ask.worktree_exists {
             let prefix = if act == Act::CloseTab { "Close tab" } else { "Close session" };
@@ -165,7 +172,8 @@ impl App {
             Act::CloseTab => json!({"op": "session.close", "session": ask.session, "generation": ask.generation, "hide_tab": true}),
             Act::Delete => json!({"op": "session.purge", "session": ask.session, "generation": ask.generation}),
             Act::MemoryResume => return self.memory_resume(ask),
-            Act::NewFolder => return Err((String::new(), "a folder is made by the window, not by the host".into())),
+            Act::NewFolder | Act::RenameEntry => return Err((String::new(), "a folder or a file is changed by the window, not by the host".into())),
+            Act::DeleteEntry => return self.delete_entry_do(ask),
         };
         if let Some(policy) = worktree {
             request["worktree"] = json!(policy);
@@ -212,7 +220,7 @@ impl App {
             (Act::CloseTab, _) => "Tab closed. Conversation stays in Chats.".into(),
             (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
             (Act::MemoryResume, _) => String::new(),
-            (Act::NewFolder, _) => String::new(),
+            (Act::NewFolder | Act::RenameEntry | Act::DeleteEntry, _) => String::new(),
             (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
             (Act::Delete, _) => "Session deleted.".into(),
         })
@@ -305,6 +313,9 @@ impl App {
         let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
         if ask.act == Act::NewFolder {
             return self.new_folder_submit(&ask, text);
+        }
+        if ask.act == Act::RenameEntry {
+            return self.rename_entry_submit(&ask, text);
         }
         let outcome = if crate::folders::valid_name(text) {
             self.ask_do(&ask, text, None, false).map_err(|(_, t)| t)
@@ -414,6 +425,8 @@ impl App {
             Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Chats / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
             Act::MemoryResume => super::memask::view(ask),
             Act::NewFolder => crate::gui::dirmenu::new_folder_view(ask),
+            Act::RenameEntry => crate::gui::dirmenu::rename_entry_view(ask),
+            Act::DeleteEntry => crate::gui::dirmenu::delete_entry_view(ask),
             Act::Delete => {
                 let running = if ask.working { "A turn is running: it is stopped first." } else { "Its process, if any, is stopped first." };
                 ("Delete session".into(), vec![format!("Delete {named}? This cannot be undone."), format!("{running} Its record is removed for good."), folder, String::new(), "Y  delete it".into(), "N  keep it".into()])

@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn the_question_names_the_size_the_limit_and_what_is_lost() {
-        let ask = Ask { act: Act::MemoryResume, session: "s".into(), generation: 1, title: "t".into(), working: false, cwd: String::new(), worktree_branch: String::new(), worktree_repo: String::new(), worktree_exists: false, dirty_confirm: false, mb: 612 };
+        let ask = Ask { act: Act::MemoryResume, session: "s".into(), generation: 1, title: "t".into(), working: false, cwd: String::new(), worktree_branch: String::new(), worktree_repo: String::new(), worktree_exists: false, dirty_confirm: false, mb: 612, detail: String::new() };
         let (heading, lines) = view(&ask);
         assert_eq!(heading, "Memory");
         assert!(lines[0].contains("612 MB (limit 500). End it and continue? The conversation resumes; tool jobs that were running are lost."), "{lines:?}");

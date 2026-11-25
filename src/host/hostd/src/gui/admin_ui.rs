@@ -205,6 +205,7 @@ impl App {
                 worktree_repo: String::new(),
                 worktree_exists: false,
                 dirty_confirm: false,
+                detail: String::new(),
             });
         }
     }

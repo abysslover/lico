@@ -14,6 +14,8 @@ use super::App;
 pub(crate) enum Kind {
     OpenTerminal,
     NewFolder,
+    Rename,
+    Delete,
 }
 
 /// One line of the menu: what it does, its words, and why it cannot be used now (None: it can).
@@ -41,11 +43,19 @@ pub struct DirMenu {
     pub rects: Vec<Rect>,
 }
 
-/// What the menu is about: the folder its items work in, and the row the pointer was on (name and kind), if any.
+/// What the menu is about: the folder its items work in, the folder the list shows (where the row stands) and the row the pointer was on (name and kind), if any.
 #[derive(Clone, Debug, PartialEq, Default)]
 pub(crate) struct Target {
     pub folder: String,
+    pub parent: String,
     pub row: Option<(String, String)>,
+}
+
+impl Target {
+    /// The path of the row itself (a link is the link, not what it points to), if the pointer was on one.
+    pub(crate) fn entry(&self) -> Option<String> {
+        self.row.as_ref().map(|(name, _)| child_path(&self.parent, name))
+    }
 }
 
 /// What the window knows that decides which lines are usable.
@@ -54,6 +64,10 @@ pub(crate) struct Ctx {
     pub remote: bool,
     pub listed: bool,
     pub panel_open: bool,
+    /// The pointer is on a row of the list (a folder, a file or a link), not on the empty space.
+    pub on_row: bool,
+    /// That row is the root, the home folder or a folder above it.
+    pub protected: bool,
 }
 
 /// The path of `name` inside the folder `base` (a folder as the list shows it: with or without a closing slash; the root is `/`).
@@ -67,15 +81,19 @@ pub(crate) fn target_for(cwd: &str, row: Option<(&str, &str)>) -> Target {
         Some((name, "dir")) => child_path(cwd, name),
         _ => cwd.to_string(),
     };
-    Target { folder, row: row.map(|(name, kind)| (name.to_string(), kind.to_string())) }
+    Target { folder, parent: cwd.to_string(), row: row.map(|(name, kind)| (name.to_string(), kind.to_string())) }
 }
 
-/// The lines of the menu in the owner's order, each with the reason it cannot be used now: the machine first (the file operations are this machine's), then a folder listed, then the screen that is open.
+/// The lines of the menu in the owner's order, each with the reason it cannot be used now: the machine first (the file operations are this machine's), then a folder listed, then the screen that is open (the lines that ask a question), then, for a line that works on a row, whether the pointer is on one and whether it may be touched.
 pub(crate) fn items(ctx: &Ctx) -> Vec<Item> {
     let base = if ctx.remote { Some("this machine only") } else if !ctx.listed { Some("no folder here") } else { None };
+    let asks = base.or(ctx.panel_open.then_some("close the open screen first"));
+    let on_row = asks.or((!ctx.on_row).then_some("point at a file or folder")).or(ctx.protected.then_some("protected"));
     vec![
         Item { kind: Kind::OpenTerminal, label: "Open terminal", reason: base },
-        Item { kind: Kind::NewFolder, label: "New folder", reason: base.or(ctx.panel_open.then_some("close the open screen first")) },
+        Item { kind: Kind::NewFolder, label: "New folder", reason: asks },
+        Item { kind: Kind::Rename, label: "Rename", reason: on_row },
+        Item { kind: Kind::Delete, label: "Delete", reason: on_row },
     ]
 }
 
@@ -101,6 +119,23 @@ pub(crate) fn place(at: (f32, f32), size: (f32, f32), bounds: Rect) -> (f32, f32
     (at.0.min(bounds[2] - size.0).max(bounds[0]), at.1.min(bounds[3] - size.1).max(bounds[1]))
 }
 
+/// The title and lines of the question that Rename asks on the input line (the old name is on the line).
+pub(super) fn rename_entry_view(ask: &Ask) -> (String, Vec<String>) {
+    ("Rename".into(), vec![format!("Type the new name of \"{}\" and press Enter.", ask.title), format!("It stays in {}. A name that is taken is refused: nothing is replaced.", ask.cwd), "Escape leaves things as they are.".into()])
+}
+
+/// The title and lines of the question that Delete asks: what goes, that it cannot be undone, and the two answers (a click on a line or the key).
+pub(super) fn delete_entry_view(ask: &Ask) -> (String, Vec<String>) {
+    let what = if ask.detail.starts_with("a link") {
+        "Only the link is removed; what it points to is not touched."
+    } else if ask.detail.contains("folder") {
+        "The folder and all that is in it are removed for good; a link inside goes as a link."
+    } else {
+        "The file is removed for good."
+    };
+    ("Delete".into(), vec![format!("Delete \"{}\" ({})? This cannot be undone.", ask.title, ask.detail), what.into(), format!("It is in {}. There is no Trash.", ask.cwd), String::new(), "Y  delete it".into(), "N  keep it".into()])
+}
+
 /// The title and lines of the question that New folder asks on the input line.
 pub(super) fn new_folder_view(ask: &Ask) -> (String, Vec<String>) {
     ("New folder".into(), vec![format!("Type the name of the new folder in {} and press Enter.", ask.cwd), "Escape leaves things as they are.".into()])
@@ -108,9 +143,11 @@ pub(super) fn new_folder_view(ask: &Ask) -> (String, Vec<String>) {
 
 impl App {
     /// What the lines depend on: the machine the list is of, whether it lists a folder of this machine, and whether another screen is open.
-    fn dirmenu_ctx(&self) -> Ctx {
+    fn dirmenu_ctx(&self, target: &Target) -> Ctx {
         let sb = &self.ui.sidebar;
-        Ctx { remote: sb.ssh_host.is_some(), listed: sb.cwd.starts_with('/') && !sb.unreachable && sb.error.is_none(), panel_open: self.ui.panel.is_some() }
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let protected = target.entry().is_some_and(|e| super::dirops::protected(std::path::Path::new(&e), home.as_deref()));
+        Ctx { remote: sb.ssh_host.is_some(), listed: sb.cwd.starts_with('/') && !sb.unreachable && sb.error.is_none(), panel_open: self.ui.panel.is_some(), on_row: target.row.is_some(), protected }
     }
 
     pub(crate) fn dirmenu_close(&mut self) -> bool {
@@ -139,7 +176,7 @@ impl App {
             _ => None,
         };
         let target = target_for(&self.ui.sidebar.cwd, row.as_ref().map(|(n, k)| (n.as_str(), k.as_str())));
-        let items = items(&self.dirmenu_ctx());
+        let items = items(&self.dirmenu_ctx(&target));
         let sel = first_enabled(&items).unwrap_or(0);
         self.ui.sidebar.host_popup_open = false;
         self.ui.sidebar.nav.popup_open = false;
@@ -203,12 +240,63 @@ impl App {
         match item.kind {
             Kind::OpenTerminal => self.terminal_open(Some(menu.target.folder)),
             Kind::NewFolder => self.new_folder_ask(menu.target.folder),
+            Kind::Rename => self.entry_ask(Act::RenameEntry, &menu.target),
+            Kind::Delete => self.entry_ask(Act::DeleteEntry, &menu.target),
         }
+    }
+
+    /// The question of Rename and of Delete about the row the menu was opened on: the name on the input line with the old one in it, or the confirmation that says what goes.
+    fn entry_ask(&mut self, act: Act, target: &Target) {
+        let (Some((name, _)), Some(path)) = (target.row.clone(), target.entry()) else { return };
+        let detail = if act == Act::DeleteEntry {
+            match super::dirops::describe(std::path::Path::new(&path)) {
+                Ok(what) => what,
+                Err(why) => {
+                    self.ui.flash = Some(format!("Delete: {why}."));
+                    self.sidebar_refresh();
+                    return;
+                }
+            }
+        } else {
+            String::new()
+        };
+        let ask = Ask { act, session: String::new(), generation: 0, title: name.clone(), working: false, cwd: target.parent.clone(), worktree_branch: String::new(), worktree_repo: String::new(), worktree_exists: false, dirty_confirm: false, mb: 0, detail };
+        self.panel_open(if act == Act::RenameEntry { Step::Rename } else { Step::Confirm });
+        if let Some(p) = self.ui.panel.as_mut() {
+            p.ask = Some(ask);
+        }
+        if act == Act::RenameEntry {
+            self.ed.put(&name);
+        }
+    }
+
+    /// Enter on the new name: the row is renamed in place and the list shows it; a name that cannot be used stays on the line with the reason.
+    pub(crate) fn rename_entry_submit(&mut self, ask: &Ask, text: &str) {
+        match super::dirops::rename(std::path::Path::new(&ask.cwd), &ask.title, text) {
+            Ok(to) => {
+                self.panel_close();
+                self.ui.flash = Some(format!("Renamed to: {}", to.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+                self.sidebar_refresh();
+            }
+            Err(why) => {
+                self.ed.put(text);
+                if let Some(p) = self.ui.panel.as_mut() {
+                    p.notice = format!("Not renamed: {why}.");
+                }
+            }
+        }
+    }
+
+    /// Y on the question of Delete: the row goes (a link as a link), the list shows what is left, also when only a part could be removed.
+    pub(crate) fn delete_entry_do(&mut self, ask: &Ask) -> Result<String, (String, String)> {
+        let done = super::dirops::remove(std::path::Path::new(&child_path(&ask.cwd, &ask.title)));
+        self.sidebar_refresh();
+        done.map(|()| format!("Deleted: {}.", ask.title)).map_err(|why| (String::new(), why))
     }
 
     /// The question of New folder: the name is typed on the input line (the way a session is renamed, so the Korean input works the same), Enter makes the folder.
     fn new_folder_ask(&mut self, folder: String) {
-        let ask = Ask { act: Act::NewFolder, session: String::new(), generation: 0, title: String::new(), working: false, cwd: folder, worktree_branch: String::new(), worktree_repo: String::new(), worktree_exists: false, dirty_confirm: false, mb: 0 };
+        let ask = Ask { act: Act::NewFolder, session: String::new(), generation: 0, title: String::new(), working: false, cwd: folder, worktree_branch: String::new(), worktree_repo: String::new(), worktree_exists: false, dirty_confirm: false, mb: 0, detail: String::new() };
         self.panel_open(Step::Rename);
         if let Some(p) = self.ui.panel.as_mut() {
             p.ask = Some(ask);

@@ -14,7 +14,7 @@ from tests.gui_helpers import centre
 from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_terminal_tab import rig
 
-LINES = ["Open terminal", "New folder"]
+LINES = ["Open terminal", "New folder", "Rename", "Delete"]
 
 
 def start(w: ProductWindow, project: Path) -> dict:
@@ -107,9 +107,12 @@ def test_the_keys_move_over_the_lines_enter_runs_and_escape_or_a_click_away_clos
             w.key("Down")
             assert menu(w)["selected"] == 1
             w.key("Down")
-            assert menu(w)["selected"] == 1, "it stops at the last line"
-            w.key("Up")
-            w.key("Up")
+            w.key("Down")
+            assert menu(w)["selected"] == 3
+            w.key("Down")
+            assert menu(w)["selected"] == 3, "it stops at the last line"
+            for _ in range(3):
+                w.key("Up")
             assert menu(w)["selected"] == 0
             w.key("Escape")
             assert menu(w)["open"] is False and w.ui()["panel"] is None and not w.ui()["terminal"]["tabs"], "Escape closes and does nothing else"
@@ -222,8 +225,148 @@ def test_the_lines_are_greyed_with_their_reason_on_an_open_screen_and_a_greyed_l
             w.type_text("abc")
             side = w.ui()["sidebar"]
             m = open_menu_on(w, empty_space(side))
-            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", False, "close the open screen first")], m["items"]
+            shut = "close the open screen first"
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", False, shut), ("Rename", False, shut), ("Delete", False, shut)], m["items"]
             assert m["selected"] == 0
             w.click(*centre(m["items"][1]["rect"]))                              # a greyed line is not run, and the menu closes
             assert menu(w)["open"] is False
             assert w.ui()["panel"]["text_entry"] and w.ui()["panel"]["input_len"] == 3, "the question is still the one that was open, with what was typed in it"
+
+
+def test_rename_and_delete_are_greyed_on_the_empty_space_with_their_reason_and_a_click_on_one_does_nothing():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, empty_space(side))
+            point = "point at a file or folder"
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, point), ("Delete", False, point)], m["items"]
+            assert m["selected"] == 0
+            w.click(*centre(m["items"][2]["rect"]))
+            assert menu(w)["open"] is False and w.ui()["panel"] is None, "a greyed line asks nothing"
+            assert sorted(p.name for p in project.iterdir()) == ["inner", "note.txt"]
+
+
+def test_rename_asks_the_new_name_with_the_old_one_on_the_line_and_never_replaces():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        (project / "inner" / "child.txt").write_text("child\n")
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
+            assert all(i["enabled"] for i in m["items"]), m["items"]
+            w.click(*centre(m["items"][2]["rect"]))
+            panel = wait_for(lambda: (p := w.ui()["panel"]) and p["text_entry"] and p)
+            assert "Rename" in panel["title"] and "note.txt" in "\n".join(panel["body"]), panel
+            assert panel["input_len"] == len("note.txt"), "the old name is on the line"
+            assert menu(w)["open"] is False
+
+            w.key("ctrl+u")                                                      # a name that is taken: refused, nothing replaced, what was typed stays
+            w.type_text("inner")
+            w.key("Return")
+            panel = wait_for(lambda: (p := w.ui()["panel"]) and "taken" in "\n".join(p["body"]) and p)
+            assert panel["input_len"] == len("inner")
+            assert sorted(p.name for p in project.iterdir()) == ["inner", "note.txt"] and (project / "inner" / "child.txt").is_file()
+
+            w.key("ctrl+u")                                                      # the same name: said
+            w.type_text("note.txt")
+            w.key("Return")
+            wait_for(lambda: (p := w.ui()["panel"]) and "its name already" in "\n".join(p["body"]))
+
+            w.key("ctrl+u")                                                      # a good name, in Korean
+            w.type_text("메모")
+            w.key("Return")
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert (project / "메모").read_text() == "a note\n" and not (project / "note.txt").exists()
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and any(e["name"] == "메모" for e in s["entries"]) and not any(e["name"] == "note.txt" for e in s["entries"]) and s)
+
+            m = open_menu_on(w, centre(row(side, "inner")["rect"]))              # a folder goes with what is in it; Escape renames nothing
+            w.click(*centre(m["items"][2]["rect"]))
+            wait_for(lambda: (p := w.ui()["panel"]) and p["text_entry"])
+            w.key("ctrl+u")
+            w.type_text("never")
+            w.key("Escape")
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert (project / "inner").is_dir() and not (project / "never").exists()
+            m = open_menu_on(w, centre(row(side, "inner")["rect"]))
+            w.click(*centre(m["items"][2]["rect"]))
+            wait_for(lambda: (p := w.ui()["panel"]) and p["text_entry"])
+            w.key("ctrl+u")
+            w.type_text("outer")
+            w.key("Return")
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert (project / "outer" / "child.txt").read_text() == "child\n" and not (project / "inner").exists()
+
+
+def test_delete_asks_what_goes_n_keeps_it_y_removes_it_and_a_link_goes_as_a_link():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        project = project_tree(root)
+        outside = root.resolve() / "outside"
+        outside.mkdir()
+        (outside / "precious.txt").write_text("precious\n")
+        (project / "inner" / "deep.txt").write_text("deep\n")
+        (project / "inner" / "to-outside").symlink_to(outside)
+        (project / "pointer").symlink_to(outside)
+        with ProductWindow(**rig(root, before_window=keep_folder(project))) as w:
+            side = start(w, project)
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
+            w.click(*centre(m["items"][3]["rect"]))
+            panel = wait_for(lambda: (p := w.ui()["panel"]) and not p["text_entry"] and "Delete" in p["title"] and p)
+            body = "\n".join(panel["body"])
+            assert "note.txt" in body and "a file of 7 bytes" in body and "cannot be undone" in body, body
+            assert "The file is removed for good." in body, body
+            assert any(line.startswith("Y") for line in panel["body"]) and any(line.startswith("N") for line in panel["body"]), panel["body"]
+            w.key("n")                                                           # N keeps it
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert (project / "note.txt").is_file()
+
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
+            w.click(*centre(m["items"][3]["rect"]))
+            wait_for(lambda: (p := w.ui()["panel"]) and "Delete" in p["title"])
+            w.key("Escape")                                                      # Escape keeps it too
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert (project / "note.txt").is_file()
+
+            m = open_menu_on(w, centre(row(side, "note.txt")["rect"]))
+            w.click(*centre(m["items"][3]["rect"]))
+            wait_for(lambda: (p := w.ui()["panel"]) and "Delete" in p["title"])
+            w.key("y")                                                           # Y removes it and the list shows what is left
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert not (project / "note.txt").exists()
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and not any(e["name"] == "note.txt" for e in s["entries"]) and s)
+
+            m = open_menu_on(w, centre(row(side, "pointer")["rect"]))            # a link to a folder: only the link goes
+            w.click(*centre(m["items"][3]["rect"]))
+            panel = wait_for(lambda: (p := w.ui()["panel"]) and "Delete" in p["title"] and p)
+            assert "a link to" in "\n".join(panel["body"]) and "Only the link" in "\n".join(panel["body"]), panel["body"]
+            w.key("y")
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert not (project / "pointer").exists() and (outside / "precious.txt").is_file()
+            side = wait_for(lambda: (s := w.ui()["sidebar"]) and not any(e["name"] == "pointer" for e in s["entries"]) and s)
+
+            m = open_menu_on(w, centre(row(side, "inner")["rect"]))              # a folder with a link in it: the folder goes, the link goes as a link
+            w.click(*centre(m["items"][3]["rect"]))
+            panel = wait_for(lambda: (p := w.ui()["panel"]) and "Delete" in p["title"] and p)
+            assert "a folder with 2 items" in "\n".join(panel["body"]), panel["body"]
+            assert "The folder and all that is in it are removed for good" in "\n".join(panel["body"]), panel["body"]
+            w.key("y")
+            wait_for(lambda: w.ui()["panel"] is None)
+            assert not (project / "inner").exists()
+            assert (outside / "precious.txt").read_text() == "precious\n", "what the link inside pointed to is not touched"
+
+
+def test_the_home_folder_is_protected_with_its_reason_and_the_menu_still_opens_a_terminal_there():
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        people = root.resolve() / "people"
+        home = people / "me"
+        (home / "work").mkdir(parents=True)
+        with ProductWindow(**rig(root, before_window=keep_folder(people), env={"HOME": str(home)})) as w:
+            side = start(w, people)
+            m = open_menu_on(w, centre(row(side, "me")["rect"]))
+            assert [(i["label"], i["enabled"], i["reason"]) for i in m["items"]] == [("Open terminal", True, None), ("New folder", True, None), ("Rename", False, "protected"), ("Delete", False, "protected")], m["items"]
+            w.click(*centre(m["items"][3]["rect"]))
+            assert w.ui()["panel"] is None and home.is_dir() and (home / "work").is_dir(), "a protected row asks nothing and loses nothing"
