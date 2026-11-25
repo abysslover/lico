@@ -23,6 +23,8 @@ pub enum Act {
     Delete,
     /// The memory guard's question on a red session: end it and resume it in one step (M19-P01).
     MemoryResume,
+    /// The name of a new folder, asked on the input line by the Directories menu (`M24-P10a`); `Ask::cwd` is the folder it is made in.
+    NewFolder,
 }
 
 /// The session an action is about, as the window knew it when the action was asked for. The host checks the generation again.
@@ -58,7 +60,7 @@ impl App {
     pub(crate) fn ask_reason(&self, act: Act) -> Option<&'static str> {
         match (act, self.selected_row().map(|r| r.state.as_str())) {
             (_, None) => Some("no session is open"),
-            (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete, _) => None,
+            (Act::Close, Some("running")) | (Act::CloseTab | Act::Rename | Act::Delete | Act::NewFolder, _) => None,
             (Act::Close, Some("disconnected")) => Some("the session is already closed"),
             (Act::Close, Some(_)) => Some("the session has ended"),
             (Act::MemoryResume, Some("running")) => None,
@@ -163,6 +165,7 @@ impl App {
             Act::CloseTab => json!({"op": "session.close", "session": ask.session, "generation": ask.generation, "hide_tab": true}),
             Act::Delete => json!({"op": "session.purge", "session": ask.session, "generation": ask.generation}),
             Act::MemoryResume => return self.memory_resume(ask),
+            Act::NewFolder => return Err((String::new(), "a folder is made by the window, not by the host".into())),
         };
         if let Some(policy) = worktree {
             request["worktree"] = json!(policy);
@@ -209,6 +212,7 @@ impl App {
             (Act::CloseTab, _) => "Tab closed. Conversation stays in Chats.".into(),
             (Act::Delete, Some("remove")) => "Session deleted and worktree removed (branch kept).".into(),
             (Act::MemoryResume, _) => String::new(),
+            (Act::NewFolder, _) => String::new(),
             (Act::Delete, Some("keep")) => "Session deleted (worktree kept).".into(),
             (Act::Delete, _) => "Session deleted.".into(),
         })
@@ -299,6 +303,9 @@ impl App {
     /// Enter on the name line: the host keeps the name (an empty one takes it away).
     pub(crate) fn rename_submit(&mut self, text: &str) {
         let Some(ask) = self.ui.panel.as_ref().and_then(|p| p.ask.clone()) else { return };
+        if ask.act == Act::NewFolder {
+            return self.new_folder_submit(&ask, text);
+        }
         let outcome = if crate::folders::valid_name(text) {
             self.ask_do(&ask, text, None, false).map_err(|(_, t)| t)
         } else if crate::folders::shows_nothing(text.trim()) {
@@ -406,6 +413,7 @@ impl App {
             Act::Rename => ("Rename session".into(), vec![format!("Type the new name of {named} and press Enter."), "An empty name takes the name away. At most 60 characters.".into(), "The host keeps the name: other windows and the command line show it too.".into()]),
             Act::Close | Act::CloseTab => ("Close session".into(), vec![format!("Stop the work of {named} and close it?"), "The turn that is running ends and what it has not said yet is lost.".into(), "The session and its conversation stay; Chats / Ctrl+R brings it back.".into(), String::new(), "Y  stop and close".into(), "N  keep it running".into()]),
             Act::MemoryResume => super::memask::view(ask),
+            Act::NewFolder => crate::gui::dirmenu::new_folder_view(ask),
             Act::Delete => {
                 let running = if ask.working { "A turn is running: it is stopped first." } else { "Its process, if any, is stopped first." };
                 ("Delete session".into(), vec![format!("Delete {named}? This cannot be undone."), format!("{running} Its record is removed for good."), folder, String::new(), "Y  delete it".into(), "N  keep it".into()])

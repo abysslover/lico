@@ -53,6 +53,7 @@ pub struct SidebarGeom {
     pub entries: Vec<SidebarEntryGeom>,
     pub host_items: Vec<(usize, Rect)>,
     pub bookmark_items: Vec<super::sidebar_nav::BookmarkItemGeom>,
+    pub list_rect: Option<Rect>, // the area of the rows: from the folder line to the page footer (`M24-P10a`: where a right click opens the menu)
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ pub struct SidebarState {
     pub truncated: bool,
     pub filter: String,
     pub filter_focused: bool,
+    pub dirmenu: Option<super::dirmenu::DirMenu>, // the right-click menu (`M24-P10a`)
     pub page: usize,
     pub page_size: usize,
     pub pending_req: u64,
@@ -640,7 +642,7 @@ impl App {
     }
 
     pub(crate) fn sidebar_popup_click(&mut self, hit: Option<Action>) -> bool {
-        if self.sidebar_nav_popup_click(hit.clone()) { return true; }
+        if self.dirmenu_click(hit.clone()) || self.sidebar_nav_popup_click(hit.clone()) { return true; }
         if !self.sidebar_host_popup_open() { return false; }
         match hit {
             Some(Action::SidebarHostItem(idx)) => self.select_sidebar_host_index(idx),
@@ -679,7 +681,7 @@ impl App {
             if !event.repeat { self.toggle_sidebar_collapsed(); }
             return true;
         }
-        if self.sidebar_nav_key(event) { return true; }
+        if self.dirmenu_key(event) || self.sidebar_nav_key(event) { return true; }
         if self.sidebar_host_popup_open() {
             match &event.logical_key {
                 Key::Named(NamedKey::Escape) if !event.repeat => self.close_sidebar_host_popup(),

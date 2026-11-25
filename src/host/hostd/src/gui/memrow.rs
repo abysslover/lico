@@ -231,6 +231,7 @@ impl App {
             Some(Action::HostItem(idx)) => self.hover_files_host_item(*idx),
             Some(Action::SidebarHostItem(idx)) => self.hover_sidebar_host_item(*idx),
             Some(Action::SidebarBookmarkItem(idx)) => self.hover_sidebar_bookmark_item(*idx),
+            Some(Action::DirMenuItem(idx)) => self.dirmenu_hover(*idx),
             _ => false,
         };
         let chat = match hit {

@@ -404,7 +404,7 @@ impl App {
                             Some(Action::ReadCard) => self.card_open(),
                             Some(Action::AccountAct(_) | Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::WizardPick(_) | Action::WizardChoose(..) | Action::PathCopy | Action::WindowMax) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
-                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..)) => {}
+                            Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..) | Action::DirMenuItem(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
                             None if self.browser_mouse_button(true) || self.terminal_mouse_button(true) => {}
                             None if self.ed_mouse_press(x, y) => {}
@@ -417,7 +417,7 @@ impl App {
                 }
                 true
             }
-            WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.browser_other_button(*state, *button) || self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
+            WindowEvent::MouseInput { state, button, .. } if *button != MouseButton::Left => self.dirmenu_button(*state, *button) || self.browser_other_button(*state, *button) || self.middle_press(*state, *button), // the middle button over the box pastes the primary selection
             WindowEvent::MouseWheel { delta, .. } => {
                 let lines = match delta {
                     MouseScrollDelta::LineDelta(_, y) => (*y * 3.0) as isize,
@@ -966,7 +966,7 @@ impl App {
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);
         self.draw_mention_popup(&mut buf, width, height, list_w);
         self.draw_sidebar_host_popup(&mut buf, width, height);
-        self.draw_sidebar_bookmarks_popup(&mut buf, width, height);
+        self.draw_sidebar_bookmarks_popup(&mut buf, width, height); self.draw_dirmenu(&mut buf, width, height);
         self.draw_approval_modal(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_new_chat(&mut buf, width, height, list_w, top, chat_top, hint_y);
         self.draw_llm_find(&mut buf, width, height, top, chat_top, hint_y);

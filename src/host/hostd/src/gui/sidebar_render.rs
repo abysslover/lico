@@ -147,6 +147,8 @@ impl App {
         });
         out["tab_labels"] = json!(TAB_LABELS);
         out["new_chat_rect"] = json!(sb.geom.new_chat_rect);
+        out["list_rect"] = json!(sb.geom.list_rect);
+        out["dirmenu"] = self.dirmenu_json();
         out["new_chat_enabled"] = json!(self.newchat_gate().is_ok());
         out["new_chat_reason"] = json!(self.newchat_gate().err());
         out["new_chat"] = self.newchat_json();
@@ -469,6 +471,7 @@ impl App {
         let list_avail_h = (nav_y - y).max(0.0);
         let ps = ((list_avail_h / lh).floor() as usize).clamp(1, 40);
         self.ui.sidebar.page_size = ps;
+        geom.list_rect = Some([0.0, dir_rect[1], x_right, nav_y]);
 
         // 7. Directory entries or status message
         if unreachable {

@@ -69,6 +69,7 @@ pub enum Action {
     SidebarBookmarksBtn,
     SidebarBookmarkItem(usize),
     SidebarBookmarkRemove(usize),
+    DirMenuItem(usize),
     MentionItem(usize),
     Allow,
     Deny,
