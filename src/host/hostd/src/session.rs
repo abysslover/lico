@@ -151,6 +151,7 @@ pub struct Log {
     retain: usize,
     writer: Option<File>,
     dirty: bool, // appended since the last sync to disk
+    times: crate::stamps::Book, // when each record was written, in a file beside the log folder (`M24-P11a`)
 }
 
 /// What a restart found wrong with a log: bytes of a torn tail set aside, and whole segments set aside.
@@ -164,11 +165,8 @@ impl Log {
     pub fn new(dir: &Path, id: &str, retain: usize) -> Log {
         Log {
             view: LogView { dir: dir.to_path_buf(), id: id.to_string(), segments: Vec::new() },
-            sizes: Vec::new(),
-            segment_records: (retain / 4).clamp(16, 4096),
-            retain,
-            writer: None,
-            dirty: false,
+            sizes: Vec::new(), segment_records: (retain / 4).clamp(16, 4096), retain,
+            writer: None, dirty: false, times: crate::stamps::Book::new(dir, id),
         }
     }
 
@@ -226,6 +224,7 @@ impl Log {
             log.sizes.push(at);
             next = first + count;
         }
+        log.times.drop_from(next); // runs of records a torn tail took away
         (log, next, report)
     }
 
@@ -260,7 +259,7 @@ impl Log {
         for (first, _) in self.view.segments.drain(..) {
             let _ = std::fs::remove_file(Self::path_for(&self.view.dir, &self.view.id, first));
         }
-        self.sizes.clear();
+        self.sizes.clear(); self.times.purge();
         if let Ok(entries) = std::fs::read_dir(&self.view.dir) { // what was set aside from a damaged tail is part of the conversation too
             let prefix = format!("{}.", self.view.id);
             for entry in entries.flatten() {
@@ -290,7 +289,7 @@ impl Log {
         record.extend_from_slice(&(seq as u64).to_le_bytes());
         record.extend_from_slice(data);
         self.writer.as_mut().expect("writer").write_all(&record)?;
-        self.dirty = true;
+        self.dirty = true; self.times.note(seq, now_secs());
         if let Some(last) = self.view.segments.last_mut() {
             last.1 += 1;
         }
@@ -308,7 +307,7 @@ impl Log {
                 Some(first) if self.view.segments.len() > 1 && total - first.1 >= self.retain => {
                     let _ = std::fs::remove_file(Self::path(&self.view, first.0));
                     self.view.segments.remove(0);
-                    self.sizes.remove(0);
+                    self.sizes.remove(0); self.times.drop_before(self.view.segments[0].0);
                 }
                 _ => break,
             }
@@ -625,6 +624,7 @@ impl Session {
     pub fn oldest(&self) -> i64 { self.log.oldest(self.next_seq) }
     pub fn mem_start(&self) -> i64 { self.window.front().map_or(self.next_seq, |r| r.0) }
     pub fn log_view(&self) -> LogView { self.log.view() }
+    pub fn stamps(&self, from: i64, until: i64) -> Vec<(i64, u64)> { self.log.times.stamps().between(from, until, crate::stamps::MAX_REPLY) }
     pub fn purge_log(&mut self) { self.log.purge(); }
     pub fn disk_bytes(&self) -> usize { self.log.disk_bytes() }
 

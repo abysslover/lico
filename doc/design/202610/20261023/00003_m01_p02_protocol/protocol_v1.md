@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.13
+Version: 0.1.14
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -41,6 +41,7 @@ session id exists beyond `unknown_session`, and a rejected request has no effect
 | `account.create` | host | yes | add an account of a provider (`codex` or `claude`) with an editable label (at most 40 printable characters); a stable opaque id (`a` and twelve hex digits) is returned, a private home is created for it (mode 0700, never read by Lico), and a provider's first account becomes its default (local socket only) |
 | `account.list` | host | no | the accounts with provider, label, whether each is its provider's default and its credential generation |
 | `history` | host | no | up to 200 older records of a session (`before` is a sequence number, `limit` at most 200), oldest first, read from the durable log on demand; the reply names the oldest sequence still kept |
+| `stamps` (M24-P11a) | host | no | when the records of a session were written: `session`, `from` and `until` (sequence numbers, both required, `from` 0 or more); the reply has `session`, `from`, `until` and `stamps`, a list of at most 2,048 `[first sequence, unix seconds]` **runs** (a run begins only when the second differs from the one before, so every record from a run's first sequence up to the next run's belongs to that second): the run that covers `from` (the last that begins at or before it) and every later run that begins before `until`, oldest first. Empty where the host knows nothing: a log made before the times were kept, or a file that cannot be read (a time is never an error for the session). The times are kept beside the log folder (`<log folder>.times/<session>.times`, 16 bytes a run, owner-only) and not in the lines, so `rec`, `snapshot` and `history` do not change. An unknown session answers `unknown_session`, a missing, negative or non-integer number or an extra field `bad_request` |
 | `account.login.start` | host | yes | start the provider's own sign-in for an account in its private directory (`method` `browser`, or `device` for Codex's device-code flow); one login per account at a time (`busy`), at most 5 minutes; the process gets only the account's directories, a path and a locale, never a display (local socket only) |
 | `account.login.status` | host | no | the state of the account's last login (`waiting`, `browser`, `code`, `succeeded`, `failed`, `cancelled`, `timed_out`, `none`), the login address once the provider printed one, whether a pasted code is expected; with `check` also `signed_in` from Codex's `login status` (`null` for Claude Code: no status command is known for the pinned version) |
 | `account.login.input` | host | no | the code a person pasted, written to the login process's standard input only when it asked for one (`no_code_expected` otherwise); never stored or logged |

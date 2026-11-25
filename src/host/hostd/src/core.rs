@@ -20,7 +20,7 @@ use crate::session::{obj, rec_line, InputState, LogView, Origin, Session, State,
 pub const MAX_REQUEST: usize = 4 * crate::ipc::MAX_INPUT_TEXT; // the text JSON-escaped (up to 3 times its size) and the rest of the line
 pub const OPS: &[&str] = &[
     "hello", "status", "snapshot", "subscribe", "unsubscribe", "session.create", "session.list", "session.resume", "session.purge", "input",
-    "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history",
+    "input.status", "approval.answer", "approval.text", "view.attach", "view.detach", "resources", "account.create", "account.list", "account.default", "session.rebind", "account.credential", "account.affected", "account.remove", "history", "stamps",
     "account.login.start", "account.login.input", "account.login.status", "account.login.cancel", "host.stop", "session.options", "session.rename", "session.close", "transfer.send", "clipboard.write", "clipboard.done", "picture.slot", "settings.set", "display.ensure", "display.status", "display.stop", "real_screen.stop",
     "folder.git", "folder.list", "folder.read", "session.search", "session.chats", "llm.discover", "account.rename", "session.mode", "capabilities", "ssh.hosts", "ssh.check", "call.list", "call.get", "call.start", "call.say", "call.hangup", "call.close",
     "browser.open", "browser.list", "browser.close", "browser.shot", "browser.show", "browser.resize", "browser.hide", "browser.go", "browser.nav", "browser.watch", "browser.input", "browser.reopen", "browser.forget",
@@ -617,6 +617,13 @@ pub fn history(shared: &Shared, session: &str, before: i64, limit: i64) -> Reply
         if text_mode { json!([seq, String::from_utf8_lossy(data)]) } else { json!([seq, format!("{:08} {}", seq, payload::hex(&data[..data.len().min(44)]))]) }
     }).collect();
     Ok(obj(json!({"session": session, "lines": lines, "oldest": oldest})))
+}
+
+/// When the records of a session were written (`M24-P11a`): the run that covers `from` and every run that begins before `until`, as `[first sequence, unix seconds]`, oldest first and at most 2,048. Empty where the host knows nothing (a log made before the times were kept).
+pub fn stamps(shared: &Shared, session: &str, from: i64, until: i64) -> Reply {
+    let found = find(shared, session).ok_or("unknown_session")?;
+    let runs = found.lock().unwrap().stamps(from, until);
+    Ok(obj(json!({"session": session, "stamps": runs, "from": from, "until": until})))
 }
 
 pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {

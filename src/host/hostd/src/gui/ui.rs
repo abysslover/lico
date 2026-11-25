@@ -66,7 +66,7 @@ pub struct FrameStats {
 
 #[derive(Default)]
 pub struct UiState {
-    pub browser: super::browser_view::BrowserState, pub terminal: super::terminal::TermState,
+    pub browser: super::browser_view::BrowserState, pub terminal: super::terminal::TermState, pub times: super::times::Times,
     pub stats: FrameStats,
     pub faces: super::fonts::Faces,
     pub enabled: bool,
@@ -213,7 +213,7 @@ impl App {
     pub(crate) fn ui_tick(&mut self) {
         self.ui.ticks += 1;
         self.panel_tick();
-        self.card_tick();
+        self.card_tick(); self.times_tick();
         self.send("{\"op\":\"status\"}");
         if self.ui.ticks % 5 == 1 {
             self.send("{\"op\":\"account.list\"}");
@@ -591,7 +591,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
-        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json();
+        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json();
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)

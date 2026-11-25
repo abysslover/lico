@@ -129,6 +129,7 @@ pub fn run(args: Vec<String>) {
                 }
             }
         }
+        crate::stamps::sweep(&log_dir, &keep); // the files of the times of sessions nobody knows go with their logs
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&log_dir).expect("log dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.registry_dir).expect("registry dir");
         std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&cfg.workspace_root).expect("workspace root");

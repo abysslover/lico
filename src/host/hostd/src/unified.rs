@@ -65,6 +65,7 @@ mod pasted;
 mod payload;
 mod pending;
 mod screentools;
+mod stamps;
 mod procs;
 mod provider_record;
 mod quota;

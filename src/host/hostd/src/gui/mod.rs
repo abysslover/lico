@@ -34,7 +34,7 @@ mod newchat_draw;
 mod chatcard; mod sidebar_chats; mod terminal; // the Chats tab: the list and its fetch, and what a card says and draws
 mod sidebar_tabs;
 mod sidebar_render;
-mod tool_fold;
+mod tool_fold; mod times; // when each line was written (`M24-P11a`)
 mod transcript;
 mod ui;
 mod update;
@@ -421,12 +421,8 @@ impl App {
             }
             _ if line.contains("\"ok\":1") && line.contains("\"gap\":") => {
                 self.subscribed = true;
-                if let Some(view) = jstr(line, "view") {
-                    self.view_id = view.to_string();
-                }
-                if let Some(generation) = jint(line, "generation") {
-                    self.generation = generation;
-                }
+                if let Some(view) = jstr(line, "view") { self.view_id = view.to_string(); }
+                if let Some(generation) = jint(line, "generation") { self.generation = generation; }
                 if line.contains("\"snapshot\":") && self.view.is_some() {
                     if let Some(v) = self.view.as_mut() {
                         v.lines.clear();
@@ -442,6 +438,7 @@ impl App {
             }
             _ if line.contains("\"accounts\":[") && self.ui.enabled => self.ui_accounts(line),
             _ if line.contains("\"oldest\":") && line.contains("\"lines\":[") && !line.contains("\"sessions\":[") && self.ui.enabled => self.ui_history(line),
+            _ if line.contains("\"stamps\":[") && self.ui.enabled => self.ui_stamps(line),
             _ if line.contains("\"sessions\":[") => {
                 if self.ui.enabled {
                     self.ui_status(line);
