@@ -1,6 +1,6 @@
 # M24-P10a Plan — A Right-Click Menu In Directories: The Menu, Open Terminal, New Folder
 
-- Status: in_progress (2026-11-25)
+- Status: done (2026-11-25), code `d564040`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P10a-directories-menu-terminal-and-new-folder` from `phase/M24-P09-toolbar-icons-twice-the-size` (`ecf980d`; P07 to P09 are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -33,13 +33,21 @@ A right click in the **Directories** list of the left column (a folder or file r
 
 ## Steps
 
-1. [ ] **Tests first, run red**: the unit tests of `dirops` (names, the made folder, the taken name, a missing parent), of `target_for` and `items` (the order, the greying), and the window test.
-2. [ ] **The change**: `dirops.rs`, `dirmenu.rs`, the small edits.
-3. [ ] **Mutation checks**: one edit at a time on `dirops.rs` and `dirmenu.rs` (the name rules, the target rule, the order, the greying, the clamp), each must turn a test red.
-4. [ ] **Other window tests** that read the left column or the right button (the sidebar, the toolbar, the terminal tab) still pass.
-5. [ ] **Words**: the guide `doc/manual_end_to_end.md` (the menu and what New folder does), the protocol note is unchanged.
-6. [ ] `cargo xtask check` and `graph`, the changed-files suite through the commit hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red**: the unit tests of `dirops` (names, the made folder, the taken name, a missing parent), of `target_for` and `items` (the order, the greying), and the window test.
+2. [x] **The change**: `dirops.rs`, `dirmenu.rs`, the small edits.
+3. [x] **Mutation checks**: one edit at a time on `dirops.rs` and `dirmenu.rs` (the name rules, the target rule, the order, the greying, the clamp), each must turn a test red.
+4. [x] **Other window tests** that read the left column or the right button (the sidebar, the toolbar, the terminal tab) still pass.
+5. [x] **Words**: the guide `doc/manual_end_to_end.md` (the menu and what New folder does), the protocol note is unchanged.
+6. [x] `cargo xtask check` and `graph`, the changed-files suite through the commit hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here
 
 - Rename, Delete, Extract and Compress are P10b; the transcript view, the release 0.8.2 and level C come after.
+
+## Results (2026-11-25)
+
+- **Tests first, run red**: the unit tests of `dirops` and `dirmenu` were run on stubs and failed (`5` of `6` and `7` of `7`), then green; the window test `tests/test_directories_menu.py` (`6` tests at first, `7` with the right-edge test added by the mutation checks) was written before the window code.
+- **The commit** `d564040`: `dirops.rs` and `dirmenu.rs` (new, with their unit tests), the small edits in `ui.rs`, `sidebar.rs`, `sidebar_render.rs`, `memrow.rs`, `controls.rs`, `confirm.rs` and `mod.rs` (no line added to a file at its limit), the window test, the guide `1.24.0`, the plan and the report. D1 to D7 held as written; no limit was raised and no version was bumped. The module graph is unchanged (the cycle of hubs has `50` modules).
+- **Mutation checks**: `43` mutants, one edit at a time (the file restored and its checksum compared after every one): `29` of the unit-tested part (`dirops.rs`: the trim, the dots, the slash and NUL, control characters, invisible names, the limit and how it counts, the parent check, the taken name, the denied parent, `create_dir_all`; `dirmenu.rs`: the child path, the target rule, the dropped row, the order and the greying of the lines, the first usable line, Up and Down, the end stops, the three bounds of `place`) and `14` of the window part (where the menu opens, which button, the click away, a greyed line, the terminal's folder, the refresh, the lost name, the targets, hover, Escape, Enter, the folder row as target, the first selected line, the column's bound). All `43` were killed in the end, and two of them showed gaps in the tests that were then closed: the denied-parent mutant first survived because the unit test only looked for the word `permission`, which the system's own fallback text (`permission denied`) also holds, so it now asserts the exact words; and the mutant that took the column's bound off at the call site survived because no window test opened the menu at the right edge, so `test_a_right_click_at_the_right_edge_keeps_the_whole_menu_inside_the_left_column_and_the_window` was added (the window tests are now `7`). One window mutant did not compile and was replaced by one that does.
+- **The commit hook**: nothing was bypassed or raised. The first commit attempt was refused by the public guard (a unit-test fixture held a path that starts like a home folder; the fixture was reworded, the guard untouched). Before it, the suite run by hand under the hook's `300 s` limit was cut at the wall at a machine load of `48` (the second run, at load `20`: `301` tests in `84` files passed in `137.1 s`, peak `959 MiB`, under the `180 s` and `1,536 MiB` limits); after the reword `4` tests needed a rerun (`21.3 s`) and the commit passed from the receipts ("nothing to run: 84 file(s) skipped by receipt").
+- **Next**: `M24-P10b` (Rename and Delete) on its own branch, then `M24-P10c` (Compress and Extract).
