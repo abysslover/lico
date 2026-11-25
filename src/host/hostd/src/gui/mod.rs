@@ -34,7 +34,7 @@ mod newchat_draw;
 mod chatcard; mod sidebar_chats; mod terminal; // the Chats tab: the list and its fetch, and what a card says and draws
 mod sidebar_tabs;
 mod sidebar_render;
-mod tool_fold; mod times; // when each line was written (`M24-P11a`)
+mod tool_fold; mod times; mod blocks; // when each line was written (`M24-P11a`), the blocks and the gutter (`M24-P11b`)
 mod transcript;
 mod ui;
 mod update;

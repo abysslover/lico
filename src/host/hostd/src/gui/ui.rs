@@ -649,11 +649,11 @@ impl App {
         let tab_h = tabs::height_px(self.tabs_shown(), s, line_h);
         let chat_top = top + tab_h;
         let (side_top, list_top) = self.left_column_tops(top, s);
-        let main_w = width.saturating_sub(list_w);
+        let main_w = width.saturating_sub(list_w); let (gutter, col_px) = self.times_gutter(main_w, s); // M24-P11b: the room at the right for the time of each block of a session
         self.refresh_list();
         // what the main area says: the target beside the input, an approval modal if pending, the transcript window, the draft
         let hint = self.hint_text(width, s);
-        let text_w = main_w.saturating_sub((4 + 4) * s as usize); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
+        let text_w = main_w.saturating_sub((4 + 4) * s as usize + gutter); // the text starts 4 logical pixels right of the list and keeps 4 from the window edge
         let cols = (text_w as f32 / (self.char_w() * s)).max(10.0) as usize;
         let area_rows = ((height as f32 - chat_top) / lh) as usize;
         let pv = self.prompt_view(cols, area_rows); // the input box and the line under it, or the one line of a panel
@@ -884,7 +884,7 @@ impl App {
             }
         }
         if is_tx {
-            super::transcript::paint_transcript_decorations(&mut buf, width, height, list_w, s, oy, hint_row, &self.ui.hit_lines, plan.is_ok().then_some(cleared.as_slice()));
+            super::transcript::paint_transcript_decorations(&mut buf, width, height, list_w, s, oy, hint_row, &self.ui.hit_lines, plan.is_ok().then_some(cleared.as_slice()), super::transcript::Look { gutter, response: browser_rows.is_none() }); super::times::gutter_clear(&mut buf, width, height, gutter, oy, hint_row, &self.ui.hit_lines);
         }
         if let Some((sy0, sy1)) = search_y {
             rect(&mut buf, width, height, list_w as i32, sy0 as i32, main_w as i32, (sy1 - sy0) as i32, 0xFF1E_2836);
@@ -940,7 +940,7 @@ impl App {
             })
             .collect();
         let mut extents: Vec<Extent> = frame.lines.iter().zip(&modes).map(|(l, m)| if matches!(m, Mode::All) { Extent::EMPTY } else { l.ext }).collect();
-        blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents }));
+        blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents })); self.ui.times.paint(controls, fs, swash, &mut buf, (width, height), gutter, col_px, (oy, hint_row), &self.ui.hit_lines, &|raw| view.lines.get(raw).map(|l| l.0));
         for (line, extent) in frame.lines.iter_mut().zip(extents) {
             line.ext = extent;
         }

@@ -162,7 +162,7 @@ def test_window_resize_reflows_wrapped_lines_and_preserves_scroll_anchor():
             client.expect("state", "subscribed")
             wid = window_id(display)
 
-            long_block = "\n".join(f"line-{i:02d}: " + ("wrapsegment " * 14) for i in range(45))
+            long_block = "\n".join(f"line-{i:02d}: " + ("wrapsegment " * 12) for i in range(45))   # (M24-P11b: the wide window keeps room for the times, so its text is narrower than it was; these lines take two rows there and three in the narrow window)
             conn.call(op="input", session=s1, generation=1, request_id="r1", text=long_block)
             ui(client, lambda u: u["lines_buffered"] >= 45 and bool(u["rows"]) and u["rows"][0]["state_text"] == "idle")
 

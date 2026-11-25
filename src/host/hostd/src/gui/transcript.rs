@@ -37,6 +37,7 @@ pub const CMD_RAIL: u32 = 0xFF7C_6CF6;
 pub const CMD_ERR_BG: u32 = 0xFF25_1517;
 pub const CMD_ERR_BORDER: u32 = 0xFF4C_262A;
 pub const CMD_ERR_RAIL: u32 = 0xFFE5_6B55;
+pub const RESPONSE_BG: u32 = 0xFF17_1A1A;
 
 pub const STYLE_MASK: u16 = 0x000F;
 pub const STYLE_AGENT: u16 = 0;
@@ -419,6 +420,13 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
     out
 }
 
+/// What the decorations leave room for and add (`M24-P11b`): the width of the gutter at the right (the blocks end where it begins) and whether the agent's own text has a band.
+#[derive(Clone, Copy, Default)]
+pub struct Look {
+    pub gutter: usize,
+    pub response: bool,
+}
+
 /// Paint user prompt backgrounds (`USER_BG`), inter-session peer banners (`PEER_BG`), and bordered command/tool execution cards (`CMD_BG`).
 /// During `scroll::Shift` (`cleared == Some(rows)`), only newly cleared pixel rows are painted and card borders test unclipped `raw_r0`/`raw_r1`
 /// so shifted pixels match full repaints pixel-for-pixel.
@@ -433,6 +441,7 @@ pub fn paint_transcript_decorations(
     hint_y: i32,
     hit_lines: &[(f32, f32, usize, u16)],
     cleared: Option<&[(i32, i32)]>,
+    look: Look,
 ) {
     let x0 = list_w.min(width);
     if x0 >= width {
@@ -442,10 +451,12 @@ pub fn paint_transcript_decorations(
     let pad_l = (1.0 * s).round() as usize;
     let pad_r = (2.0 * s).round() as usize;
     let rail_w = (2.0 * s).round().max(2.0) as usize;
+    let edge = width.saturating_sub(look.gutter).max(x0); // what the blocks cover ends where the gutter begins
     let bx0 = (x0 + pad_l).min(width);
-    let bx1 = width.saturating_sub(pad_r).max(bx0);
+    let bx1 = edge.saturating_sub(pad_r).max(bx0);
     for &(y0, y1, _raw_idx, role) in hit_lines {
-        if role & (ROLE_USER_BG | ROLE_PEER_BG | ROLE_BOX) == 0 {
+        let reply = look.response && super::blocks::kind_of(role) == super::blocks::Kind::Response;
+        if role & (ROLE_USER_BG | ROLE_PEER_BG | ROLE_BOX) == 0 && !reply {
             continue;
         }
         let raw_r0 = y0.floor() as i32;
@@ -460,7 +471,9 @@ pub fn paint_transcript_decorations(
             }
             let row_start = py as usize * width;
             if role & ROLE_USER_BG != 0 {
-                buf[row_start + x0..row_start + width].fill(USER_BG);
+                buf[row_start + x0..row_start + edge].fill(USER_BG);
+            } else if reply {
+                buf[row_start + x0..row_start + edge].fill(RESPONSE_BG);
             } else if role & ROLE_PEER_BG != 0 {
                 if bx0 < bx1 {
                     let top_edge = (role & ROLE_BOX_TOP != 0) && py == raw_r0;
@@ -534,6 +547,10 @@ impl App {
             .collect()
     }
 }
+
+#[cfg(test)]
+#[path = "transcript_look_tests.rs"]
+mod look_tests;
 
 #[cfg(test)]
 mod tests {

@@ -498,3 +498,129 @@ fn command_execution_boxes_exit_errors_mcp_cards_and_peer_banners_match_full_rep
         p.step("events hidden again");
     }
 }
+
+/// The seconds of a run for the lines `from` on: a fixed day of 2026 and a second per three lines.
+fn runs_for(from: i64, to: i64) -> Vec<(i64, u64)> {
+    (from..to).step_by(3).map(|seq| (seq, 1_795_000_000 + seq as u64 * 7)).collect()
+}
+
+fn know(p: &mut Pair, to: i64) {
+    p.both(|app| app.ui.times = super::times::Times::seeded("session-s0", 1, to, &runs_for(1, to)));
+}
+
+/// What the last frame drew in the gutter, as the dump says it.
+fn drawn(side: &Side) -> (u64, usize) {
+    let dump = side.app.ui.times.json();
+    (dump["gutter"].as_u64().unwrap_or(0), dump["drawn"].as_array().map_or(0, Vec::len))
+}
+
+/// Whether the gutter of every line on the screen is the plain background.
+fn gutter_plain(side: &Side) -> bool {
+    let gutter = drawn(side).0 as usize;
+    let (width, height) = side.size;
+    side.app.ui.hit_lines.iter().all(|&(y0, y1, _, _)| {
+        (y0.floor().max(0.0) as usize..(y1.ceil() as usize).min(height)).all(|y| side.buf[y * width + width - gutter..(y + 1) * width].iter().all(|&px| px == BACKGROUND))
+    })
+}
+
+/// The pixel at the right end of the band of every line of the person and of every reply on the screen (just before the gutter): how many of each were looked at; none may be another colour.
+fn band_ends(side: &Side) -> (usize, usize) {
+    use super::blocks::{kind_of, Kind};
+    use super::transcript::{RESPONSE_BG, ROLE_USER_BG, USER_BG};
+    let (width, gutter) = (side.size.0, drawn(side).0 as usize);
+    let (mut people, mut replies) = (0, 0);
+    for &(y0, y1, _, role) in &side.app.ui.hit_lines {
+        let px = side.buf[((y0 + y1) / 2.0) as usize * width + width - gutter - 1];
+        if role & super::transcript::ROLE_BOX != 0 {
+            assert_eq!(px, BACKGROUND, "a command box ends before the gutter, a little short of it");
+        } else if role & ROLE_USER_BG != 0 {
+            assert_eq!(px, USER_BG, "the band of the person's line ends at the gutter");
+            people += 1;
+        } else if kind_of(role) == Kind::Response {
+            assert_eq!(px, RESPONSE_BG, "the reply has its band, to the gutter");
+            replies += 1;
+        }
+    }
+    (people, replies)
+}
+
+/// Every time of the last frame stands in a row whose whole label is above the hint line (and the path bar under it): none is drawn for a line that is under them.
+fn times_stay_in_the_text_area(side: &Side) {
+    let lh = side.app.line_h() * side.app.ui.scale;
+    for row in side.app.ui.times.json()["drawn"].as_array().unwrap() {
+        assert!(row[0].as_f64().unwrap() as f32 + lh <= side.size.1 as f32 - 2.0 * lh, "a time at {} is under the hint line", row[0]);
+    }
+}
+
+/// The text of every time the last frame drew is the time of the first line of its block (the seeded runs begin at 1, 4, 7, ... and a run is 7 seconds on from the one before).
+fn times_are_right(side: &Side) {
+    for row in side.app.ui.times.json()["drawn"].as_array().unwrap() {
+        let y0 = row[0].as_f64().unwrap() as f32;
+        let line = side.app.ui.hit_lines.iter().find(|l| l.0 == y0).expect("a time stands at a line of the screen");
+        let seq = side.app.view.as_ref().unwrap().lines[line.2].0;
+        let secs = 1_795_000_000 + ((seq - 1) / 3 * 3 + 1) as u64 * 7;
+        assert_eq!(row[2].as_str().unwrap(), super::blocks::stamp_text(secs, crate::transfer::utc_offset(secs as i64)), "the time of line {seq}");
+    }
+}
+
+#[test]
+fn the_gutter_with_the_times_draws_the_same_pixels_with_the_scroll_step_as_with_a_full_repaint_across_scales() {
+    for scale in [1.0, 1.25, 2.0] {
+        let mut p = Pair::new((2400, 700), scale);
+        p.full("first", Cause::First);
+        assert!(drawn(&p.on).0 > 0 && drawn(&p.on).1 == 0, "a session keeps its gutter before its first line, so that the text never moves when the lines come");
+        for turn in 0..12 {
+            p.push(&[
+                format!(">> user prompt {turn} 한글 🙂"),
+                format!("Agent answer {turn} with details and wrapped prose."),
+                "$ cargo test --quiet".into(),
+                "> test result: ok.".into(),
+                "[exit 0]".into(),
+                format!("Agent prose after the command {turn}."),
+                format!(">> {}", "a long question that fills the width ".repeat(4)),
+                "word ".repeat(30),
+            ]);
+            p.step(&format!("turn {turn}, no time known yet"));
+        }
+        let (gutter, rows) = drawn(&p.on);
+        assert!(gutter_plain(&p.on), "no band, box or text reaches the gutter, however long the lines");
+        let (people, replies) = band_ends(&p.on);
+        assert!(people > 0 && replies > 0, "the frame has a person's line and a reply to look at ({people}, {replies})");
+        assert!(gutter > 0, "the window is wide enough for a gutter at scale {scale}");
+        assert_eq!(rows, 0, "no time is known, so none is drawn, and the gutter stays");
+        let to = p.seq + 1;
+        know(&mut p, to);
+        p.step("a late answer brings the times");
+        let (gutter_now, rows_now) = drawn(&p.on);
+        assert_eq!(gutter_now, gutter, "a time arriving late does not move the text");
+        assert!(rows_now >= 5, "the first line on the screen and the blocks of the turns show a time, drew {rows_now}");
+        assert_eq!(drawn(&p.off), (gutter_now, rows_now), "a full repaint draws the same texts");
+        times_are_right(&p.on);
+        times_are_right(&p.off);
+        times_stay_in_the_text_area(&p.on);
+        for n in 0..10 {
+            p.push(&[format!("one more line {n}")]);
+            let to = p.seq + 1;
+            know(&mut p, to);
+            p.shift(&format!("a line {n} with times"));
+            times_stay_in_the_text_area(&p.on);
+        }
+        p.push(&["$ echo more".into(), "inside the box".into(), "[exit 1]".into(), "prose".into()]);
+        let to = p.seq + 1;
+        know(&mut p, to);
+        p.shift("a command card with times");
+        p.resize((2200, 650), 1);
+        p.full("resize with times", Cause::Size);
+    }
+}
+
+#[test]
+fn a_page_in_the_main_area_has_no_gutter_no_time_and_no_band_for_its_blank_rows() {
+    let mut side = Side::new((2400, 700), 1.0, false);
+    side.app.session.clear();
+    side.app.ui.browser.prompt = Some(true);
+    assert!(side.app.page_active(), "the address prompt of a new browser tab is a page");
+    side.frame();
+    assert_eq!(drawn(&side), (0, 0), "no room is kept beside a page and no time is drawn");
+    assert_eq!(side.buf.iter().filter(|&&px| px == super::transcript::RESPONSE_BG).count(), 0, "the blank rows under a page are not the agent's replies");
+}

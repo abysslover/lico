@@ -191,3 +191,212 @@ fn the_counters_go_on_when_the_view_starts_again() {
     assert!(times.on_reply(&reply("t", 0, 10, &[])));
     assert_eq!((times.json()["asked"].as_u64(), times.json()["answered"].as_u64()), (Some(2), Some(2)));
 }
+
+mod drawing {
+    use super::super::*;
+    use crate::gui::transcript::{ROLE_BOX, ROLE_BOX_TOP, ROLE_USER_BG, STYLE_AGENT, STYLE_CMD, STYLE_CMD_OUT, STYLE_USER};
+    use crate::gui::BACKGROUND;
+
+    const REPLY: u16 = STYLE_AGENT;
+    const USER: u16 = STYLE_USER | ROLE_USER_BG;
+    const CMD_TOP: u16 = STYLE_CMD | ROLE_BOX | ROLE_BOX_TOP;
+    const CMD_MID: u16 = STYLE_CMD_OUT | ROLE_BOX;
+
+    fn lines(roles: &[u16]) -> Vec<(f32, f32, usize, u16)> {
+        roles.iter().enumerate().map(|(i, &role)| (i as f32 * 20.0, i as f32 * 20.0 + 20.0, i, role)).collect()
+    }
+
+    fn rows_of(roles: &[u16], known: impl Fn(i64) -> bool) -> Vec<(f32, String)> {
+        let at = |seq: i64| known(seq).then_some(seq as u64 + 1000);
+        stamp_rows(&lines(roles), &|raw| Some(raw as i64 * 10), &at, &|secs| format!("t{secs}")).into_iter().map(|(top, _, text)| (top, text)).collect()
+    }
+
+    #[test]
+    fn the_first_line_of_every_block_and_of_the_screen_carries_its_time() {
+        let roles = [REPLY, REPLY, USER, USER, CMD_TOP, CMD_MID, REPLY];
+        assert_eq!(
+            rows_of(&roles, |_| true),
+            [(0.0, "t1000".to_string()), (40.0, "t1020".to_string()), (80.0, "t1040".to_string()), (120.0, "t1060".to_string())],
+            "a reply, the person, a command with its output, a reply"
+        );
+        assert_eq!(rows_of(&[CMD_MID, CMD_MID, REPLY], |_| true), [(0.0, "t1000".to_string()), (40.0, "t1020".to_string())], "the first line on the screen counts even in the middle of a block");
+        assert_eq!(rows_of(&[], |_| true), []);
+    }
+
+    #[test]
+    fn a_line_with_no_known_time_shows_none_and_the_others_still_do() {
+        let roles = [REPLY, USER, REPLY];
+        assert_eq!(rows_of(&roles, |seq| seq != 10), [(0.0, "t1000".to_string()), (40.0, "t1020".to_string())]);
+        assert_eq!(rows_of(&roles, |_| false), []);
+        let none = stamp_rows(&lines(&roles), &|_| None, &|_| Some(1), &|_| "x".to_string());
+        assert!(none.is_empty(), "a line that has no sequence number has no time");
+    }
+
+    #[test]
+    fn the_rows_keep_the_top_and_the_bottom_of_the_line() {
+        let rows = stamp_rows(&[(10.5, 31.25, 0, REPLY)], &|_| Some(0), &|_| Some(7), &|s| s.to_string());
+        assert_eq!(rows, [(10.5, 31.25, "7".to_string())]);
+    }
+
+    const W: usize = 300;
+    const H: usize = 100;
+    const MARK: u32 = 0xFF0A_0B0C;
+
+    #[test]
+    fn the_gutter_of_every_line_on_the_screen_is_cleared_and_nothing_else() {
+        let mut buf = vec![MARK; W * H];
+        gutter_clear(&mut buf, W, H, 60, 0, 80, &lines(&[REPLY, USER]));
+        let px = |x: usize, y: usize| buf[y * W + x];
+        assert_eq!((px(239, 5), px(240, 5), px(W - 1, 5), px(W - 1, 39)), (MARK, BACKGROUND, BACKGROUND, BACKGROUND), "from the gutter to the edge, both lines");
+        assert_eq!((px(W - 1, 40), px(240, 99)), (MARK, MARK), "rows that are no line of the screen are not touched");
+        let mut none = vec![MARK; W * H];
+        gutter_clear(&mut none, W, H, 0, 0, 80, &lines(&[REPLY]));
+        assert!(none.iter().all(|&p| p == MARK), "no gutter, nothing to clear");
+    }
+
+    #[test]
+    fn the_clearing_stays_inside_the_text_area() {
+        let mut buf = vec![MARK; W * H];
+        gutter_clear(&mut buf, W, H, 60, 20, 50, &lines(&[REPLY, USER, REPLY, USER]));
+        let px = |y: usize| buf[y * W + W - 1];
+        assert_eq!((px(19), px(20), px(49), px(50)), (MARK, BACKGROUND, BACKGROUND, MARK), "rows above the top of the area and from the hint line on are not touched");
+        let mut small = vec![MARK; 40 * 30];
+        gutter_clear(&mut small, 40, 30, 500, 0, 30, &lines(&[REPLY, USER]));
+        assert!(small.iter().all(|&p| p == BACKGROUND || p == MARK), "a gutter wider than the window does not go outside it");
+        assert_eq!(small[39], BACKGROUND);
+    }
+
+    fn drawn_at(scale: f32, rows: &[(f32, f32, String)], top: i32, hint: i32) -> Vec<u32> {
+        let mut fs = crate::gui::fonts::system(false);
+        let mut swash = cosmic_text::SwashCache::new();
+        let mut controls = crate::gui::controls::Controls::default();
+        controls.begin(scale, 14.0);
+        let mut buf = vec![BACKGROUND; W * H];
+        gutter_draw(&mut controls, &mut fs, &mut swash, &mut buf, W, H, 60, 8.5 * scale, top, hint, rows);
+        buf
+    }
+
+    fn drawn(rows: &[(f32, f32, String)], top: i32, hint: i32) -> Vec<u32> {
+        drawn_at(1.0, rows, top, hint)
+    }
+
+    fn lit(buf: &[u32], x0: usize, x1: usize, y0: usize, y1: usize) -> usize {
+        (y0..y1).map(|y| buf[y * W + x0..y * W + x1].iter().filter(|&&p| p != BACKGROUND).count()).sum()
+    }
+
+    #[test]
+    fn a_time_is_drawn_inside_the_gutter_at_the_row_of_its_line() {
+        let buf = drawn(&[(20.0, 38.0, "2026-11-25 14:03:07".to_string())], 0, 100);
+        assert!(lit(&buf, 240, W, 20, 38) > 20, "the digits are in the gutter, in the rows of the line");
+        assert_eq!(lit(&buf, 0, 240, 0, H), 0, "none of it is left of the gutter");
+        assert_eq!(lit(&buf, 240, W, 0, 20) + lit(&buf, 240, W, 38, H), 0, "and none above or below the line");
+        assert_eq!(lit(&buf, 240, 248, 20, 38), 0, "it starts a column in (8.5 pixels)");
+    }
+
+    #[test]
+    fn a_time_is_drawn_exactly_as_a_label_of_that_text_would_be_at_the_start_of_its_row() {
+        let (text, ink) = ("2026-11-25 14:03:07", cosmic_text::Color::rgb(0x7A, 0x84, 0x96));
+        for scale in [1.0f32, 2.0] {
+            let mut fs = crate::gui::fonts::system(false);
+            let mut swash = cosmic_text::SwashCache::new();
+            let mut controls = crate::gui::controls::Controls::default();
+            controls.begin(scale, 14.0);
+            let mut expected = vec![BACKGROUND; W * H];
+            controls.text(&mut fs, &mut swash, &mut expected, W, H, 240.0 + 8.5 * scale, 20.0, W as i32, text, ink);
+            assert!(expected.iter().any(|&p| p != BACKGROUND));
+            assert!(drawn_at(scale, &[(20.0, 20.0 + 18.0 * scale, text.to_string())], 0, 100) == expected, "at scale {scale}: the same pixels, a column in and at the row of its line");
+        }
+    }
+
+    #[test]
+    fn the_height_of_a_label_follows_the_scale_when_the_area_is_judged() {
+        let row = [(20.0, 56.0, "2026-11-25 14:03:07".to_string())];
+        assert!(lit(&drawn_at(2.0, &row, 0, 56), 240, W, 0, H) > 0, "a label of 36 pixels at scale 2 fits in rows 20 to 56");
+        assert_eq!(lit(&drawn_at(2.0, &row, 0, 55), 240, W, 0, H), 0, "and not when the area ends a row sooner");
+    }
+
+    #[test]
+    fn a_time_whose_line_is_not_wholly_in_the_text_area_is_not_drawn() {
+        let row = [(20.0, 38.0, "2026-11-25 14:03:07".to_string())];
+        assert_eq!(lit(&drawn(&row, 21, 100), 240, W, 0, H), 0, "its top is above the area");
+        assert_eq!(lit(&drawn(&row, 0, 37), 240, W, 0, H), 0, "its bottom is under the area");
+        assert!(lit(&drawn(&row, 20, 38), 240, W, 0, H) > 0, "a line that fills the area exactly is drawn");
+        assert_eq!(lit(&drawn(&[], 0, 100), 0, W, 0, H), 0);
+    }
+}
+
+mod room {
+    use super::super::*;
+    use crate::gui::panel::Step;
+    use crate::gui::scroll_oracle::app;
+
+    #[test]
+    fn a_line_that_starts_or_ends_inside_a_row_clears_that_row_too() {
+        let mut buf = vec![7u32; 100 * 60];
+        gutter_clear(&mut buf, 100, 60, 20, 0, 60, &[(10.5, 31.25, 0, 0)]);
+        let rows: Vec<usize> = (0..60).filter(|y| buf[y * 100 + 99] == crate::gui::BACKGROUND).collect();
+        assert_eq!((rows.first(), rows.last(), rows.len()), (Some(&10), Some(&31), 22), "rows 10 to 31, the ones the line touches");
+        assert_eq!(buf[10 * 100 + 79], 7, "left of the gutter nothing is touched");
+    }
+
+    #[test]
+    fn a_hint_row_below_the_window_does_not_take_the_clearing_out_of_it() {
+        let mut buf = vec![7u32; 100 * 60];
+        gutter_clear(&mut buf, 100, 60, 20, 0, 500, &[(40.0, 90.0, 0, 0)]);
+        let rows: Vec<usize> = (0..60).filter(|y| buf[y * 100 + 99] == crate::gui::BACKGROUND).collect();
+        assert_eq!((rows.first(), rows.last()), (Some(&40), Some(&59)), "to the last row of the window and no further");
+    }
+
+    #[test]
+    fn nothing_is_drawn_and_nothing_remembered_when_there_is_no_gutter() {
+        let mut times = Times::seeded("s", 0, 10, &[(0, 1_795_000_000)]);
+        let mut fs = crate::gui::fonts::system(false);
+        let mut swash = cosmic_text::SwashCache::new();
+        let mut controls = crate::gui::controls::Controls::default();
+        controls.begin(1.0, 14.0);
+        let mut buf = vec![7u32; 400 * 100];
+        let hit = [(0.0, 18.0, 0usize, 0u16), (18.0, 36.0, 1, crate::gui::transcript::ROLE_USER_BG | crate::gui::transcript::STYLE_USER)];
+        times.paint(&mut controls, &mut fs, &mut swash, &mut buf, (400, 100), 0, 8.5, (0, 100), &hit, &|raw| Some(raw as i64));
+        assert!(buf.iter().all(|&p| p == 7), "no gutter, no pixel touched");
+        assert_eq!(times.json()["drawn"].as_array().map(Vec::len), Some(0));
+        times.paint(&mut controls, &mut fs, &mut swash, &mut buf, (400, 100), 90, 8.5, (0, 100), &hit, &|raw| Some(raw as i64));
+        let json = times.json();
+        assert_eq!((json["gutter"].as_u64(), json["drawn"].as_array().map(Vec::len)), (Some(90), Some(2)), "with a gutter the first line and the person's line each carry a time");
+        assert!(buf.iter().any(|&p| p != 7));
+    }
+
+    #[test]
+    fn the_padding_counts_when_the_columns_are_counted() {
+        let app = app(1.0, false);
+        assert_eq!((app.times_gutter(866, 1.0).0 > 0, app.times_gutter(867, 1.0).0 > 0), (false, true), "101 columns of 8.5 pixels and the 8 of padding: 866 pixels are 100 columns, 867 are 101");
+        assert_eq!((app.times_gutter(1732, 2.0).0 > 0, app.times_gutter(1733, 2.0).0 > 0), (false, true), "at scale 2 the padding and the column are twice as wide");
+    }
+
+    #[test]
+    fn the_gutter_is_kept_for_a_wide_session_transcript_only() {
+        let wide = app(1.0, false);
+        let (px, col) = wide.times_gutter(2200, 1.0);
+        assert_eq!((col, px), (wide.char_w(), crate::gui::blocks::gutter_px(2200 - 8, wide.char_w())));
+        assert!(px >= 21 * 8, "a window wide enough keeps the room");
+        assert_eq!(wide.times_gutter(800, 1.0).0, 0, "a window with fewer than 101 columns keeps none");
+        assert_eq!(wide.times_gutter(2200, 2.0).1, wide.char_w() * 2.0, "the column is as wide as the window draws it");
+        let mut empty = app(1.0, false);
+        empty.session.clear();
+        assert_eq!(empty.times_gutter(2200, 1.0).0, 0, "no session, no transcript: the start lines have no times");
+        let mut panel = app(1.0, false);
+        panel.panel_open(Step::Label);
+        assert_eq!(panel.times_gutter(2200, 1.0).0, 0, "a panel is no transcript");
+    }
+
+    #[test]
+    fn the_answer_that_was_awaited_draws_the_window_again_and_any_other_does_not() {
+        let mut app = app(1.0, false);
+        let ask = app.ui.times.next("session-s0", Some((1, 4)), 0).expect("a request goes out");
+        let value: Value = serde_json::from_str(&ask).unwrap();
+        assert_eq!((app.dirty, value["op"].as_str()), (false, Some("stamps")));
+        app.ui_stamps(&json!({"session": "session-s0", "from": 99, "until": 100, "stamps": []}).to_string());
+        assert!(!app.dirty, "an answer to another question changes nothing");
+        app.ui_stamps(&json!({"session": "session-s0", "from": 1, "until": 4, "stamps": [[1, 1_795_000_000u64]]}).to_string());
+        assert!(app.dirty, "the times it brought are shown at the next frame");
+    }
+}

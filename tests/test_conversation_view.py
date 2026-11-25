@@ -91,16 +91,20 @@ def test_clean_conversation_hides_internal_events_preserves_logs_and_colors_user
 
             # Line 0 is `>> First human question`
             uy_mid = int((line_boxes[0][0] + line_boxes[0][1]) / 2)
-            bg_user = _pixel(raw, width, 1160, uy_mid)
+            inside = width - u["times"]["gutter"] - 20                       # (M24-P11b: the bands end where the room for the times begins)
+            assert u["times"]["gutter"] > 0, u["times"]
+            bg_user = _pixel(raw, width, inside, uy_mid)
             assert bg_user == (0x15, 0x22, 0x32), bg_user
+            assert _pixel(raw, width, 1160, uy_mid) == (0x10, 0x14, 0x18), "the room for the times is the plain background beside the band"
             user_glyphs = [_pixel(raw, width, x, y) for y in range(int(line_boxes[0][0]), int(line_boxes[0][1])) for x in range(340, 620)]
             brightest_user = max(user_glyphs, key=lambda p: p[2])
             assert brightest_user[2] > 220 and brightest_user[2] - brightest_user[0] >= 80, brightest_user
 
             # Line 1 is `echo: First human question` (agent line)
             ay_mid = int((line_boxes[1][0] + line_boxes[1][1]) / 2)
-            bg_agent = _pixel(raw, width, 1160, ay_mid)
-            assert bg_agent == (0x10, 0x14, 0x18), bg_agent
+            bg_agent = _pixel(raw, width, inside, ay_mid)
+            assert bg_agent == (0x17, 0x1A, 0x1A), bg_agent                 # the agent's own band, a little lighter than the window
+            assert _pixel(raw, width, 1160, ay_mid) == (0x10, 0x14, 0x18), "and the room beside it is the plain background"
             agent_glyphs = [_pixel(raw, width, x, y) for y in range(int(line_boxes[1][0]), int(line_boxes[1][1])) for x in range(340, 620)]
             brightest_agent = max(agent_glyphs, key=lambda p: p[0] + p[1] + p[2])
             assert brightest_agent[0] >= 210 and brightest_agent[1] >= 210 and abs(brightest_agent[2] - brightest_agent[0]) <= 25, brightest_agent

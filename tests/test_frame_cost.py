@@ -68,7 +68,7 @@ def test_an_unchanged_frame_shapes_no_line_and_probes_no_character():
             state = ui(client)
             first = state["frame"]
             totals = [state["memory"]["total"]]               # the window's own memory in whole MiB can move while the test runs: a new figure is a new label, shaped once
-            assert first["lines_shaped"] >= 30 and first["probes"] > 0 and first["frames"] > 0       # the first frame did the work
+            assert first["lines_shaped"] >= 20 and first["probes"] > 0 and first["frames"] > 0       # the first frame did the work (M24-P11b: the room for the times narrows the text of this window, so a screenful holds fewer lines than the 30 it did)
             assert 0 < first["layout_us"] <= first["total_us"] and first["paint_us"] > 0              # and the dump says what it cost
             for _ in range(3):
                 client.send("redraw")
@@ -242,10 +242,10 @@ def test_the_two_text_workloads_take_the_two_font_paths():
                     host.stop()
                 xvfb.stop()
     (real, real_lines), (mixed, mixed_lines) = found["realistic"], found["mixed"]
-    assert real["lines_shaped"] >= 30 and real["lines_exact"] == 0, real
+    assert real["lines_shaped"] >= 20 and real["lines_exact"] == 0, real
     assert not any("שלום" in line or "\u0301" in line for line in real_lines)
     assert any("\u2192" in line for line in real_lines) and any("\u2713" in line for line in real_lines)
-    assert mixed["lines_shaped"] >= 30 and mixed["lines_exact"] * 2 > mixed["lines_shaped"], mixed         # most of the standard lines hold a Hebrew word or a combining accent
+    assert mixed["lines_shaped"] >= 20 and mixed["lines_exact"] * 2 > mixed["lines_shaped"], mixed         # most of the standard lines hold a Hebrew word or a combining accent
     assert any("שלום" in line for line in mixed_lines) and any("\u0301" in line for line in mixed_lines)
 
 

@@ -1,8 +1,10 @@
 """M24-P11a in the window: for the session it shows, the window asks the host (`stamps`) when each line it holds was written, once a second at most and one request at a time, and keeps
-the answer (the state dump's `times`). Nothing is drawn for it yet (`M24-P11b` draws the time). A private Xvfb and the simulated agent: nothing of the real machine is looked at."""
+the answer (the state dump's `times`). `M24-P11b`: on a window wide enough the transcript keeps a gutter at the right (`gutter`, in pixels) and draws the time of the first line of each
+block in it (`drawn`: top, bottom and text of each). A private Xvfb and the simulated agent: nothing of the real machine is looked at."""
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -52,6 +54,18 @@ def test_the_window_learns_when_the_lines_it_holds_were_written_and_follows_new_
             assert t["runs"] >= 1 and t["last_run"][0] <= t["hi"] - 1
             assert began - 2 <= t["first"] <= t["newest"] <= int(time.time()) + 1, (t, began)
             assert t["asked"] == t["answered"], "one request at a time, and every one answered"
+
+            # the gutter is kept, and the times of the blocks on the screen stand in it: the local time to the second, one row per block, in the order of the lines
+            def drawn_times():
+                now = w.ui()["times"]
+                return now if now["gutter"] > 0 and now["drawn"] else None
+            shown = wait_for(drawn_times, timeout=15)
+            texts = [row[2] for row in shown["drawn"]]
+            assert all(re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", text) for text in texts), texts
+            seconds = [time.mktime(time.strptime(text, "%Y-%m-%d %H:%M:%S")) for text in texts]
+            assert began - 2 <= min(seconds) <= max(seconds) <= time.time() + 2, (texts, began)
+            assert seconds == sorted(seconds) and [row[0] for row in shown["drawn"]] == sorted(row[0] for row in shown["drawn"])
+            assert len(texts) >= 2 and shown["gutter"] >= 21 * 8, "the first reply and the person's line are blocks of their own"
 
             # nothing is missing now: the window does not ask again by itself
             asked = t["asked"]

@@ -141,6 +141,7 @@ def test_the_window_shows_a_clock_that_runs_while_nothing_arrives_and_it_goes_wi
             wait_for(lambda: completed(log, sid) == 2, timeout=15)
             gone = ui(client, lambda u: u["activity_line"] == "" and clock(u["header"]) is None)
             assert "idle" in gone["header"] and "working" not in gone["list_text"]
+            ui(client, lambda u: u["times"]["pending"] is False and u["times"]["hi"] == u["first_seq"] + u["lines_buffered"])   # (M24-P11b: the times of the last lines come from the host a moment after them and are drawn then)
             settle(client, quiet=0.15)                                            # the frame that removes the line has been drawn
             still_a = pixels(xvfb.display)
             time.sleep(1.15)                                                      # longer than the second a clock would need to tick
