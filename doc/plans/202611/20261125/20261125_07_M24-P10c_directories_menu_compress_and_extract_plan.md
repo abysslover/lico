@@ -1,6 +1,6 @@
 # M24-P10c Plan — The Directories Menu: Extract And Compress
 
-- Status: in_progress (2026-11-25)
+- Status: done (2026-11-25), code `5de5c7d`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P10c-directories-menu-compress-and-extract` from `phase/M24-P10b-directories-menu-rename-and-delete` (`b82fe30`; P07 to P10b are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -29,15 +29,23 @@ The menu gets its last two lines, in the owner's order: **Extract**, **Compress*
 
 ## Steps
 
-1. [ ] **Tests first, run red** (unit and window).
-2. [ ] **The change.**
-3. [ ] **Mutation checks**, one edit at a time on `archive.rs` and `dirmenu.rs` (the mutants that could delete or write outside are written so that they cannot).
-4. [ ] **Other window tests** that read the left column, the panel or the job events still pass.
-5. [ ] **Words**: the guide.
-6. [ ] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red** (unit and window).
+2. [x] **The change.**
+3. [x] **Mutation checks**, one edit at a time on `archive.rs` and `dirmenu.rs` (the mutants that could delete or write outside are written so that they cannot).
+4. [x] **Other window tests** that read the left column, the panel or the job events still pass.
+5. [x] **Words**: the guide.
+6. [x] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here
 
 - Other formats (7z, rar) and a choice of the archive's name or format on Compress (a question before it runs) are later, if the owner asks.
 - A size limit on what an archive may write is the listing's sum only; a lying listing is a limit of the tools (said in the report).
 - The transcript view, the release 0.8.2 and level C come after.
+
+## Results (2026-11-25)
+
+- **Tests first**: the archive unit tests that need the tools were run on stubs and failed, then green (`26` in `archive_tests.rs`); the menu's unit tests did not compile on the old code and are green (`10`); the window tests (`15` in `tests/test_directories_menu.py`, `4` new) passed once the code was done, the mutants show that they bite.
+- **The commit** `5de5c7d`: `archive.rs` (a leaf module: the endings, the free name, the vetting of a listing, the tools run without a shell, `compress_within`, `extract_within`), `dirmenu.rs` (the two lines, the job, the flash), `jobs.rs`, `panel.rs`, `sidebar.rs`, `mod.rs`, the unit and window tests, the guide `1.26.0`, the plan and the report. D1 to D7 held as written, with one widening (D1): a link to an archive file extracts too, because the list shows it as a file; no limit was raised and no version was bumped.
+- **Mutation checks**: `81` mutants, one edit at a time (the file restored and its checksum compared after every one): `68` of the unit-tested part (`archive.rs`: the endings and their case, a bare ending, the length of an ending, the numbering of a free name and a dangling link holding a name; every refusal of the vetting at its edge: the count, a link, a hard link, a device, an empty name, a name at the root, a `..` part (and only a whole part), a control character, the total at its edge and its overflow, an unknown kind; the strict reading of the two listings: the footer, the count of items, the first line, the kind letter, an empty archive, the escapes and the octal digits of a tar name, the numeric owners, the date and time fields, the size of a device; the search of a tool, the language, the run: the environment kept, the folder, the time limit, the cut of the error text, a long answer, a failure taken for success, the words of a failure; how Compress puts the file in place, leaves its work folder, follows links, skips the recursion, replaces a taken name, forgets a gone row or lets a name pass as an option; Extract with a relative path, a folder taken for an archive, a dangling link, the vetting skipped, the new folder left behind after a failure, the owners by name; `dirmenu.rs`: which line is greyed for which reason and in which order) and `13` of the window part (Extract run as Compress, the busy flag never set and never cleared, the list not refreshed, the archive aimed at the wrong folder, a folder named like an archive taken for one, the made name as a whole path, the words of success and of failure swapped, Extract given no folder, Compress given no time, the reason of a failure lost, the start not said). Mutants that could delete or write outside were written so that they cannot (a bad name for Compress runs with a limit of two seconds and an exact error). `4` were not killed at the first run: one did not compile and was rewritten, and three showed gaps in the tests (a listing without its footer, a first line that is not the title, the start notice `Compressing name...` that nothing looked at); tests were added and the three are killed. **`80` of `81` are killed.** The one left, taking out the explicit `--quoting-style=escape` of the tar listing, is **equivalent**: GNU tar's own default for a listing is the same (measured with tar 1.35: a name with a line break is listed as `new\nline` without the flag), the flag only pins it. The mapping of a missing tool to its greyed line cannot be mutated in the window, where the tools are installed.
+- **The commit hook**: nothing was bypassed or raised. The suite run by hand under the hook's `300 s` limit passed all `274` tests in `83` files but was refused by the suite's own guard because the test build's peak memory (the build after the source change) was `1905 MiB`, over the bound of `1536 MiB`, as in P10b; the bound stays, the run was repeated with the build cached (`274` tests passed in `137.1 s`, peak `941.7 MiB`, under the `180 s` and `1,536 MiB` limits) and the commit passed from the receipts ("nothing to run: 83 file(s) skipped by receipt").
+- **Next**: the transcript view, the release `0.8.2`, then level C.
