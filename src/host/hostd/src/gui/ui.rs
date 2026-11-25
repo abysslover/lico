@@ -102,7 +102,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
-    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>, pub block_fold: super::block_fold::State,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -591,7 +591,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
-        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json();
+        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json(); dump["blocks"] = self.ui.block_fold.json(&self.session, self.ui.sel);
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)

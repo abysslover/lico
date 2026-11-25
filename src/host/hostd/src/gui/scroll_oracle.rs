@@ -624,3 +624,60 @@ fn a_page_in_the_main_area_has_no_gutter_no_time_and_no_band_for_its_blank_rows(
     assert_eq!(drawn(&side), (0, 0), "no room is kept beside a page and no time is drawn");
     assert_eq!(side.buf.iter().filter(|&&px| px == super::transcript::RESPONSE_BG).count(), 0, "the blank rows under a page are not the agent's replies");
 }
+
+fn fold(p: &mut Pair, first_seq: i64) {
+    p.both(|app| {
+        app.ui.block_fold.folded.insert((app.session.clone(), first_seq));
+        app.ui.composed = None; // what a click that folds does
+        app.dirty = true;
+    });
+}
+
+#[test]
+fn a_block_that_is_folded_draws_the_same_pixels_with_the_scroll_step_as_with_a_full_repaint_across_scales() {
+    for scale in [1.0, 1.25, 2.0] {
+        let mut p = Pair::new((2400, 700), scale);
+        p.full("first", Cause::First);
+        for turn in 0..8 {
+            p.push(&[format!(">> question {turn}"), format!("Reply {turn} line a"), format!("Reply {turn} line b with more words"), format!("Reply {turn} line c")]);
+            p.step(&format!("turn {turn}"));
+        }
+        let before = p.on.app.shown_lines_dump().len();
+        fold(&mut p, 4 * 5 + 2); // the reply of the sixth turn
+        fold(&mut p, 4 * 7 + 2); // and the last one
+        p.step("two blocks folded");
+        let after = p.on.app.shown_lines_dump();
+        assert_eq!(after.len(), before - 4, "each of the two replies is one line, from three");
+        assert_eq!(after.iter().filter(|l| l.starts_with("▸ Reply")).count(), 2);
+        assert_eq!(p.on.app.shown_lines_dump(), p.off.app.shown_lines_dump());
+        let line = p.on.app.ui.hit_lines.iter().rev().find(|l| l.3 & super::transcript::ROLE_BLOCK_FOLDED != 0).expect("the folded reply is on the screen");
+        assert_eq!(super::blocks::kind_of(line.3), super::blocks::Kind::Response, "it keeps the colour of the agent's reply");
+        // the selection of a folded block, and of an open one
+        p.both(|app| app.ui.sel = Some((4 * 7 + 1, 4 * 7 + 1)));
+        p.step("the folded block is selected");
+        p.both(|app| app.ui.sel = Some((4 * 6 + 1, 4 * 6 + 3)));
+        p.step("an open block is selected");
+        p.both(|app| app.ui.sel = None);
+        // the folded reply grows: its count changes and nothing else
+        p.push(&["Reply 7 line d".into()]);
+        p.step("the folded reply grows");
+        assert!(p.on.app.shown_lines_dump().last().is_some_and(|l| l.ends_with("· 4 lines")), "{:?}", p.on.app.shown_lines_dump().last());
+        for n in 0..6 {
+            p.push(&[format!(">> more {n}"), format!("An answer {n}")]);
+            p.step(&format!("lines {n} after a folded block"));
+        }
+        // reading older lines with folded blocks on the screen
+        p.both(|app| app.ui.scroll = 9);
+        p.step("scrolled up");
+        p.both(|app| app.ui.scroll = 0);
+        p.step("back down");
+        // unfolded again: the block is as it was
+        p.both(|app| {
+            app.ui.block_fold.folded.clear();
+            app.ui.composed = None;
+            app.dirty = true;
+        });
+        p.step("everything unfolded");
+        assert_eq!(p.on.app.shown_lines_dump().iter().filter(|l| l.starts_with('▸')).count(), 0);
+    }
+}

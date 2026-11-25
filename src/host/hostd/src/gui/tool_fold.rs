@@ -15,9 +15,9 @@ use super::transcript::{
 use super::App;
 
 const MAX_EXPANDED: usize = 512;
-const PILL_HEAD_CHARS: usize = 84;
+pub(super) const PILL_HEAD_CHARS: usize = 84;
 
-fn clip_chars(text: &str, max_chars: usize) -> String {
+pub(super) fn clip_chars(text: &str, max_chars: usize) -> String {
     let count = text.chars().count();
     if count <= max_chars {
         text.to_string()

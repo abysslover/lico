@@ -38,6 +38,23 @@ pub(super) fn starts_block(previous: Option<u16>, role: u16) -> bool {
     role & ROLE_BOX_TOP != 0 || kind_of(role) != kind_of(before) || kind_of(role) == Kind::Note
 }
 
+/// The first and last position of the block that holds position `pos` among lines with the `roles` given in their order (the lines of the whole transcript, not of the screen);
+/// None when `pos` is past the lines.
+pub(super) fn block_span(roles: &[u16], pos: usize) -> Option<(usize, usize)> {
+    if pos >= roles.len() {
+        return None;
+    }
+    let mut first = pos;
+    while first > 0 && !starts_block(Some(roles[first - 1]), roles[first]) {
+        first -= 1;
+    }
+    let mut last = pos;
+    while last + 1 < roles.len() && !starts_block(Some(roles[last]), roles[last + 1]) {
+        last += 1;
+    }
+    Some((first, last))
+}
+
 /// The last second that is written with four digits of year (9999-12-31 00:00:00 UTC): a time past it is shown as this one, so that the text keeps its width.
 const LAST_SECS: u64 = 253_402_214_400;
 

@@ -58,6 +58,8 @@ pub const ROLE_BOX_BOT: u16 = 1 << 8;
 pub const ROLE_ERR_ROW: u16 = 1 << 9;
 pub const ROLE_TOOL_FOLDED: u16 = 1 << 10;
 pub const ROLE_TOOL_HEAD: u16 = 1 << 11;
+/// The line of a block of the person, a peer or the agent that the person folded (`M24-P11c`): it keeps the role of the block's first line.
+pub const ROLE_BLOCK_FOLDED: u16 = 1 << 12;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LineKind {
@@ -371,6 +373,7 @@ pub fn tint_role(list: AttrsList, text: &str, role: u16) -> AttrsList {
     let style = role & STYLE_MASK;
     let is_peer = role & ROLE_PEER_BG != 0;
     let col = match style {
+        _ if role & ROLE_BLOCK_FOLDED != 0 => TOOL_FOLD_INK,
         STYLE_USER if is_peer => PEER_INK,
         STYLE_USER => USER_INK,
         STYLE_CMD => CMD_TEXT_INK,
@@ -535,7 +538,8 @@ impl App {
         if self.ui.show_events || self.active_call_open() {
             base
         } else {
-            super::tool_fold::apply(base, &self.ui.expanded_tools, &self.session)
+            let cards = super::tool_fold::apply(base, &self.ui.expanded_tools, &self.session);
+            super::block_fold::apply(cards, &self.ui.block_fold.folded, &self.session)
         }
     }
 

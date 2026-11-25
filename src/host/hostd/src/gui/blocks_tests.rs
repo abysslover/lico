@@ -86,3 +86,36 @@ fn the_constants_are_what_the_plan_says() {
     assert_eq!((GUTTER_COLS, MIN_COLS), (21, 101));
     assert_eq!(stamp_text(0, 0).len() + 2, GUTTER_COLS, "a date and time and two columns of air");
 }
+
+#[test]
+fn the_block_of_a_line_runs_from_its_start_to_the_line_before_the_next() {
+    let user = STYLE_USER | ROLE_USER_BG;
+    let reply = STYLE_AGENT;
+    let cmd_top = STYLE_CMD | ROLE_BOX | ROLE_BOX_TOP;
+    let cmd_end = STYLE_CMD_OUT | ROLE_BOX | ROLE_BOX_BOT;
+    let peer_top = STYLE_USER | ROLE_PEER_BG | ROLE_BOX_TOP;
+    let peer_end = STYLE_USER | ROLE_PEER_BG | ROLE_BOX_BOT;
+    let note = STYLE_ERROR;
+    // 0..=1 the person, 2..=4 the reply, 5..=6 a command, 7..=8 a peer's card, 9..=10 a second card, 11 a note, 12 a note, 13 the reply, 14 the person
+    let roles = [user, user, reply, reply, reply, cmd_top, cmd_end, peer_top, peer_end, peer_top, peer_end, note, note, reply, user];
+    let expect = [(0, 1), (0, 1), (2, 4), (2, 4), (2, 4), (5, 6), (5, 6), (7, 8), (7, 8), (9, 10), (9, 10), (11, 11), (12, 12), (13, 13), (14, 14)];
+    for (pos, want) in expect.iter().enumerate() {
+        assert_eq!(block_span(&roles, pos), Some(*want), "position {pos}");
+    }
+    assert_eq!(block_span(&roles, roles.len()), None, "past the lines");
+    assert_eq!(block_span(&[], 0), None, "no lines");
+    assert_eq!(block_span(&[reply], 0), Some((0, 0)), "one line alone");
+    assert_eq!(block_span(&[reply, reply, reply], 1), Some((0, 2)), "the whole of a list that is one block");
+}
+
+#[test]
+fn the_block_of_a_line_is_the_one_the_gutter_gives_a_time_to() {
+    let roles = [STYLE_AGENT, STYLE_AGENT, STYLE_USER | ROLE_USER_BG, STYLE_USER | ROLE_USER_BG, STYLE_AGENT];
+    for pos in 0..roles.len() {
+        let (first, last) = block_span(&roles, pos).expect("a line of the list");
+        assert!(first <= pos && pos <= last);
+        assert!(starts_block(first.checked_sub(1).map(|i| roles[i]), roles[first]), "the block begins where a block begins");
+        assert!((first + 1..=last).all(|i| !starts_block(Some(roles[i - 1]), roles[i])), "and holds no other start");
+        assert!(last + 1 == roles.len() || starts_block(Some(roles[last]), roles[last + 1]), "the line after it begins another block");
+    }
+}

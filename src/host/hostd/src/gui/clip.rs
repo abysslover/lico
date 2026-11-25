@@ -471,6 +471,7 @@ impl super::super::App {
                 self.ui.dragging = false;
             }
         } else {
+            self.ui.block_fold.before = self.ui.sel.map(|(a, b)| (a.min(b), a.max(b))); // (the press puts the pressed line in its place; a second click on a block is told by this)
             self.ui.drag_origin = Some((x, y, idx, false));
             self.ui.drag_moved = shift;
             match idx {
@@ -531,7 +532,7 @@ impl super::super::App {
                 return;
             }
         } else if let Some((_, _, Some(idx), false)) = origin {
-            if !moved && !self.ui.mods.shift_key() && (self.try_toggle_tool_card(idx) || self.try_jump_call_from_line(idx)) {
+            if !moved && !self.ui.mods.shift_key() && (self.try_toggle_tool_card(idx) || self.try_jump_call_from_line(idx) || self.try_block_click(idx)) {
                 return;
             }
         }
