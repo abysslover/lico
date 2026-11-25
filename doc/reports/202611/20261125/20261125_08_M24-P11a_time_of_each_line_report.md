@@ -2,7 +2,7 @@
 
 - Version: 1.0.0
 - Date: 2026-11-25
-- Branch: `phase/M24-P11a-time-of-each-line` from `phase/M24-P10c-directories-menu-compress-and-extract` (`e2581e6`); code `CODE_SHA`; not pushed (P07 to P11 go out with the release `0.8.2`, under the owner's advance yes of 2026-11-25)
+- Branch: `phase/M24-P11a-time-of-each-line` from `phase/M24-P10c-directories-menu-compress-and-extract` (`e2581e6`); code `aaf3573`; not pushed (P07 to P11 go out with the release `0.8.2`, under the owner's advance yes of 2026-11-25)
 - Source: the owner's words of 2026-11-24 (quoted in the [plan](../../../plans/202611/20261125/20261125_08_M24-P11a_time_of_each_line_plan.md)): "...당시 년월일시분초를 남기는 것이 자원을 많이 안 쓰면 표시를 해주면 좋겠고..." and "이게 0.8.2의 내용"
 - Labels: MEASURED (a run), READ (from the code or the plan), COMPUTED.
 
@@ -28,10 +28,10 @@ Nothing yet, on purpose: this phase gives the next one (P11b, the date and time 
 ## 3. Checks (MEASURED)
 
 - **Tests first**: the `14` unit tests of `stamps` were run on a stub and all failed, then green; later tests were added for what the mutants showed; the host tests (`tests/test_stamps.py`, `8`) failed on the old host (the request is unknown) and the window test (`tests/test_stamps_window.py`) on the old window.
-- **The tests now**: `36` unit tests (`stamps` and `gui::times`), `8` host tests with the real host and the simulated provider (the runs of a session and their range, a restart and a crash keep them, a torn file is repaired, a log without the file answers no time, a purge and the start remove files, a bad request is refused, the runs of what the log dropped go with it, the runs of records a cut log lost are forgotten and the next records are timed again) and `1` window test (the view's lines are covered, new ones are followed, nothing is asked while the view is complete).
-- **Mutation checks**: MUTATION_LINE
+- **The tests now**: `43` unit tests (`stamps`, 26, and `gui::times`, 17), `8` host tests with the real host and the simulated provider (the runs of a session and their range, a restart and a crash keep them, a torn file is repaired, a log without the file answers no time, a purge and the start remove files, a bad request is refused, the runs of what the log dropped go with it, the runs of records a cut log lost are forgotten and the next records are timed again) and `1` window test (the view's lines are covered, new ones are followed, nothing is asked while the view is complete).
+- **Mutation checks**: **unit** 103 mutants in the first run (82 killed, 21 survived). The survivors showed code that did nothing (a limit-of-zero guard, two bound checks, a one-record read allowance, a guard for a purged book, a returned flag) which was removed or joined, and real test gaps (a link at the work file, a rewrite that cannot finish, an open that fails, a rewrite's count of the file, a view next to the known range, a wait for another session, the counters across a restart, the file made right after a huge number) which were closed with tests; the rerun on the changed code was 76 mutants, 74 killed at once, one more killed by a new assertion, and one equivalent written down (the work file made with `create` instead of `create_new`: the stale one is removed first, so only a race between the two calls could tell). **host** 23 in the first run, 22 killed; the survivor (a restart that forgets three records too many) was closed by a log cut right after the first record of a run, and the three file-mode mutants moved to the host tests (the unit tests run under a umask of `0077` that hides a wider mode), 5 of 5 killed in the rerun. **window** 8 mutants, 7 killed; the survivor (the window always passing the same tick) is written down: the retry timing is pinned by the unit tests of `next`, and the window test cannot make the real host lose an answer.
 - **Other tests**: the tests that read the protocol (conformance, the control parity, the reference mapping), the host's core and recovery tests, the size ratchet and the hostile-input test pass.
-- **The commit hook**: HOOK_LINE
+- **The commit hook**: the hook's run refused once on the build's peak of 1701.5 MiB over the bound of 1536 MiB (632 tests passed, nothing saved); the bound stays; the same command run by hand with the build cached passed (632 tests in 130 files, 177 s, peak 1019 MiB) and the commit then passed from the receipts.
 
 ## 4. What is not decided (the owner's)
 

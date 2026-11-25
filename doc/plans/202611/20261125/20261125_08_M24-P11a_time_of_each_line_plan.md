@@ -1,6 +1,6 @@
 # M24-P11a Plan — The Transcript View: The Time Of Each Line
 
-- Status: in_progress (2026-11-25)
+- Status: done (2026-11-25), code `aaf3573`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P11a-time-of-each-line` from `phase/M24-P10c-directories-menu-compress-and-extract` (`e2581e6`; P07 to P10c are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -45,15 +45,23 @@ The order is by what depends on what: P11b needs the times; P11c and P11d need t
 
 ## Steps
 
-1. [ ] **Tests first, run red** (unit, host, window).
-2. [ ] **The change.**
-3. [ ] **Mutation checks**, one edit at a time on `stamps.rs`, `times.rs` and the lines added to `session.rs` and `core.rs`.
-4. [ ] **Other tests** that read the protocol (the schema conformance, the list of requests) still pass.
-5. [ ] **Words**: the guide, the protocol note.
-6. [ ] `cargo xtask check` and `graph` (the cycle stays at 50: `stamps` is a leaf), the hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red** (unit, host, window).
+2. [x] **The change.**
+3. [x] **Mutation checks**, one edit at a time on `stamps.rs`, `times.rs` and the lines added to `session.rs` and `core.rs`.
+4. [x] **Other tests** that read the protocol (the schema conformance, the list of requests) still pass.
+5. [x] **Words**: the guide, the protocol note.
+6. [x] `cargo xtask check` and `graph` (the cycle stays at 50: `stamps` is a leaf), the hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here
 
 - Where in the block the time stands, its size, and how it looks in a narrow window are P11b's.
 - A session made before this phase has no times for its old lines (the log never had them): they show nothing, which is honest.
 - Sessions on another machine (ssh) answer for themselves: an older host that does not know `stamps` makes the window stop asking (ten seconds between tries).
+
+## Results (2026-11-25)
+
+- **Tests first**: the unit tests of `stamps` were run on a stub and failed, then green; the host tests failed on the old host and the window test on the old window; more tests were added for what the mutants showed.
+- **The commit** `aaf3573`: `stamps/mod.rs` (a leaf module), `session.rs` (a `Book` in `Log`, noted at the one place that writes, trimmed at the prune, removed at the purge, cut at the recovery), `core.rs`/`ipc.rs`/`host.rs` (the request `stamps` and the sweep), `gui/times.rs` (the window's side), `v1.py`, the protocol note `0.1.14`, the guide `1.27.0`. D1 to D7 held; three things were added while building: `drop_from` (the runs of records a torn log tail took away are forgotten at a restart, in the file too), the newest runs of a file that holds more than 262,144, and a cap of 2,000 lines to a request on the window's side so that an answer is never cut.
+- **Mutation checks**: **unit** 103 mutants in the first run (82 killed, 21 survived). The survivors showed code that did nothing (a limit-of-zero guard, two bound checks, a one-record read allowance, a guard for a purged book, a returned flag) which was removed or joined, and real test gaps (a link at the work file, a rewrite that cannot finish, an open that fails, a rewrite's count of the file, a view next to the known range, a wait for another session, the counters across a restart, the file made right after a huge number) which were closed with tests; the rerun on the changed code was 76 mutants, 74 killed at once, one more killed by a new assertion, and one equivalent written down (the work file made with `create` instead of `create_new`: the stale one is removed first, so only a race between the two calls could tell). **host** 23 in the first run, 22 killed; the survivor (a restart that forgets three records too many) was closed by a log cut right after the first record of a run, and the three file-mode mutants moved to the host tests (the unit tests run under a umask of `0077` that hides a wider mode), 5 of 5 killed in the rerun. **window** 8 mutants, 7 killed; the survivor (the window always passing the same tick) is written down: the retry timing is pinned by the unit tests of `next`, and the window test cannot make the real host lose an answer.
+- **The commit hook**: the hook's run refused once on the build's peak of 1701.5 MiB over the bound of 1536 MiB (632 tests passed, nothing saved); the bound stays; the same command run by hand with the build cached passed (632 tests in 130 files, 177 s, peak 1019 MiB) and the commit then passed from the receipts.
+- **Next**: P11b (the date and time to the second in a gutter at the right of each block, the blocks stopping short of the right edge, the background by who spoke).
