@@ -94,6 +94,8 @@ impl App {
             "H"
         } else if row.provider == "claude" {
             "C"
+        } else if row.provider == "agy" {
+            "A"
         } else {
             "X"
         };

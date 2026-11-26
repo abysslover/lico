@@ -317,7 +317,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
     let mut host_candidates: Vec<ChatItem> = Vec::new();
     for arc_s in &sessions_list {
         let s = arc_s.lock().unwrap();
-        if s.purged || !matches!(s.provider, "claude" | "codex") {
+        if s.purged || !matches!(s.provider, "claude" | "codex" | "agy") { // (`agy`, M25-P05: a session of Lico's is listed like the others, with no account)
             continue;
         }
         let st = state_word(s.state);
@@ -339,6 +339,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
         }
         let (acc_label, acc_ssh) = match s.account.as_deref().and_then(|id| acc_lookup.get(id)) {
             Some((_, lbl, sh)) => (Some(lbl.clone()), sh.clone()),
+            None if s.provider == "agy" => (None, None), // the program has no account of Lico's and no home of its own to name
             None => (Some(crate::native::label(shared, s.provider)), None), // no account: it runs in the provider's own default home
         };
         if account_filter.is_some_and(|af| acc_key != af) || acc_ssh.as_deref() != ssh_host_opt {
@@ -348,7 +349,7 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
         host_candidates.push(ChatItem {
             provider: s.provider.to_string(),
             provider_session: prov_sid.clone(),
-            account: Some(acc_key.clone()),
+            account: Some(acc_key.clone()).filter(|_| s.provider != "agy"),
             account_label: acc_label,
             ssh_host: acc_ssh,
             cwd: eff_cwd,
@@ -534,7 +535,14 @@ pub(super) fn collect(shared: &Shared, request: &Map<String, Value>) -> Result<C
     }
     // the conversations of `agy` (M23-P04b) join it the same way: the window asks, for this machine's list and no account; the file is read at each ask
     if request.get("agy").and_then(Value::as_bool).unwrap_or(false) && scope == Scope::All && account_filter.is_none() {
-        all_items.extend(agy::home().map(|home| agy::load(&home)).unwrap_or_default().into_iter().map(agy::item).filter(|it| matches_query(it, &query_norm)));
+        for mut it in agy::home().map(|home| agy::load(&home)).unwrap_or_default().into_iter().map(agy::item).filter(|it| matches_query(it, &query_norm)) {
+            // a conversation that a session of Lico's holds is one card, with that session on it (`M25-P05`): the file gives the rest
+            if let Some(held) = all_items.iter().position(|x| x.provider == "agy" && x.provider_session == it.provider_session) {
+                let held = all_items.swap_remove(held);
+                (it.open_session, it.open_state, it.updated_at) = (held.open_session, held.open_state, it.updated_at.max(held.updated_at));
+            }
+            all_items.push(it);
+        }
     }
     all_items.sort_by(|a, b| {
         b.updated_at

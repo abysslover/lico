@@ -1,10 +1,10 @@
-"""M23-P04b: the conversations of `agy` are cards in Chats, and a click on one brings it back in a terminal. `agy` keeps `~/.gemini/antigravity-cli/history.jsonl`; the test host and the
-window have a private HOME (`<run folder>/home`), so these tests write a synthetic file there and never read the owner's. The program the click starts is a script named `agy` that only
-writes the arguments it was given."""
+"""M23-P04b and M25-P05: the conversations of `agy` are cards in Chats, and a click on one brings it back as a session of Lico's. `agy` keeps `~/.gemini/antigravity-cli/history.jsonl`; the test host
+and the window have a private HOME (`<run folder>/home`), so these tests write a synthetic file there and never read the owner's. The program the host runs is the simulator of `agy acp`."""
 
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -12,8 +12,9 @@ from lico_measure.captures import ProductWindow
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 from tests.gui_helpers import centre
+from tests.test_agy_session import sent, simulator_args, started_as
 from tests.test_codex_adapter import usual_umask, wait_for
-from tests.test_terminal_tab import rig, shot, tab, term
+from tests.test_terminal_tab import rig, shot
 
 A = "11111111-aaaa-4bbb-8ccc-000000000001"
 B = "22222222-aaaa-4bbb-8ccc-000000000002"
@@ -124,55 +125,43 @@ def agy_cards(w: ProductWindow) -> list[dict]:
     return wait_for(lambda: (s := w.ui()["sidebar"]) and s["chats_loading"] is False and s["chats_load_count"] > 0 and [e for e in s["chats_entries"] if e["provider"] == "agy"] or None)
 
 
-def flat(w: ProductWindow) -> str:
-    """The screen's rows joined with nothing between them: a long line wraps at the grid's width and is one line again."""
-    return "".join(term(w)["lines"] or [])
-
-
 def card_of(w: ProductWindow, conversation: str) -> dict:
     return next(c for c in agy_cards(w) if c["provider_session"] == conversation)
 
 
-def test_a_click_on_an_agy_card_opens_a_terminal_in_its_folder_that_runs_agy_with_the_conversation_and_a_second_click_shows_that_terminal():
-    """M23-P04b in the real window: the cards of two conversations (one folder exists, one does not), a click runs a program named `agy` (a script that prints its arguments and the folder it
-    runs in) in a new terminal with `--conversation ID`, the tab shows the `agy` picture, and a click on the same card shows that tab instead of opening a third."""
+def test_a_click_on_an_agy_card_resumes_the_conversation_as_a_session_that_asks_and_a_second_click_shows_that_session():
+    """M23-P04b and M25-P05 in the real window: the cards of two conversations (one folder exists, one does not) and a click that brings the conversation back as a session of Lico's, asking before
+    it acts, in the conversation's folder (a workspace of the host's own when the folder is gone); the same card again shows that session and starts nothing. The host of the window runs the simulator."""
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
-        bin_dir = root / "bin"
-        bin_dir.mkdir()
-        fake = bin_dir / "agy"
-        fake.write_text('#!/bin/sh\necho "agy-up $* in $(pwd)"\nsleep 60\n')
-        fake.chmod(0o755)
         proj = (root / "proj").resolve()
         proj.mkdir()
-        with ProductWindow(**rig(root, path_prefix=str(bin_dir))) as w:
+        received = root / "agy_received.txt"
+        Path(f"{received}.sessions").write_text(json.dumps({A: [{"role": "user", "text": "resume me"}], B: [{"role": "user", "text": "folder is gone"}]}), encoding="utf-8")
+        with ProductWindow(**rig(root, host_args=simulator_args(received))) as w:
             conn = Conn(w.socket)
-            home = Path(w.directory) / "home"
             write_history(Path(w.directory), [prompt("resume me", 1_760_000_010_000, str(proj), A), prompt("folder is gone", 1_760_000_020_000, "/nonexistent-folder-for-agy", B)])
             cards = agy_cards(w)
             assert [c["provider_session"] for c in cards] == [B, A], "newest first"
             assert all(c["icon"] == "agy" and c["state"] == "none" and c["open_session"] is None for c in cards), cards
             assert [c["title"] for c in cards] == ["folder is gone", "resume me"]
             shot(w, "9_agy_cards.png")
-            # a click: a terminal in the conversation's folder that runs agy with the conversation
+            # a click: a session in the conversation's folder, resumed with that conversation, asking before it acts
             w.click(*centre(card_of(w, A)["rect"]))
-            wait_for(lambda: f"agy-up --conversation {A} in {proj}" in flat(w))
-            # the picture's box comes with the next frame after the program is known: wait for it as for the agent
-            wait_for(lambda: (t := tab(w, "t1")) and t["agent"] == "agy" and t["conversation"] == A and t["picture_rect"] and term(w)["shown"] and term(w)["active"] == "t1")
-            assert [r["cwd"] for r in conn.call(op="terminal.list")["terminals"]] == [str(proj)]
-            shot(w, "10_agy_conversation_in_a_terminal.png")
-            # a conversation whose folder is gone opens at the home
+            wait_for(lambda: (u := w.ui())["panel"] is None and len(u["rows"]) == 1)
+            [made] = conn.call(op="status")["sessions"]
+            assert made["provider"] == "agy" and made["mode"] == "default", made
+            wait_for(lambda: [m["params"]["sessionId"] for m in sent(received, "session/resume")] == [A])
+            assert sent(received, "session/new") == [], "never a new conversation in its place"
+            assert os.path.realpath(wait_for(lambda: started_as(received))[0]["cwd"]) == str(proj)
+            assert w.ui()["terminal"]["tabs"] == [] and conn.call(op="terminal.list")["terminals"] == [], "a session of Lico's, no terminal"
+            shot(w, "10_agy_conversation_as_a_session.png")
+            # a conversation whose folder is gone is brought back in a workspace of the host's own
             w.click(*centre(card_of(w, B)["rect"]))
-            wait_for(lambda: f"agy-up --conversation {B} in {home.resolve()}" in flat(w))
-            assert term(w)["active"] == "t2" and len(term(w)["tabs"]) == 2
-            wait_for(lambda: (t := tab(w, "t2")) and t["agent"] == "agy" and t["conversation"] == B)
-            # the same card again: the terminal that runs it is shown, no third is opened
+            wait_for(lambda: len(conn.call(op="status")["sessions"]) == 2)
+            wait_for(lambda: len(started_as(received)) == 2)
+            assert "/workspaces/" in started_as(received)[1]["cwd"]
+            # the same card again: the session that holds it is shown, no third is started
             w.click(*centre(card_of(w, A)["rect"]))
-            wait_for(lambda: term(w)["active"] == "t1")
-            assert len(term(w)["tabs"]) == 2 and len(conn.call(op="terminal.list")["terminals"]) == 2
-            assert "Switched to the terminal where it runs." in (w.ui()["header"] or "")
-            # the program ends (Ctrl+C): the terminal is a plain one again and the same card opens a new terminal for it
-            w.key("ctrl+c")
-            wait_for(lambda: (t := tab(w, "t1")) and t["agent"] is None)
-            w.click(*centre(card_of(w, A)["rect"]))
-            wait_for(lambda: term(w)["active"] == "t3" and f"agy-up --conversation {A} in {proj}" in flat(w))
+            wait_for(lambda: w.ui()["selected"] == made["session"])
+            assert len(conn.call(op="status")["sessions"]) == 2 and len(started_as(received)) == 2

@@ -389,7 +389,11 @@ impl App {
             for (provider, account) in &groups {
                 let qtag = self.ui.quotas.get(account).map(|&(w, s)| super::row::format_quota_list_tag(w, s)).unwrap_or_default();
                 let named = self.ui.rows.iter().find(|r| &r.provider == provider && &r.account == account).map_or_else(|| self.label_of(account), |r| self.row_label(r));
-                items.push(ListItem::Heading(if provider == "local" { "Local / this machine".to_string() } else { format!("{provider} / {named}{qtag}") }));
+                items.push(ListItem::Heading(match provider.as_str() {
+                    "local" => "Local / this machine".to_string(),
+                    "agy" => "agy".to_string(), // no account of Lico's: the program signs in by itself
+                    _ => format!("{provider} / {named}{qtag}"),
+                }));
                 let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).collect();
                 group_rows.sort_by_key(|r| row_sort_key(r));
                 for row in group_rows {
@@ -443,6 +447,11 @@ mod tests {
         assert!(a.ui.list_sig.contains("Local / this machine"), "{}", a.ui.list_sig);
         assert!(!a.ui.list_sig.contains("local / no account") && !a.ui.list_sig.contains("Local / no account"), "{}", a.ui.list_sig);
         assert!(a.ui.list_sig.contains("claude / "), "the others keep their heading: {}", a.ui.list_sig);
+        let mut agy = sample_row("s3", "talk", None);
+        (agy.provider, agy.account) = ("agy".into(), String::new());
+        a.ui.rows.push(agy);
+        a.refresh_list();
+        assert!(a.ui.list_sig.contains("agy") && !a.ui.list_sig.contains("agy / "), "agy has a heading of its own, with no account word: {}", a.ui.list_sig);
     }
 
     #[test]

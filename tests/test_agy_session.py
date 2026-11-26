@@ -21,11 +21,15 @@ SIGNED_OUT = "[error] agy is not signed in: open a Terminal tab, run agy, sign i
 KEPT = {"PATH", "LANG", "HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "LC_CTYPE"}   # LC_CTYPE is what the interpreter itself adds
 
 
+def simulator_args(received):
+    """The arguments that make a host (the test host or the window's own) run the simulator as its `agy`; what it receives is written to `received`."""
+    return ["--agy", sys.executable, "--agy-arg", "-I", "--agy-arg", str(SIM), "--agy-arg", "--received", "--agy-arg", str(received), "--agy-arg", "--fixture", "--agy-arg", str(FIXTURE)]
+
+
 def agy_host(directory, env_overrides=None, program=None):
     received = Path(directory) / "agy_received.txt"
     if program is None:
-        extra = ["--agy", sys.executable, "--agy-arg", "-I", "--agy-arg", str(SIM), "--agy-arg", "--received", "--agy-arg", str(received),
-                 "--agy-arg", "--fixture", "--agy-arg", str(FIXTURE)]
+        extra = simulator_args(received)
     else:
         extra = ["--agy", program]
     with usual_umask():

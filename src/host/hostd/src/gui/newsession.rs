@@ -177,6 +177,7 @@ fn refusal(code: &str) -> String {
         "worktree_failed" => "Git could not create the worktree there.".into(),
         "option_unavailable" => "The installed program does not offer that model or effort.".into(),
         "bad_request" => "The host does not understand this request: it is an older build.".into(),
+        "busy" => "The host could not start it just now.".into(),
         other => other.to_string(),
     }
 }

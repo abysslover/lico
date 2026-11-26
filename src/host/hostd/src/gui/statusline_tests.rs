@@ -21,6 +21,7 @@ fn the_state_part_says_provider_account_state_mode_and_issue_and_the_border_is_s
     r.busy_since = 963;
     assert_eq!(state_part(&r, "Home", 1_000), "codex | Home | working 37 s | mode asks | account issue: login needed", "the clock of an open turn, the issue last");
     assert_eq!(state_part(&running("local", "", "idle", "auto"), "no account", 1_000), "Local | idle", "a local session has no account and no provider mode");
+    assert_eq!(state_part(&running("agy", "", "idle", "default"), "no account", 1_000), "agy | idle | mode asks", "an agy session has no account of Lico's: the program signs in by itself");
     assert_eq!((edge(true, 1.0), edge(true, 2.0), edge(false, 2.0)), (6.0, 12.0, 0.0), "a rule of 2 and a margin of 4, none without the bars");
     assert_eq!(rule_rows(100.0, 1.5), [100.0, 103.0]);
 }
@@ -32,6 +33,7 @@ fn a_strip_too_narrow_for_the_whole_state_takes_a_shorter_form_so_that_the_folde
     let forms = state_forms(&r, "Work", 1_000);
     assert_eq!(forms, ["claude | Work | idle | mode auto | account issue: login", "claude | Work | idle | account issue: login", "idle | account issue: login"], "the issue is never left out");
     assert_eq!(state_forms(&running("local", "", "idle", "auto"), "", 1_000), ["Local | idle", "idle"]);
+    assert_eq!(state_forms(&running("agy", "", "idle", "auto"), "no account", 1_000), ["agy | idle | mode auto", "agy | idle", "idle"]);
     assert_eq!(state_forms(&running("codex", "home", "idle", ""), "Home", 1_000), ["codex | Home | idle", "idle"], "forms that come out the same are one");
     let cols = |f: &str| f.chars().count() + SEP_COLS;
     // the whole form takes `cols(forms[0])` columns, the next one fewer: each edge in columns, with and without notices after it

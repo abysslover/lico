@@ -11,6 +11,7 @@ from pathlib import Path
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 
+from tests.test_agy_chats import prompt, write_history
 from tests.test_agy_session import agy_host, folder_in, lines_of, new_agy, records, refused, say, sent, started_as, status_of
 from tests.test_codex_adapter import wait_for
 from tests.test_recovery import hard_stop, registered
@@ -114,5 +115,42 @@ def test_an_id_that_cannot_be_right_is_refused_and_one_the_program_does_not_know
             wait_for(lambda: status_of(conn, sid)["state"] == "disconnected")
             assert [m for m, _ in opened(received)] == ["session/resume", "session/load"], "resumed, then loaded, and never a new conversation"
             assert sent(received, "session/prompt") == []
+        finally:
+            host.stop()
+
+
+def test_a_conversation_that_a_session_holds_is_one_card_in_chats_with_that_session_on_it_and_a_session_with_no_file_yet_is_a_card_of_its_own():
+    with private_dir() as directory:
+        folder = folder_in(directory)
+        write_history(Path(directory), [prompt("first words", 1_760_000_010_000, str(folder), CONVERSATION)])        # the file the program keeps: the host's HOME is the run's own
+        Path(directory, "agy_received.txt.sessions").write_text(json.dumps({CONVERSATION: EARLIER}), encoding="utf-8")
+        host, log, received = agy_host(directory)
+        try:
+            conn = Conn(host.socket)
+
+            def cards():
+                reply = conn.call(op="session.chats", all=True, agy=True)
+                assert reply["ok"] == 1, reply
+                return [i for i in reply["items"] if i["provider"] == "agy"]
+
+            [card] = cards()
+            assert card["provider_session"] == CONVERSATION and card["open_session"] is None and card["account"] is None
+            filed = card["updated_at"]
+            made = conn.call(op="session.create", kind="agy", cwd=str(folder), resume_id=CONVERSATION)
+            assert made["ok"] == 1
+            [card] = cards()
+            assert card["provider_session"] == CONVERSATION and card["open_session"] == made["session"] and card["open_state"] == "running", card
+            assert card["account"] is None and card["account_label"] is None and card["cwd"] == str(folder), "no account of Lico's, and the folder the file knows"
+            assert card["updated_at"] > filed, "the card is as recent as the session on it, not as old as the file's last line"
+            # a session that has not said anything yet has no line in the file: it is a card of its own, found by the id the program gave it
+            fresh, _ = new_agy(conn, folder)
+            wait_for(lambda: registered(directory).get(fresh, {}).get("provider_session"))
+            theirs = [c for c in cards() if c["open_session"] == fresh]
+            assert len(theirs) == 1 and theirs[0]["provider_session"] == registered(directory)[fresh]["provider_session"] and theirs[0]["account"] is None and theirs[0]["account_label"] is None, theirs
+            assert len(cards()) == 2, "the held conversation and the new one: nothing twice"
+            # the person closes the first: the card stays (the conversation is in the file) and no session is on it
+            assert conn.call(op="session.close", session=made["session"], generation=made["generation"])["ok"] == 1
+            [again] = [c for c in cards() if c["provider_session"] == CONVERSATION]
+            assert again["open_session"] != made["session"] or again["open_state"] != "running", again
         finally:
             host.stop()

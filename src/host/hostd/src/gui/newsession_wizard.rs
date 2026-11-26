@@ -250,8 +250,7 @@ impl App {
             return;
         }
         if kind == "agy" {
-            self.panel_close();
-            self.agy_start(); // a terminal in the folder on the left with `agy` typed into it (`M23-P04c`)
+            self.agy_session_start(); // a session of Lico's at once, no account and no other step (`M25-P05`)
             return;
         }
         let mut look = false;
@@ -269,6 +268,19 @@ impl App {
         if look {
             self.form_scan();
         }
+    }
+
+    /// The `agy` picture was chosen (`M25-P05`): a session of Lico's at once, in the folder the left lists (the rule of the Terminal picture and of `agy` since `M23-P04d`, the Home scope included;
+    /// when the left lists none the host gives it a workspace of its own), asking the person before it acts (`default`: the owner has not yet seen a real turn, gate G3). It has no account and no
+    /// other step. A start the host refuses leaves the person on the pictures with the reason in the notice.
+    fn agy_session_start(&mut self) {
+        let cwd = self.terminal_start_dir();
+        let mut request = json!({"op": "session.create", "kind": "agy", "mode": "default"});
+        if let Some(dir) = &cwd {
+            request["cwd"] = json!(dir);
+        }
+        let reply = self.host_call(request);
+        self.finish_form_start(cwd, reply);
     }
 
     /// Goes to a step: the input line gives its text back to its row first, and takes the text of the row that has the focus on the new step.

@@ -166,6 +166,7 @@ impl App {
             None => Some("no session is open"),
             Some(r) if r.provider.is_empty() => Some("not a provider session"),
             Some(r) if r.provider == "local" => Some("a local session has no account"),
+            Some(r) if r.provider == "agy" => Some("an agy session has no account of Lico's"),
             Some(r) if r.state == "running" => Some("close the session first"),
             Some(r) if r.state != "disconnected" => Some("the session has ended"),
             Some(_) => None,
@@ -316,6 +317,9 @@ mod local_tests {
         a.ui.rows = vec![Row { session: "s".into(), provider: "local".into(), state: "disconnected".into(), ..Default::default() }];
         assert_eq!(a.rebind_reason(), Some("a local session has no account"));
         assert_eq!(a.mode_reason(), Some("a local session has no permission mode"));
+        a.ui.rows[0].provider = "agy".into();
+        assert_eq!(a.rebind_reason(), Some("an agy session has no account of Lico's"), "the program has its own sign-in");
+        assert_eq!(a.mode_reason(), None, "but its permission mode is the person's to switch");
         a.ui.rows[0].provider = "claude".into();
         assert_eq!(a.rebind_reason(), None);
     }

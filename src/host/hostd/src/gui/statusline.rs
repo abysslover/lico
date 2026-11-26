@@ -43,15 +43,21 @@ pub(crate) fn mode_word(mode: &str) -> Option<&'static str> {
     }
 }
 
+/// Who a session is run for, as the strip says it: `provider | account`; an agy session has no account of Lico's (the program signs in by itself, M25),
+/// so it is `agy` alone.
+fn who_part(row: &Row, label: &str) -> String {
+    if row.provider == "agy" { "agy".to_string() } else { format!("{} | {label}", row.provider) }
+}
+
 /// What the top line said of the session, without what the strip says: `provider | account | state with its clock | mode | account issue`; a local
-/// session has no account and no provider mode.
+/// session has no account and no provider mode, an agy session no account.
 pub(crate) fn state_part(row: &Row, label: &str, now: u64) -> String {
     let state = row.state_with_clock(now);
     if row.provider == "local" {
         return format!("Local | {state}");
     }
     let mode = mode_word(&row.mode).map_or_else(String::new, |m| format!(" | mode {m}"));
-    format!("{} | {label} | {state}{mode}{}", row.provider, issue_part(row))
+    format!("{} | {state}{mode}{}", who_part(row, label), issue_part(row))
 }
 
 fn issue_part(row: &Row) -> String {
@@ -73,7 +79,7 @@ pub(crate) fn state_forms(row: &Row, label: &str, now: u64) -> Vec<String> {
         }
     };
     if row.provider != "local" {
-        push(format!("{} | {label} | {state}{}", row.provider, issue_part(row)));
+        push(format!("{} | {state}{}", who_part(row, label), issue_part(row)));
     }
     push(format!("{state}{}", issue_part(row)));
     forms

@@ -1,17 +1,19 @@
-"""M23-P04c: the `agy` picture of New session, in the real window. The window's PATH of these tests is `/usr/bin:/bin` and the home is the run's own, so whether `agy` is found is the test's
-to decide: a script named `agy` (it prints how many arguments it was given and the folder it runs in, then sleeps) is put where the test wants it."""
+"""M23-P04c and M25-P05: the `agy` picture of New session, in the real window. The window's PATH of these tests is `/usr/bin:/bin` and the home is the run's own, so whether `agy` is found is the
+test's to decide: a script named `agy` is put where the test wants it. Since M25-P05 the picture starts a session of Lico's, and the host of the window runs the simulator of `agy acp` as its `agy`
+(the script on the PATH is only what the window looks for before it lets the picture be chosen)."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from lico_measure.captures import ProductWindow
 from lico_measure.p02 import ProtoConn as Conn
 from lico_measure.rig import private_dir
 from tests.gui_helpers import centre
-from tests.test_agy_chats import flat
+from tests.test_agy_session import simulator_args, started_as
 from tests.test_codex_adapter import usual_umask, wait_for
-from tests.test_terminal_tab import new_session_button, rig, shot, tab, term, walk_then_choose_home
+from tests.test_terminal_tab import new_session_button, rig, shot, walk_then_choose_home
 
 FAKE = '#!/bin/sh\necho "agy-up $# args in $(pwd)"\nsleep 60\n'
 
@@ -34,7 +36,7 @@ def agy_tile(w: ProductWindow) -> dict:
     return next(t for t in tiles(w) if t["provider"] == "agy")
 
 
-def test_the_agy_picture_is_second_starts_plain_agy_in_a_terminal_in_the_folder_on_the_left_and_the_tab_shows_its_picture():
+def test_the_agy_picture_is_second_and_starts_a_session_that_asks_in_the_folder_on_the_left_with_no_terminal_and_no_account_step():
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         project = root.resolve() / "project"
@@ -44,7 +46,8 @@ def test_the_agy_picture_is_second_starts_plain_agy_in_a_terminal_in_the_folder_
         def before(w: ProductWindow) -> None:
             assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="files")["ok"] == 1
 
-        with ProductWindow(**rig(root, path_prefix=str(root / "bin"), before_window=before)) as w:
+        received = root / "agy_received.txt"
+        with ProductWindow(**rig(root, path_prefix=str(root / "bin"), before_window=before, host_args=simulator_args(received))) as w:
             all_tiles = tiles(w)
             assert [t["provider"] for t in all_tiles] == ["claude", "agy", "codex", "local", "terminal"], "the owner's order: Claude, agy, Codex, Local LLM, Terminal"
             assert [t["word"] for t in all_tiles][1] == "agy" and all_tiles[1]["icon"] == "agy" and all_tiles[1]["enabled"] is True, all_tiles[1]
@@ -65,17 +68,24 @@ def test_the_agy_picture_is_second_starts_plain_agy_in_a_terminal_in_the_folder_
             assert any(any(v > 150 for v in row) for row in inside(all_tiles[1])), "and it is drawn (lit)"
             shot(w, "11_new_session_five_icons.png")
             w.click(*centre(all_tiles[1]["rect"]))
-            started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
-            assert started["tabs"][0]["cwd"] == str(project), "the folder Directories is on, as the Terminal picture does"
-            wait_for(lambda: f"agy-up 0 args in {project}" in flat(w))
-            first = wait_for(lambda: (t := tab(w, "t1")) and t["agent"] == "agy" and t["conversation"] is None and t["picture_rect"] and t)  # (the picture is drawn by the frame after the one that knows the agent: under a loaded machine the dump came between the two)
-            assert first["picture_rect"], "P04a: the tab shows the agy picture"
-            assert len(term(w)["tabs"]) == 1 and len(Conn(w.socket).call(op="terminal.list")["terminals"]) == 1
+            started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and len(u["rows"]) == 1 and u)
+            assert w.ui()["terminal"]["tabs"] == [] and Conn(w.socket).call(op="terminal.list")["terminals"] == [], "no terminal: a session of Lico's"
+            [made] = Conn(w.socket).call(op="status")["sessions"]
+            assert made["provider"] == "agy" and made["mode"] == "default", "the person is asked before it acts (the owner has not yet seen a real turn)"
+            assert started["selected"] == made["session"], "the new session is the one shown"
+            first = wait_for(lambda: started_as(received))[0]
+            assert os.path.realpath(first["cwd"]) == str(project), "the folder Directories is on, as the Terminal picture does"
+            assert first["argv"][-2:] == ["acp", "--disable-telemetry"] and "--dangerously-skip-permissions" not in first["argv"]
+            tab_of = wait_for(lambda: next((t for t in w.ui()["tabs"]["items"] if t["session"] == made["session"]), None))
+            assert tab_of["label"].startswith("A"), "the tab says it is agy's (not Codex's X): " + tab_of["label"]
+            bar = wait_for(lambda: (t := w.ui()["telemetry"]) and t["shown"] and t["status_text"] and t)
+            assert bar["status_text"].startswith("agy | ") and "account" not in bar["status_text"], "no account of Lico's is named: " + bar["status_text"]
+            wait_for(lambda: w.ui()["telemetry"]["model_text"] == "gemini-4-neon-high")       # the model the program names on session/new (the simulator's) is the one the strip shows
             shot(w, "12_agy_started_from_new_session.png")
 
 
 def test_agy_starts_in_the_folder_the_left_lists_also_when_the_scope_is_home():
-    """The owner's report (2026-11-20): the folder agy ran in had nothing to do with the work directory. Its own log says where it ran; here the fake prints it."""
+    """The owner's report (2026-11-20): the folder agy ran in had nothing to do with the work directory. The simulator's first line says where it ran."""
     with usual_umask(), private_dir() as directory:
         root = Path(directory)
         project = root.resolve() / "project"
@@ -85,12 +95,13 @@ def test_agy_starts_in_the_folder_the_left_lists_also_when_the_scope_is_home():
         def before(w: ProductWindow) -> None:
             assert Conn(w.socket).call(op="settings.set", last_cwd=str(project), last_view="start")["ok"] == 1
 
-        with ProductWindow(**rig(root, path_prefix=str(root / "bin"), before_window=before)) as w:
+        received = root / "agy_received.txt"
+        with ProductWindow(**rig(root, path_prefix=str(root / "bin"), before_window=before, host_args=simulator_args(received))) as w:
             listed = walk_then_choose_home(w, project)
             w.click(*centre(agy_tile(w)["rect"]))
-            started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
-            assert started["tabs"][0]["cwd"] == str(listed), "the folder the left lists, not the one kept (" + str(project) + "): " + str(started["tabs"])
-            wait_for(lambda: f"agy-up 0 args in {listed}" in flat(w))
+            wait_for(lambda: (u := w.ui()) and u["panel"] is None and len(u["rows"]) == 1)
+            first = wait_for(lambda: started_as(received))[0]
+            assert os.path.realpath(first["cwd"]) == str(listed), "the folder the left lists, not the one kept (" + str(project) + "): " + first["cwd"]
 
 
 def test_agy_in_the_home_bin_is_found_and_a_file_that_cannot_run_is_not_and_a_grey_picture_says_why_and_opens_nothing():
@@ -106,7 +117,7 @@ def test_agy_in_the_home_bin_is_found_and_a_file_that_cannot_run_is_not_and_a_gr
             assert "agy is not installed on this machine" in "\n".join(w.ui()["panel"]["body"])
             w.click(*centre(grey["rect"]))
             wait_for(lambda: w.ui()["panel"]["form"]["focus"] == "Pick(1)")
-            assert w.ui()["terminal"]["tabs"] == [] and w.ui()["panel"]["form"]["wizard"]["page"] == 0, "nothing opens"
+            assert w.ui()["terminal"]["tabs"] == [] and w.ui()["rows"] == [] and w.ui()["panel"]["form"]["wizard"]["page"] == 0, "nothing opens"
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             # `agy` installs itself in the person's ~/.local/bin, which a launcher's PATH may not have: it is looked for there too, each time New session opens

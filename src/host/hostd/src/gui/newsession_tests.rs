@@ -464,3 +464,9 @@ fn the_candidates_are_listed_under_the_rows_and_a_click_on_one_chooses_it() {
     assert!(body[head + 2].starts_with("> 127.0.0.1:1234") && body[head + 1].starts_with("  127.0.0.1:11434"), "the marker follows the click: {body:?}");
     assert!(!app.form_click(head + 3), "a line past the candidates is no candidate");
 }
+
+#[test]
+fn a_start_the_host_could_not_make_is_a_sentence_and_a_word_the_window_does_not_know_is_said_as_it_came() {
+    assert_eq!(refusal("busy"), "The host could not start it just now.", "a program that did not start (agy) is the host's `busy`");
+    assert_eq!(refusal("some_new_code"), "some_new_code");
+}

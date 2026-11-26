@@ -55,3 +55,8 @@ Since M25-P04 `session.create kind=agy` takes `resume_id`, the id of a conversat
 session`. One session of the host holds a conversation at a time: a second create of the same id answers with it (`resumed`, `already_open`), a disconnected holder is resumed in place. The id is
 the registry's `provider_session`, so a host that was killed brings the session back disconnected and `session.resume` asks for the same conversation. `tests/test_agy_resume.py` tries it with the simulator, which keeps its conversations in `<received>.sessions`.
 
+Since M25-P05 the window uses it: the `agy` picture of New session starts `session.create kind=agy mode=default` at once in the folder the left lists (no account step, no model), and a card of an
+`agy` conversation in Chats resumes it by `resume_id` in the same mode (a conversation whose folder is gone is brought back in a workspace of the host's own). `session.chats` lists a session of kind
+`agy` as a card with no account and no label, and a conversation that a session holds is one card (the program's own file gives the title and the folder, the session gives `open_session`, `open_state`
+and the later time). The tab begins with `A`, and the strip, the header and the list heading say `agy` with no account word. The terminal path of levels A and B for a conversation is gone; the Terminal
+picture, typing `agy` in a terminal and the look for the program stay.

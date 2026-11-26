@@ -252,10 +252,6 @@ impl App {
             self.browser_open_page(&entry.provider_session); // a remembered page is no session: a click opens it in a new tab
             return;
         }
-        if entry.provider == "agy" {
-            self.agy_open(&entry.provider_session, entry.cwd.as_deref()); // a conversation of `agy` is no session of Lico's: a click brings it back in a terminal (`M23-P04b`)
-            return;
-        }
         self.chats_go_to_folder(&entry); // at once: the card already knows where the session is, so Directories does not wait for the resume
         if entry.running_elsewhere && entry.open_session.is_none() {
             self.ui.flash = Some(chats_error_text("chat_running_elsewhere"));
@@ -287,13 +283,13 @@ impl App {
         let mut req = json!({
             "op": "session.create",
             "kind": entry.provider,
-            "mode": "auto",
+            "mode": if entry.provider == "agy" { "default" } else { "auto" }, // an `agy` session asks the person until the owner has seen a real turn (`M25-P05`)
             "resume_id": entry.provider_session,
         });
         if let Some(ref acc) = entry.account {
             req["account"] = json!(acc);
         }
-        let created_cwd = if entry.global { None } else { entry.cwd.clone() };
+        let created_cwd = resume_folder(&entry);
         if let Some(ref c) = created_cwd {
             req["cwd"] = json!(c);
         }
@@ -611,9 +607,39 @@ impl App {
     }
 }
 
+/// The folder a card's session is asked to start in: none for a Home chat; none too for a conversation of `agy` whose folder is gone, which the host brings back in a workspace of its
+/// own (`M25-P05`: never in a folder the window picks by guess); the other providers keep the folder the card knows and the host refuses one that is gone, as it always did.
+fn resume_folder(entry: &ChatEntry) -> Option<String> {
+    let gone = entry.provider == "agy" && !entry.cwd.as_deref().is_some_and(|d| std::path::Path::new(d).is_dir());
+    if entry.global || gone { None } else { entry.cwd.clone() }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_card_is_resumed_in_its_folder_and_only_an_agy_conversation_whose_folder_is_gone_or_a_home_chat_asks_for_none() {
+        let here = std::env::temp_dir().to_string_lossy().into_owned();
+        let card = |provider: &str, cwd: &str, global: bool| ChatEntry {
+            provider: provider.into(),
+            provider_session: "c1".into(),
+            account: None,
+            account_label: None,
+            ssh_host: None,
+            cwd: Some(cwd.into()),
+            global,
+            title: String::new(),
+            updated_at: 0,
+            open_session: None,
+            open_state: None,
+            running_elsewhere: false,
+        };
+        assert_eq!(resume_folder(&card("agy", &here, false)), Some(here.clone()), "a folder that is there is the one");
+        assert_eq!(resume_folder(&card("agy", "/no/such/folder/here", false)), None, "agy: the host gives a workspace of its own");
+        assert_eq!(resume_folder(&card("claude", "/no/such/folder/here", false)), Some("/no/such/folder/here".into()), "the others ask for the folder the card knows, and the host refuses a gone one");
+        assert_eq!(resume_folder(&card("codex", &here, true)), None, "a Home chat has no folder");
+    }
 
     #[test]
     fn a_host_that_does_not_know_the_operation_is_explained_and_other_codes_pass_through() {

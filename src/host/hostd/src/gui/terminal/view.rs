@@ -24,8 +24,6 @@ use super::super::App;
 /// What the host answered, for one request the window made about a terminal.
 pub(crate) enum TermJob {
     Open,
-    /// An open that then types a line into the new shell (`M23-P04b`): the command and the conversation of `agy` the tab is for, when it is one.
-    OpenTyping { line: String, conversation: Option<String> },
     List,
     Watch { tab: String, gen: u64 },
     Resize { tab: String, size: (u16, u16) },
@@ -54,13 +52,11 @@ pub(crate) struct TTab {
     pub size: (u16, u16),
     pub resizing: bool,
     pub painted: u64,
-    /// The conversation of `agy` the window opened this terminal for (`M23-P04b`), while the window lives; none for a terminal the person opened.
-    pub conversation: Option<String>,
 }
 
 impl TTab {
     fn new(id: String, cwd: String, title: String, size: (u16, u16)) -> TTab {
-        TTab { id, cwd, title, screen: Screen::default(), seq: 0, ask: 0, gen: 0, watching: false, rearm: false, scroll: 0, size, resizing: false, painted: 0, conversation: None }
+        TTab { id, cwd, title, screen: Screen::default(), seq: 0, ask: 0, gen: 0, watching: false, rearm: false, scroll: 0, size, resizing: false, painted: 0 }
     }
 }
 
@@ -257,11 +253,6 @@ impl App {
         match job {
             TermJob::Open => {
                 self.terminal_opened(&reply);
-            }
-            TermJob::OpenTyping { line, conversation } => {
-                if let Some(id) = self.terminal_opened(&reply) {
-                    self.agy_started(&id, line, conversation);
-                }
             }
             TermJob::List => {
                 self.ui.terminal.listed = true;
@@ -731,14 +722,14 @@ impl App {
             "header": self.terminal_header(), "status": shown.map(|_| self.terminal_status_row()), "queued": t.queue.len(), "inflight": t.input_inflight,
             "selection": t.sel.map(|s| json!({"anchor": [s.anchor.0, s.anchor.1], "focus": [s.focus.0, s.focus.1], "point": s.is_point()})), "dragging": t.dragging, "first_pixel": t.first_pixel,
             "lines": shown.map(|x| x.screen.plain_lines()),
-            "tabs": t.tabs.iter().map(|x| { let mut v = json!({
+            "tabs": t.tabs.iter().map(|x| json!({
                 "rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.1), "close_rect": t.tab_geom.iter().find(|g| g.0 == x.id).map(|g| g.2),
                 "agent": x.screen.agent, "picture_rect": t.tab_geom.iter().find(|g| g.0 == x.id).and_then(|g| g.3),
                 "id": x.id, "cwd": x.cwd, "caption": screen::caption(if x.screen.title.is_empty() { &x.title } else { &x.screen.title }, &x.cwd, &x.id), "seq": x.seq, "gen": x.gen, "watching": x.watching,
                 "scroll": x.scroll, "size": [x.size.0, x.size.1], "cols": x.screen.cols, "rows": x.screen.rows, "title": x.screen.title, "running": x.screen.running, "exit": x.screen.exit,
                 "cursor": x.screen.cursor.map(|(r, c)| json!([r, c])), "top": x.screen.top, "total": x.screen.total, "painted": x.painted,
                 "modes": {"app_cursor": x.screen.modes.app_cursor, "bracketed_paste": x.screen.modes.bracketed_paste, "alt_screen": x.screen.modes.alt_screen},
-            }); v["conversation"] = json!(x.conversation); v }).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
         })
     }
 }

@@ -502,12 +502,13 @@ fn the_agy_picture_is_second_and_grey_with_its_own_reason_until_agy_is_found_and
 }
 
 #[test]
-fn choosing_a_found_agy_closes_the_panel_and_opens_a_terminal_and_no_step_follows() {
+fn choosing_a_found_agy_asks_the_host_for_a_session_at_once_and_a_refusal_leaves_the_person_on_the_icons_with_the_reason() {
     let mut app = opened(false, &[]);
     app.ui.panel.as_mut().unwrap().agy = true;
     app.wizard_pick(1);
-    assert!(app.ui.panel.is_none(), "no step after it, as after the Terminal picture");
-    assert!(app.ui.flash.as_deref().is_some_and(|f| f.contains("terminal refused")), "(no host answers here, and the window says so): {:?}", app.ui.flash);
+    assert_eq!(page(&app), 0, "no step after it: the start was asked at once, and with no host to answer it stays on the icons");
+    assert!(notice(&app).starts_with("The session was not started."), "(no host answers here, and the window says so): {}", notice(&app));
+    assert!(app.ui.flash.is_none() && app.ui.terminal.tabs.is_empty(), "it is no terminal: nothing was opened");
 }
 
 #[test]

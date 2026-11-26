@@ -198,7 +198,8 @@ impl Row {
         if self.provider == "local" {
             return format!("Local | {model} | {}{extra}", self.state_with_clock(now)); // no account, and no provider permission mode: the host asks for the person's decision per tool
         }
-        format!("{} | {label} | {model} | {}{mode}{issue}{extra}", self.provider, self.state_with_clock(now))
+        let who = if self.provider == "agy" { "agy".to_string() } else { format!("{} | {label}", self.provider) }; // agy has no account of Lico's
+        format!("{who} | {model} | {}{mode}{issue}{extra}", self.state_with_clock(now))
     }
 
     /// Explicit user name if set, else derived conversation title (`auto_title`), else empty.
@@ -357,12 +358,16 @@ mod tests {
 
     #[test]
     fn a_local_session_header_says_local_and_the_model_and_has_neither_an_account_nor_the_provider_mode_words() {
-        let row = Row { session: "s".into(), provider: "local".into(), model: "llama3".into(), state: "running".into(), activity: "idle".into(), mode: "auto".into(), ..Default::default() };
+        let shown_row = || Row { session: "s".into(), provider: "local".into(), model: "llama3".into(), state: "running".into(), activity: "idle".into(), mode: "auto".into(), ..Default::default() };
+        let row = shown_row();
         let header = row.header_line("no account", 0, false, None);
         assert!(header.starts_with("Local | llama3 | "), "{header}");
         assert!(!header.contains("mode") && !header.contains("account") && !header.contains("skipped"), "{header}");
         let shown = Row { name: "notes".into(), ..row.clone() }.header_line("no account", 0, true, None);
         assert!(shown.starts_with("Local | llama3 | ") && shown.contains("| notes"), "{shown}");
+        // agy has an account of its own, not Lico's: no account in its header, and the mode words of the others
+        let agy = Row { provider: "agy".into(), mode: "default".into(), ..shown_row() }.header_line("no account", 0, false, None);
+        assert!(agy.starts_with("agy | llama3 | ") && !agy.contains("account") && agy.contains("mode: asks for approval"), "{agy}");
         // the other providers keep their header
         let claude = Row { provider: "claude".into(), ..row }.header_line("Work", 0, false, None);
         assert!(claude.starts_with("claude | Work | llama3 | ") && claude.contains("mode: auto (permissions skipped)"), "{claude}");
