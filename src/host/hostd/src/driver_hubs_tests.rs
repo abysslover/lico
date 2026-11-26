@@ -237,8 +237,10 @@ fn a_deleted_session_is_not_started_by_a_driver_and_a_deferred_reply_goes_to_the
     let (id, _) = create(&shared, kind);
     let found = crate::core::find(&shared, &id).unwrap();
     let mut s = found.lock().unwrap();
+    s.set_busy(true);
+    assert!(crate::calls::try_defer_peer_reply(&mut s, "peer1", "a peer's reply", "a peer's reply", crate::session::Origin::PeerReply), "a busy session of a driver kind takes a peer's reply to say later (M25-P06)");
+    assert_eq!(s.peer_turn.deferred_replies.len(), 1);
     s.set_busy(false);
-    s.peer_turn.deferred_replies.push_back(crate::calls::DeferredReply { request_id: "peer1".into(), send_text: "a peer's reply".into(), shown_text: "a peer's reply".into(), reply_slot: None });
     crate::calls::flush_deferred(&mut s);
     assert_eq!(entries(&log), ["start", "input peer1 a peer's reply"]);
     assert!(s.busy && s.peer_turn.deferred_replies.is_empty());

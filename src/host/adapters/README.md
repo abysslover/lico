@@ -60,3 +60,9 @@ Since M25-P05 the window uses it: the `agy` picture of New session starts `sessi
 `agy` as a card with no account and no label, and a conversation that a session holds is one card (the program's own file gives the title and the folder, the session gives `open_session`, `open_state`
 and the later time). The tab begins with `A`, and the strip, the header and the list heading say `agy` with no account word. The terminal path of levels A and B for a conversation is gone; the Terminal
 picture, typing `agy` in a terminal and the look for the program stay.
+
+Since M25-P06 an `agy` session is a peer like the others: Send to, an `@name` of the person and a Call Room work between it and a Claude, a Codex or another `agy` session (`calls::takes_part` is the one
+question the host asks; the Call Room files the session as `agy`). The program has no tool of Lico's (its tool servers are empty), so after an inline `@name` the host tells it that a paragraph of its answer
+that begins with `@name` at the start of the line is sent to that session (`calls::mention_hint`, `mention::dispatch_assistant_mentions`), where a program with tools is told to call `mcp__lico__send`; what
+an `agy` session says in answer to a room's turn is the reply, recorded in the room and returned to the asker. Handing over a whole `agy` conversation is not supported, as for Codex. `tests/test_agy_peers.py`
+tries it with the simulator; what the real program does with the hint is the owner's check (gate G3).

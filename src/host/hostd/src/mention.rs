@@ -469,7 +469,7 @@ fn resolve_explicit_named_peer(shared: &Shared, caller: &str, raw_tok: &str) -> 
         let mut out = Vec::new();
         for arc in list {
             let s = arc.lock().unwrap();
-            if s.purged || s.id == caller || s.state != State::Running || !matches!(s.provider, "claude" | "codex") {
+            if s.purged || s.id == caller || s.state != State::Running || !crate::calls::takes_part(s.provider) {
                 continue;
             }
             if let Some(name) = s.settings.name.clone().filter(|n| !n.trim().is_empty()) {
@@ -519,7 +519,7 @@ pub fn dispatch_assistant_mentions(shared: &Shared, from_id: &str, exclude_peer:
     if !assistant_text.contains('@') {
         return;
     }
-    let is_provider = core::find(shared, from_id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex"));
+    let is_provider = core::find(shared, from_id).is_some_and(|f| crate::calls::takes_part(f.lock().unwrap().provider));
     if !is_provider {
         return;
     }
@@ -711,10 +711,7 @@ pub fn route_person_input(
     let mut notes = Vec::new();
     for tid in &inline {
         if let Some((cid, title, tlabel)) = crate::call_room::connect_inline_mention(shared, session, tid, text) {
-            notes.push(format!(
-                "[host verification: Lico's human owner mentioned @{tlabel} (session id '{tid}') in this prompt. Call Room '{title}' ({}) is now owner-authorized: calling mcp__lico__send(to=\"{tid}\", text=...) executes immediately without waiting for approval, and '{tlabel}'s reply will return here automatically.]",
-                crate::call_room::call_id7(&cid)
-            ));
+            notes.push(crate::calls::mention_hint(core::find(shared, session).map_or("", |f| f.lock().unwrap().provider), &tlabel, tid, &title, &crate::call_room::call_id7(&cid)));
         }
     }
     if notes.is_empty() {

@@ -261,15 +261,69 @@ fn a_receiver_that_cannot_take_it_is_refused_in_words_that_say_what_to_do() {
 }
 
 #[test]
-fn agents_send_to_claude_and_codex_provider_sessions_and_refuse_non_provider_ones() {
+fn agents_send_to_claude_codex_and_agy_provider_sessions_and_refuse_non_provider_ones() {
     let w = pair();
-    w.with(TWO, |s| s.provider = "");
-    let text = call(&w, ONE, &ask(TWO, "x")).unwrap_err();
-    assert!(text.starts_with("not_allowed: ") && text.contains("provider sessions only"), "{text}");
-    assert!(w.delivered(TWO).is_none());
-    for kind in ["codex", "claude"] {
+    for kind in ["", "local"] {
+        w.with(TWO, |s| s.provider = kind);
+        let text = call(&w, ONE, &ask(TWO, "x")).unwrap_err();
+        assert!(text.starts_with("not_allowed: ") && text.contains("provider sessions only"), "{kind}: {text}");
+        assert!(w.delivered(TWO).is_none());
+    }
+    for kind in ["codex", "claude", "agy"] {
         w.with(TWO, |s| s.provider = kind);
         assert!(call(&w, ONE, &ask(TWO, "x")).is_ok(), "{kind}");
+    }
+    assert!(takes_part("agy") && !takes_part("local") && !takes_part("owner") && !takes_part(""));
+}
+
+/// M25-P06: a send to an `agy` session by a session of Lico's is a call like any other: the receiver's peer turn begins, the room records the send, and the explicit reply of the `agy` session (an `@name`
+/// paragraph of its answer is the same send) is recorded in the room and reaches the asker with the call's marks.
+#[test]
+fn a_send_to_an_agy_session_begins_its_peer_turn_is_recorded_in_the_room_and_its_reply_is_too() {
+    let w = pair();
+    w.with(ONE, |s| s.settings.name = Some("Claude-Left".into()));
+    w.with(TWO, |s| {
+        s.provider = "agy";
+        s.settings.name = Some("agy-Right".into());
+    });
+    let got: Value = serde_json::from_str(&call_counted(&w, ONE, &ask(TWO, "hi agy"), &Arc::default()).unwrap()).unwrap();
+    let generation = w.with(ONE, |s| s.generation as i64);
+    core::approval_answer(&w.shared, ONE, generation, got["approval_id"].as_i64().unwrap(), "allow", true).unwrap(); // the person keeps the room open both ways
+    let _approval_notice = w.delivered(ONE).unwrap();
+    assert!(w.delivered(TWO).is_some());
+    let active = w.with(TWO, |s| s.peer_turn.active.clone());
+    assert!(active.as_ref().is_some_and(|(caller, cid, r, _)| caller == ONE && cid.is_some() && *r == 1), "its turn is the answer to the call: {active:?}");
+    let calls = crate::call_room::op_list(&w.shared, false).unwrap();
+    assert_eq!(calls["calls"].as_array().unwrap().len(), 1, "the send is in a room");
+    let cid = calls["calls"][0]["call_id"].as_str().unwrap().to_string();
+    let room = crate::call_room::op_get(&w.shared, &cid).unwrap();
+    assert_eq!((room["call"]["provider_a"].as_str(), room["call"]["provider_b"].as_str()), (Some("claude"), Some("agy")));
+    assert_eq!(room["call"]["entries"].as_array().unwrap().len(), 1);
+    // the program answers the call by the same send: it is a reply of the call, in the room and in the asker's input
+    w.with(TWO, |s| s.set_busy(true)); // it is in its turn when it answers
+    let said = call_counted(&w, TWO, &ask(ONE, "got it [call done]"), &Arc::default()).unwrap();
+    assert!(said.contains("\"sent\":true"), "{said}");
+    let relayed = w.delivered(ONE).expect("the reply reaches the asker");
+    assert!(relayed.starts_with("[peer reply from 'agy-Right'") && relayed.contains(" | call "), "{relayed}");
+    let room = crate::call_room::op_get(&w.shared, &cid).unwrap();
+    assert_eq!(room["call"]["entries"].as_array().unwrap().len(), 2, "{room:?}");
+    assert_eq!(room["call"]["entries"][1]["text"], "got it");
+}
+
+/// M25-P06: the hint after an inline `@name` says how a send is made by the program that was typed to: a tool for Claude and Codex, a paragraph that begins with the name for `agy` (it has no tool).
+#[test]
+fn the_hint_after_an_inline_mention_names_the_tool_for_claude_and_codex_and_a_paragraph_for_agy() {
+    for kind in ["claude", "codex"] {
+        let hint = mention_hint(kind, "Bee", "sid-bee", "room", "abc1234");
+        assert!(hint.contains("mcp__lico__send(to=\"sid-bee\", text=...)"), "{kind}: {hint}");
+        assert!(!hint.contains("begins with"), "{kind}: {hint}");
+    }
+    let hint = mention_hint("agy", "Bee", "sid-bee", "room", "abc1234");
+    assert!(hint.contains("a paragraph of your answer that begins with @Bee at the start of the line is sent to it at once"), "{hint}");
+    assert!(!hint.contains("mcp__lico__send"), "agy has no tool: {hint}");
+    for kind in ["agy", "claude"] {
+        let hint = mention_hint(kind, "Bee", "sid-bee", "room", "abc1234");
+        assert!(hint.contains("session id 'sid-bee'") && hint.contains("Call Room 'room' (abc1234)") && hint.ends_with("reply will return here automatically.]"), "{kind}: {hint}");
     }
 }
 

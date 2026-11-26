@@ -235,6 +235,7 @@ fn normalize_provider(p: &str) -> &'static str {
     match p {
         "claude" => "claude",
         "codex" => "codex",
+        "agy" => "agy",
         "owner" => "owner",
         "host" => "host",
         _ => "synthetic",

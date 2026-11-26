@@ -93,7 +93,7 @@ fn send_with(shared: &Shared, caller: &str, arguments: &Map<String, Value>, wind
     // the tool connection is for provider sessions (Claude and Codex): an agent does not send to synthetic non-provider sessions
     if core::find(shared, to).is_some_and(|found| {
         let s = found.lock().unwrap();
-        !s.purged && !matches!(s.provider, "claude" | "codex")
+        !s.purged && !takes_part(s.provider)
     }) {
         return Err("not_allowed: agents send to provider sessions only; that session is not one".into());
     }
@@ -360,6 +360,23 @@ impl PeerTurn {
     }
 }
 
+/// Whether a session of this provider takes part in an exchange of Lico's: a tool's `send`, an `@name` paragraph, a Call Room. Claude, Codex and `agy` do (`agy` since M25-P06: it answers
+/// the turn it is given, and what it says is the reply); a `local` model does not, and is no target of a send by an agent.
+pub(crate) fn takes_part(provider: &str) -> bool {
+    matches!(provider, "claude" | "codex" | "agy")
+}
+
+/// The host's hint to the session that the person typed in, after an inline `@name` in the prompt: how a send to that session is made. A program that has the tools calls `mcp__lico__send`; `agy` has none
+/// (its tool servers are empty, D4 of M25), so a paragraph of its answer that begins with `@name` at the start of the line is the send (`mention::dispatch_assistant_mentions`, the same keep and the same room).
+pub(crate) fn mention_hint(provider: &str, tlabel: &str, tid: &str, title: &str, call7: &str) -> String {
+    let how = if provider == "agy" {
+        format!("a paragraph of your answer that begins with @{tlabel} at the start of the line is sent to it at once without waiting for approval")
+    } else {
+        format!("calling mcp__lico__send(to=\"{tid}\", text=...) executes immediately without waiting for approval")
+    };
+    format!("[host verification: Lico's human owner mentioned @{tlabel} (session id '{tid}') in this prompt. Call Room '{title}' ({call7}) is now owner-authorized: {how}, and '{tlabel}'s reply will return here automatically.]")
+}
+
 fn peer_reply_authorized(shared: &Shared, caller: &str, to: &str) -> bool {
     let (answering, call_id) = core::find(shared, caller).map_or((false, None), |f| {
         let s = f.lock().unwrap();
@@ -376,7 +393,7 @@ pub(crate) fn try_defer_peer_reply(
     shown_text: &str,
     origin: crate::session::Origin,
 ) -> bool {
-    let has_sink = s.claude.is_some() || s.codex.is_some() || s.input_tx.is_some();
+    let has_sink = s.claude.is_some() || s.codex.is_some() || s.input_tx.is_some() || s.driver.is_some(); // (`driver`, M25-P06: an `agy` session takes a deferred reply like the others)
     if !s.busy
         || !has_sink
         || !matches!(origin, crate::session::Origin::PeerReply | crate::session::Origin::PeerReplySession(_))
@@ -438,7 +455,7 @@ pub(crate) fn before_peer_deliver(shared: &Shared, from: Option<&str>, to: &str,
         let cid_opt = crate::call_room::peek_pair_call_id(shared, caller_id, to);
         if let Some(found) = core::find(shared, to) {
             let mut s = found.lock().unwrap();
-            if matches!(s.provider, "claude" | "codex") {
+            if takes_part(s.provider) {
                 s.peer_turn.begin_call(caller_id, cid_opt, round.max(1));
             }
         }
@@ -464,7 +481,7 @@ pub(crate) fn format_explicit_peer_reply(
     let clean_text = if trimmed.is_empty() || crate::folders::shows_nothing(trimmed) { text } else { trimmed };
     let both_providers = [sender_id, to]
         .into_iter()
-        .all(|id| core::find(shared, id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex")));
+        .all(|id| core::find(shared, id).is_some_and(|f| takes_part(f.lock().unwrap().provider)));
     let call_meta = both_providers.then(|| {
         crate::call_room::record_peer_reply(shared, call_id_opt, to, sender_id, sender_label, call_round.max(1), clean_text, marked_done)
     }).flatten();
@@ -514,7 +531,7 @@ pub(crate) fn after_peer_deliver(
     if ok && by == By::Session {
         if let Some(sender) = from {
             let both_providers = [sender, to].into_iter().all(|id| {
-                core::find(shared, id).is_some_and(|f| matches!(f.lock().unwrap().provider, "claude" | "codex"))
+                core::find(shared, id).is_some_and(|f| takes_part(f.lock().unwrap().provider))
             });
             if both_providers {
                 if let Some((cid, r)) = crate::call_room::record_session_transfer(shared, sender, to, text, round, marked_done) {
