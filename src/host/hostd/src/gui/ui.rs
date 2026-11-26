@@ -35,7 +35,7 @@ mod tabs;
 #[path = "telemetry.rs"]
 mod telemetry;
 #[path = "toolbar.rs"]
-mod toolbar;
+pub(super) mod toolbar;
 use super::menu::MenuGeom;
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};

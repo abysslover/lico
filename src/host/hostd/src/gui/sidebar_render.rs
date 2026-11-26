@@ -220,7 +220,8 @@ impl App {
         let teal_ink = Color::rgb(0x64, 0xE2, 0xCB);
 
         // 1. Top 2-Tab Header (`[ Directories ]` | `[ Chats ]`): the first thing at the top of the window (the menu bar and the toolbar are to its right).
-        let tab_y1 = top + lh + 6.0 * s;
+        let rows = super::ui::toolbar::top_rows(s, lh); // the rows at the top, level with the menu bar and the icons at the right (`M24-P11g`)
+        let tab_y1 = top + rows.first;
         controls::fill(buf, width, height, [0.0, top, x_right, tab_y1], 0xFF13_1A23);
         controls::fill(buf, width, height, [0.0, tab_y1 - 1.0, x_right, tab_y1], 0xFF2B_3646);
         let split = (x_right * 0.5).floor();
@@ -249,8 +250,9 @@ impl App {
         };
 
         let mem_y = hint_y - lh;
-        let mut y = tab_y1 + 4.0 * s;
+        let mut y = tab_y1 + rows.gap;
         self.ui.sidebar.chats.page_size = super::sidebar_chats::calc_chats_ps(tab_y1, hint_y, lh, s, ssh_host.is_some());
+        super::ui::toolbar::draw_left_block(buf, width, height, x_right, tab_y1, rows);
 
         if tab_idx == 1 {
             self.draw_chats_sidebar(buf, width, height, x_right, tab_y1, hint_y, total_mem, geom);
@@ -259,11 +261,9 @@ impl App {
 
         // 1b. Top Navigation History (`<` / `>`) + Bookmarks (`☆`/`★` + `Marks (N) v`) Toolbox
         let row_h = lh + 2.0 * s;
-        controls::fill(buf, width, height, [2.0 * s, y - s, x_right - 2.0 * s, y + row_h + s], 0xFF14_1C27);
-        controls::fill(buf, width, height, [2.0 * s, y + row_h + s - 1.0, x_right - 2.0 * s, y + row_h + s], 0xFF25_3242);
         let nav_btn_w = controls.width(fs, "<") + 12.0 * s;
-        let back_rect = [4.0 * s, y, 4.0 * s + nav_btn_w, y + row_h];
-        let fwd_rect = [back_rect[2] + 3.0 * s, y, back_rect[2] + 3.0 * s + nav_btn_w, y + row_h];
+        let back_rect = [4.0 * s, y, 4.0 * s + nav_btn_w, y + rows.row];
+        let fwd_rect = [back_rect[2] + 3.0 * s, y, back_rect[2] + 3.0 * s + nav_btn_w, y + rows.row];
         controls.button(
             fs,
             swash,
@@ -292,11 +292,11 @@ impl App {
         let marks_w = controls.width(fs, &marks_lbl) + 12.0 * s;
         let star_lbl = if bookmarked { "\u{2605}" } else { "\u{2606}" };
         let star_w = controls.width(fs, star_lbl) + 12.0 * s;
-        let bm_btn_rect = [x_right - 4.0 * s - marks_w, y, x_right - 4.0 * s, y + row_h];
-        let star_rect = [bm_btn_rect[0] - 3.0 * s - star_w, y, bm_btn_rect[0] - 3.0 * s, y + row_h];
+        let bm_btn_rect = [x_right - 4.0 * s - marks_w, y, x_right - 4.0 * s, y + rows.row];
+        let star_rect = [bm_btn_rect[0] - 3.0 * s - star_w, y, bm_btn_rect[0] - 3.0 * s, y + rows.row];
         if hist_len > 0 && star_rect[0] > fwd_rect[2] + 10.0 * s {
             let pos_lbl = format!("{}/{}", hist_idx + 1, hist_len);
-            controls.text(fs, swash, buf, width, height, fwd_rect[2] + 5.0 * s, y + s, (star_rect[0] - 2.0 * s) as i32, &pos_lbl, muted);
+            controls.text(fs, swash, buf, width, height, fwd_rect[2] + 5.0 * s, y + 0.5 * s, (star_rect[0] - 2.0 * s) as i32, &pos_lbl, muted);
         }
         controls.button(
             fs,
@@ -326,16 +326,16 @@ impl App {
         geom.forward_rect = Some(fwd_rect);
         geom.bookmark_toggle_rect = Some(star_rect);
         geom.bookmarks_btn_rect = Some(bm_btn_rect);
-        y += row_h + 4.0 * s;
+        y += rows.row + rows.gap;
 
         // 2. Controls row: `[Host: local v]`  `[.dot]`  `[R]`  `[+]`
         let plus_w = controls.width(fs, "+") + 12.0 * s;
         let ref_w = controls.width(fs, "R") + 12.0 * s;
         let dot_w = controls.width(fs, ".dot") + 10.0 * s;
-        let new_rect = [x_right - 4.0 * s - plus_w, y, x_right - 4.0 * s, y + row_h];
-        let ref_rect = [new_rect[0] - 3.0 * s - ref_w, y, new_rect[0] - 3.0 * s, y + row_h];
-        let dot_rect = [ref_rect[0] - 3.0 * s - dot_w, y, ref_rect[0] - 3.0 * s, y + row_h];
-        let host_rect = [4.0 * s, y, (dot_rect[0] - 4.0 * s).max(40.0 * s), y + row_h];
+        let new_rect = [x_right - 4.0 * s - plus_w, y, x_right - 4.0 * s, y + rows.row];
+        let ref_rect = [new_rect[0] - 3.0 * s - ref_w, y, new_rect[0] - 3.0 * s, y + rows.row];
+        let dot_rect = [ref_rect[0] - 3.0 * s - dot_w, y, ref_rect[0] - 3.0 * s, y + rows.row];
+        let host_rect = [4.0 * s, y, (dot_rect[0] - 4.0 * s).max(40.0 * s), y + rows.row];
 
         let host_lbl = match &ssh_host {
             Some(h) => clip_cols(&format!("ssh:{h} v"), 18),
@@ -361,7 +361,7 @@ impl App {
         geom.dotfiles_rect = Some(dot_rect);
         geom.refresh_rect = Some(ref_rect);
         geom.new_here_rect = Some(new_rect);
-        y += row_h + 3.0 * s;
+        y = tab_y1 + rows.second + 2.0 * s; // under the block and its line
 
         // 3. Quick filename filter box: `Filter: <query>` + `×` clear
         let f_rect = [4.0 * s, y, x_right - 4.0 * s, y + row_h];

@@ -3,7 +3,8 @@
 
 use super::transcript::{ROLE_BOX, ROLE_BOX_TOP, ROLE_PEER_BG, ROLE_USER_BG, STYLE_AGENT, STYLE_MASK, STYLE_USER};
 
-/// Columns the full gutter takes: a date and time of 19 characters and two of air.
+/// Columns the full gutter takes: a date and time of 19 characters and two of air (the tests pin that the full form is this).
+#[cfg(test)]
 pub(super) const GUTTER_COLS: usize = 21;
 /// The text keeps this many columns at the least: a gutter is kept only when the area holds this many more than the form's columns (`M24-P11h`; `M24-P11b` kept 80).
 pub(super) const TEXT_MIN_COLS: usize = 60;
@@ -121,7 +122,8 @@ pub(super) fn stamp_form(form: Form, secs: u64, offset: i64) -> String {
     }
 }
 
-/// `YYYY-MM-DD HH:MM:SS` of a unix time shown with `offset` seconds east of UTC.
+/// `YYYY-MM-DD HH:MM:SS` of a unix time shown with `offset` seconds east of UTC (the full form; the window draws `stamp_form`).
+#[cfg(test)]
 pub(super) fn stamp_text(secs: u64, offset: i64) -> String {
     stamp_form(Form::Full, secs, offset)
 }

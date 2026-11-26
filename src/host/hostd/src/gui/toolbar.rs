@@ -17,6 +17,9 @@ mod picker;
 mod wizard_cards;
 #[path = "account_cards.rs"]
 mod account_cards;
+#[cfg(test)]
+#[path = "toprows_tests.rs"]
+mod toprows_tests;
 
 pub struct ToolBtn {
     pub label: String,
@@ -48,7 +51,9 @@ fn text_button_h(s: f32, line_h: f32) -> f32 {
     line_h * s + s
 }
 
-/// The side of an icon button (`M24-P09`, the owner's word of 2026-11-25): twice what it was, in width and in height. The row's height, the drawing and the hit boxes all use this one number.
+/// The side of an icon button (`M24-P09`, the owner's word of 2026-11-25): twice what it was, in width and in height. The window draws the icon the height of the second block of the top rows
+/// less 3 units above and below (`top_rows`, `M24-P11g`); the tests pin that this is the number.
+#[cfg(test)]
 fn icon_side(s: f32, line_h: f32) -> f32 {
     2.0 * text_button_h(s, line_h)
 }
@@ -62,15 +67,40 @@ pub(super) fn button_rect(icon: bool, x: f32, w: f32, y: f32, side: f32, text_h:
     [x, top, x + w, top + h]
 }
 
-/// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off). The toolbar row is its icon side with 2 px above and 3 px below (units of the scale).
+/// The rows at the top of the window (`M24-P11g`, the owner's words of 2026-11-26): the menu bar at the right and the tabs of the left column are one row high (`first`), and under it the row of
+/// icons at the right and the two rows of the left column (the nav row and the host row, in the Chats tab the host row and the filter row) are one block high (`second`), so that the line under
+/// the first row and the line under the block run across the window at one height. `row` is the height of a row of the block (a text button's), `gap` what is above, between and below the rows.
+/// `lh` is the height of a line in physical pixels (`line_h * s`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TopRows {
+    pub first: f32,
+    pub row: f32,
+    pub gap: f32,
+    pub second: f32,
+}
+
+pub(crate) fn top_rows(s: f32, lh: f32) -> TopRows {
+    let (row, gap) = (lh + s, 2.0 * s);
+    TopRows { first: lh + 6.0 * s, row, gap, second: 2.0 * row + 3.0 * gap }
+}
+
+/// Returns `(menu_h, total_top_h)` in physical pixels (`(0.0, 0.0)` when `--menu` is off). The menu bar is the height of the left column's tabs and the toolbar row is the height of the two rows under
+/// them (`top_rows`, `M24-P11g`): the icon is its side with 3 units of the scale above and below.
 pub fn bar_heights(menu_shown: bool, scale: f32, line_h: f32) -> (f32, f32) {
     if !menu_shown {
         return (0.0, 0.0);
     }
     let s = scale.max(1.0);
-    let menu_h = line_h * s + 4.0 * s;
-    let tool_h = icon_side(s, line_h) + 5.0 * s;
-    (menu_h, menu_h + tool_h)
+    let rows = top_rows(s, line_h * s);
+    (rows.first, rows.first + rows.second)
+}
+
+/// The band behind the second block of the left column (`M24-P11g`): the nav row and the host row (in the Chats tab the host row and the filter row) stand on the toolbar's own tone, and the line
+/// under it is the toolbar's line, at the height of the line under the icons at the right.
+pub(crate) fn draw_left_block(buf: &mut [u32], width: usize, height: usize, x_right: f32, tab_y1: f32, rows: TopRows) {
+    let bottom = tab_y1 + rows.second;
+    controls::fill(buf, width, height, [0.0, tab_y1, x_right, bottom], 0xFF16_1D27);
+    controls::fill(buf, width, height, [0.0, bottom - 1.0, x_right, bottom], 0xFF2B_3440);
 }
 
 /// How the toolbar's row is spaced, as `(padding of a text button, gap between buttons)` in units of the scale. `widths` are the widths of the buttons before padding (an icon is its side, a text
@@ -252,11 +282,12 @@ impl App {
             if menu_open == Some(i) {
                 controls::fill(buf, width, height, r, 0xFF2C_4A78);
             }
-            controls.text(fs, swash, buf, width, height, x + 8.0 * s, 2.0 * s, r[2] as i32, title, ink);
+            controls.text(fs, swash, buf, width, height, x + 8.0 * s, 3.0 * s, r[2] as i32, title, ink);
             controls.target(r, Action::Menu(i));
             self.ui.menu_geom.titles.push(r);
             x += w;
         }
+        controls::fill(buf, width, height, [x0, menu_h - 1.0, width as f32, menu_h], 0xFF2B_3646); // the line under the menu bar, level with the one under the left column's tabs (`M24-P11g`)
 
         let icon = crate::gui::windowstate::button_rect(width, menu_h, s);
         crate::gui::windowstate::draw_icon(controls, buf, width, height, icon, maximized, over_icon, s);
@@ -266,7 +297,7 @@ impl App {
         controls::fill(buf, width, height, [x0, menu_h, width as f32, bar_h], 0xFF16_1D27);
         controls::fill(buf, width, height, [x0, bar_h - 1.0, width as f32, bar_h], 0xFF2B_3440);
         let mut tx = x0 + 6.0 * s;
-        let (by0, by1) = (menu_h + 2.0 * s, bar_h - 3.0 * s);
+        let (by0, by1) = (menu_h + 3.0 * s, bar_h - 3.0 * s);
         let side = (by1 - by0).max(1.0);
         let text_h = text_button_h(s, line_h);
         let hover = self.ui.toolbar_geom.hover;

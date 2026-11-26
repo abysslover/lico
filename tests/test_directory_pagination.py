@@ -74,7 +74,7 @@ def test_large_directory_pagination_toolbar_keys_wheel_and_top_row_visibility():
             f1 = u1["panel"]["files"]
             # M24-P09: at this text size the doubled icons and the Files screen's six words do not fit one row, so the icons give way (square, never under the old side) before any button is pushed out
             title = u1["menu"]["titles"][0]["rect"]
-            scale = (title[3] - title[1]) / (u1["settings"]["font_px"] + 8)
+            scale = (title[3] - title[1]) / (u1["settings"]["font_px"] + 10)  # M24-P11g: the menu bar is (line + 6) x scale, the height of the left column's tabs (it was line + 4)
             old_side = (u1["settings"]["font_px"] + 5) * scale
             for b in u1["toolbar"]["buttons"][:4]:
                 wd, ht = b["rect"][2] - b["rect"][0], b["rect"][3] - b["rect"][1]

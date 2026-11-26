@@ -66,7 +66,7 @@ pub struct ChatsSidebarState {
 
 /// How many cards fit: below the controls row and the filter row (and, for an ssh host, the row that names its folder).
 pub(super) fn calc_chats_ps(tab_y1: f32, hint_y: f32, lh: f32, s: f32, ssh: bool) -> usize {
-    let list_top = tab_y1 + 2.0 * lh + 15.0 * s + if ssh { lh + 5.0 * s } else { 0.0 };
+    let list_top = tab_y1 + super::ui::toolbar::top_rows(s, lh).second + 2.0 * s + if ssh { lh + 5.0 * s } else { 0.0 };
     let nav_y = hint_y - 2.0 * lh - 4.0 * s;
     let avail = (nav_y - list_top).max(0.0);
     let card_h = (2.0 * lh + 4.0 * s).max(16.0);
@@ -421,7 +421,8 @@ impl App {
         let char_w = self.char_w();
         let max_cols = ((x_right - 12.0 * s) / (char_w * s)).max(12.0) as usize;
         let mem_y = hint_y - lh;
-        let mut y = tab_y1 + 4.0 * s;
+        let rows = super::ui::toolbar::top_rows(s, lh); // the host row and the filter row are the second block, level with the icons at the right (`M24-P11g`)
+        let mut y = tab_y1 + rows.gap;
 
         let ssh_host = self.ui.sidebar.ssh_host.clone();
         let global_scope = self.ui.sidebar.global_scope;
@@ -442,12 +443,11 @@ impl App {
         let dim = Color::rgb(0x5E, 0x6C, 0x7E);
 
         // 1. Controls row: `[Host: local v]`  `[R]`  `[+]`
-        let row_h = lh + 2.0 * s;
         let plus_w = controls.width(fs, "+") + 12.0 * s;
         let ref_w = controls.width(fs, "R") + 12.0 * s;
-        let new_rect = [x_right - 4.0 * s - plus_w, y, x_right - 4.0 * s, y + row_h];
-        let ref_rect = [new_rect[0] - 3.0 * s - ref_w, y, new_rect[0] - 3.0 * s, y + row_h];
-        let host_rect = [4.0 * s, y, (ref_rect[0] - 4.0 * s).max(40.0 * s), y + row_h];
+        let new_rect = [x_right - 4.0 * s - plus_w, y, x_right - 4.0 * s, y + rows.row];
+        let ref_rect = [new_rect[0] - 3.0 * s - ref_w, y, new_rect[0] - 3.0 * s, y + rows.row];
+        let host_rect = [4.0 * s, y, (ref_rect[0] - 4.0 * s).max(40.0 * s), y + rows.row];
 
         let host_lbl = match &ssh_host {
             Some(h) => clip_cols(&format!("ssh:{h} v"), 20),
@@ -460,10 +460,10 @@ impl App {
         geom.host_rect = Some(host_rect);
         geom.refresh_rect = Some(ref_rect);
         geom.new_here_rect = Some(new_rect);
-        y += row_h + 3.0 * s;
+        y += rows.row + rows.gap;
 
         // 2. Chats search/filter box
-        let f_rect = [4.0 * s, y, x_right - 4.0 * s, y + row_h];
+        let f_rect = [4.0 * s, y, x_right - 4.0 * s, y + rows.row];
         controls::fill(buf, width, height, f_rect, if filter_focused { 0xFF1E_2D42 } else { 0xFF16_1E29 });
         if filter_focused {
             controls::fill(buf, width, height, [f_rect[0], f_rect[3] - 1.0, f_rect[2], f_rect[3]], 0xFF56_B4FF);
@@ -478,17 +478,17 @@ impl App {
             format!("Filter: {filter}")
         };
         let f_col = if filter.is_empty() && !filter_focused { dim } else { ink };
-        controls.text(fs, swash, buf, width, height, f_rect[0] + 6.0 * s, y + s, (f_rect[2] - clr_w - 2.0 * s) as i32, &f_text, f_col);
+        controls.text(fs, swash, buf, width, height, f_rect[0] + 6.0 * s, y + 0.5 * s, (f_rect[2] - clr_w - 2.0 * s) as i32, &f_text, f_col);
         let main_f_rect = [f_rect[0], f_rect[1], f_rect[2] - clr_w, f_rect[3]];
         controls.target(main_f_rect, Action::SidebarFilter);
         geom.filter_rect = Some(main_f_rect);
         if has_clear {
             let c_rect = [f_rect[2] - clr_w, f_rect[1], f_rect[2], f_rect[3]];
-            controls.text(fs, swash, buf, width, height, c_rect[0] + 4.0 * s, y + s, c_rect[2] as i32, "\u{00d7}", muted);
+            controls.text(fs, swash, buf, width, height, c_rect[0] + 4.0 * s, y + 0.5 * s, c_rect[2] as i32, "\u{00d7}", muted);
             controls.target(c_rect, Action::SidebarFilterClear);
             geom.filter_clear_rect = Some(c_rect);
         }
-        y += row_h + 4.0 * s;
+        y = tab_y1 + rows.second + 2.0 * s; // under the block and its line
 
         // 3. An ssh host's list is of one folder (or Home) of that host: one row says which. This machine's list is of everything and has no row.
         if let Some(host) = &ssh_host {

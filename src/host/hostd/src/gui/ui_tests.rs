@@ -165,9 +165,9 @@ fn the_toolbar_icons_are_twice_the_old_size_and_the_row_grows_with_them() {
     for (s, line_h) in [(1.0f32, 17.0f32), (1.5, 17.0), (2.0, 21.0), (1.0, 33.0)] {
         let old_side = line_h * s + s; // M22-P04: one line and a pixel
         let (menu_h, bar_h) = bar_heights(true, s, line_h);
-        assert_eq!(menu_h, line_h * s + 4.0 * s, "the menu bar is as before");
-        // the icon sits 2 s below the menu bar and 3 s above the bottom of the row (`draw_top_bars`)
-        let side = (bar_h - 3.0 * s) - (menu_h + 2.0 * s);
+        assert_eq!(menu_h, line_h * s + 6.0 * s, "the menu bar is as high as the left column's tabs (`M24-P11g`: it was a line and 4 s)");
+        // the icon sits 3 s below the menu bar and 3 s above the bottom of the row (`draw_top_bars`, `M24-P11g`: it was 2 s and 3 s)
+        let side = (bar_h - 3.0 * s) - (menu_h + 3.0 * s);
         assert!((side - 2.0 * old_side).abs() < 0.01, "twice the old side at scale {s}, line {line_h}: {side} against {old_side}");
     }
     assert_eq!(bar_heights(false, 1.0, 17.0), (0.0, 0.0), "no menu, no toolbar");
