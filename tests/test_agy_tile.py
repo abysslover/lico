@@ -68,7 +68,7 @@ def test_the_agy_picture_is_second_starts_plain_agy_in_a_terminal_in_the_folder_
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and u["terminal"]["shown"] and u["terminal"]["tabs"] and u["terminal"])
             assert started["tabs"][0]["cwd"] == str(project), "the folder Directories is on, as the Terminal picture does"
             wait_for(lambda: f"agy-up 0 args in {project}" in flat(w))
-            first = wait_for(lambda: (t := tab(w, "t1")) and t["agent"] == "agy" and t["conversation"] is None and t)
+            first = wait_for(lambda: (t := tab(w, "t1")) and t["agent"] == "agy" and t["conversation"] is None and t["picture_rect"] and t)  # (the picture is drawn by the frame after the one that knows the agent: under a loaded machine the dump came between the two)
             assert first["picture_rect"], "P04a: the tab shows the agy picture"
             assert len(term(w)["tabs"]) == 1 and len(Conn(w.socket).call(op="terminal.list")["terminals"]) == 1
             shot(w, "12_agy_started_from_new_session.png")
