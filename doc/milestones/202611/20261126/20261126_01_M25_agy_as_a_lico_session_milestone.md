@@ -1,6 +1,6 @@
 # M25 — `agy` Is A Lico Session (Level C), Release 0.9.0
 
-- Status: in_progress (2026-11-26); P01 done (the spec and the pin), P02 next
+- Status: implemented (2026-11-26), `lico 0.9.0` (release commit `e4b7ca5`), the owner's hands-on check with the real `agy` turn (G3) is to come
 - Version: 1.0.0
 - Project: Lico
 - Updated: 2026-11-26
@@ -50,7 +50,7 @@
 | M25-P05 | **(done 2026-11-26, [plan](../../../plans/202611/20261126/20261126_12_M25-P05_agy_window_plan.md))** **The window**: the `agy` tile starts a session (no account step) in `default`, the Chats card of an `agy` conversation resumes it as a session (and is one card with the session on it), the tab, the strip, the header and the list say `agy` and the model it names with no account word, the sign-in-needed line is the host's, the terminal path for a conversation is gone | the tile, the tab, the Chats card |
 | M25-P06 | **(done 2026-11-26, [plan](../../../plans/202611/20261126/20261126_13_M25-P06_agy_peers_plan.md))** **Send to, mentions, rooms**: an `agy` session is a peer like the others (`calls::takes_part`, a deferred reply, the Call Room files it as `agy`; it has no tool, so after an inline `@name` it is told that a paragraph of its answer that begins with `@name` is the send), proven with the simulator; handing over a whole `agy` conversation is not supported, as for Codex | a room of two `agy` sessions, an `@name` to one of them |
 | M25-P07 | **(done 2026-11-26, [plan](../../../plans/202611/20261126/20261126_15_M25-P07_security_note_and_guide_plan.md), [the note](../../../plans/202611/20261126/20261126_14_agy_session_security_note.md))** **The security note and the guide**: the environment of the child, the bounds, what `agy` can do as the person (it runs as the person: the note says so), the guide `doc/manual_end_to_end.md`, the CHANGELOG draft | the note |
-| M25-P08 | **Release `0.9.0`**: version pins first, the whole cold suite, `cargo xtask check|graph|verify|system`, the clean-clone acceptance, the report, the scans, one atomic push, the pull request, `main` by fast-forward | the release |
+| M25-P08 | **(done 2026-11-26, [plan](../../../plans/202611/20261126/20261126_16_M25-P08_release_0_9_0_plan.md), [report](../../../reports/202611/20261126/20261126_08_M25-P08_release_0_9_0_report.md))** **Release `0.9.0`**: version pins first, the whole cold suite, `cargo xtask check|graph|verify|system`, the clean-clone acceptance, the report, the scans, one atomic push, the pull request, `main` by fast-forward | the release |
 
 ## Not checked here (the owner's hands-on check, with G3)
 
@@ -62,4 +62,9 @@ A model picker, effort, mode switch; the `fs/*` and `terminal/*` client capabili
 
 ## When done
 
-(to be written at the release)
+Written 2026-11-26, when the eight phases were done; the owner's acceptance (G3), with the one real turn of `agy`, is still to come.
+
+- **Done**: `agy` is a session of Lico's over `agy acp` (P01 the spec and the pin, P02 the host runs it, P03 the person decides what it may do, P04 a conversation comes back by its id, P05 the window starts and shows it, P06 it is a peer for Send to, `@name` and the Call Room, P07 the security note and the guide, P08 the release `0.9.0`).
+- **Not done**: a real turn of the real program (the sign-in, an answer, a real permission request, a real resume); attachments; `session/cancel`; handing over a whole conversation; a place to sign in inside Lico; a model picker.
+- **What it cost the checks**: the cold run of the suite is over its `180 s` on a quiet machine (`199.4 .. 215.5 s`, `698` tests), the first build after a version change peaks over its `1,536 MiB` bound (`1,725.2 MiB`), the module graph grew by four modules and the cycle of the hubs stayed at `50`; the module split that takes the cost down is M26.
+- **The owner's**: the items of the [release report](../../../reports/202611/20261126/20261126_08_M25-P08_release_0_9_0_report.md) section 5.
