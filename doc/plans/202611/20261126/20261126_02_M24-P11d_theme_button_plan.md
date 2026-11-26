@@ -1,6 +1,6 @@
 # M24-P11d Plan — A Theme Button: Dark, Light, System
 
-- Status: in_progress (2026-11-26)
+- Status: done (2026-11-26), code `6c9af5e`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P11d-theme-button` from `phase/M24-P11c-whole-block-select-and-fold` (the P11c code commit and its docs commit; P07 to P11c are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -52,12 +52,12 @@ One more icon at the end of the row of top icons (after Accounts, New session, N
 
 ## Steps
 
-1. [ ] **Tests first, run red.**
-2. [ ] **The change.**
-3. [ ] **Mutation checks**, one edit at a time on `theme.rs`, `theme_host.rs`, the host's setting and the lines added to `ui.rs`, `transcript.rs`, `times.rs`, `toolbar.rs`, `menu.rs`.
-4. [ ] **Other tests**: the existing window, oracle and host tests, the suite.
-5. [ ] **Words**: the guide, the protocol note.
-6. [ ] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red.**
+2. [x] **The change.**
+3. [x] **Mutation checks**, one edit at a time on `theme.rs`, `theme_host.rs`, the host's setting and the lines added to `ui.rs`, `transcript.rs`, `times.rs`, `toolbar.rs`, `menu.rs`.
+4. [x] **Other tests**: the existing window, oracle and host tests, the suite.
+5. [x] **Words**: the guide, the protocol note.
+6. [x] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here (the owner's, written in the report)
 
@@ -65,3 +65,16 @@ One more icon at the end of the row of top icons (after Accounts, New session, N
 - A page in the browser tab keeps its own colours (the engine paints it; it does not know the window's theme). Telling pages the preference (`prefers-color-scheme`) is the engine's and is not done.
 - The window's title bar and borders belong to the window manager.
 - The system's answer is read through `gsettings` (GNOME and the desktops that keep the same key); another desktop answers dark until the window learns its way (the portal's `color-scheme`).
+
+## Results (2026-11-26)
+
+- **Tests first**: the pure tests (`Choice`, `resolve`, `tone`, `parse_system`, the state of the button, the host's setting) and the click tests were written before the code and run red on stubs; then green. The oracle in both modes and the window test were added with the change.
+- **The commit** `6c9af5e`: `gui/theme.rs` (new: `Choice`, `Mode`, `tone`, `tone_ink`, `parse_system`, `resolve`, the thread-local mode), `gui/theme_host.rs` (new: the state of the button, the question to the desktop, `App::cycle_theme`), `gui/icons.rs` (`Moon`, `Sun`, `Auto`), `gui/toolbar.rs` (the button, last in the row), `gui/menu.rs` (`Cmd::CycleTheme`, class `Key`, no menu row), `gui/ui.rs` (`rect`, `blit_with`, the band fills and the divider map the colour; `compose` sets the mode; the dump key; the tick; joined into existing lines, the file stays at 1114), `gui/transcript.rs`, `gui/times.rs` (the direct band fills), `gui/attn.rs` (`sync_settings` takes the choice), `gui/mod.rs` (`Ev::Theme`, `ThemeChanged`), the host (`clipboard/settings.rs`, `clipboard/mod.rs`, `ipc.rs`: the setting `theme`), the protocol note 0.1.15 and the guide 1.30.0.
+- **Tests now**: unit 46 new (`theme` 11, `theme_host` 21, the oracle in light 7, the host's setting 6, the icons 1), the scroll oracle at the scales 1, 1.25 and 2 in light as in dark, the census of the paint sites, the window test `tests/test_theme.py` (2 tests: a real window pressed round dark, light, system with a stand-in `gsettings`; a window that starts later takes the host's choice). The whole binary: 1,328 unit tests pass (1,281 before).
+- **The census found one site**: the divider line between the panes was a literal written straight into the buffer (`0xFF30_3840`); in light it stayed dark. It is mapped now, and the oracle's census (every pixel of a scene that holds every kind of block, with and without an open menu, compared with the mapped dark pixel, tolerance 40) finds no other.
+- **Mutation checks**: two passes, **every mutant one edit on a restored tree whose files were checked by their sha256 after each**. The first pass, **128 mutants** of the new code (`theme.rs`, `theme_host.rs`, the host's setting, the lines added to `ui.rs`, `mod.rs`, `menu.rs`, `icons.rs`): 106 killed, 21 survived, 1 did not compile (a removed match arm, redone as an empty arm). The survivors were of five kinds and each was closed in the code or in a test: the question to the desktop could not be seen from a unit test (the window has no event loop there), so the asking was split from the window (`ask_with`, `on_window_theme`, `is_dark`, `probe_with`, `run`) and the questions started are counted (`asked`, also in the dump); the two constants of the cadence (30 s, 2 min) were only used by name and are pinned; the scope that puts the mode back had no test of its own; the redraw marks had no test; the moon's centring and the sun's rays were only looked at (now the bounding boxes). The second pass, **65 mutants** (everything of `theme_host.rs` after its change and every survivor of the first): 59 killed, 6 survived; two of them (`dump` without the theme, the desktop's answer dropped in `user_event`) are killed by the window test `tests/test_theme.py` run against each mutant (2 of 2 killed). **Four are written down, not killed**: the window system's own answer is not read (`window.theme()` is none on X11 and a unit test has no window), the arm that takes the window system's `ThemeChanged` is dropped (the event is not sent on X11; the method it calls is tested), and two on the same line of `keep_rows` (the list column's background after a scroll step: the line is **dead**, the column is drawn whole afterwards, the line is older than this phase and was only given `tone`; a magenta fill in its place also survives)
+- **The commit hook**: the first run **refused**: the suite passed (630 tests in 130 files, 184 s) but the build peak was **1962.7 MiB over the bound of 1536 MiB**, and the guard refuses a peak over the bound even when the tests pass; **the bound stays** (the owner's word of 2026-11-25), nothing was raised or bypassed, the same commit was run again by hand with the receipts of the passed tests reused, and the second run accepted it (`6c9af5e`)
+- **Looked at**: a screenshot of each state of a real window (dark, light, a block selected in light, system with a desktop that says light).
+- **Other tests changed by the new icon**: `tests/test_workspace_files.py` (the Files screen's text buttons start at the sixth button now), the lists of icons and labels of four more window tests, `ui_tests.rs` (the toolbar's ids).
+- **The owner's window**: `~/bin/lico` is rebuilt from this tree; the window has to be restarted (`lico gui`) to show the button.
+- **Next**: P11e (a file under the pointer is underlined and opens in a tab), then the release `0.8.2`.
