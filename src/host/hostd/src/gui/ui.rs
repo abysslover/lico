@@ -36,7 +36,7 @@ mod tabs;
 mod telemetry;
 #[path = "toolbar.rs"]
 pub(super) mod toolbar;
-use super::menu::MenuGeom;
+#[path = "statusline.rs"] mod statusline; use super::menu::MenuGeom;
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
 
@@ -572,7 +572,7 @@ impl App {
             "dim": self.ui.controls.dimmed,
             "allow": self.ui.controls.hits.iter().find(|h| h.action == Action::Allow).map(|h| h.rect),
             "deny": self.ui.controls.hits.iter().find(|h| h.action == Action::Deny).map(|h| h.rect),
-            "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(),
+            "lines": self.ui.hit_lines.iter().map(|l| json!([l.0, l.1, l.2])).collect::<Vec<_>>(), "chat_top": self.ui.composed.as_ref().map(|c| c.top), // M24-P11f: where the conversation starts, under the border
         });
         let settings = json!({"clipboard_write": self.ui.clipboard_write, "agent_panes": !self.ui.agent_panes_off && self.ui.agent_panes_paused.is_none(), "pane_cues": self.ui.pane_cues.iter().map(|c| json!({"tab": c.tab, "by": c.by, "did": c.did})).collect::<Vec<_>>(), "notifications": !self.ui.notifications_off, "group_by": if self.ui.group_by_workspace { "workspace" } else { "account" }, "font_px": self.font_px() as i64, "show_events": self.ui.show_events});
         let shown_lines = self.shown_lines_dump();
@@ -647,7 +647,7 @@ impl App {
         let real_entries = self.ui.real_screen.clone();
         let top = bar_h + super::realbar::height_px_with(&real_entries, s, line_h);
         let tab_h = tabs::height_px(self.tabs_shown(), s, line_h);
-        let chat_top = top + tab_h;
+        let chat_top = top + tab_h + statusline::edge(self.ui.menu, s); // M24-P11f: the conversation starts under the rule and the margin that follow the tabs
         let (side_top, list_top) = self.left_column_tops(top, s);
         let main_w = width.saturating_sub(list_w); let (gutter, col_px) = self.times_gutter(main_w, s); // M24-P11b: the room at the right for the time of each block of a session
         self.refresh_list();
@@ -660,7 +660,7 @@ impl App {
         let n_prompt = pv.rows.len() + pv.note.is_some() as usize;
         if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(4 + n_prompt), cols); }
         let panel_view = self.panel_view();
-        let show_telem = self.show_telemetry_bar();
+        let show_telem = self.show_telemetry_bar(); let has_header = !self.status_at_bottom(panel_view.is_some()); // M24-P11f: the status of a conversation stands in the strip at the bottom, not in a line at its top
         let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
         if panel_view.is_some() {
             if let Some(n) = &self.ui.host_notice {
@@ -684,7 +684,7 @@ impl App {
         self.ui.header = header.clone();
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
-        let rows_avail = area_rows.saturating_sub(4 + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
+        let rows_avail = area_rows.saturating_sub(3 + has_header as usize + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
         let is_tx = panel_view.is_none();
         let browser_rows = if panel_view.is_none() && self.page_active() { Some(rows_avail) } else { None }; let on_bar = self.browser_active(); // (the browser view has its bar at the top: M22-P05a)
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
@@ -719,12 +719,12 @@ impl App {
                 (used, end) = (used + rows, end + 1);
             }
         }
-        let mut text = if on_bar { " ".to_string() } else { header }; // the bar is painted over the first line
+        let mut text = if on_bar { " ".to_string() } else if has_header { header } else { String::new() }; // the bar is painted over the first line
         if let Some(sb) = &search_bar {
-            text.push('\n');
+            if has_header { text.push('\n'); }
             text.push_str(&clean(sb));
         }
-        let base = 1 + search_bar.is_some() as usize;
+        let base = has_header as usize + search_bar.is_some() as usize; let top_lines = base > 0; // the header, then the search bar: the lines in front of the transcript's
         // Shaping a mixed-script line is what a frame costs (about 37 of its 39 ms), so a line whose text and style are unchanged keeps its
         // shaped layout: the buffer's lines are taken apart and put back by (style_tag, text), and only new text is shaped.
         let mut prev_styles = std::mem::take(&mut self.ui.line_styles);
@@ -735,7 +735,7 @@ impl App {
                 let tag = prev_styles.get(idx).copied().unwrap_or(0);
                 pool.entry((tag, line.text().to_string())).or_default().push(line);
             }
-            let mut wanted: Vec<(u8, u16, &str)> = text.split('\n').map(|s| (0u8, 0u16, s)).collect();
+            let mut wanted: Vec<(u8, u16, &str)> = if top_lines { text.split('\n').map(|s| (0u8, 0u16, s)).collect() } else { Vec::new() };
             wanted.extend(lines[first..end].iter().map(|l| {
                 let tag = if is_tx { 1 + (l.3 & super::transcript::STYLE_MASK) as u8 } else { 0 };
                 (tag, l.3, l.2.as_str())
@@ -784,7 +784,7 @@ impl App {
         self.ui.hit_lines.clear();
         let mut search_y: Option<(f32, f32)> = None;
         for run in view.buffer.layout_runs() {
-            if search_bar.is_some() && run.line_i == 1 {
+            if search_bar.is_some() && run.line_i == base - 1 {
                 let (y0, y1) = (run.line_top + chat_top, run.line_top + run.line_height + chat_top);
                 search_y = Some(search_y.map_or((y0, y1), |(a, _)| (a, y1)));
             }
@@ -824,7 +824,7 @@ impl App {
             rec.bottom = run.line_top + run.line_height + oy as f32;
             rec.rows += 1;
         }
-        if let Some(last) = self.ui.composed.as_ref() {
+        if let Some(last) = self.ui.composed.as_ref().filter(|_| recs.first().is_some_and(|r| r.key == scroll::Key::Header)) {
             // the header's rows are needed to say which rows may be kept; it is the one line that is measured before the others are drawn
             recs[0].ext = match last.lines.first() {
                 Some(l) if l.key == scroll::Key::Header && l.text == recs[0].text => l.ext,
@@ -962,7 +962,7 @@ impl App {
         self.draw_path_bar(&mut buf, width, height, hint_y, lh, s, show_telem.then_some([list_w as f32, telem_y_f, width as f32, hint_y]));
         self.draw_global_quota_summary(&mut buf, width, height, last_row_y, 4.0 * s + hint_w);
         self.paint_main_overlays(&mut buf, width, height, list_w, s, (&frame, chat_top + lh, hint_y_f));
-        self.draw_tab_bar(&mut buf, width, height, list_w, top, chat_top);
+        self.draw_tab_bar(&mut buf, width, height, list_w, top, top + tab_h); self.draw_chat_edge(&mut buf, width, height, list_w, top + tab_h, s);
         self.draw_call_room_controls(&mut buf, width, height, list_w, chat_top);
         self.draw_mention_popup(&mut buf, width, height, list_w);
         self.draw_sidebar_host_popup(&mut buf, width, height);

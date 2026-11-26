@@ -57,6 +57,7 @@ fn the_hosts_list_is_adopted_tab_by_tab_without_showing_any_of_them() {
 #[test]
 fn an_opened_terminal_is_shown_with_its_header_and_the_row_of_keys() {
     let a = shown();
+    assert!(!a.status_at_bottom(false), "M24-P11f: a terminal tab keeps its header line, it is not a conversation");
     assert_eq!(a.ui.terminal.active.as_deref(), Some("t1"));
     assert!(a.terminal_active() && a.page_active() && !a.browser_active());
     let header = a.terminal_header().unwrap();

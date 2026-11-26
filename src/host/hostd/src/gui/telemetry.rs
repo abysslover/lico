@@ -24,6 +24,9 @@ pub struct TelemetryGeom {
     pub quota_level: &'static str,
     pub cwd_text: String,
     pub global: bool,
+    /// `M24-P11f`: the state part at the left of the strip (provider, account, state, mode, issue) and the notices after it, as drawn.
+    pub status_text: String,
+    pub notice_text: String,
 }
 
 pub fn fmt_tokens(n: u64) -> String {
@@ -258,6 +261,8 @@ impl App {
             "quota_level": if g.quota_level.is_empty() { "unknown" } else { g.quota_level },
             "cwd_text": g.cwd_text,
             "global": g.global,
+            "status_text": g.status_text,
+            "notice_text": g.notice_text,
             "rect": g.rect,
             "cwd_rect": g.cwd_rect,
         })
@@ -347,11 +352,20 @@ impl App {
         if !self.show_telemetry_bar() || list_w >= width || hint_y <= telem_y {
             return;
         }
-        let Some(row) = self.selected_row().cloned() else { return };
-        let (model_text, tokens_text, quota_text, quota_level, quota_col, raw_cwd, global) =
-            self.session_telemetry_parts(&row);
+        // M24-P11f: what the top line of a conversation said (provider, account, state, mode, issue; the host's notice and the message) stands first
+        let head = self.status_at_bottom(false);
+        let (forms, notices) = if head { (self.status_forms(), self.notice_list()) } else { (Vec::new(), Vec::new()) };
+        let parts = self.selected_row().cloned().map(|row| self.session_telemetry_parts(&row));
+        if parts.is_none() && !head {
+            return;
+        }
+        let listed = parts.is_some();
+        let (model_text, tokens_text, quota_text, quota_level, quota_col, raw_cwd, global) = parts.unwrap_or_else(|| (String::new(), String::new(), String::new(), "", Color::rgb(0, 0, 0), String::new(), false));
         let s = self.ui.scale.max(1.0);
         let char_w = self.char_w() * s;
+        // the longest form of the state part that leaves the notices their columns and the folder its own
+        let cols = |text: &str| super::display_cols(text);
+        let status_text = super::statusline::strip_form(&forms, &notices, (width - list_w) as f32, s, char_w, listed.then(|| [cols(&model_text), cols(&tokens_text), cols(&quota_text)])).to_string();
         let Some(fs) = self.font_system.as_mut() else { return };
         let swash = self.ui.list_swash.get_or_insert_with(SwashCache::new);
         let controls = &mut self.ui.controls;
@@ -360,7 +374,7 @@ impl App {
         controls::fill(buf, width, height, bar_rect, 0xFF14_1C26);
         controls::fill(buf, width, height, [bar_rect[0], telem_y, bar_rect[2], telem_y + 1.0], 0xFF28_3444);
 
-        let sep = "  |  ";
+        let sep = super::statusline::SEP;
         let sep_col = Color::rgb(0x56, 0x64, 0x76);
         let model_col = Color::rgb(0x7C, 0xC4, 0xFF);
         let tok_col = Color::rgb(0xBA, 0xE2, 0xF2);
@@ -372,6 +386,15 @@ impl App {
 
         let mut x = bar_rect[0] + 6.0 * s;
         let clip_r = (width as f32 - 6.0 * s) as i32;
+        let head_texts = [(status_text.as_str(), super::statusline::STATE_INK)].into_iter().chain(notices.iter().map(|n| (n.as_str(), super::statusline::WARM_INK)));
+        for (text, ink) in head_texts.filter(|(text, _)| !text.is_empty()) {
+            x += controls.text(fs, swash, buf, width, height, x, telem_y + s, clip_r, text, ink);
+            x += controls.text(fs, swash, buf, width, height, x, telem_y + s, clip_r, sep, sep_col);
+        }
+        if !listed {
+            self.ui.telemetry_geom = TelemetryGeom { shown: true, rect: Some(bar_rect), status_text, notice_text: notices.join(" | "), ..Default::default() }; // a session the host does not list: the state alone
+            return;
+        }
         x += controls.text(fs, swash, buf, width, height, x, telem_y + s, clip_r, &model_text, model_col);
         x += controls.text(fs, swash, buf, width, height, x, telem_y + s, clip_r, sep, sep_col);
         x += controls.text(fs, swash, buf, width, height, x, telem_y + s, clip_r, &tokens_text, tok_col);
@@ -400,6 +423,8 @@ impl App {
             quota_level,
             cwd_text: raw_cwd,
             global,
+            status_text,
+            notice_text: notices.join(" | "),
         };
     }
 
