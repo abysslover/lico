@@ -437,14 +437,17 @@ impl super::super::App {
         let vis = self.visible_transcript_lines(view.lines.len());
         let picked: Vec<&(usize, i64, String, u16)> = vis.iter().filter(|(raw_idx, _, _, _)| *raw_idx >= lo && *raw_idx <= hi).collect();
         let has_unfolded = picked.iter().any(|(_, _, _, r)| r & crate::gui::transcript::ROLE_TOOL_FOLDED == 0);
-        let lines: Vec<&str> = picked
+        let lines: Vec<String> = picked
             .into_iter()
             .filter(|(_, _, _, r)| !has_unfolded || (r & crate::gui::transcript::ROLE_TOOL_FOLDED == 0))
-            .map(|(_, _, text, r)| {
+            .flat_map(|(raw, _, text, r)| {
+                if r & crate::gui::transcript::ROLE_BLOCK_FOLDED != 0 {
+                    return self.open_block_lines(*raw, view.lines.len()); // a folded block is selected whole: its text, not the one line that stands for it
+                }
                 if r & crate::gui::transcript::ROLE_TOOL_HEAD != 0 {
-                    text.strip_prefix("\u{25be} ").unwrap_or(text.as_str())
+                    vec![text.strip_prefix("\u{25be} ").unwrap_or(text.as_str()).to_string()]
                 } else {
-                    text.as_str()
+                    vec![text.clone()]
                 }
             })
             .collect();

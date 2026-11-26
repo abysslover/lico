@@ -19,7 +19,7 @@ ADAPTER = REPO / "src" / "host" / "adapters" / "agy"
 SIM = ADAPTER / "simulator.py"
 FIXTURES = REPO / "tests" / "fixtures" / "agy_acp"
 NAMES = ["turn_with_permission", "turn_signed_out", "resume_with_replay"]
-PINNED = "1.5.17"   # the version the record describes; a new installed version fails the contract test until the record is made again
+PINNED = "1.5.18"   # the version the record describes; a new installed version fails the contract test until the record is made again
 
 
 def fixture(name):

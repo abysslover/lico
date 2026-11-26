@@ -146,11 +146,11 @@ def test_a_click_on_an_agy_card_resumes_the_conversation_as_a_session_that_asks_
             assert all(c["icon"] == "agy" and c["state"] == "none" and c["open_session"] is None for c in cards), cards
             assert [c["title"] for c in cards] == ["folder is gone", "resume me"]
             shot(w, "9_agy_cards.png")
-            # a click: a session in the conversation's folder, resumed with that conversation, asking before it acts
+            # a click: a session in the conversation's folder, resumed with that conversation, in `auto` (the owner's default of 2026-11-26: the host answers `allow_once` and says so)
             w.click(*centre(card_of(w, A)["rect"]))
             wait_for(lambda: (u := w.ui())["panel"] is None and len(u["rows"]) == 1)
             [made] = conn.call(op="status")["sessions"]
-            assert made["provider"] == "agy" and made["mode"] == "default", made
+            assert made["provider"] == "agy" and made["mode"] == "auto", made
             wait_for(lambda: [m["params"]["sessionId"] for m in sent(received, "session/resume")] == [A])
             assert sent(received, "session/new") == [], "never a new conversation in its place"
             assert os.path.realpath(wait_for(lambda: started_as(received))[0]["cwd"]) == str(proj)

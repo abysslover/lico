@@ -271,11 +271,11 @@ impl App {
     }
 
     /// The `agy` picture was chosen (`M25-P05`): a session of Lico's at once, in the folder the left lists (the rule of the Terminal picture and of `agy` since `M23-P04d`, the Home scope included;
-    /// when the left lists none the host gives it a workspace of its own), asking the person before it acts (`default`: the owner has not yet seen a real turn, gate G3). It has no account and no
-    /// other step. A start the host refuses leaves the person on the pictures with the reason in the notice.
+    /// when the left lists none the host gives it a workspace of its own), in `auto` as every program starts (`M25-P09`: the host answers each request of the program with the one-shot yes and says so;
+    /// the program's own skip flag is never passed; the Session menu switches to asking). It has no account and no other step. A start the host refuses leaves the person on the pictures with the reason in the notice.
     fn agy_session_start(&mut self) {
         let cwd = self.terminal_start_dir();
-        let mut request = json!({"op": "session.create", "kind": "agy", "mode": "default"});
+        let mut request = json!({"op": "session.create", "kind": "agy", "mode": "auto"});
         if let Some(dir) = &cwd {
             request["cwd"] = json!(dir);
         }

@@ -1,6 +1,6 @@
 # Lico control protocol v1 (M01-P02 S01)
 
-Version: 0.1.15
+Version: 0.1.16
 
 Status: proposed with M01-P02; the Python reference in `src/lico_host` is the
 oracle and `src/lico_protocol/v1.py` holds the machine-readable schemas.
@@ -230,6 +230,11 @@ passes by itself and the control is on again, with no one doing anything. A pres
 (`true` or `false`) removes a pause, so that on is on at once and a pause does not wait in the file for the next switch-on; `agent_panes: false` is off whatever a pause says, and a pause asked
 while it is off for good is not written. Any doubt about the end is **off**, as every doubt is: a value that is no whole number, or an end more than five minutes ahead of the clock (a clock that went
 back, a hand-written file). No command-line word pauses it (`lico settings --agent-panes on|off` only).
+
+The transcript's default fold is a setting too (M25-P09, the owner's word of 2026-11-26): `{"op": "settings.set", "fold_answers": false}` (a boolean) keeps the answer of an agent and the text of a peer
+open when the window shows them, `true` brings back the default, in which only the text the person wrote begins open and the others begin as a one-line pill. It is stored in the same settings file,
+and `status` reports it in `"settings": {"fold_answers": false}` **only when it is off**, so the status of a host that has never been asked is the one an older window knows; a window reads a missing field as on.
+It is toggled over the local socket only (the window's `More > Settings`), never over HTTP or the tool connection.
 
 The window's look is a setting too (M24-P11d): `{"op": "settings.set", "theme": "dark" | "light" | "system"}` (a word of the three and no other: `bad_request`; it may come with another setting in one request, over the local socket only,
 never HTTP or the tool connection). `dark` is the default and removes the key from `settings.json`; `light` and `system` write it. `status` reports `"settings": {"theme": "light" | "system"}` only while it is

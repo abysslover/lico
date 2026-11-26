@@ -123,7 +123,7 @@ fn the_entry_in_the_menu_more_says_the_state_and_sits_with_the_other_settings() 
     a.ui.agent_panes_off = true;
     assert_eq!(label(&a).as_deref(), Some("Agent pane control: off"));
     let settings: Vec<String> = a.menu_entries(4).into_iter().filter(|e| group_of(e.cmd) == Some("Settings")).map(|e| e.label.split(':').next().unwrap().to_string()).collect();
-    assert_eq!(settings, ["Agent clipboard write", "Agent pane control", "Desktop notifications", "Use existing Claude Code login", "Use existing Codex login"].map(String::from).to_vec(), "{settings:?}");
+    assert_eq!(settings, ["Agent clipboard write", "Agent pane control", "Desktop notifications", "Start answers folded", "Use existing Claude Code login", "Use existing Codex login"].map(String::from).to_vec(), "{settings:?}");
 }
 
 #[test]

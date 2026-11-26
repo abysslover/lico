@@ -3,7 +3,7 @@
  "provider": "agy",
  "path": "agy acp over standard input and output (the Agent Client Protocol: JSON-RPC 2.0, one JSON object per line)",
  "version": {
-  "cli": "1.5.17",
+  "cli": "1.5.18",
   "pinned": true,
   "checked": "2026-11-26",
   "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
@@ -23,7 +23,7 @@
    "loadSession": true,
    "promptCapabilities": {"image": true, "audio": false, "embeddedContext": true},
    "sessionCapabilities": ["additionalDirectories", "close", "list", "load", "resume"],
-   "agentInfo": {"name": "Antigravity ACP Server", "version": "1.5.17"},
+   "agentInfo": {"name": "Antigravity ACP Server", "version": "1.5.18"},
    "authMethods": ["agent-platform", "gemini-api-key", "oauth-business", "oauth-personal"]
   },
   "session/new": {

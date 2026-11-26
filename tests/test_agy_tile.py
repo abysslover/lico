@@ -71,7 +71,7 @@ def test_the_agy_picture_is_second_and_starts_a_session_that_asks_in_the_folder_
             started = wait_for(lambda: (u := w.ui()) and u["panel"] is None and len(u["rows"]) == 1 and u)
             assert w.ui()["terminal"]["tabs"] == [] and Conn(w.socket).call(op="terminal.list")["terminals"] == [], "no terminal: a session of Lico's"
             [made] = Conn(w.socket).call(op="status")["sessions"]
-            assert made["provider"] == "agy" and made["mode"] == "default", "the person is asked before it acts (the owner has not yet seen a real turn)"
+            assert made["provider"] == "agy" and made["mode"] == "auto", "every request is answered with the one-shot yes (the owner's default of 2026-11-26), and the program's own skip flag is still not passed"
             assert started["selected"] == made["session"], "the new session is the one shown"
             first = wait_for(lambda: started_as(received))[0]
             assert os.path.realpath(first["cwd"]) == str(project), "the folder Directories is on, as the Terminal picture does"

@@ -274,6 +274,35 @@ fn a_conversation_handed_over_by_a_person_who_names_a_session_starts_a_young_cou
 }
 
 #[test]
+fn an_agy_conversation_is_handed_over_as_its_number_and_never_as_its_text_and_no_other_program_is_added() {
+    let w = world(&[ONE, TWO, THREE]);
+    w.with(ONE, |s| (s.provider, s.codex_thread, s.settings.name) = ("agy", Some("9f2c4a1b-0d3e-4f56".into()), Some("designer".into())));
+    let reply = hand_over(&w.shared, ONE, TWO).unwrap();
+    assert_eq!((reply["kind"].as_str(), reply["delivery"].as_str(), reply["hops"].as_u64()), (Some("conversation"), Some("inline"), Some(0)), "a short note in the input, not a file");
+    let got = w.delivered(TWO).unwrap();
+    let (head, body) = got.split_once('\n').unwrap();
+    assert!(head.starts_with("[from session 'designer' (s012345) | ") && head.contains(" | conversation | "), "{head}");
+    assert!(body.contains("9f2c4a1b-0d3e-4f56") && body.contains("only the number") && body.contains("not sent"), "{body}");
+    assert!(got.len() < 300, "the note is a few lines, not a conversation: {got}");
+    assert!(w.files(TWO).is_empty(), "nothing is stored in the receiver's folder");
+    // the program has not told its number yet, or told one of a shape the host does not keep
+    w.with(ONE, |s| s.codex_thread = None);
+    assert_eq!(hand_over(&w.shared, ONE, TWO).unwrap_err(), "no_conversation_yet");
+    for odd in ["has a space", "line\nbreak", "-dash-first", &"x".repeat(65)] {
+        w.with(ONE, |s| s.codex_thread = Some(odd.into()));
+        assert_eq!(hand_over(&w.shared, ONE, TWO).unwrap_err(), "bad_request", "{odd:?}");
+    }
+    assert!(w.delivered(TWO).is_none(), "a refusal delivers nothing");
+    // a session that is not one of the two programs with a conversation of its own is still refused, and a receiver that cannot take an input is looked at first
+    w.with(THREE, |s| (s.provider, s.codex_thread) = ("codex", Some("abc".into())));
+    assert_eq!(hand_over(&w.shared, THREE, TWO).unwrap_err(), "bad_request");
+    w.with(ONE, |s| s.codex_thread = Some("abc".into()));
+    w.with(TWO, |s| s.state = State::Disconnected);
+    assert_eq!(hand_over(&w.shared, ONE, TWO).unwrap_err(), "session_disconnected");
+    assert_eq!(hand_over(&w.shared, ONE, ONE).unwrap_err(), "bad_request");
+}
+
+#[test]
 fn a_shallower_text_takes_over_a_count_older_than_the_memory_and_not_before() {
     let w = world(&[TWO]);
     holds(&w, 3, SET);

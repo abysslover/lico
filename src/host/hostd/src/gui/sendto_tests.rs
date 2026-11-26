@@ -69,7 +69,7 @@ fn at(body: &[String], needle: &str) -> usize {
 
 /// A host that answers each connection with the next reply and keeps what it was asked. One that is not asked within three seconds stops waiting
 /// (the test then finds fewer questions than it expected, and says so, instead of hanging).
-pub(in super::super) fn fake_host(dir: &Scratch, replies: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<Value>>) {
+pub(in crate::gui) fn fake_host(dir: &Scratch, replies: Vec<Value>) -> (String, std::thread::JoinHandle<Vec<Value>>) {
     let path = dir.0.join("h.sock");
     let _ = std::fs::remove_file(&path); // a test that asks twice leaves the first one's file behind
     let listener = UnixListener::bind(&path).unwrap();
@@ -138,9 +138,9 @@ fn the_hand_over_entry_is_offered_for_a_claude_session_with_another_running_one_
     assert_eq!(entry(&app).unwrap().1, Some("no other session is running"));
     app.ui.rows[1].state = "running".into();
     app.ui.rows[0].provider = "codex".into();
-    assert_eq!(entry(&app).unwrap().1, Some("only a Claude session has a record to hand over"));
+    assert_eq!(entry(&app).unwrap().1, Some("only a Claude or an agy session has a conversation to hand over"));
     app.run_cmd(Cmd::HandOver);
-    assert!(app.ui.panel.is_none() && app.ui.flash.as_deref() == Some("Hand over conversation: only a Claude session has a record to hand over"), "a dimmed entry opens nothing");
+    assert!(app.ui.panel.is_none() && app.ui.flash.as_deref() == Some("Hand over conversation: only a Claude or an agy session has a conversation to hand over"), "a dimmed entry opens nothing");
     app.ui.rows[0].provider = "claude".into();
     app.ui.rows.truncate(1);
     app.ui.numbered.truncate(1);
@@ -180,9 +180,32 @@ fn the_hand_over_panel_has_the_conversation_chosen_says_how_it_goes_and_what_it_
     let mut codex = three();
     codex.ui.rows[0].provider = "codex".into();
     codex.send_ask();
-    assert!(lines(&codex)[at(&lines(&codex), "Whole conversation")].contains("only a Claude session has a record"), "{:?}", lines(&codex));
+    assert!(lines(&codex)[at(&lines(&codex), "Whole conversation")].contains("only a Claude or an agy session has one"), "{:?}", lines(&codex));
     codex.send_key('c');
-    assert!(outgoing(&codex).source == Source::Draft && notice(&codex).starts_with("Only a Claude session has a record"), "{}", notice(&codex));
+    assert!(outgoing(&codex).source == Source::Draft && notice(&codex).starts_with("Only a Claude or an agy session has a conversation"), "{}", notice(&codex));
+}
+
+#[test]
+fn an_agy_session_hands_over_the_number_of_its_conversation_and_the_panel_says_that_no_text_goes() {
+    let dir = Scratch::new("sendto");
+    let done = json!({"ok": 1, "to": "session-s1", "request_id": "x-2", "kind": "conversation", "delivery": "inline", "size": 96, "receiver": "idle", "hops": 0});
+    let (path, host) = fake_host(&dir, vec![done]);
+    let mut app = two();
+    app.ui.rows[0].provider = "agy".into();
+    app.socket = path;
+    assert_eq!(app.hand_reason(), None, "the entry is offered for an agy session with another one running");
+    app.run_cmd(Cmd::HandOver);
+    assert_eq!((step(&app), outgoing(&app).source), (Some(Step::Send), Source::Conversation));
+    let body = lines(&app);
+    let number = &body[at(&body, "Conversation number")];
+    assert!(number.contains("[x]") && number.contains(" C ") && number.contains("only the number is sent, never its text"), "{number}");
+    assert!(!body.iter().any(|l| l.contains("Whole conversation") || l.contains("The host reads the program's record") || l.contains("may hold what you or a tool typed")), "{body:?}");
+    assert!(body[at(&body, "Delivery")].contains("inline: only the number of the conversation. Its text is not sent."), "{body:?}");
+    assert!(lines(&app).iter().any(|l| l.contains("The number goes into 'docs' as a conversation that says it came from 'api'")), "{:?}", lines(&app));
+    app.send_go();
+    assert_eq!(host.join().unwrap(), [json!({"op": "transfer.send", "from": "session-s0", "to": "session-s1", "kind": "conversation"})], "the same question as for a Claude session: the host knows which it is");
+    assert!(app.ui.panel.is_none() && app.ed.text() == DRAFT);
+    assert_eq!(app.ui.flash.as_deref(), Some("Handed over the number of the conversation to 'docs' (inline, 96 B); it was idle."));
 }
 
 #[test]

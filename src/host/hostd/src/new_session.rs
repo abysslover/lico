@@ -218,7 +218,7 @@ fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, ch
     {
         let mut s = session.lock().unwrap();
         s.text_mode = true;
-        s.mode = mode; // a program that asks (`agy`) asks in `default` and is answered by the host in `auto`; one that asks nothing (`local`) ignores it
+        s.mode = mode; // a program that asks (`agy`) is answered by the host in `auto` (the default since `M25-P09`) and asks the person in `default`; one that asks nothing (`local`) ignores it
         s.provider = driver.kind();
         s.codex_thread = chosen.resume_id.clone(); // the conversation the driver brings back (`agy`), else none
         s.settings = chosen;

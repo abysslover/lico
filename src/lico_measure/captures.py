@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 
 from .p02 import LICO
-from .rig import REPO, Xvfb, private_dir, short_base
+from .rig import REPO, Xvfb, open_answers, private_dir, short_base
 
 TEXT_X = 334          # the main area starts right of the session list (LIST_W 330 in gui/ui.rs)
 GRAY_THRESHOLD = 140  # text is light on a near-black background
@@ -25,10 +25,13 @@ GRAY_THRESHOLD = 140  # text is light on a near-black background
 
 class ProductWindow:
     def __init__(self, stdin_open: bool = True, ime: bool = False, host_binary: Path | None = None, host_sessions: int = 0,
-                 path_prefix: str | None = None, before_window=None, env_extra: dict | None = None, host_args: list | None = None) -> None:
+                 path_prefix: str | None = None, before_window=None, env_extra: dict | None = None, host_args: list | None = None,
+                 answers_folded: bool = False) -> None:
         # path_prefix: a directory put first on PATH of the host and the window (a stand-in for a provider program);
         # before_window(self): called once the first host is up and before the window starts; env_extra: more environment for both;
-        # host_args: more arguments for the first host
+        # host_args: more arguments for the first host; answers_folded: keep the window's default (M25-P09: the answers of agents and peers begin folded) -- the tests of the other
+        # features read the answers, so without it the run starts with the setting `fold_answers` off
+        self.answers_folded = answers_folded
         self.host_binary, self.host_sessions, self.old_host = host_binary, host_sessions, None
         self.path_prefix, self.before_window, self.env_extra, self.host_args = path_prefix, before_window, env_extra or {}, host_args or []
         self.stdin_open = stdin_open
@@ -57,6 +60,8 @@ class ProductWindow:
             self.env["PATH"] = f"{self.path_prefix}:{self.env['PATH']}"
         self.socket = str(self.runtime / "lico" / "host.sock")
         self.old_pid = None
+        if not self.answers_folded:
+            self._answers_open()          # before a host of another build starts: a host reads its settings file once, when it starts
         if self.host_binary:              # a host started from another build, at the socket the window will look for
             (self.runtime / "lico").mkdir(mode=0o700, exist_ok=True)
             self.old_host = subprocess.Popen([str(self.host_binary), "host", "--socket", self.socket, "--state-dir", str(Path(self.directory) / "state" / "lico"),
@@ -64,6 +69,8 @@ class ProductWindow:
             self.old_pid = json.loads(self.old_host.stdout.readline())["pid"]
         if self.before_window:
             self.before_window(self)
+        if not self.answers_folded:
+            self._answers_open()
         self.method = None
         if self.ime:                      # a private ibus with the Hangul engine, bound to this display
             from .ime import InputMethod
@@ -75,6 +82,15 @@ class ProductWindow:
         self.events: queue.Queue = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
         self._wait_ready()
+
+    def _answers_open(self) -> None:
+        """Seed the settings file of the run with `fold_answers: false` (kept if a test wrote the file already), so that the conversation begins with every block open."""
+        folders = [Path(self.directory) / "state" / "lico"]            # where the window's own host keeps its state
+        if "--state-dir" in self.host_args[:-1]:                        # and where a host the test starts itself does
+            folders.append(Path(self.host_args[self.host_args.index("--state-dir") + 1]))
+        for state in folders:
+            state.mkdir(mode=0o700, parents=True, exist_ok=True)
+            open_answers(state)
 
     def _read(self) -> None:
         for line in self.proc.stdout:

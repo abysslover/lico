@@ -6,7 +6,7 @@ import subprocess
 import time
 
 from lico_measure.p02 import ProtoConn as Conn
-from lico_measure.rig import Xvfb, private_dir
+from lico_measure.rig import Xvfb, open_answers, private_dir
 
 from tests.account_helpers import account
 from tests.gui_helpers import centre, click_at, client_reveal, drawn, item, menu_client
@@ -150,6 +150,7 @@ def test_mouse_click_drag_shift_selection_copy_cut_undo_redo_and_ctrl_a_accounts
 
 def test_window_resize_reflows_wrapped_lines_and_preserves_scroll_anchor():
     with private_dir() as directory:
+        open_answers(directory)           # the test reads the text itself: no block begins as a pill (M25-P09)
         xvfb = Xvfb()
         display = xvfb.display
         host = client = None

@@ -10,7 +10,7 @@ from lico_measure.captures import TEXT_X
 from lico_measure.ime import _focus_when_mapped
 from lico_measure.p02 import start
 from lico_measure.report import build_measurement
-from lico_measure.rig import Client, Xvfb, private_dir
+from lico_measure.rig import Client, Xvfb, open_answers, private_dir
 
 from tests.test_first_view import click, ui, xdo
 
@@ -59,6 +59,7 @@ def pixels(display):
 
 def test_an_unchanged_frame_shapes_no_line_and_probes_no_character():
     with private_dir() as directory:
+        open_answers(directory)           # the test reads the text itself: no block begins as a pill (M25-P09)
         xvfb = Xvfb()
         host = client = None
         try:
@@ -159,6 +160,7 @@ def test_a_flowing_stream_drawn_by_scroll_steps_looks_like_a_full_repaint_on_the
     """A real X server and a real softbuffer buffer: the shift is taken (so the buffer's age is 1 there), a menu opens and closes in the middle of the flow,
     and once the host is stopped the screen that the steps left equals the screen of a full repaint of the same lines."""
     with private_dir() as directory:
+        open_answers(directory)           # the test reads the text itself: no block begins as a pill (M25-P09)
         xvfb = Xvfb()
         host = client = None
         try:
@@ -226,6 +228,7 @@ def test_the_two_text_workloads_take_the_two_font_paths():
     found = {}
     for name, flag in (("realistic", "--realistic-text"), ("mixed", "--text")):
         with private_dir() as directory:
+            open_answers(directory)           # the test reads the text itself: no block begins as a pill (M25-P09)
             xvfb = Xvfb()
             host = client = None
             try:

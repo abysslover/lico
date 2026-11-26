@@ -1,6 +1,6 @@
 """A protocol simulator standing in for `agy acp` (a test double): an Agent Client Protocol server over standard input and output (JSON lines, JSON-RPC 2.0).
 
-`initialize`, `session/new` and the error codes are as the installed `agy 1.5.17` answered them in a private empty home (see `capabilities.json`); the updates of a turn,
+`initialize`, `session/new` and the error codes are as the installed `agy 1.5.18` answered them in a private empty home (see `capabilities.json`); the updates of a turn,
 the permission request and the stop reasons are from the ACP documentation. It logs every line it receives to `--received`, so a test sees exactly what the host sent.
 Modes are chosen by the text of the prompt:
   "fixture"   replays the agent messages of the fixture's turn (`--fixture`), waiting for the host's answer to its permission request; an answer that is not an
@@ -17,7 +17,7 @@ does not replay; an unknown session answers `-32002` (load), `-32603` (resume) a
 While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
 While the file `<received>.hang` exists `initialize` is never answered (a program that started and says nothing).
 The first line of the log is `{"argv": [...], "cwd": ..., "env": [names]}`: the folder the program was started in and the NAMES of its environment (never a value).
-`--version` prints `1.5.17`.
+`--version` prints `1.5.18`.
 """
 
 import argparse
@@ -29,7 +29,7 @@ import threading
 import time
 import uuid
 
-VERSION = "1.5.17"
+VERSION = "1.5.18"
 INIT_RESULT = {
     "protocolVersion": 1,
     "agentCapabilities": {

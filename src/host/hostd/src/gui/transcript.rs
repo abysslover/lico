@@ -540,7 +540,7 @@ impl App {
             base
         } else {
             let cards = super::tool_fold::apply(base, &self.ui.expanded_tools, &self.session);
-            super::block_fold::apply(cards, &self.ui.block_fold.folded, &self.session)
+            super::block_fold::apply(cards, &self.ui.block_fold.folded, &self.session, self.ui.block_fold.start_open)
         }
     }
 

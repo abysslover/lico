@@ -59,12 +59,54 @@ def test_a_click_selects_a_whole_block_a_second_one_folds_it_and_a_third_opens_i
             # a second click on it folds it to one line, which is the selection
             u = click_line(4, lambda s: s["shown_lines"][3:] == [PILL])
             assert u["shown_lines"][:3] == QUESTION.split("\n")
-            assert u["blocks"] == {"folded": 1, "sel": [first_raw, first_raw]} and u["selection"] == PILL and u["copied"] == copied
+            assert u["blocks"] == {"folded": 1, "start_open": True, "sel": [first_raw, first_raw]} and u["selection"] == REPLY and u["copied"] == copied
 
             # a click on the folded line opens the block, and it is selected again, whole
             u = click_line(3, lambda s: s["shown_lines"] == lines)
-            assert u["selection"] == REPLY and u["blocks"] == {"folded": 0, "sel": [first_raw, last_raw]}
+            assert u["selection"] == REPLY and u["blocks"] == {"folded": 0, "start_open": True, "sel": [first_raw, last_raw]}
 
             # a click on the message of the person selects it, all three lines, and the reply is no longer the selection
             u = click_line(1, lambda s: s["selection"] == QUESTION)
             assert u["shown_lines"] == lines and u["blocks"]["folded"] == 0
+
+
+def test_the_conversation_begins_with_the_answer_folded_and_the_setting_turns_that_off():
+    """M25-P09 (the owner's words of 2026-11-26): only what the person wrote begins open; the setting `fold_answers` (More > Settings) turns it off."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        log_dir = root / "logs"
+        args, _received = claude_args(root)
+        made: dict[str, object] = {}
+
+        def setup(w: ProductWindow) -> None:
+            conn = Conn(w.socket)
+            acc = account(conn, "Work", "claude")
+            sid, gen = new_claude(conn, account=acc, mode="auto", name="blocks")
+            assert conn.call(op="input", session=sid, generation=gen, request_id="q1", text="First line of a question\nsecond line of it\nthird line of it")["ok"] == 1
+            wait_for(lambda: status_of(conn, sid)["activity"] == "idle" and "[turn completed]" in records(log_dir, sid))
+            made.update(sid=sid, gen=gen)
+
+        with ProductWindow(host_binary=LICO, host_args=[*args, "--log-dir", str(log_dir)], before_window=setup, answers_folded=True) as w:
+            w.proc.stdin.write("load\n")
+            w.proc.stdin.flush()
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 1 and u)
+            tab0 = u0["tabs"]["items"][0]
+            w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
+            u = wait_for(lambda: (u := w.ui())["selected"] == made["sid"] and len(u["shown_lines"]) >= 4 and u)
+            assert u["shown_lines"] == [*QUESTION.split("\n"), PILL], u["shown_lines"]      # what the person wrote is open, the answer is one line
+            assert u["blocks"]["start_open"] is False and u["settings"].get("fold_answers", True) is True
+
+            # a click on the folded line selects it, and what it holds is the whole answer
+            y0, y1, _raw = u["layout"]["lines"][3]
+            w.click(u["layout"]["list_w"] + 300, (y0 + y1) / 2.0)
+            u = wait_for(lambda: (now := w.ui()) and now["selection"] == REPLY and now)
+            assert u["shown_lines"][3:] == [PILL] and u["copied"] == 0
+
+            # the setting off: every block begins open (the host keeps it; the window follows the status)
+            conn = Conn(w.socket)
+            assert conn.call(op="settings.set", fold_answers=False)["settings"]["fold_answers"] is False
+            u = wait_for(lambda: (now := w.ui()) and now["blocks"]["start_open"] is True and now)
+            assert u["shown_lines"] == [*QUESTION.split("\n"), *REPLY.split("\n")], u["shown_lines"]
+            assert conn.call(op="settings.set", fold_answers=True)["settings"].get("fold_answers", True) is True
+            wait_for(lambda: (now := w.ui()) and now["blocks"]["start_open"] is False and now["shown_lines"][3:] == [PILL])
+

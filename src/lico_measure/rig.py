@@ -239,6 +239,19 @@ class Client:
                 self.kill()
 
 
+def open_answers(state_folder: str | Path) -> None:
+    """Seed `settings.json` in a host's state folder with `fold_answers: false` (a value that is there is kept), so that the window the test starts shows every block open. Call it before
+    the host starts: a host reads its settings file once, at its start. (M25-P09: with the default the answers of agents and peers begin as pills, which a test of the text itself must not meet.)"""
+    path = Path(state_folder) / "settings.json"
+    try:
+        have = json.loads(path.read_text()) if path.exists() else {}
+    except ValueError:
+        have = {}
+    have.setdefault("fold_answers", False)
+    path.write_text(json.dumps(have) + "\n")
+    path.chmod(0o600)
+
+
 def private_dir() -> tempfile.TemporaryDirectory:
     """A 0700 run directory short enough for AF_UNIX sockets."""
     base = short_base("runs")

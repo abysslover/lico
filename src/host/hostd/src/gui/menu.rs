@@ -64,6 +64,8 @@ pub enum Cmd {
     ToggleClipWrite,
     TogglePanes,
     ToggleNotifications,
+    /// The conversation begins with the answers folded, or with every block open (`M25-P09`).
+    ToggleFoldAnswers,
     FindLlm,
     ToggleNativeClaude,
     ToggleNativeCodex,
@@ -111,7 +113,7 @@ pub(crate) fn group_of(cmd: Cmd) -> Option<&'static str> {
         Cmd::FindLlm | Cmd::ToggleVirtualDisplay => "Tools",
         Cmd::FontLarger | Cmd::FontSmaller | Cmd::FontReset => "Text size",
         Cmd::ToggleGroupBy | Cmd::ToggleEvents => "Show",
-        Cmd::ToggleClipWrite | Cmd::TogglePanes | Cmd::ToggleNotifications | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
+        Cmd::ToggleClipWrite | Cmd::TogglePanes | Cmd::ToggleNotifications | Cmd::ToggleFoldAnswers | Cmd::ToggleNativeClaude | Cmd::ToggleNativeCodex => "Settings",
         _ => return None,
     })
 }
@@ -287,6 +289,12 @@ impl App {
                         cmd: Cmd::ToggleNotifications,
                         reason: panel_reason,
                     },
+                    Entry {
+                        label: format!("Start answers folded: {}", if self.ui.block_fold.start_open { "off" } else { "on" }),
+                        key: "",
+                        cmd: Cmd::ToggleFoldAnswers,
+                        reason: panel_reason,
+                    },
                     Entry { label: self.native_menu_label("claude"), key: "", cmd: Cmd::ToggleNativeClaude, reason: panel_reason },
                     Entry { label: self.native_menu_label("codex"), key: "", cmd: Cmd::ToggleNativeCodex, reason: panel_reason },
                 ]);
@@ -424,6 +432,7 @@ impl App {
             Cmd::ToggleClipWrite => self.toggle_clipboard_write(),
             Cmd::TogglePanes => self.toggle_agent_panes(),
             Cmd::ToggleNotifications => self.toggle_notifications(),
+            Cmd::ToggleFoldAnswers => self.toggle_fold_answers(),
             Cmd::FindLlm => self.llm_find_open(),
             Cmd::ToggleNativeClaude => self.toggle_native("claude"),
             Cmd::ToggleNativeCodex => self.toggle_native("codex"),
@@ -513,6 +522,23 @@ impl App {
             });
         } else {
             self.ui.flash = Some("Could not change the clipboard setting.".into());
+        }
+    }
+
+    /// The setting `fold_answers` (`M25-P09`): the host keeps it; what the window shows changes when the host has said yes.
+    pub(crate) fn toggle_fold_answers(&mut self) {
+        let next = self.ui.block_fold.start_open; // open now: the next is folded to begin with
+        let reply = self.host_call(serde_json::json!({"op": "settings.set", "fold_answers": next}));
+        if reply["ok"] == serde_json::json!(1) {
+            self.sync_settings(&reply["settings"]);
+            self.send("{\"op\":\"status\"}");
+            self.ui.flash = Some(if self.ui.block_fold.start_open {
+                "Every block of a conversation begins open.".into()
+            } else {
+                "The answers of agents and peers begin folded: click one to open it.".into()
+            });
+        } else {
+            self.ui.flash = Some("Could not change the setting.".into());
         }
     }
 

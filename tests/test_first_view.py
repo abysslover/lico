@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lico_measure.ime import _focus_when_mapped
 from lico_measure.p02 import ProtoConn as Conn
-from lico_measure.rig import Client, Xvfb, private_dir
+from lico_measure.rig import Client, Xvfb, open_answers, private_dir
 from lico_measure.xpixel import PixelReader
 
 from tests.account_helpers import account
@@ -150,6 +150,7 @@ def test_older_history_is_read_on_demand_without_replaying_the_transcript():
 
 def test_only_selected_text_reaches_the_clipboard_and_only_on_a_user_action():
     with private_dir() as directory:
+        open_answers(directory)           # the test reads the text itself: no block begins as a pill (M25-P09)
         xvfb = Xvfb()
         host = client = reader = None
         try:

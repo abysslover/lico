@@ -1,6 +1,6 @@
 {
  "name": "turn_with_permission",
- "source": "Hand-made from the Agent Client Protocol documentation; initialize and session/new follow what agy 1.5.17 answered in a private empty home (no sign-in, no turn). Everything from the first session/prompt on is unverified.",
+ "source": "Hand-made from the Agent Client Protocol documentation; initialize and session/new follow what agy 1.5.18 answered in a private empty home (no sign-in, no turn). Everything from the first session/prompt on is unverified.",
  "unverified": [
   "the updates of a turn (agent_message_chunk, tool_call, tool_call_update)",
   "the permission request and its option kinds",
@@ -54,7 +54,7 @@
      },
      "agentInfo": {
       "name": "Antigravity ACP Server",
-      "version": "1.5.17"
+      "version": "1.5.18"
      },
      "authMethods": [
       {

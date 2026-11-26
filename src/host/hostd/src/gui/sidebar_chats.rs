@@ -283,7 +283,7 @@ impl App {
         let mut req = json!({
             "op": "session.create",
             "kind": entry.provider,
-            "mode": if entry.provider == "agy" { "default" } else { "auto" }, // an `agy` session asks the person until the owner has seen a real turn (`M25-P05`)
+            "mode": "auto", // every program starts in `auto`, `agy` too (`M25-P09`, the owner's words of 2026-11-26): the host answers its requests with the one-shot yes and says so; the program's own skip flag is not passed
             "resume_id": entry.provider_session,
         });
         if let Some(ref acc) = entry.account {

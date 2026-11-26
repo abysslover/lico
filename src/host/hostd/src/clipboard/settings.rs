@@ -2,6 +2,7 @@
 //! - `clipboard_write` (M02-P04, S04b; SF-06): whether an AGENT may be offered `clipboard_write`; fails CLOSED (default `false`).
 //! - `notifications` (M02-P06, S02; NT-02): whether `lico-host` runs `notify-send` when a background session finishes or asks for approval; default `true`,
 //!   switched off when `settings.json` is a valid owner-only file with `"notifications": false`.
+//! - `fold_answers` (M25-P09): whether the conversation begins with the answers of the agents and of peer sessions folded to one line each (only what the person wrote is open); default `true`.
 //! - `group_by` (M03-P02): how `lico gui` groups sessions in the sidebar (`"account"` default, or `"workspace"` rolling worktrees up under their repo).
 //! - `font_px` (M03-P02): logical text size in `lico gui` (`12..=20`, default `14`).
 //! - `last_cwd`, `last_view`, `last_session` (M05-P01): last working directory and workspace view (`"start"` | `"files"` | `"session"`) restored across `lico gui` restarts.
@@ -35,6 +36,8 @@ pub struct Patch<'a> {
     /// `true`: pause the agents' control of the panes for `PAUSE_SECS` (the window's stop key, `M24-P07`); `false`: end a pause.
     pub agent_panes_pause: Option<bool>,
     pub notifications: Option<bool>,
+    /// The conversation begins with the answers folded (`M25-P09`).
+    pub fold_answers: Option<bool>,
     pub group_by: Option<&'a str>,
     pub font_px: Option<i64>,
     pub last_cwd: Option<&'a str>,
@@ -57,6 +60,7 @@ impl<'a> Patch<'a> {
             agent_panes: map.get("agent_panes").and_then(Value::as_bool),
             agent_panes_pause: map.get("agent_panes_pause").and_then(Value::as_bool),
             notifications: map.get("notifications").and_then(Value::as_bool),
+            fold_answers: map.get("fold_answers").and_then(Value::as_bool),
             group_by: map.get("group_by").and_then(Value::as_str),
             font_px: map.get("font_px").and_then(Value::as_i64),
             last_cwd: map.get("last_cwd").and_then(Value::as_str),
@@ -174,6 +178,11 @@ pub fn read_object(path: &Path) -> Option<Map<String, Value>> {
         Ok(Value::Object(map)) => Some(map),
         _ => None,
     }
+}
+
+/// Whether the conversation of `lico gui` begins with the answers folded (`M25-P09`). Default `true`; `false` when set to boolean `false` in a valid file.
+pub fn fold_answers_enabled(path: &Path) -> bool {
+    read_object(path).map_or(true, |map| map.get("fold_answers") != Some(&Value::Bool(false)))
 }
 
 /// Whether the agent tool `clipboard_write` may be offered, judged now from the file at `path`. Any doubt is `false`.
@@ -334,6 +343,9 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     if show_hidden_enabled(&path) {
         out["show_hidden"] = Value::Bool(true);
     }
+    if !fold_answers_enabled(&path) {
+        out["fold_answers"] = Value::Bool(false); // only when it is not the default, so that what an older window reads does not change
+    }
     let theme = theme_value(&path);
     if theme != "dark" {
         out["theme"] = Value::String(theme.into()); // only when it is not the default, so that what an older window reads does not change
@@ -404,6 +416,7 @@ pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> cra
         && patch.agent_panes.is_none()
         && patch.agent_panes_pause.is_none()
         && patch.notifications.is_none()
+        && patch.fold_answers.is_none()
         && patch.group_by.is_none()
         && patch.font_px.is_none()
         && patch.last_cwd.is_none()
@@ -492,6 +505,9 @@ pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> cra
     }
     if let Some(enabled) = patch.notifications {
         map.insert("notifications".into(), Value::Bool(enabled));
+    }
+    if let Some(fold) = patch.fold_answers {
+        map.insert("fold_answers".into(), Value::Bool(fold));
     }
     for (key, word) in [("native_claude", patch.native_claude), ("native_codex", patch.native_codex)] {
         match word {

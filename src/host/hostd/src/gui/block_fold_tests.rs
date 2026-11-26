@@ -30,14 +30,14 @@ mod pure {
 
     #[test]
     fn nothing_is_changed_when_nothing_is_folded() {
-        assert_eq!(apply(conversation(), &HashSet::new(), "s1"), conversation());
-        assert_eq!(apply(conversation(), &set(&[("s2", 11)]), "s1"), conversation(), "a block folded in another session is open here");
-        assert_eq!(apply(conversation(), &set(&[("s1", 12)]), "s1"), conversation(), "the key is the first line of the block, not another line of it");
+        assert_eq!(apply(conversation(), &HashSet::new(), "s1", true), conversation());
+        assert_eq!(apply(conversation(), &set(&[("s2", 11)]), "s1", true), conversation(), "a block folded in another session is open here");
+        assert_eq!(apply(conversation(), &set(&[("s1", 12)]), "s1", true), conversation(), "the key is the first line of the block, not another line of it");
     }
 
     #[test]
     fn a_block_that_is_folded_is_one_line_with_the_first_lines_place_colour_and_time() {
-        let out = apply(conversation(), &set(&[("s1", 11)]), "s1");
+        let out = apply(conversation(), &set(&[("s1", 11)]), "s1", true);
         assert_eq!(out.len(), 3, "the reply's three lines are one");
         assert_eq!(out[0], conversation()[0], "the block before is as it was");
         assert_eq!(out[2], conversation()[4], "and the one after");
@@ -51,7 +51,7 @@ mod pure {
     #[test]
     fn a_message_of_the_person_folds_and_keeps_its_band() {
         let entries = vec![e(0, 5, ">> first line of a long message", USER), e(1, 6, ">> second line", USER), e(2, 7, "Answer", STYLE_AGENT)];
-        let out = apply(entries, &set(&[("s1", 5)]), "s1");
+        let out = apply(entries, &set(&[("s1", 5)]), "s1", true);
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].2, "▸ >> first line of a long message  / 2 lines");
         assert_eq!((out[0].3 & (STYLE_USER | ROLE_USER_BG), out[0].3 & ROLE_BLOCK_FOLDED != 0), (STYLE_USER | ROLE_USER_BG, true));
@@ -65,7 +65,7 @@ mod pure {
         let mid = STYLE_USER | ROLE_PEER_BG;
         let end = STYLE_USER | ROLE_PEER_BG | ROLE_BOX_BOT;
         let entries = vec![e(0, 1, ">> [from session 'api' (s012345)]", top), e(1, 2, ">> a message", mid), e(2, 3, ">> its end", end), e(3, 4, "Reply", STYLE_AGENT)];
-        let out = apply(entries, &set(&[("s1", 1)]), "s1");
+        let out = apply(entries, &set(&[("s1", 1)]), "s1", true);
         assert_eq!(out.len(), 2);
         let role = out[0].3;
         assert_eq!(kind_of(role), Kind::Peer);
@@ -79,17 +79,17 @@ mod pure {
         let cmd_end = STYLE_CMD_OUT | ROLE_BOX | ROLE_BOX_BOT;
         let entries = vec![e(0, 1, "$ ls", cmd_top), e(1, 2, "a.txt", cmd_end), e(2, 3, "[error] boom", STYLE_ERROR), e(3, 4, "short", STYLE_AGENT)];
         let all = set(&[("s1", 1), ("s1", 3), ("s1", 4)]);
-        assert_eq!(apply(entries.clone(), &all, "s1"), entries, "the card has its own fold, a note is one line, a short line has nothing to fold");
+        assert_eq!(apply(entries.clone(), &all, "s1", true), entries, "the card has its own fold, a note is one line, a short line has nothing to fold");
         let long = format!("[error] {}", "boom ".repeat(30));
         let wide = vec![e(0, 1, &long, STYLE_ERROR), e(1, 2, &format!("$ {}", "x".repeat(100)), STYLE_CMD | ROLE_BOX | ROLE_BOX_TOP | ROLE_BOX_BOT)];
-        assert_eq!(apply(wide.clone(), &set(&[("s1", 1), ("s1", 2)]), "s1"), wide, "a note or a card is not the block of anyone, however long");
+        assert_eq!(apply(wide.clone(), &set(&[("s1", 1), ("s1", 2)]), "s1", true), wide, "a note or a card is not the block of anyone, however long");
     }
 
     #[test]
     fn a_long_single_line_folds_and_says_it_was_one_line() {
         let long = "word ".repeat(30);
         let entries = vec![e(0, 1, &long, STYLE_AGENT), e(1, 2, ">> next", USER)];
-        let out = apply(entries, &set(&[("s1", 1)]), "s1");
+        let out = apply(entries, &set(&[("s1", 1)]), "s1", true);
         assert_eq!(out.len(), 2);
         assert!(out[0].2.starts_with("▸ word word word"), "{}", out[0].2);
         assert!(out[0].2.ends_with("…  / 1 line"), "the words are cut and the count is singular: {}", out[0].2);
@@ -102,9 +102,9 @@ mod pure {
             e(2, 3, "$ ls", STYLE_CMD | ROLE_BOX | ROLE_BOX_TOP | ROLE_BOX_BOT),
             e(3, 4, "b1", STYLE_AGENT), e(4, 5, "b2", STYLE_AGENT),
         ];
-        let out = apply(entries.clone(), &set(&[("s1", 4)]), "s1");
+        let out = apply(entries.clone(), &set(&[("s1", 4)]), "s1", true);
         assert_eq!(out.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["a1", "a2", "$ ls", "▸ b1  / 2 lines"], "the second reply folds, the first stays");
-        let both = apply(entries, &set(&[("s1", 1), ("s1", 4)]), "s1");
+        let both = apply(entries, &set(&[("s1", 1), ("s1", 4)]), "s1", true);
         assert_eq!(both.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["▸ a1  / 2 lines", "$ ls", "▸ b1  / 2 lines"]);
     }
 
@@ -112,9 +112,9 @@ mod pure {
     fn a_block_that_is_folded_has_a_count_that_follows_it() {
         let mut entries = vec![e(0, 1, "a1", STYLE_AGENT), e(1, 2, "a2", STYLE_AGENT)];
         let folded = set(&[("s1", 1)]);
-        assert_eq!(apply(entries.clone(), &folded, "s1")[0].2, "▸ a1  / 2 lines");
+        assert_eq!(apply(entries.clone(), &folded, "s1", true)[0].2, "▸ a1  / 2 lines");
         entries.push(e(2, 3, "a3", STYLE_AGENT));
-        assert_eq!(apply(entries, &folded, "s1")[0].2, "▸ a1  / 3 lines", "a reply that goes on growing keeps its key");
+        assert_eq!(apply(entries, &folded, "s1", true)[0].2, "▸ a1  / 3 lines", "a reply that goes on growing keeps its key");
     }
 
     #[test]
@@ -141,11 +141,60 @@ mod pure {
         assert_eq!(cut, format!("▸ {}…  / 2 lines", "x".repeat(83)), "84 characters of the head at most, the last of them the ellipsis");
         assert_eq!(pill(&"x".repeat(84), 2), format!("▸ {}  / 2 lines", "x".repeat(84)), "84 fit");
     }
+    #[test]
+    fn what_the_person_wrote_begins_open_and_the_answers_of_agents_and_peers_begin_folded() {
+        let out = apply(conversation(), &HashSet::new(), "s1", false);
+        assert_eq!(out.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), [">> hello there", "▸ Reply line one  / 3 lines", ">> thanks"], "the reply is one line, the person's own lines are as they were");
+        assert_eq!(apply(conversation(), &HashSet::new(), "s1", true), conversation(), "with the setting off every block begins open");
+        let top = STYLE_USER | ROLE_PEER_BG | ROLE_BOX_TOP;
+        let end = STYLE_USER | ROLE_PEER_BG | ROLE_BOX_BOT;
+        let peer = vec![e(0, 1, ">> [from session 'api' (s012345)]", top), e(1, 2, ">> its end", end)];
+        let out = apply(peer.clone(), &HashSet::new(), "s1", false);
+        assert_eq!((out.len(), kind_of(out[0].3), out[0].3 & ROLE_BLOCK_FOLDED != 0), (1, Kind::Peer, true), "a peer's card begins as one closed card");
+        assert_eq!(apply(peer, &HashSet::new(), "s1", true).len(), 2);
+    }
+
+    #[test]
+    fn a_key_turns_a_block_over_from_the_way_it_began() {
+        let own = vec![e(0, 5, ">> first line of a long message", USER), e(1, 6, ">> second line", USER), e(2, 7, "Answer one", STYLE_AGENT), e(3, 8, "Answer two", STYLE_AGENT)];
+        let shown = |keys: &[(&str, i64)], start_open: bool| apply(own.clone(), &set(keys), "s1", start_open).iter().map(|x| x.2.clone()).collect::<Vec<_>>();
+        assert_eq!(shown(&[], false), [">> first line of a long message", ">> second line", "▸ Answer one  / 2 lines"]);
+        assert_eq!(shown(&[("s1", 7)], false), [">> first line of a long message", ">> second line", "Answer one", "Answer two"], "a click opened the answer");
+        assert_eq!(shown(&[("s1", 5)], false), ["▸ >> first line of a long message  / 2 lines", "▸ Answer one  / 2 lines"], "the person's own block can be folded, and the answer stays as it began");
+        assert_eq!(shown(&[("s1", 7)], true), [">> first line of a long message", ">> second line", "▸ Answer one  / 2 lines"], "with the setting off a key folds the answer, as in M24-P11c");
+    }
+
+    #[test]
+    fn a_short_single_line_answer_begins_open_for_there_is_nothing_to_fold() {
+        let entries = vec![e(0, 1, ">> hi", USER), e(1, 2, "Hello.", STYLE_AGENT)];
+        assert_eq!(apply(entries.clone(), &HashSet::new(), "s1", false), entries);
+    }
+
+    #[test]
+    fn only_the_blocks_of_a_peer_and_of_the_agent_begin_folded() {
+        for (kind, folded) in [(Kind::Peer, true), (Kind::Response, true), (Kind::User, false), (Kind::Command, false), (Kind::Note, false)] {
+            assert_eq!(begins_folded(kind, false), folded, "{kind:?}");
+            assert!(!begins_folded(kind, true), "{kind:?}: the setting off opens every block");
+        }
+    }
+
+    #[test]
+    fn the_setting_changing_takes_what_the_person_turned_over_away_and_the_same_word_changes_nothing() {
+        let mut state = State::default();
+        assert!(!state.start_open, "the default is the owner's: the answers begin folded");
+        state.folded.insert(("s1".into(), 4));
+        state.before = Some((1, 2));
+        assert!(!state.set_start_open(false) && state.folded.len() == 1 && state.before.is_some(), "the same word: nothing changes");
+        assert!(state.set_start_open(true) && state.start_open && state.folded.is_empty() && state.before.is_none(), "a key means the other way round than it began, and the beginning has changed");
+        assert!(!state.set_start_open(true));
+    }
 }
 
 mod click {
     use super::*;
+    use crate::gui::menu::{group_of, place_of, Cmd, Place};
     use crate::gui::panel::Step;
+    use serde_json::json;
 
     const W: usize = 1600;
     const H: usize = 800;
@@ -157,7 +206,13 @@ mod click {
 
     impl Window {
         fn new(lines: &[&str]) -> Window {
+            Window::with_start(lines, true) // the tests of the click are of `M24-P11c`: every block open to begin with
+        }
+
+        /// A window of the conversation as the setting `fold_answers` has it: `start_open` is true when it is off.
+        fn with_start(lines: &[&str], start_open: bool) -> Window {
             let mut app = app(1.0, false);
+            app.ui.block_fold.start_open = start_open;
             for (i, text) in lines.iter().enumerate() {
                 app.push_line(10 + i as i64, text.to_string());
             }
@@ -208,7 +263,7 @@ mod click {
         w.click(2);
         assert_eq!(w.shown(), [">> hello there", "▸ Reply line one  / 3 lines", ">> thanks"]);
         assert_eq!(w.app.ui.sel, Some((1, 1)), "the block is the selection still, as one line");
-        assert_eq!(w.app.selection_text().as_deref(), Some("▸ Reply line one  / 3 lines"));
+        assert_eq!(w.app.selection_text().as_deref(), Some("Reply line one\nReply line two\nReply line three"), "a folded block that is selected is copied whole (M25-P09), not as the one line that stands for it");
         w.click(1);
         assert_eq!(w.shown(), CONVERSATION, "a click on the folded line opens the block");
         assert_eq!(w.app.ui.sel, Some((1, 3)), "and the whole block is selected again");
@@ -353,6 +408,63 @@ mod click {
         assert_eq!(w.app.view.as_ref().and_then(|v| v.lines.get(line.2)).map(|l| l.0), Some(11), "the seq under the pill is the first line's");
         assert_eq!(kind_of(line.3), Kind::Response);
     }
+    #[test]
+    fn a_conversation_begins_with_the_answer_folded_a_click_selects_it_and_the_next_opens_it_and_a_later_answer_begins_folded_as_well() {
+        let mut w = Window::with_start(&CONVERSATION, false);
+        assert_eq!(w.shown(), [">> hello there", "▸ Reply line one  / 3 lines", ">> thanks"], "the person's lines are open, the reply is one line");
+        w.click(1);
+        assert_eq!(w.app.ui.sel, Some((1, 1)), "the first click selects the folded line");
+        assert_eq!(w.app.selection_text().as_deref(), Some("Reply line one\nReply line two\nReply line three"), "and what it copies is the answer");
+        assert!(w.app.ui.block_fold.folded.is_empty(), "and turns nothing over");
+        w.click(1);
+        assert_eq!(w.shown(), CONVERSATION, "the second click opens the answer");
+        assert_eq!(w.app.ui.block_fold.folded.len(), 1, "the key says: the other way round than it began");
+        w.click(2);
+        assert_eq!(w.shown().len(), 3, "the opened answer is the selection, so a click on it folds it again");
+        assert!(w.app.ui.block_fold.folded.is_empty(), "back as it began: the key is gone");
+        for (n, text) in [">> and again", "Second reply one", "Second reply two"].iter().enumerate() {
+            w.app.push_line(20 + n as i64, text.to_string());
+        }
+        w.frame();
+        assert_eq!(w.shown().last().map(String::as_str), Some("▸ Second reply one  / 2 lines"), "an answer that comes in later begins folded");
+        assert_eq!(w.shown()[3], ">> and again", "and what the person wrote is open");
+    }
+
+    #[test]
+    fn the_menu_says_the_setting_and_a_press_asks_the_host_and_changes_the_window_only_when_the_host_says_yes() {
+        let mut a = app(1.0, false);
+        let label = |a: &App| a.menu_entries(4).into_iter().find(|e| e.cmd == Cmd::ToggleFoldAnswers).map(|e| e.label);
+        assert_eq!((place_of(Cmd::ToggleFoldAnswers), group_of(Cmd::ToggleFoldAnswers)), (Place::Hide, Some("Settings")), "More > Settings, with the other settings");
+        a.ui.block_fold = State::default();
+        assert_eq!(label(&a).as_deref(), Some("Start answers folded: on"), "on is the default");
+        a.toggle_fold_answers();
+        assert!(!a.ui.block_fold.start_open && a.ui.flash.as_deref() == Some("Could not change the setting."), "no host answered: nothing changed");
+        let dir = crate::handoff::Scratch::new("foldset");
+        let (path, host) = crate::gui::panel::sendto::tests::fake_host(&dir, vec![json!({"ok": 1, "settings": {"fold_answers": false}}), json!({"ok": 1, "settings": {}})]);
+        a.socket = path;
+        a.ui.block_fold.folded.insert(("s1".into(), 3));
+        a.toggle_fold_answers();
+        assert!(a.ui.block_fold.start_open && a.ui.block_fold.folded.is_empty(), "off: every block begins open, and what was turned over is not");
+        assert_eq!(label(&a).as_deref(), Some("Start answers folded: off"));
+        assert_eq!(a.ui.flash.as_deref(), Some("Every block of a conversation begins open."));
+        a.toggle_fold_answers();
+        assert!(!a.ui.block_fold.start_open);
+        assert_eq!(a.ui.flash.as_deref(), Some("The answers of agents and peers begin folded: click one to open it."));
+        assert_eq!(host.join().unwrap(), [json!({"op": "settings.set", "fold_answers": false}), json!({"op": "settings.set", "fold_answers": true})], "from on the next is off, from off the next is on");
+    }
+
+    #[test]
+    fn the_window_knows_the_setting_from_the_hosts_settings_and_it_is_on_unless_the_host_says_false() {
+        let mut a = app(1.0, false);
+        a.ui.block_fold = State::default();
+        a.sync_settings(&json!({"fold_answers": false}));
+        assert!(a.ui.block_fold.start_open);
+        a.sync_settings(&json!({"fold_answers": true}));
+        assert!(!a.ui.block_fold.start_open);
+        a.sync_settings(&json!({"fold_answers": false}));
+        a.sync_settings(&json!({}));
+        assert!(!a.ui.block_fold.start_open, "a host that does not say is on: the default (and an older host has no such setting)");
+    }
 }
 
 mod look {
@@ -379,7 +491,7 @@ mod look {
         state.folded.insert(("s1".into(), 4));
         state.folded.insert(("s1".into(), 9));
         state.folded.insert(("s2".into(), 4));
-        assert_eq!(state.json("s1", Some((2, 5))), serde_json::json!({"folded": 2, "sel": [2, 5]}));
-        assert_eq!(state.json("s3", None), serde_json::json!({"folded": 0, "sel": null}));
+        assert_eq!(state.json("s1", Some((2, 5))), serde_json::json!({"folded": 2, "start_open": false, "sel": [2, 5]}));
+        assert_eq!(state.json("s3", None), serde_json::json!({"folded": 0, "start_open": false, "sel": null}));
     }
 }

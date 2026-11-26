@@ -37,7 +37,7 @@ fn what_was_not_dropped_or_given_a_key_only_is_on_more_and_a_dropdown_opens_with
     let heads: Vec<&str> = rows.iter().filter_map(|r| if let RowKind::Group(g, false) = r.kind { Some(g) } else { None }).collect();
     assert_eq!(heads, ["Browser pages", "This session", "Tools", "Show", "Text size", "Settings"], "{:?}", labels(&rows));
     assert!(rows.iter().all(|r| r.depth == 0), "nothing is indented while every group is closed");
-    assert_eq!(app.menu_entries(MORE).len(), 22, "the owner's twenty-one hidden commands and the switch of the agents' control of the panes (M24-P05b)");
+    assert_eq!(app.menu_entries(MORE).len(), 23, "the owner's twenty-one hidden commands, the switch of the agents' control of the panes (M24-P05b) and the start of the answers (M25-P09)");
     let at = |l: &str| labels(&rows).iter().position(|x| x == l);
     assert!(at("New local browser tab") < at("Browser pages") && at("Browser pages") < at("Start screen") && at("Start screen") < at("This session"), "a group stands where its first entry was: {:?}", labels(&rows));
     assert!(rows.len() <= app.menu_entries(MORE).len() / 2 + 1, "the long list is short: {} of {}", rows.len(), app.menu_entries(MORE).len());
@@ -51,7 +51,7 @@ fn the_keys_only_and_the_dropped_commands_have_no_line_in_any_menu() {
         assert!(!all.iter().any(|l| l == gone), "{gone} has no line");
     }
     assert!(!all.iter().any(|l| l.starts_with("Session ") || l.starts_with("Hidden files") || l.starts_with("Left sidebar")), "{all:?}");
-    assert_eq!(all.len(), 2 + 5 + 1 + 1 + 22, "nine on show and twenty-two on More");
+    assert_eq!(all.len(), 2 + 5 + 1 + 1 + 23, "nine on show and twenty-three on More");
 }
 
 #[test]
@@ -121,7 +121,7 @@ fn each_group_of_more_holds_exactly_its_entries() {
     assert_eq!(held("Tools"), ["Find Local LLM servers...", "Virtual display: start"]);
     assert_eq!(held("Show"), ["Group sessions: account", "Internal events: hidden"]);
     assert_eq!(held("Text size"), ["Text size: larger", "Text size: smaller", "Text size: 14 px (reset)"]);
-    assert_eq!(held("Settings").len(), 5, "the clipboard write, the pane control, the notifications and the two native logins: {:?}", held("Settings"));
+    assert_eq!(held("Settings").len(), 6, "the clipboard write, the pane control, the notifications, the start of the answers and the two native logins: {:?}", held("Settings"));
     let on_the_dropdown: Vec<&str> = entries.iter().filter(|e| group_of(e.cmd).is_none()).map(|e| e.label.as_str()).collect();
     assert_eq!(on_the_dropdown, ["New local browser tab", "Start screen", "Capture screen to input", "About Lico"]);
 }

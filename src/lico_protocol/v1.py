@@ -147,6 +147,7 @@ SETTINGS_BODY = _obj(
         "last_view": {"type": STR, "enum": ["start", "files", "session"]},
         "last_session": {"type": STR, "min_length": 1, "max_length": 64, "charset": "id"},
         "show_hidden": {"type": BOOL},
+        "fold_answers": {"type": BOOL},    # whether the transcript begins an agent answer and a peer text folded (M25-P09): on by default, the host says it only when it is off
         "agent_panes": {"type": BOOL},    # whether an agent is offered the `pane` tool (M24-P05b): on by default, the host always says; false while paused (M24-P07) too
         "agent_panes_paused": {"type": INT, "minimum": 1, "maximum": 300},    # only while the person has paused it (the stop key, M24-P07): the seconds left
         "native_claude": {"type": STR, "enum": ["on", "off"]},
@@ -522,6 +523,7 @@ REQUESTS = {
             "last_view": {"type": STR, "enum": ["start", "files", "session"]},
             "last_session": {"type": STR, "max_length": 64, "charset": "id"},
             "show_hidden": {"type": BOOL},
+            "fold_answers": {"type": BOOL},
             "dir_history": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_HISTORY_ITEM},
             "dir_history_idx": {"type": INT, "minimum": 0, "maximum": MAX_DIR_NAV - 1},
             "dir_bookmarks": {"type": "array", "max_items": MAX_DIR_NAV, "items": DIR_BOOKMARK_ITEM},
@@ -680,6 +682,7 @@ def validate_request(op: str, message: dict) -> list[str]:
             "last_view",
             "last_session",
             "show_hidden",
+            "fold_answers",
             "dir_history",
             "dir_history_idx",
             "dir_bookmarks",

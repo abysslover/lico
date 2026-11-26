@@ -9,6 +9,7 @@
 //!
 //! The whole conversation of a session (`hand_over`, S05) is a transfer too: the host reads the program's own record (`provider_record`), and the text is always a file in the receiver's folder.
 //! Only a person asks for it, and the session whose conversation it is must be named: nobody can have it read for them by saying so in a tool call.
+//! An `agy` session hands over only the number of its conversation (`M25-P09`, the owner's words of 2026-11-26): the host reads no record and stores no file, and the note says so.
 
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -366,8 +367,28 @@ fn recorded(shared: &Shared, id: &str) -> Result<(PathBuf, String), &'static str
     Ok((crate::provider_record::home_of(shared, account.as_deref()).ok_or("busy")?, thread))
 }
 
+/// The number the program of an `agy` session gave its conversation, to be handed over instead of the text (`M25-P09`): none when `id` is not an `agy` session (it is a Claude one, or nothing),
+/// `no_conversation_yet` when the program has not told one, `bad_request` for one of a shape the host does not keep (so that nothing odd is written into another session's input).
+fn agy_number(shared: &Shared, id: &str) -> Option<Result<String, &'static str>> {
+    let found = core::find(shared, id)?;
+    let s = found.lock().unwrap();
+    if s.purged || s.provider != "agy" {
+        return None;
+    }
+    Some(match s.codex_thread.as_deref() {
+        None => Err("no_conversation_yet"),
+        Some(number) if crate::provider_record::valid_provider_session(number) => Ok(number.to_string()),
+        Some(_) => Err("bad_request"),
+    })
+}
+
+/// What the receiver of an `agy` conversation's number is told, under the host's own header: the number and that nothing else is given.
+fn agy_note(number: &str) -> String {
+    format!("agy conversation number: {number}\n(only the number is given: the text of the conversation is not sent)")
+}
+
 /// The whole conversation of session `from`, read from its program's record and handed to session `to` as a file in `to`'s own folder. The receiver is looked at before the record is opened;
-/// no lock is held while it is read.
+/// no lock is held while it is read. From an `agy` session it is only the number of the conversation, as a short note in the input.
 pub fn hand_over(shared: &Shared, from: &str, to: &str) -> Reply {
     hand_over_gated(shared, from, to, &READING)
 }
@@ -376,6 +397,11 @@ pub fn hand_over(shared: &Shared, from: &str, to: &str) -> Reply {
 pub(crate) fn hand_over_gated(shared: &Shared, from: &str, to: &str, gate: &AtomicUsize) -> Reply {
     if from == to {
         return Err("bad_request");
+    }
+    if let Some(number) = agy_number(shared, from) {
+        let number = number?;
+        receiver_of(shared, to)?;
+        return deliver(shared, Some(from), to, "conversation", &agy_note(&number), By::Person, false);
     }
     let (home, id) = recorded(shared, from)?;
     receiver_of(shared, to)?;

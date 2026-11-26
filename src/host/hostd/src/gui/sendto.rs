@@ -159,13 +159,23 @@ impl App {
         self.ui.rows.iter().find(|r| r.session == id).is_some_and(|r| r.provider == "claude")
     }
 
+    /// Whether the session is an `agy` one, which hands over only the number of its conversation and never its text (`M25-P09`, the owner's words of 2026-11-26).
+    fn gives_number_only(&self, id: &str) -> bool {
+        self.ui.rows.iter().find(|r| r.session == id).is_some_and(|r| r.provider == "agy")
+    }
+
+    /// Whether the session has a conversation to hand over, as a whole (Claude) or as its number (`agy`).
+    fn has_conversation(&self, id: &str) -> bool {
+        self.has_record(id) || self.gives_number_only(id)
+    }
+
     /// Why a conversation cannot be handed over now (the menu greys the entry with this), if it cannot.
     pub(crate) fn hand_reason(&self) -> Option<&'static str> {
         if self.selected_row().is_none() {
             return Some("no session is open");
         }
-        if !self.has_record(&self.session) {
-            return Some("only a Claude session has a record to hand over");
+        if !self.has_conversation(&self.session) {
+            return Some("only a Claude or an agy session has a conversation to hand over");
         }
         if self.ui.numbered.len() < 2 {
             return Some("needs two sessions");
@@ -221,7 +231,11 @@ impl App {
             ("What to send".to_string(), Pick::Nothing),
             (format!("  {} D  Draft text {}", mark(s.source == Source::Draft), describe(&s.draft, false, "the input box is empty")), Pick::Source(Source::Draft)),
             (format!("  {} L  Selected lines {}", mark(s.source == Source::Lines), describe(&s.lines, true, "none selected")), Pick::Source(Source::Lines)),
-            (format!("  {} C  Whole conversation {}", mark(s.source == Source::Conversation), if self.has_record(&s.from) { "(the host reads the program's record)" } else { "(only a Claude session has a record)" }), Pick::Source(Source::Conversation)),
+            if self.gives_number_only(&s.from) {
+                (format!("  {} C  Conversation number (only the number is sent, never its text)", mark(s.source == Source::Conversation)), Pick::Source(Source::Conversation))
+            } else {
+                (format!("  {} C  Whole conversation {}", mark(s.source == Source::Conversation), if self.has_record(&s.from) { "(the host reads the program's record)" } else { "(only a Claude or an agy session has one)" }), Pick::Source(Source::Conversation))
+            },
             ("To".to_string(), Pick::Nothing),
         ];
         for (number, row) in self.others(&s.from) {
@@ -229,7 +243,10 @@ impl App {
             rows.push((format!("  {} {}  {}  {}  {}", mark(s.to.as_deref() == Some(row.session.as_str())), number, row.title(24).trim_end(), row.provider, state), Pick::To(number)));
         }
         let (whole, text) = (s.source == Source::Conversation, if s.source == Source::Draft { &s.draft } else { &s.lines });
-        let how = if whole {
+        let number = whole && self.gives_number_only(&s.from);
+        let how = if number {
+            "inline: only the number of the conversation. Its text is not sent.".to_string()
+        } else if whole {
             "as a file. The host reads the program's record when you press Enter. Nothing is cut up to 32 MiB.".to_string()
         } else if text.len() <= INLINE_MAX {
             format!("inline ({} is at most {} KiB)", size_text(text.len()), INLINE_MAX / 1024)
@@ -238,15 +255,15 @@ impl App {
         };
         rows.push((String::new(), Pick::Nothing));
         rows.push((format!("Delivery  {how}"), Pick::Nothing));
-        if whole {
+        if whole && !number {
             rows.push(("Careful   The whole conversation goes to another session. It may hold what you or a tool typed:".to_string(), Pick::Nothing));
             rows.push(("          keys, passwords, other people's data. To send only part of it, choose L.".to_string(), Pick::Nothing));
         }
         let to = s.to.as_ref().map(|id| self.send_name(id));
         rows.push((
-            match (&to, text.len() <= INLINE_MAX && !whole) {
+            match (&to, text.len() <= INLINE_MAX && (!whole || number)) {
                 (None, _) => "          Pick a session to see where it goes.".to_string(),
-                (Some(to), true) => format!("          The text goes into '{to}' as a {} that says it came from '{}'.", if s.source == Source::Draft { "message" } else { "selection" }, self.send_name(&s.from)),
+                (Some(to), true) => format!("          The {} goes into '{to}' as a {} that says it came from '{}'.", if number { "number" } else { "text" }, match s.source { Source::Draft => "message", Source::Lines => "selection", Source::Conversation => "conversation" }, self.send_name(&s.from)),
                 (Some(to), false) => format!("          Saved in the handoff folder of '{to}'; it gets the path and the first lines."),
             },
             Pick::Nothing,
@@ -286,7 +303,7 @@ impl App {
             Source::Draft if s.draft.is_empty() => Some("The input box was empty when this opened: there is no draft to send.".to_string()),
             Source::Lines if s.lines.is_empty() => Some("No lines were selected when this opened.".to_string()),
             Source::Lines if s.lines.len() > MAX_TEXT => Some(format!("The selected lines are {}: one input holds at most {} KiB.", size_text(s.lines.len()), MAX_TEXT / 1024)),
-            Source::Conversation if !self.has_record(&s.from) => Some("Only a Claude session has a record the host can read: send the draft or selected lines instead.".to_string()),
+            Source::Conversation if !self.has_conversation(&s.from) => Some("Only a Claude or an agy session has a conversation to hand over: send the draft or selected lines instead.".to_string()),
             _ => None,
         };
         match refusal {
@@ -364,7 +381,7 @@ impl App {
         let how = if reply["delivery"] == json!("file") { "as a file" } else { "inline" };
         let state = reply["receiver"].as_str().unwrap_or("idle").replace('_', " ");
         let size = size_text(reply["size"].as_u64().unwrap_or(text.len() as u64) as usize);
-        let said = format!("{} '{}' ({how}, {size}); it was {state}.", if whole { "Handed over the conversation to" } else { "Sent to" }, self.send_name(&to));
+        let said = format!("{} '{}' ({how}, {size}); it was {state}.", if whole && self.gives_number_only(&from) { "Handed over the number of the conversation to" } else if whole { "Handed over the conversation to" } else { "Sent to" }, self.send_name(&to));
         self.panel_close(); // gives the draft back to the box ...
         if source == Source::Draft {
             self.ed.clear(); // ... and a draft that was delivered is not a draft any more
@@ -501,4 +518,4 @@ pub fn tint(list: AttrsList, text: &str) -> AttrsList {
 
 #[cfg(test)]
 #[path = "sendto_tests.rs"]
-pub(super) mod tests;
+pub(in crate::gui) mod tests;
