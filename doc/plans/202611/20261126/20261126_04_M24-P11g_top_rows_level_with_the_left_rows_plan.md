@@ -1,6 +1,6 @@
 # M24-P11g Plan — The Top Icons Level With The Two Rows At The Left
 
-- Status: draft (2026-11-26)
+- Status: done (2026-11-26), code `3272548`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P11g-top-rows-level` from `phase/M24-P11h-time-on-narrow-windows`
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -44,14 +44,25 @@ The icons keep their size (the owner asked for the icons to grow in `M24-P09` an
 
 ## Steps
 
-1. [ ] **Tests first, run red**: `toolbar.rs` (`top_rows`, `bar_heights`), the geometry test above on the real drawing (it fails today: 22 against 24 and 65 against 72), the Chats page size.
-2. [ ] **The change** in `toolbar.rs`, `sidebar_render.rs`, `sidebar_chats.rs` (and the lines joined in `ui.rs` if any).
-3. [ ] **Mutation checks**, one edit at a time on `top_rows` and the lines changed in the sidebar.
-4. [ ] **Other tests**: the existing window tests that read positions of the top rows, the oracle at the scales, the suite.
-5. [ ] **Words**: the guide.
-6. [ ] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report with the screenshot of both tabs.
+1. [x] **Tests first, run red**: `toolbar.rs` (`top_rows`, `bar_heights`), the geometry test above on the real drawing (it fails today: 22 against 24 and 65 against 72), the Chats page size.
+2. [x] **The change** in `toolbar.rs`, `sidebar_render.rs`, `sidebar_chats.rs` (and the lines joined in `ui.rs` if any).
+3. [x] **Mutation checks**, one edit at a time on `top_rows` and the lines changed in the sidebar.
+4. [x] **Other tests**: the existing window tests that read positions of the top rows, the oracle at the scales, the suite.
+5. [x] **Words**: the guide.
+6. [x] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report with the screenshot of both tabs.
 
 ## Not decided here (the owner's, written in the report)
 
 - Whether "2줄" meant the two rows beside the icons (this plan) or the tabs row and the nav row (the icons would shrink).
 - The menu bar is 2 pixels taller (`lh + 6s`); the left rows 1 pixel shorter (the text button's height, not `lh + 2s`) and their gaps 2s: the window is a little tighter at the top left.
+
+## Results (2026-11-26)
+
+- **Tests first**: the numbers of `top_rows` and `bar_heights`, the Chats page size, the real rectangles and the two drawn lines at the scales 1, 1.25, 1.5 and 2 in both tabs, the rows under the block and the first card were written before the code and run red against the old geometry; then green.
+- **The commit** `3272548`: `gui/toolbar.rs` (`TopRows`, `top_rows`, `bar_heights`, `draw_left_block`, the line under the menu bar), `gui/sidebar_render.rs` and `gui/sidebar_chats.rs` (the rows take their numbers from `top_rows`), `gui/toprows_tests.rs` (new), `tests/test_top_rows_window.py` (new); `ui.rs` keeps its 1114 lines (`mod toolbar;` became `pub(super) mod toolbar;` on the same line).
+- **Tests now**: unit: 5 new in `toprows_tests` (the numbers of `top_rows` and `bar_heights` at five scales; the Chats page size at its edges at scales 1 and 2; the real rectangles, the two lines and the band's tone at the left edge at the scales 1, 1.25, 1.5 and 2 in both tabs; the filter row of the Directories tab and the first Chats card 2 units under the block); one old test (the toolbar icons' height) changed with its reasons; the window test `tests/test_top_rows_window.py` (the lines in both tabs, level, read from the pixels at both ends) and two window tests with the old row height changed. The whole binary: 1,350 unit tests pass (12 ignored)
+- **Mutation checks**: **35 mutants** of the new lines (`toolbar.rs`: the height of the first row, of a row and of the gap, the second block's total, `bar_heights`, the band and the two lines of `draw_left_block`, the line under the menu bar, the room above and below an icon; `sidebar_render.rs` and `sidebar_chats.rs`: the tabs' bottom, the gap above, the height of each row, the gap between them, the start of the rows and of the list under the block, the call that draws the block, the page size), each one edit on a restored tree whose files were checked by their sha256 after each; the unit tests of `toprows_tests` and of the toolbar icons run against each. The first run: **34 killed, 1 survived**: the band of the second block starting a gap lower (the strip under the tabs' line kept the old ground, and no test read a pixel of it). A test now reads the band's tone at the left edge on the first row of the band, in the gap between the two rows and on its last row, at the four scales; the mutant is killed. Three mutants (the line under the menu bar dropped, an icon's room below changed, no gap between the two left rows) were also run through the window test `tests/test_top_rows_window.py`, which was written after the code: all three failed it (killed). Result: 35 of 35 killed, none written down as equivalent.
+- **The commit hook**: three runs. The first ran the suite and **failed one window test** (`tests/test_toolbar_icons_and_bottom_rows.py` told the scale from the old row height, `font + 8`; it is `font + 10` now: the test and `tests/test_directory_pagination.py`, which made the same assumption, were changed and say why) and was also over the build's peak memory, **1936.7 MiB over the bound of 1536 MiB**, as the runs of P09 to P11d and P11h were. The second run (247 tests in 78 files, 157.5 s, peak 967.2 MiB of the workers) **failed one test that has nothing to do with this change**: `tests/test_session_memory.py` expects the list's total line to begin `mem sessions` and read `free 19% sessions 160M ...`, because the line shows the free memory of the machine when it is under 20 percent, and another session was running `cargo test --workspace` on the same machine at that moment; the test passed in the run of P11h and passed again in the third run (1 test, 10.7 s, the other 87 files from receipts), which accepted the commit. The bounds (180 s, 1,536 MiB, 300 s) stay, never raised or bypassed. The test is host-load dependent: the owner may want it to fix the free memory it expects (a later small phase, not done here)
+- **Looked at**: a real window in a private display, both tabs: the two lines run across the window at one height.
+- **The owner's window**: `~/bin/lico` is rebuilt from this tree; the window has to be restarted (`lico gui`).
+- **Next**: P11f (the status line only at the bottom, a border for the chat), P11e (a file under the pointer), then the release `0.8.2`.
