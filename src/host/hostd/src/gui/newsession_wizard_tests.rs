@@ -211,19 +211,19 @@ fn app_with_form() -> App {
 #[test]
 fn the_home_session_leaves_the_folder_out_of_the_steps_and_of_the_request() {
     let mut app = opened(true, &[("a1", "claude")]);
-    assert_eq!(title(&app), "New Home session - step 1 of 3 - Choose");
+    assert_eq!(title(&app), "New Bot session - step 1 of 3 - Choose");
     assert_eq!(form(&app)["wizard"]["home"], true);
     app.wizard_pick(0);
     assert_eq!(rows(&app), ["Account", "SignIn", "Back", "Next"]);
-    assert_eq!(title(&app), "New Home session - step 2 of 3 - Account");
+    assert_eq!(title(&app), "New Bot session - step 2 of 3 - Account");
     assert_eq!(form(&app)["focus"], "Account");
     let (_, body) = app.panel_view().unwrap();
-    assert!(body.iter().any(|l| l.contains("Home session") && l.contains("scratch workspace")), "the step says what a Home session is: {body:?}");
+    assert!(body.iter().any(|l| l.contains("Bot session") && l.contains("scratch workspace")), "the step says what a Bot session is: {body:?}");
     app.wizard_next();
     assert_eq!(page(&app), 2);
     let p = app.ui.panel.as_ref().unwrap();
     let request = request_of(p, p.form.as_ref().unwrap());
-    assert!(request.get("cwd").is_none(), "a Home session has no folder: {request}");
+    assert!(request.get("cwd").is_none(), "a Bot session has no folder: {request}");
     assert_eq!(request["account"], "a1");
 }
 

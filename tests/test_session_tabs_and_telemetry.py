@@ -105,22 +105,22 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
 
             # 2. Create a dedicated Home general session via the toolbar's house button (M22-P04: the tab row has no `+G` any more)
             assert "new_global_rect" not in u0["tabs"]
-            new_g_rect = next(b for b in u0["toolbar"]["buttons"] if b["id"] == "new_home")["rect"]
+            new_g_rect = next(b for b in u0["toolbar"]["buttons"] if b["id"] == "new_bot")["rect"]
             w.click(*_centre(new_g_rect))
             uf = wait_for(
                 lambda: (u := w.ui())
                 and u["panel"]
-                and u["panel"]["title"] == "New Home session - step 1 of 3 - Choose"
+                and u["panel"]["title"] == "New Bot session - step 1 of 3 - Choose"
                 and u["panel"]["form"]["wizard"]["home"] is True
                 and u
             )
             assert uf["panel"]["form"]["folder"] == ""
             assert uf["telemetry"]["shown"] is False  # hidden while modal panel owns prompt row
 
-            # M22-P04b: the wizard: the icon that has the focus, Next on the account step (it says what a Home session is), then Enter on the name row launches the Home session
-            _fast_key(w, "shift+Return")                                  # (a plain Enter starts the Home session at once, M24-P02)
+            # M22-P04b: the wizard: the icon that has the focus, Next on the account step (it says what a Bot session is), then Enter on the name row launches the Bot session
+            _fast_key(w, "shift+Return")                                  # (a plain Enter starts the Bot session at once, M24-P02)
             us = wait_for(lambda: (u := w.ui()) and u["panel"] and u["panel"]["form"]["wizard"]["page"] == 1 and u)
-            assert any("Home session" in line for line in us["panel"]["body"])
+            assert any("Bot session" in line for line in us["panel"]["body"])
             _fast_key(w, "Return")
             wait_for(lambda: (u := w.ui()) and u["panel"] and u["panel"]["form"]["wizard"]["page"] == 2 and u)
             _fast_key(w, "Return")

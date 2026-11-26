@@ -107,7 +107,7 @@ impl App {
         (self.sidebar_shown() && !sb.global_scope).then(|| path_text(sb.ssh_host.as_deref(), &sb.cwd, None))
     }
 
-    /// The working directory of the active session (none for a Home session).
+    /// The working directory of the active session (none for a Bot session).
     fn path_session(&self) -> Option<String> {
         let row = self.ui.rows.iter().find(|r| r.session == self.session)?;
         (!row.cwd.is_empty()).then(|| path_text(Some(row.ssh_host.as_str()), &row.cwd, None))

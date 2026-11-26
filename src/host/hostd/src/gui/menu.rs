@@ -179,7 +179,7 @@ impl App {
             1 => {
                 let two = if sessions >= 2 { None } else { Some("needs two sessions") };
                 let mut v = vec![
-                    Self::entry("New Home session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
+                    Self::entry("New Bot session", "Ctrl+Shift+N", Cmd::NewGlobalSession, None),
                     Self::entry("New browser tab", "", Cmd::NewBrowser, panel_reason),
                     Self::entry("New local browser tab", "", Cmd::NewLocalBrowser, panel_reason),
                     Self::entry("Reopen closed tab", "", Cmd::ReopenTab, panel_reason),

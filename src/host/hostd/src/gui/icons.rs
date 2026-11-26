@@ -1,4 +1,4 @@
-//! The icons of the window (`M22-P04`, `M22-P04b`, `M23-P03`): a plus (New session), a house (New Home session), a browser window (Open browser), a person (Accounts), the three things a session
+//! The icons of the window (`M22-P04`, `M22-P04b`, `M23-P03`): a plus (New session), a robot's head (New Bot session), a browser window (Open browser), a person (Accounts), the three things a session
 //! can be (Claude, Codex, Local LLM) and a screen with a prompt (Terminal), drawn by the window itself from rectangles, so that no font glyph has to be checked and each icon is the same pixels in every font. Each is drawn
 //! inside a rectangle, centred, in one colour; the caller draws the button's own fill (and the colour that says it is hovered or greyed). Nothing is drawn outside the rectangle.
 
@@ -7,7 +7,7 @@ use super::super::controls::{fill, Rect};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Icon {
     Plus,
-    House,
+    Bot,
     Browser,
     /// A person: a head over shoulders (the Accounts screen).
     Account,
@@ -42,7 +42,7 @@ impl Icon {
     pub(crate) fn name(self) -> &'static str {
         match self {
             Icon::Plus => "plus",
-            Icon::House => "house",
+            Icon::Bot => "bot",
             Icon::Browser => "browser",
             Icon::Account => "account",
             Icon::Claude => "claude",
@@ -75,7 +75,7 @@ impl Icon {
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 20] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload, Icon::Moon, Icon::Sun, Icon::Auto];
+    pub(crate) const ALL: [Icon; 20] = [Icon::Plus, Icon::Bot, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload, Icon::Moon, Icon::Sun, Icon::Auto];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -120,7 +120,7 @@ fn polygon(put: &mut Put, pts: &[(f32, f32)], col: u32) {
     }
 }
 
-/// Draws `icon` centred in `r` in `ink`; `ground` is the colour of the button under it (the door of the house and the inside of the browser window are that colour).
+/// Draws `icon` centred in `r` in `ink`; `ground` is the colour of the button under it (the eyes and the mouth of the bot and the inside of the browser window are that colour).
 pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: Rect, ink: u32, ground: u32) {
     let (w, h) = (r[2] - r[0], r[3] - r[1]);
     let size = w.min(h);
@@ -145,18 +145,27 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             put(x0, my - t * 0.5, x1, my - t * 0.5 + t, ink);
             put(mx - t * 0.5, y0, mx - t * 0.5 + t, y1, ink);
         }
-        Icon::House => {
-            // the roof is a triangle, one row of pixels at a time; the body sits under it with a door of the button's colour
-            let roof_h = (side * 0.46).round();
-            let rows = roof_h as usize;
-            for i in 0..rows {
-                let half = (side * 0.5) * (i as f32 + 1.0) / roof_h;
-                put((cx - half).round(), y0 + i as f32, (cx + half).round(), y0 + i as f32 + 1.0, ink);
+        Icon::Bot => {
+            // a robot's head (`M25-P10`): an antenna with a ball on it, a box with an ear on each side, and two square eyes and a mouth cut out of the box in the button's colour
+            let ear = (side * 0.10).round().max(2.0);
+            let (hx0, hx1) = (x0 + ear, x1 - ear);
+            let (hy0, hy1) = ((y0 + side * 0.24).round(), y1);
+            let (head_w, head_h) = (hx1 - hx0, hy1 - hy0);
+            put(hx0, hy0, hx1, hy1, ink);
+            let (ey0, ey1) = ((hy0 + head_h * 0.28).round(), (hy0 + head_h * 0.68).round());
+            put(x0, ey0, hx0, ey1, ink);
+            put(hx1, ey0, x1, ey1, ink);
+            let stem = (side * 0.10).round().max(2.0);
+            put((cx - stem * 0.5).round(), (y0 + side * 0.10).round(), (cx - stem * 0.5).round() + stem, hy0 + 1.0, ink); // whole pixels, and one row into the head, so that no row is lost between them
+            disc(&mut put, (cx, y0 + side * 0.09), side * 0.09, ink);
+            let eye = (side * 0.13).round().max(2.0);
+            let eye_top = (hy0 + head_h * 0.24).round();
+            for centre in [hx0 + head_w * 0.28, hx0 + head_w * 0.72] {
+                put((centre - eye * 0.5).round(), eye_top, (centre - eye * 0.5).round() + eye, eye_top + eye, ground);
             }
-            let body_half = side * 0.38;
-            put((cx - body_half).round(), y0 + roof_h, (cx + body_half).round(), y1, ink);
-            let door = (side * 0.11).round().max(1.0);
-            put((cx - door).round(), y1 - (side * 0.30).round(), (cx + door).round(), y1, ground);
+            let (mouth_h, mouth_w) = ((side * 0.08).round().max(2.0), (head_w * 0.46).round());
+            let mouth_top = (hy0 + head_h * 0.66).round();
+            put((cx - mouth_w * 0.5).round(), mouth_top, (cx - mouth_w * 0.5).round() + mouth_w, mouth_top + mouth_h, ground);
         }
         Icon::Browser => {
             // a window: a frame, a title band across the top and a line for the address in it
@@ -413,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn the_plus_and_the_house_are_centred_and_the_plus_is_a_cross() {
+    fn the_plus_and_the_bot_are_centred_and_the_plus_is_a_cross() {
         let (plus, _) = canvas(Icon::Plus);
         let px = inked(&plus);
         let (min_x, max_x) = (px.iter().map(|p| p.0).min().unwrap(), px.iter().map(|p| p.0).max().unwrap());
@@ -421,11 +430,53 @@ mod tests {
         assert!((min_x + max_x).abs_diff(64) <= 2 && (min_y + max_y).abs_diff(64) <= 2, "centred at 32,32: x {min_x}..{max_x}, y {min_y}..{max_y}");
         assert!(px.contains(&(32, 22)) && px.contains(&(32, 41)) && px.contains(&(22, 32)) && px.contains(&(41, 32)), "four arms");
         assert!(!px.contains(&(24, 24)) && !px.contains(&(40, 40)), "and a cross, not a square");
-        let (house, _) = canvas(Icon::House);
-        let hp = inked(&house);
-        let (hmin, hmax) = (hp.iter().map(|p| p.0).min().unwrap(), hp.iter().map(|p| p.0).max().unwrap());
-        assert!((hmin + hmax).abs_diff(64) <= 2, "the house is centred: {hmin}..{hmax}");
-        assert!(house[41 * 64 + 32] == BTN, "the door is the colour of the button");
+        let (bot, _) = canvas(Icon::Bot);
+        let bp = inked(&bot);
+        let (bmin, bmax) = (bp.iter().map(|p| p.0).min().unwrap(), bp.iter().map(|p| p.0).max().unwrap());
+        assert!((bmin + bmax).abs_diff(64) <= 2, "the bot is centred: {bmin}..{bmax}");
+    }
+
+    /// The pieces of the button's colour that the ink shuts in (4-connected): what is cut out of a picture, as the eyes of a face.
+    fn holes(buf: &[u32], n: usize) -> usize {
+        let mut seen = vec![false; n * n];
+        let flood = |start: usize, seen: &mut Vec<bool>| {
+            let mut stack = vec![start];
+            seen[start] = true;
+            while let Some(i) = stack.pop() {
+                let (x, y) = (i % n, i / n);
+                for (nx, ny) in [(x.wrapping_sub(1), y), (x + 1, y), (x, y.wrapping_sub(1)), (x, y + 1)] {
+                    if nx < n && ny < n && buf[ny * n + nx] != INK && !seen[ny * n + nx] {
+                        seen[ny * n + nx] = true;
+                        stack.push(ny * n + nx);
+                    }
+                }
+            }
+        };
+        flood(0, &mut seen); // the outside: the corner of the canvas
+        let mut count = 0;
+        for start in 0..n * n {
+            if buf[start] != INK && !seen[start] {
+                count += 1;
+                flood(start, &mut seen);
+            }
+        }
+        count
+    }
+
+    #[test]
+    fn the_bot_is_one_head_with_an_antenna_two_eyes_and_a_mouth_cut_out_of_it() {
+        // the owner's words of 2026-11-26: a robot, not a house; one piece of ink, and the three things cut out of it in the button's colour
+        let (buf, _) = canvas_n(Icon::Bot, 128);
+        assert_eq!(pieces(&buf, 128), 1, "the antenna, the ears and the head are one piece");
+        assert_eq!(holes(&buf, 128), 3, "two eyes and a mouth");
+        let rows: Vec<usize> = (0..128).filter(|&y| (0..128).any(|x| buf[y * 128 + x] == INK)).collect();
+        let width = |y: usize| (0..128).filter(|&x| buf[y * 128 + x] == INK).count();
+        let (top, widest) = (width(rows[0]), rows.iter().map(|&y| width(y)).max().unwrap());
+        assert!(top * 3 < widest, "the antenna is a narrow tip over a wide head: {top} against {widest}");
+        assert!(widest >= width(*rows.last().unwrap()) + 8, "an ear on each side sticks out of the head: {widest} against {}", width(*rows.last().unwrap()));
+        let inked: Vec<(usize, usize)> = inked_n(&buf, 128);
+        let (min_y, max_y) = (inked.iter().map(|p| p.1).min().unwrap(), inked.iter().map(|p| p.1).max().unwrap());
+        assert!(max_y - min_y + 1 >= 56, "it fills the size of the other pictures: {min_y}..{max_y}");
     }
 
     #[test]
@@ -454,7 +505,7 @@ mod tests {
     #[test]
     fn the_pictures_have_the_pieces_they_are_made_of() {
         // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
-        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Agy, 2), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1), (Icon::Moon, 1), (Icon::Sun, 9), (Icon::Auto, 1)];
+        let want = [(Icon::Plus, 1), (Icon::Bot, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Agy, 2), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1), (Icon::Moon, 1), (Icon::Sun, 9), (Icon::Auto, 1)];
         for (icon, n) in want {
             let (buf, _) = canvas_n(icon, 128);
             assert_eq!(pieces(&buf, 128), n, "{icon:?}");

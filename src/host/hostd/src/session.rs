@@ -624,7 +624,7 @@ impl Session {
     pub fn oldest(&self) -> i64 { self.log.oldest(self.next_seq) }
     pub fn mem_start(&self) -> i64 { self.window.front().map_or(self.next_seq, |r| r.0) }
     pub fn log_view(&self) -> LogView { self.log.view() }
-    pub fn stamps(&self, from: i64, until: i64) -> Vec<(i64, u64)> { self.log.times.stamps().between(from, until, crate::stamps::MAX_REPLY) }
+    pub fn stamps(&self, from: i64, until: i64) -> crate::stamps::Answer { crate::stamps::answer(self.log.times.stamps(), &self.log.view.segments, &|first| Log::path(&self.log.view, first), from, until) }
     pub fn purge_log(&mut self) { self.log.purge(); }
     pub fn disk_bytes(&self) -> usize { self.log.disk_bytes() }
 

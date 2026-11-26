@@ -5,6 +5,13 @@ fn reply(session: &str, from: i64, until: i64, runs: &[(i64, u64)]) -> Value {
     json!({"ok": 1, "session": session, "stamps": runs.iter().map(|r| json!([r.0, r.1])).collect::<Vec<_>>(), "from": from, "until": until})
 }
 
+fn reply_with(session: &str, from: i64, until: i64, runs: &[(i64, u64)], approx: &[(i64, u64)], exact_from: Value) -> Value {
+    let mut value = reply(session, from, until, runs);
+    value["approx"] = json!(approx.iter().map(|r| json!([r.0, r.1])).collect::<Vec<_>>());
+    value["exact_from"] = exact_from;
+    value
+}
+
 fn asked(request: Option<String>) -> Option<(String, i64, i64)> {
     let value: Value = serde_json::from_str(&request?).unwrap();
     assert_eq!(value["op"], "stamps");
@@ -202,6 +209,50 @@ fn a_new_session_keeps_the_form_and_the_gutter_the_last_frame_drew_until_the_nex
     assert_eq!((json["gutter"].as_u64(), json["form"].as_str()), (Some(100), Some("clock")), "the dump says what the last frame drew, not a blank, until the next frame draws again");
 }
 
+#[test]
+fn the_lines_below_the_first_recorded_one_carry_an_estimated_time_and_say_so() {
+    let mut times = Times::default();
+    assert!(asked(times.next("s", Some((0, 20)), 0)).is_some());
+    assert!(times.on_reply(&reply_with("s", 0, 20, &[(10, 1500)], &[(0, 1000), (5, 1200)], json!(10))));
+    assert_eq!((times.marked(2), times.marked(7), times.marked(9), times.marked(10), times.marked(19)), (Some((1000, true)), Some((1200, true)), Some((1200, true)), Some((1500, false)), Some((1500, false))));
+    assert_eq!(times.json()["approx_below"], 10, "the dump says where the recorded times begin");
+    assert_eq!((times.marked(20), times.marked(-1)), (None, None), "outside what was asked for the window says nothing");
+}
+
+#[test]
+fn a_recorded_run_replaces_an_estimate_of_the_same_line() {
+    let mut times = Times::default();
+    assert!(asked(times.next("s", Some((0, 20)), 0)).is_some());
+    assert!(times.on_reply(&reply_with("s", 0, 20, &[(10, 2000)], &[(10, 1000)], json!(10))));
+    assert_eq!(times.marked(10), Some((2000, false)), "a line named in both lists has the time that was recorded");
+}
+
+#[test]
+fn a_host_that_says_nothing_of_estimates_marks_none_and_one_with_nothing_recorded_marks_every_line() {
+    let old = known(0, 10, &[(0, 1000)]);
+    assert_eq!((old.marked(3), old.json()["approx_below"].clone()), (Some((1000, false)), Value::Null), "an older host: the reply has no new field, every time is as it was");
+    let mut none = Times::default();
+    assert!(asked(none.next("s", Some((0, 10)), 0)).is_some());
+    assert!(none.on_reply(&reply_with("s", 0, 10, &[], &[(0, 1000)], Value::Null)));
+    assert_eq!((none.marked(4), none.json()["approx_below"].as_i64()), (Some((1000, true)), Some(i64::MAX)), "no run was recorded: every time is an estimate");
+    let mut odd = Times::default();
+    assert!(asked(odd.next("s", Some((0, 10)), 0)).is_some());
+    assert!(odd.on_reply(&reply_with("s", 0, 10, &[(0, 1000)], &[(0, 900)], json!("soon"))));
+    assert_eq!(odd.json()["approx_below"], Value::Null, "a number that is not one is not believed");
+}
+
+#[test]
+fn what_the_window_knows_of_the_estimate_is_let_go_with_the_session_and_follows_the_newest_answer() {
+    let mut times = Times::default();
+    assert!(asked(times.next("s", Some((0, 10)), 0)).is_some());
+    assert!(times.on_reply(&reply_with("s", 0, 10, &[], &[(0, 1000)], Value::Null)));
+    assert!(asked(times.next("s", Some((0, 20)), 20)).is_some());
+    assert!(times.on_reply(&reply_with("s", 10, 20, &[(12, 2000)], &[], json!(12))));
+    assert_eq!((times.marked(5), times.marked(15)), (Some((1000, true)), Some((2000, false))), "a line is an estimate when it lies below the newest answer's first recorded line");
+    assert!(asked(times.next("t", Some((0, 10)), 40)).is_some());
+    assert_eq!(times.json()["approx_below"], Value::Null, "another session starts again");
+}
+
 mod drawing {
     use super::super::*;
     use crate::gui::transcript::{ROLE_BOX, ROLE_BOX_TOP, ROLE_USER_BG, STYLE_AGENT, STYLE_CMD, STYLE_CMD_OUT, STYLE_USER};
@@ -217,7 +268,7 @@ mod drawing {
     }
 
     fn rows_of(roles: &[u16], known: impl Fn(i64) -> bool) -> Vec<(f32, String)> {
-        let at = |seq: i64| known(seq).then_some(seq as u64 + 1000);
+        let at = |seq: i64| known(seq).then_some((seq as u64 + 1000, false));
         stamp_rows(&lines(roles), &|raw| Some(raw as i64 * 10), &at, &|secs| format!("t{secs}")).into_iter().map(|(top, _, text)| (top, text)).collect()
     }
 
@@ -238,14 +289,21 @@ mod drawing {
         let roles = [REPLY, USER, REPLY];
         assert_eq!(rows_of(&roles, |seq| seq != 10), [(0.0, "t1000".to_string()), (40.0, "t1020".to_string())]);
         assert_eq!(rows_of(&roles, |_| false), []);
-        let none = stamp_rows(&lines(&roles), &|_| None, &|_| Some(1), &|_| "x".to_string());
+        let none = stamp_rows(&lines(&roles), &|_| None, &|_| Some((1, false)), &|_| "x".to_string());
         assert!(none.is_empty(), "a line that has no sequence number has no time");
     }
 
     #[test]
     fn the_rows_keep_the_top_and_the_bottom_of_the_line() {
-        let rows = stamp_rows(&[(10.5, 31.25, 0, REPLY)], &|_| Some(0), &|_| Some(7), &|s| s.to_string());
+        let rows = stamp_rows(&[(10.5, 31.25, 0, REPLY)], &|_| Some(0), &|_| Some((7, false)), &|s| s.to_string());
         assert_eq!(rows, [(10.5, 31.25, "7".to_string())]);
+    }
+
+    #[test]
+    fn an_estimate_is_written_with_a_tilde_before_its_time_and_a_recorded_time_without() {
+        let at = |seq: i64| Some((seq as u64 + 1000, seq < 20));
+        let rows = stamp_rows(&lines(&[REPLY, USER, REPLY]), &|raw| Some(raw as i64 * 10), &at, &|secs| format!("t{secs}"));
+        assert_eq!(rows.iter().map(|r| r.2.as_str()).collect::<Vec<_>>(), ["~t1000", "~t1010", "t1020"], "the lines 0 and 10 are below 20, the line 20 is not");
     }
 
     const W: usize = 300;
@@ -292,6 +350,16 @@ mod drawing {
 
     fn lit(buf: &[u32], x0: usize, x1: usize, y0: usize, y1: usize) -> usize {
         (y0..y1).map(|y| buf[y * W + x0..y * W + x1].iter().filter(|&&p| p != BACKGROUND).count()).sum()
+    }
+
+    #[test]
+    fn the_tilde_stands_in_the_free_column_before_the_time_and_the_time_does_not_move() {
+        let plain = drawn(&[(20.0, 38.0, "14:03:07".to_string())], 0, 100);
+        let marked = drawn(&[(20.0, 38.0, "~14:03:07".to_string())], 0, 100);
+        assert!(lit(&marked, 240, 248, 20, 38) > 3, "the tilde is in the column that the gutter keeps free at its left");
+        assert_eq!(lit(&plain, 240, 248, 20, 38), 0, "that column is empty without it");
+        let same = (20..38).all(|y| (252..W).all(|x| plain[y * W + x] == marked[y * W + x]));
+        assert!(same, "the digits are where they were: the mark takes no room from the time");
     }
 
     #[test]
@@ -355,6 +423,25 @@ mod room {
         gutter_clear(&mut buf, 100, 60, 20, 0, 500, &[(40.0, 90.0, 0, 0)]);
         let rows: Vec<usize> = (0..60).filter(|y| buf[y * 100 + 99] == crate::gui::BACKGROUND).collect();
         assert_eq!((rows.first(), rows.last()), (Some(&40), Some(&59)), "to the last row of the window and no further");
+    }
+
+    #[test]
+    fn a_time_below_the_first_recorded_line_is_painted_with_a_tilde_in_the_free_column_and_the_dump_says_so() {
+        let mut times = Times::seeded("s", 0, 10, &[(0, 1_795_000_000)]).below(1);
+        let mut fs = crate::gui::fonts::system(false);
+        let mut swash = cosmic_text::SwashCache::new();
+        let mut controls = crate::gui::controls::Controls::default();
+        controls.begin(1.0, 14.0);
+        let mut buf = vec![7u32; 400 * 100];
+        let hit = [(0.0, 18.0, 0usize, 0u16), (18.0, 36.0, 1, crate::gui::transcript::ROLE_USER_BG | crate::gui::transcript::STYLE_USER)];
+        times.paint(&mut controls, &mut fs, &mut swash, &mut buf, (400, 100), 200, 8.5, (0, 100), &hit, &|raw| Some(raw as i64));
+        let json = times.json();
+        let texts: Vec<&str> = json["drawn"].as_array().unwrap().iter().map(|r| r[2].as_str().unwrap()).collect();
+        assert_eq!(texts.len(), 2);
+        assert!(texts[0].starts_with("~20") && !texts[1].starts_with('~'), "the line 0 is below the line 1 that is recorded: {texts:?}");
+        assert_eq!(texts[0][1..], *texts[1], "the same second, the same text: the tilde is all that differs");
+        let lit = |y0: usize, y1: usize| (y0..y1).map(|y| buf[y * 400 + 200..y * 400 + 207].iter().filter(|&&p| p != 7).count()).sum::<usize>();
+        assert!(lit(0, 18) > 3 && lit(18, 36) == 0, "ink in the free column for the estimate only");
     }
 
     #[test]

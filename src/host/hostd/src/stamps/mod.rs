@@ -7,6 +7,10 @@
 //!
 //! A time is a gift, not a record of truth: a file that is missing, torn, unreadable or unwritable means "no time", it is never an error for the session.
 
+mod approx;
+
+pub use approx::{answer, Answer};
+
 use std::collections::HashSet;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -103,6 +107,11 @@ impl Stamps {
 
     pub fn last(&self) -> Option<(i64, u64)> {
         self.runs.last().copied()
+    }
+
+    /// The first run held: where the recorded times begin (the lines before it have none).
+    pub fn first(&self) -> Option<(i64, u64)> {
+        self.runs.first().copied()
     }
 }
 

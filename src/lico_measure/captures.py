@@ -63,10 +63,7 @@ class ProductWindow:
         if not self.answers_folded:
             self._answers_open()          # before a host of another build starts: a host reads its settings file once, when it starts
         if self.host_binary:              # a host started from another build, at the socket the window will look for
-            (self.runtime / "lico").mkdir(mode=0o700, exist_ok=True)
-            self.old_host = subprocess.Popen([str(self.host_binary), "host", "--socket", self.socket, "--state-dir", str(Path(self.directory) / "state" / "lico"),
-                                              "--sessions", str(self.host_sessions), "--producing", "0", *self.host_args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-            self.old_pid = json.loads(self.old_host.stdout.readline())["pid"]
+            self.start_host()
         if self.before_window:
             self.before_window(self)
         if not self.answers_folded:
@@ -82,6 +79,19 @@ class ProductWindow:
         self.events: queue.Queue = queue.Queue()
         threading.Thread(target=self._read, daemon=True).start()
         self._wait_ready()
+
+    def start_host(self) -> None:
+        """Starts the host of `host_binary` at the socket the window looks for (again after `stop_host`: it finds what the first one left)."""
+        (self.runtime / "lico").mkdir(mode=0o700, exist_ok=True)
+        self.old_host = subprocess.Popen([str(self.host_binary), "host", "--socket", self.socket, "--state-dir", str(Path(self.directory) / "state" / "lico"),
+                                          "--sessions", str(self.host_sessions), "--producing", "0", *self.host_args], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        self.old_pid = json.loads(self.old_host.stdout.readline())["pid"]
+
+    def stop_host(self) -> None:
+        """Ends that host the way a crash does (no goodbye), before the window starts: what it wrote stays for the next start."""
+        self.old_host.kill()
+        self.old_host.wait()
+        self.old_pid = None
 
     def _answers_open(self) -> None:
         """Seed the settings file of the run with `fold_answers: false` (kept if a test wrote the file already), so that the conversation begins with every block open."""

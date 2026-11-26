@@ -81,8 +81,8 @@ def test_the_account_icon_leads_the_toolbar_it_is_lit_while_there_is_no_account_
         with ProductWindow(**kwargs) as w:
             _ready(w)
             buttons = wait_for(lambda: (b := w.ui()["toolbar"]["buttons"]) and b[0]["active"] and b)  # the host has answered: there is no account
-            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser", "theme"], [b["id"] for b in buttons]
-            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser", "moon"]
+            assert [b["id"] for b in buttons] == ["accounts", "new_bot", "new_session", "new_browser", "theme"], [b["id"] for b in buttons]
+            assert [b["icon"] for b in buttons] == ["account", "bot", "plus", "browser", "moon"]
             assert buttons[0]["label"].startswith("Accounts: none yet") and [b["active"] for b in buttons] == [True, False, False, False, False]
             assert all(b["enabled"] and b["reason"] is None and b["rect"] for b in buttons), "the plus and the house are not greyed: Local LLM needs no account"
             assert all(a["rect"][2] <= b["rect"][0] for a, b in zip(buttons, buttons[1:])), "left to right, the account first"
@@ -251,14 +251,14 @@ def test_the_house_opens_the_same_wizard_for_a_home_session_with_no_folder_and_s
         with ProductWindow(**kwargs) as w:
             conn = Conn(w.socket)
             _ready(w)
-            w.click(*centre(_button(w, "new_home")["rect"]))
+            w.click(*centre(_button(w, "new_bot")["rect"]))
             first = _step(w, 0)
-            assert first["title"] == "New Home session - step 1 of 3 - Choose" and first["form"]["wizard"]["home"] is True
+            assert first["title"] == "New Bot session - step 1 of 3 - Choose" and first["form"]["wizard"]["home"] is True
             _shift_click(w, *centre(first["form"]["tiles"][0]["rect"]))
             second = _step(w, 1)
-            assert second["title"] == "New Home session - step 2 of 3 - Account" and second["form"]["focus"] == "Account" and second["text_entry"] is False, second["title"]
+            assert second["title"] == "New Bot session - step 2 of 3 - Account" and second["form"]["focus"] == "Account" and second["text_entry"] is False, second["title"]
             assert not any(line.lstrip("> ").startswith(("Folder", "Recent")) for line in second["body"]), second["body"]
-            assert any("Home session" in line and "scratch workspace" in line for line in second["body"]), second["body"]
+            assert any("Bot session" in line and "scratch workspace" in line for line in second["body"]), second["body"]
             w.key("Return")  # Next
             _step(w, 2)
             w.key("Return")  # Enter on the name row starts

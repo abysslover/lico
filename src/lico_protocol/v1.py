@@ -339,6 +339,8 @@ REPLIES = {
     "history": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "lines": {"type": "array", "items": {"type": "array", "length": 2}},
                      "oldest": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
     "stamps": _obj({"v": _V, "ok": _OK, "session": {"type": STR}, "stamps": {"type": "array", "max_items": 2048, "items": {"type": "array", "length": 2}},   # [first sequence, unix seconds] of a run
+                    "approx": {"type": "array", "max_items": 2048, "items": {"type": "array", "length": 2}},   # M25-P10: runs estimated from the log files' times, below exact_from
+                    "exact_from": {"type": [INT, "null"], "minimum": 0},                                       # the first recorded run's sequence, null when none was recorded
                     "from": {"type": INT, "minimum": 0}, "until": {"type": INT, "minimum": 0}}, COMMON_REPLY_OPTIONAL),
     "account.credential": _obj({"v": _V, "ok": _OK, "account": {"type": STR}}, COMMON_REPLY_OPTIONAL),
     "snapshot": _obj({"v": _V, "ok": _OK, **SNAPSHOT_BODY["required"]}, COMMON_REPLY_OPTIONAL),

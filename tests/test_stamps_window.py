@@ -4,6 +4,7 @@ block in it (`drawn`: top, bottom and text of each). A private Xvfb and the simu
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
@@ -138,3 +139,64 @@ def test_a_narrower_window_shows_the_time_in_a_shorter_form_and_none_when_it_can
             assert none["drawn"] == []
             again = form_now(1100, "full", 19)
             assert again["gutter"] == wide["gutter"], "the same window gives the same gutter again"
+
+
+def test_the_lines_of_a_session_whose_times_were_never_recorded_show_an_estimate_with_a_tilde_and_the_lines_written_now_show_their_own_second():
+    # M25-P10: the log of the session is a few hundred lines in files; the window draws the time of the file when the host recorded none, and `~` says it is about
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        log_dir = root / "logs"
+        args, _received = claude_args(root)
+        made: dict[str, object] = {}
+        long_ago = int(time.time()) - 5 * 86400
+
+        def setup(w: ProductWindow) -> None:
+            conn = Conn(w.socket)
+            acc = account(conn, "Work", "claude")
+            sid, gen = new_claude(conn, account=acc, mode="auto", name="older")
+            assert conn.call(op="input", session=sid, generation=gen, request_id="q1", text="An old question")["ok"] == 1
+            wait_for(lambda: status_of(conn, sid)["activity"] == "idle" and "[turn completed]" in records(log_dir, sid))
+            made.update(sid=sid, gen=gen)
+            time.sleep(2.2)                                                       # the host writes the log and its registry (with the program's own session id, which a resume needs) once a second: a crash right now would lose them
+            w.stop_host()                                                       # what a log made before the times were kept looks like: the file of times gone, the files of the log last written long ago
+            (root / "logs.times" / f"{sid}.times").unlink()
+            for segment in log_dir.glob(f"{sid}.*.seg"):
+                os.utime(segment, (long_ago, long_ago))
+            w.start_host()
+
+        with ProductWindow(host_binary=LICO, host_args=[*args, "--log-dir", str(log_dir)], before_window=setup) as w:
+            sid, gen = str(made["sid"]), int(made["gen"])
+            conn = Conn(w.socket)
+            w.proc.stdin.write("load\n")
+            w.proc.stdin.flush()
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 1 and u)
+            tab0 = u0["tabs"]["items"][0]
+            w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
+            wait_for(lambda: (u := w.ui())["selected"] == sid and len(u["shown_lines"]) >= 2 and u)
+
+            def drawn_rows():
+                now = w.ui()["times"]
+                return now["drawn"] if now["gutter"] > 0 and now["drawn"] and now["pending"] is False else None
+            rows = wait_for(drawn_rows, timeout=15)
+            texts = [row[2] for row in rows]
+            assert all(re.fullmatch(r"~\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", text) for text in texts), texts
+            seconds = [time.mktime(time.strptime(text[1:], "%Y-%m-%d %H:%M:%S")) for text in texts]
+            assert all(abs(second - long_ago) <= 2 for second in seconds), (texts, long_ago)
+            assert w.ui()["times"]["approx_below"] == 9223372036854775807, "the host recorded nothing: every time is an estimate"
+
+            # a line written now has the time the host recorded, with no mark; the old ones keep theirs
+            resumed = conn.call(op="session.resume", session=sid, generation=gen)
+            assert resumed["ok"] == 1, resumed
+            assert conn.call(op="input", session=sid, generation=resumed["generation"], request_id="q2", text="A new question")["ok"] == 1
+            wait_for(lambda: status_of(conn, sid)["activity"] == "idle" and records(log_dir, sid).count("[turn completed]") >= 2)
+
+            def mixed():
+                now = w.ui()["times"]
+                texts = [row[2] for row in now["drawn"]]
+                return texts if any(t.startswith("~") for t in texts) and any(not t.startswith("~") for t in texts) else None
+            texts = wait_for(mixed, timeout=20)
+            marks = [t.startswith("~") for t in texts]
+            assert marks == sorted(marks, reverse=True), ("the estimates come first, then the recorded ones", texts)
+            recorded = [time.mktime(time.strptime(t, "%Y-%m-%d %H:%M:%S")) for t in texts if not t.startswith("~")]
+            assert all(time.time() - 120 <= second <= time.time() + 2 for second in recorded), texts
+            assert 0 <= w.ui()["times"]["approx_below"] < 9223372036854775807

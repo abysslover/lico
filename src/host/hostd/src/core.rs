@@ -625,11 +625,11 @@ pub fn history(shared: &Shared, session: &str, before: i64, limit: i64) -> Reply
     Ok(obj(json!({"session": session, "lines": lines, "oldest": oldest})))
 }
 
-/// When the records of a session were written (`M24-P11a`): the run that covers `from` and every run that begins before `until`, as `[first sequence, unix seconds]`, oldest first and at most 2,048. Empty where the host knows nothing (a log made before the times were kept).
+/// When the records of a session were written (`M24-P11a`): the run that covers `from` and every run that begins before `until`, as `[first sequence, unix seconds]`, oldest first and at most 2,048. Empty where the host knows nothing (a log made before the times were kept): `approx` then holds an estimate for the lines below `exact_from`, the first recorded line (`M25-P10`, `stamps/approx.rs`).
 pub fn stamps(shared: &Shared, session: &str, from: i64, until: i64) -> Reply {
     let found = find(shared, session).ok_or("unknown_session")?;
-    let runs = found.lock().unwrap().stamps(from, until);
-    Ok(obj(json!({"session": session, "stamps": runs, "from": from, "until": until})))
+    let answer = found.lock().unwrap().stamps(from, until);
+    Ok(obj(json!({"session": session, "stamps": answer.runs, "approx": answer.approx, "exact_from": answer.exact_from, "from": from, "until": until})))
 }
 
 pub fn session_resume(shared: &Arc<Shared>, session: &str, generation: i64) -> Reply {

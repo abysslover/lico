@@ -1,4 +1,4 @@
-"""M22-P04: the top and the bottom of the window. The toolbar under the menu bar is icon buttons (`M22-P04b`: Accounts first, then New session, New Home session, Open browser), the tab row holds tabs only (no `+ +B +BL +G`),
+"""M22-P04: the top and the bottom of the window. The toolbar under the menu bar is icon buttons (`M22-P04b`: Accounts first, then New Bot session and New session, `M25-P10`, then Open browser), the tab row holds tabs only (no `+ +B +BL +G`),
 the window never says Global (the menu, the start screen, the tab caption `H`, the telemetry strip), and the bottom is the telemetry strip, the PATH row, then the HINT row last; the path row is
 never empty (`lico://home` in Home). A private Xvfb, synthetic homes, mocked providers: no real home is read."""
 
@@ -41,9 +41,9 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
 
             # the toolbar: four icon buttons (the account first), square, with their words in the state; the text buttons are not drawn
             buttons = u["toolbar"]["buttons"]
-            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser", "theme"], [b["id"] for b in buttons]
-            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser", "moon"]
-            assert [b["label"] for b in buttons] == ["Accounts", "New session", "New Home session", "Open browser", "Theme: dark"]
+            assert [b["id"] for b in buttons] == ["accounts", "new_bot", "new_session", "new_browser", "theme"], [b["id"] for b in buttons]
+            assert [b["icon"] for b in buttons] == ["account", "bot", "plus", "browser", "moon"]
+            assert [b["label"] for b in buttons] == ["Accounts", "New Bot session", "New session", "Open browser", "Theme: dark"]
             assert all(b["enabled"] and b["rect"] for b in buttons)
             # M24-P09: each icon is a square of TWICE the old side (one text line and a pixel), at any text size or scale: the menu bar's height is (line + 6) x scale (M24-P11g: it was
             # line + 4, the height of the left column's tabs now), so the scale is the menu bar's height over (font + 10)
@@ -59,27 +59,27 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
 
             # the tab row holds tabs only
             assert not any(k in u["tabs"] for k in LEFT_OVER_TAB_BUTTONS), sorted(u["tabs"])
-            assert "Global" not in u["start_screen"] and "Ctrl+Shift+N  new Home session" in u["start_screen"], u["start_screen"]
+            assert "Global" not in u["start_screen"] and "Ctrl+Shift+N  new Bot session" in u["start_screen"], u["start_screen"]
 
             # the menus: no entry says Global; the Session menu has the new entries with their keys
             session_menu = _menu_labels(w, 1)
-            assert "New Home session" in session_menu and "New browser tab" in session_menu, session_menu
+            assert "New Bot session" in session_menu and "New browser tab" in session_menu, session_menu
             assert "New local browser tab" in _menu_labels(w, 4), "M24-P04: the local tab is on the menu More"
             for index in range(5):
                 assert not any("Global" in label for label in _menu_labels(w, index)), index
 
-            # a click on each icon opens what it says (M22-P04b: the plus and the house open the wizard, on its first step)
+            # a click on each icon opens what it says (M22-P04b, M25-P10: the Bot and the plus open the wizard, on its first step)
             w.click(*_centre(buttons[0]["rect"]))
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "Accounts" and x)
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[1]["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session - step 1 of 3 - Choose" and x)
+            home = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            assert not any("Global" in line for line in home["panel"]["body"]) and "Global" not in home["panel"]["title"], home["panel"]
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[2]["rect"]))
-            home = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Home session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
-            assert not any("Global" in line for line in home["panel"]["body"]) and "Global" not in home["panel"]["title"], home["panel"]
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session - step 1 of 3 - Choose" and x)
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[3]["rect"]))
@@ -103,9 +103,9 @@ def test_a_home_session_has_the_caption_h_and_a_telemetry_strip_that_says_home_a
             bar = u["path_bar"]
             assert bar["text"] != "" and bar["source"] != "none", bar
 
-            w.click(*_centre(next(b for b in u["toolbar"]["buttons"] if b["id"] == "new_home")["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Home session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
-            w.key("shift+Return")  # the icon that has the focus, with the options (a plain Enter starts the Home session at once, M24-P02)
+            w.click(*_centre(next(b for b in u["toolbar"]["buttons"] if b["id"] == "new_bot")["rect"]))
+            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            w.key("shift+Return")  # the icon that has the focus, with the options (a plain Enter starts the Bot session at once, M24-P02)
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 1 and x)
             w.key("Return")  # Next
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 2 and x)

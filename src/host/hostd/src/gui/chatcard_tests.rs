@@ -108,7 +108,7 @@ fn a_card_says_where_the_chat_is_the_end_of_the_folder_as_long_as_it_fits_and_ho
         assert_eq!((folder_of(&it), folder_line(&it, 40)), (None, String::new()), "no folder: an empty line");
     }
     it.global = true;
-    assert_eq!((folder_of(&it).as_deref(), folder_line(&it, 40).as_str()), (Some("lico://home"), "lico://home"), "a Home session says where Home is");
+    assert_eq!((folder_of(&it).as_deref(), folder_line(&it, 40).as_str()), (Some("lico://home"), "lico://home"), "a Bot session says where Home is");
 }
 
 #[test]

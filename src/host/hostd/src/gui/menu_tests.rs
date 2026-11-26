@@ -20,7 +20,7 @@ fn the_four_menus_show_only_what_was_kept_on_show_and_have_no_group() {
     let app = window(1.0, false);
     let shown = |menu: usize| app.menu_entries(menu).iter().map(|e| e.label.split(':').next().unwrap().to_string()).collect::<Vec<_>>();
     assert_eq!(shown(0), ["New session", "Accounts"]);
-    assert_eq!(shown(1), ["New Home session", "New browser tab", "Permission mode", "Send to session...", "Hand over conversation..."]);
+    assert_eq!(shown(1), ["New Bot session", "New browser tab", "Permission mode", "Send to session...", "Hand over conversation..."]);
     assert_eq!(shown(2), ["Working directory files"]);
     assert_eq!(shown(3), ["Keys"]);
     for menu in 0..4 {
@@ -107,7 +107,7 @@ fn the_selection_of_a_dropdown_is_a_row_and_starts_on_the_first_row_that_can_act
     let mut app = window(1.0, false);
     app.menu_open_at(1);
     let rows = app.menu_rows(1);
-    assert_eq!(rows[app.ui.menu_sel].label, "New Home session");
+    assert_eq!(rows[app.ui.menu_sel].label, "New Bot session");
     assert!(rows[app.ui.menu_sel].reason.is_none());
 }
 

@@ -3,6 +3,7 @@
 The log of a session holds no time and the lines of the protocol are `[sequence, text]`, so the times live beside the log folder (`<log>.times/<id>.times`)
 and are asked for on their own. These tests run the real host with the simulated codex provider.
 """
+import os
 import struct
 import sys
 import time
@@ -291,5 +292,55 @@ def test_the_runs_of_records_the_log_lost_are_forgotten_at_a_restart_and_the_nex
             say(conn, sid, resumed["generation"], 3, "four")
             again = runs_of(conn, sid, 0, 100000)["stamps"]
             assert again[: len(runs)] == runs and again[-1][0] >= kept, "the records that take the numbers again have their own time"
+        finally:
+            hard_stop(host)
+
+
+def test_a_log_with_no_recorded_times_answers_an_estimate_from_the_times_of_its_own_files_and_marks_where_the_recorded_ones_begin():
+    # M25-P10, the owner's "여전히 ... 년월일시분초가 보이지 않음": the lines of a session written before the times were kept are placed between the writes of the log's files
+    with private_dir() as directory:
+        host, log = small_retain_host(directory, 64)
+        LOG[0] = log
+        try:
+            conn = Conn(host.socket)
+            a = account(conn, "Work")
+            made = conn.call(op="session.create", kind="codex", account=a)
+            sid, generation = made["session"], made["generation"]
+            for k in range(12):
+                say(conn, sid, generation, k, f"turn {k}")
+                if len(sorted(log.glob(f"{sid}.*.seg"))) >= 3:
+                    break
+            end = sessions(conn)[sid]["seq"] + 1
+            wait_for(lambda: (times_dir(directory) / f"{sid}.times").exists())
+            fresh = runs_of(conn, sid, 0, end)
+            assert (fresh["exact_from"], fresh["approx"]) == (0, []), "a session of this build has the exact time of every line: nothing is estimated"
+        finally:
+            hard_stop(host)
+        segments = sorted(log.glob(f"{sid}.*.seg"))
+        assert len(segments) >= 3, segments
+        (times_dir(directory) / f"{sid}.times").unlink()                              # what a log made before the times were kept looks like
+        base = int(time.time()) - 10 * 86400
+        for index, segment in enumerate(segments):
+            os.utime(segment, (base + 1000 * index, base + 1000 * index))              # each file was last written 1000 seconds after the one before
+        host, log = small_retain_host(directory, 64)
+        LOG[0] = log
+        try:
+            conn = Conn(host.socket)
+            old = runs_of(conn, sid, 0, end)
+            assert old["stamps"] == [] and old["exact_from"] is None, "nothing was recorded: no first recorded line"
+            approx = old["approx"]
+            assert approx[0] == [0, base], (approx, base)
+            assert [r[0] for r in approx] == sorted(set(r[0] for r in approx)) and [r[1] for r in approx] == sorted(r[1] for r in approx), "forward in both"
+            assert approx[-1][1] == base + 1000 * (len(segments) - 1), "the last lines are at the last write of the last file"
+            second = int(segments[1].name.split(".")[1])
+            assert any(r[0] >= second and base < r[1] <= base + 1000 for r in approx), "the lines of the second file lie between the writes of the first and of the second"
+            assert len(approx) <= 32 * len(segments) and len(approx) + len(old["stamps"]) <= 2048
+            middle = runs_of(conn, sid, second + 3, second + 6)
+            assert middle["approx"] and middle["approx"][0][0] <= second + 3, "the run that covers the first line asked for comes first"
+            resumed = conn.call(op="session.resume", session=sid, generation=generation)
+            say(conn, sid, resumed["generation"], 99, "after")
+            both = runs_of(conn, sid, 0, 100000)
+            assert both["stamps"] and both["exact_from"] == both["stamps"][0][0] >= end, "the lines written since are recorded and say where"
+            assert both["approx"] and all(r[0] < both["exact_from"] and r[1] <= both["stamps"][0][1] for r in both["approx"]), "the estimate stays below the first recorded line"
         finally:
             hard_stop(host)

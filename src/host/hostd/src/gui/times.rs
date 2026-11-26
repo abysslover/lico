@@ -24,6 +24,7 @@ pub(crate) struct Times {
     gutter: usize,                    // the pixels the last frame kept for the gutter (0: none), for the dump
     form: Option<super::blocks::Form>, // the form of the times of the last frame, for the dump
     rows: Vec<(f32, f32, String)>,    // what the last frame drew in it: the top and bottom of the line and the text of its time
+    approx_below: Option<i64>,        // the lines below this number have a time the host estimated from its log files, not one it recorded (`M25-P10`); None: nobody said (an older host)
 }
 
 impl Times {
@@ -33,6 +34,18 @@ impl Times {
             return None;
         }
         self.stamps.at(seq)
+    }
+
+    /// The time of the line `seq` and whether it is an estimate (`M25-P10`): the lines below the first one the host recorded a time for are.
+    pub(super) fn marked(&self, seq: i64) -> Option<(u64, bool)> {
+        Some((self.at(seq)?, self.approx_below.is_some_and(|below| seq < below)))
+    }
+
+    /// The same, with the lines below `seq` taken as estimates.
+    #[cfg(test)]
+    pub(super) fn below(mut self, seq: i64) -> Times {
+        self.approx_below = Some(seq);
+        self
     }
 
     /// A `Times` that knows `[lo, hi)` of the session `session` with `runs`, for the tests of what is drawn from it.
@@ -71,8 +84,12 @@ impl Times {
         if value["session"].as_str() != Some(self.session.as_str()) || value["from"].as_i64() != Some(from) || value["until"].as_i64() != Some(until) {
             return false;
         }
-        let runs: Vec<(i64, u64)> = value["stamps"].as_array().into_iter().flatten().filter_map(|run| Some((run[0].as_i64()?, run[1].as_u64()?))).collect();
-        self.stamps.merge(&runs);
+        let runs_of = |list: &Value| list.as_array().into_iter().flatten().filter_map(|run| Some((run[0].as_i64()?, run[1].as_u64()?))).collect::<Vec<(i64, u64)>>();
+        self.stamps.merge(&runs_of(&value["approx"])); // (the estimate first: a recorded run of the same line replaces it)
+        self.stamps.merge(&runs_of(&value["stamps"]));
+        if let Some(first) = value.get("exact_from") {
+            self.approx_below = if first.is_null() { Some(i64::MAX) } else { first.as_i64().or(self.approx_below) }; // (null: nothing was recorded, every time is an estimate)
+        }
         if self.lo >= self.hi {
             (self.lo, self.hi) = (from, until);
         } else if from == self.hi {
@@ -89,7 +106,7 @@ impl Times {
     pub(super) fn json(&self) -> Value {
         json!({
             "session": self.session, "lo": self.lo, "hi": self.hi, "runs": self.stamps.len(), "first": self.at(self.lo), "newest": self.at(self.hi - 1),
-            "last_run": self.stamps.last().map(|(seq, secs)| json!([seq, secs])), "asked": self.asked, "answered": self.answered, "pending": self.pending.is_some(),
+            "last_run": self.stamps.last().map(|(seq, secs)| json!([seq, secs])), "approx_below": self.approx_below, "asked": self.asked, "answered": self.answered, "pending": self.pending.is_some(),
             "gutter": self.gutter, "form": self.form.map_or("none", super::blocks::Form::word), "drawn": self.rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
         })
     }
@@ -97,13 +114,13 @@ impl Times {
 
 /// The lines of the screen that carry a time: the top and bottom of the first line of every block and of the first line on the screen, with the text of its time, for the
 /// lines whose time is known. `hit` is the lines on the screen as `(top, bottom, raw index, role)`; `seq_of` says the sequence number of a raw index and `text_of` writes a time.
-pub(super) fn stamp_rows(hit: &[(f32, f32, usize, u16)], seq_of: &dyn Fn(usize) -> Option<i64>, at: &dyn Fn(i64) -> Option<u64>, text_of: &dyn Fn(u64) -> String) -> Vec<(f32, f32, String)> {
+pub(super) fn stamp_rows(hit: &[(f32, f32, usize, u16)], seq_of: &dyn Fn(usize) -> Option<i64>, at: &dyn Fn(i64) -> Option<(u64, bool)>, text_of: &dyn Fn(u64) -> String) -> Vec<(f32, f32, String)> {
     let mut previous = None;
     let mut rows = Vec::new();
     for &(top, bottom, raw, role) in hit {
         if super::blocks::starts_block(previous, role) {
-            if let Some(secs) = seq_of(raw).and_then(at) {
-                rows.push((top, bottom, text_of(secs)));
+            if let Some((secs, approx)) = seq_of(raw).and_then(at) {
+                rows.push((top, bottom, if approx { format!("~{}", text_of(secs)) } else { text_of(secs) })); // (an estimate has its mark in front, `gutter_draw` puts it in the free column)
             }
         }
         previous = Some(role);
@@ -123,12 +140,20 @@ pub(super) fn gutter_clear(buf: &mut [u32], width: usize, height: usize, gutter:
     }
 }
 
-/// Draws the times of `rows` at the left of the gutter, one column in.
+/// Draws the times of `rows` at the left of the gutter, one column in; the `~` of an estimate stands in the column before, the one every gutter keeps free (so the time does not move).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn gutter_draw(controls: &mut super::controls::Controls, fs: &mut cosmic_text::FontSystem, swash: &mut cosmic_text::SwashCache, buf: &mut [u32], width: usize, height: usize, gutter: usize, col_px: f32, top_y: i32, hint_y: i32, rows: &[(f32, f32, String)]) {
     let (x, label_h, ink) = ((width.saturating_sub(gutter)) as f32 + col_px, (controls.font_px + 4.0) * controls.scale, cosmic_text::Color::rgb(0x7A, 0x84, 0x96));
     for (y0, _, text) in rows.iter().filter(|r| r.0 >= top_y as f32 && r.0 + label_h <= hint_y as f32) {
-        controls.text(fs, swash, buf, width, height, x, *y0, width as i32, text, ink);
+        match text.strip_prefix('~') {
+            Some(time) => {
+                controls.text(fs, swash, buf, width, height, x - col_px, *y0, width as i32, "~", ink);
+                controls.text(fs, swash, buf, width, height, x, *y0, width as i32, time, ink);
+            }
+            None => {
+                controls.text(fs, swash, buf, width, height, x, *y0, width as i32, text, ink);
+            }
+        }
     }
 }
 
@@ -140,7 +165,7 @@ impl Times {
         self.form = if gutter == 0 { None } else { super::blocks::Form::of_gutter(gutter, col_px) };
         self.rows = match self.form {
             None => Vec::new(),
-            Some(form) => stamp_rows(hit, seq_of, &|seq| self.at(seq), &|secs| super::blocks::stamp_form(form, secs, crate::transfer::utc_offset(secs as i64))),
+            Some(form) => stamp_rows(hit, seq_of, &|seq| self.marked(seq), &|secs| super::blocks::stamp_form(form, secs, crate::transfer::utc_offset(secs as i64))),
         };
         gutter_draw(controls, fs, swash, buf, size.0, size.1, gutter, col_px, area.0, area.1, &self.rows);
     }

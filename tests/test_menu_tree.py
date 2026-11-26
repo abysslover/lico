@@ -20,7 +20,7 @@ from tests.test_running_elsewhere_window import _centre
 
 MORE = 4
 MORE_GROUPS = ["Browser pages", "This session", "Tools", "Show", "Text size", "Settings"]
-SESSION_SHOWN = ["New Home session", "New browser tab", "Permission mode:", "Send to session...", "Hand over conversation..."]
+SESSION_SHOWN = ["New Bot session", "New browser tab", "Permission mode:", "Send to session...", "Hand over conversation..."]
 
 # every entry that is hidden (M24-P04, the owner's classification of 2026-11-24: twenty-one; M24-P05b: twenty-two with the switch of the agents' control of the panes; M25-P09: twenty-three with the start of the answers), by the start of its label
 MORE_ENTRIES = [
@@ -75,7 +75,7 @@ def test_the_four_menus_show_a_few_entries_and_more_opens_with_closed_groups_and
             _close(w)
             session = _open(w, 1)
             assert [i["label"].split(":")[0] for i in session["items"]] == [p.split(":")[0] for p in SESSION_SHOWN] and session["groups"] == [], [i["label"] for i in session["items"]]
-            assert session["items"][0]["label"] == "New Home session" and session["selected"] == 0
+            assert session["items"][0]["label"] == "New Bot session" and session["selected"] == 0
             _close(w)
             assert [i["label"] for i in _open(w, 2)["items"]] == ["Working directory files"]
             _close(w)

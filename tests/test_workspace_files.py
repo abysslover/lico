@@ -210,8 +210,8 @@ def test_gui_files_viewer_on_demand_f5_refresh_html_open_and_new_session_here():
             assert [e["name"] for e in f0["entries"]] == ["sub", "initial.txt"]
             assert [b["id"] for b in u_files["toolbar"]["buttons"]] == [
                 "accounts",
+                "new_bot",
                 "new_session",
-                "new_home",
                 "new_browser",
                 "theme",
                 "files_host",

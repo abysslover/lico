@@ -256,7 +256,7 @@ def test_toolbar_send_to_session_copy_button_and_selection_invariants():
                 # M22-P04: the toolbar is three icons; `Send to session` is an entry of the Session menu
                 send0 = menu_entry(w, 1, "Send to session")
                 assert send0["enabled"] is False and send0["reason"] == "nothing to send: type in the input box or select lines"
-                assert [b["id"] for b in ui0["toolbar"]["buttons"]] == ["accounts", "new_session", "new_home", "new_browser", "theme"]
+                assert [b["id"] for b in ui0["toolbar"]["buttons"]] == ["accounts", "new_bot", "new_session", "new_browser", "theme"]
                 assert reader.selection_owner("CLIPBOARD") == 0 and reader.selection_owner("PRIMARY") == 0
 
                 # Drag mouse across transcript lines: mouse release auto-copies to CLIPBOARD, and lights up the menu entries `Copy selected lines` + `Send to session...`!

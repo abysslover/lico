@@ -101,7 +101,7 @@ fn a_home_session_has_no_folder_and_is_started_at_once_too() {
     let mut app = wizard(true, &[("a1", "claude")]);
     app.ui.sidebar.cwd = dir.clone();
     app.wizard_touch(0);
-    assert_eq!(folder(&app), "", "a Home session gets a scratch workspace of its own");
+    assert_eq!(folder(&app), "", "a Bot session gets a scratch workspace of its own");
     assert!(tried(&app));
     let _ = std::fs::remove_dir_all(&dir);
 }

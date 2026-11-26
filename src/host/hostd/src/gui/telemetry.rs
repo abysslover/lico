@@ -99,7 +99,7 @@ impl App {
     pub(crate) fn start_lines(&self) -> Vec<String> {
         let mut lines = vec![
             "No session is open.".to_string(),
-            "Ctrl+N  new session   ·   Ctrl+Shift+N  new Home session".to_string(),
+            "Ctrl+N  new session   /   Ctrl+Shift+N  new Bot session".to_string(),
             "Ctrl+A  accounts and sign-in".to_string(),
             "Ctrl+E  working directory files".to_string(),
         ];
@@ -204,7 +204,7 @@ impl App {
             return;
         }
         if row.is_global() {
-            self.ui.flash = Some("Home session (no fixed working directory).".into());
+            self.ui.flash = Some("Bot session (no fixed working directory).".into());
             self.dirty = true;
             return;
         }

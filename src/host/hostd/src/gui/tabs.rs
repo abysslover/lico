@@ -89,7 +89,7 @@ impl App {
 
     fn tab_caption(&self, row: &Row) -> String {
         let prefix = if row.provider == "local" {
-            "L" // it has no folder, and is not a Home session
+            "L" // it has no folder, and is not a Bot session
         } else if row.is_global() {
             "H"
         } else if row.provider == "claude" {
@@ -262,7 +262,7 @@ impl App {
         let muted = Color::rgb(0x9E, 0xAB, 0xBC);
         let dim = Color::rgb(0x5E, 0x6B, 0x7C);
 
-        // `M22-P04`: the row holds tabs only; a new session, a Home session and a browser tab are the buttons of the toolbar and the entries of the Session menu.
+        // `M22-P04`: the row holds tabs only; a new session, a Bot session and a browser tab are the buttons of the toolbar and the entries of the Session menu.
         let nav_w = controls.width(fs, "<") + 10.0 * s;
         let mut tabs_limit_x = x_right - 6.0 * s;
 

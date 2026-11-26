@@ -13,7 +13,7 @@ const STEPS: usize = 3;
 /// session) and the terminal, which needs no account and has no provider.
 pub(super) const PICKS: [&str; 5] = ["claude", "agy", "codex", "local", "terminal"];
 
-/// Where the wizard is: the step (`0` the icons, `1` the account and folder or the server, `2` the options and the start) and whether it is for a Home session (no folder).
+/// Where the wizard is: the step (`0` the icons, `1` the account and folder or the server, `2` the options and the start) and whether it is for a Bot session (no folder).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) struct Wiz {
     pub(crate) page: usize,
@@ -111,7 +111,7 @@ impl Panel {
 }
 
 impl Form {
-    /// The rows of a step: the one-page form's own rows that are on it, then Back and Next (the last step ends with Back and then the Start row). A Home session has no folder.
+    /// The rows of a step: the one-page form's own rows that are on it, then Back and Next (the last step ends with Back and then the Start row). A Bot session has no folder.
     pub(super) fn page_rows(&self, w: Wiz) -> Vec<Field> {
         if w.page == 0 {
             return (0..PICKS.len()).map(Field::Pick).collect();
@@ -150,7 +150,7 @@ fn focus_of(p: &Panel, f: &Form, page: usize) -> Field {
 }
 
 impl App {
-    /// File > New session, Ctrl+N and the plus of the toolbar (`home`: the house, a Home session): the three icons first.
+    /// File > New session, Ctrl+N and the plus of the toolbar (`home`: the robot, a Bot session): the three icons first.
     pub(crate) fn form_open_wizard(&mut self, home: bool) {
         self.form_open(); // the accounts, the choices of the program, what the last session used: the form's own
         self.wizard_begin(home);
@@ -190,7 +190,7 @@ impl App {
         self.ui.panel.as_ref().and_then(|p| Some((p, p.form.as_ref()?))).is_some_and(|(p, f)| !self.ui.ssh_hosts.contains_key(&p.account) && self.form_problem(p, f).is_none())
     }
 
-    /// One touch (`M24-P02`): the folder is the one on the left (the rule of the Terminal and `agy` pictures; a Home session has none, and when the left lists no folder of this machine the form's own
+    /// One touch (`M24-P02`): the folder is the one on the left (the rule of the Terminal and `agy` pictures; a Bot session has none, and when the left lists no folder of this machine the form's own
     /// stays), then the start when `one_touch_ready`. A start the host refuses leaves the person on step two with the reason in the notice. True when a start was made.
     fn one_touch(&mut self) -> bool {
         let home = self.ui.panel.as_ref().and_then(|p| p.form.as_ref()).and_then(|f| f.wiz).is_some_and(|w| w.home);
@@ -378,7 +378,7 @@ impl App {
             1 => "Account and folder",
             _ => "Options and start",
         };
-        format!("{} - step {} of {STEPS} - {name}", if w.home { "New Home session" } else { "New session" }, w.page + 1)
+        format!("{} - step {} of {STEPS} - {name}", if w.home { "New Bot session" } else { "New session" }, w.page + 1)
     }
 
     /// The text of a row of the wizard's own.
@@ -430,7 +430,7 @@ impl App {
             lines.push("A local session asks the model server on this machine only; it has no access to files or a shell.".into());
         } else if w.page == 1 {
             if w.home {
-                lines.push("Home session: it gets a scratch workspace of its own, not a folder.".into());
+                lines.push("Bot session: it gets a scratch workspace of its own, not a folder.".into());
             }
             lines.push(settings_note(&p.provider).into());
         }
@@ -539,7 +539,7 @@ impl App {
         )
     }
 
-    /// What the state says of the wizard: the step, how many there are, whether it is a Home session, the name of the step.
+    /// What the state says of the wizard: the step, how many there are, whether it is a Bot session, the name of the step.
     pub(super) fn wizard_json(&self, p: &Panel, f: &Form) -> Value {
         let Some(w) = f.wiz else { return Value::Null };
         json!({"page": w.page, "pages": STEPS, "home": w.home, "title": self.form_title(p), "name": self.form_title(p).rsplit(" - ").next().unwrap_or("")})

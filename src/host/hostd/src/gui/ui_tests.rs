@@ -93,7 +93,8 @@ fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_tool
     // the toolbar is the account icon and the three others (and Copy while lines are selected); Send to session is the Session menu's entry (M22-P04)
     let send = |app: &super::super::App| app.menu_entries(1).into_iter().find(|e| e.cmd == super::super::menu::Cmd::SendTo).map(|e| e.reason);
     let btns = app.toolbar_entries();
-    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["accounts", "new_session", "new_home", "new_browser", "theme"]);
+    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["accounts", "new_bot", "new_session", "new_browser", "theme"]);
+    assert_eq!(btns.iter().map(|b| b.label.as_str()).skip(1).take(2).collect::<Vec<_>>(), ["New Bot session", "New session"], "M25-P10: the Bot session comes before the session and has the owner's name for it");
     assert_eq!(send(&app), Some(Some("nothing to send: type in the input box or select lines")));
 
     app.ui.sel = Some((0, 0));
@@ -127,7 +128,7 @@ fn the_left_column_starts_at_the_top_of_the_window_and_only_without_the_menu_bar
 }
 
 #[test]
-fn the_account_icon_comes_first_is_lit_only_when_the_host_says_there_is_no_account_and_never_greys_the_plus_or_the_house() {
+fn the_account_icon_comes_first_is_lit_only_when_the_host_says_there_is_no_account_and_never_greys_the_plus_or_the_bot() {
     use serde_json::json;
     let mut app = super::super::scroll_oracle::app(1.0, false);
     let entry = |app: &super::super::App, id: &str| app.toolbar_entries().into_iter().find(|b| b.id == id).map(|b| (b.active, b.reason, b.icon.map(super::icons::Icon::name)));
@@ -136,7 +137,7 @@ fn the_account_icon_comes_first_is_lit_only_when_the_host_says_there_is_no_accou
     app.sync_accounts_value(&json!({"ok": 1, "accounts": []}));
     assert_eq!(entry(&app, "accounts"), Some((true, None, Some("account"))), "no account at all: the first step is lit");
     assert_eq!(entry(&app, "new_session"), Some((false, None, Some("plus"))), "Local LLM needs no account, so the plus is never greyed");
-    assert_eq!(entry(&app, "new_home"), Some((false, None, Some("house"))));
+    assert_eq!(entry(&app, "new_bot"), Some((false, None, Some("bot"))));
     app.sync_accounts_value(&json!({"ok": 1, "accounts": [{"account": "a1", "provider": "codex", "label": "Lab"}]}));
     assert_eq!(entry(&app, "accounts"), Some((false, None, Some("account"))), "an account of any provider puts the light out");
     assert_eq!(app.ui.account_kinds.as_deref(), Some(&["codex".to_string()][..]));

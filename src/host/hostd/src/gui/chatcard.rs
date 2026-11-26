@@ -146,7 +146,7 @@ fn who_of(it: &ChatEntry) -> Option<&str> {
     it.account_label.as_deref().or(it.ssh_host.as_deref()).filter(|l| !l.starts_with("Native ("))
 }
 
-/// Where a session is, short: `lico://home` for a Home session, else the last two components of its folder (`work/api`), whole when it has only one (`/srv`).
+/// Where a session is, short: `lico://home` for a Bot session, else the last two components of its folder (`work/api`), whole when it has only one (`/srv`).
 pub(super) fn folder_of(it: &ChatEntry) -> Option<String> {
     if it.global {
         return Some(HOME_PATH.to_string());

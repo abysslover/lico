@@ -153,7 +153,7 @@ def test_panel_session_clicks_auto_titles_active_recency_sorting_and_toolbar():
             tb = u_reordered["toolbar"]
             assert tb["shown"] is True
             ids = [b["id"] for b in tb["buttons"]]
-            assert ids == ["accounts", "new_session", "new_home", "new_browser", "theme"], ids  # M22-P04b: the icons (the account first), M24-P11d: and the theme; the rest is in the menus
+            assert ids == ["accounts", "new_bot", "new_session", "new_browser", "theme"], ids  # M22-P04b: the icons (the account first), M24-P11d: and the theme; the rest is in the menus
             rects = [b["rect"] for b in tb["buttons"]]
             assert all(r is not None and 0 <= r[0] < r[2] <= 1200 and r[1] > 18 and r[3] < 100 for r in rects), rects  # M24-P09: the icons are twice the size (38 px at the default text size), so the row ends lower than before (it was 60)
             assert all(a[2] <= b[0] for a, b in zip(rects, rects[1:])), rects
