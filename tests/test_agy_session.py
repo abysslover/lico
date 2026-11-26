@@ -349,7 +349,7 @@ def test_a_session_of_agy_needs_a_folder_that_is_there_when_one_is_named_and_tak
             assert refused(conn.call(op="session.create", kind="agy", cwd=str(Path(directory) / "missing")))
             assert refused(conn.call(op="session.create", kind="agy", cwd=str(Path(directory) / "a_file")))        # a file is not a folder
             assert refused(conn.call(op="session.create", kind="agy", cwd="relative/path"))
-            for extra in ({"model": "opus"}, {"effort": "high"}, {"worktree_branch": "topic"}, {"resume_id": "abc"}):
+            for extra in ({"model": "opus"}, {"effort": "high"}, {"worktree_branch": "topic"}, {"resume_id": "not a valid id"}):       # (a valid conversation id is taken since P04: tests/test_agy_resume.py)
                 refused_reply = conn.call(op="session.create", kind="agy", cwd=str(folder), **extra)
                 assert refused_reply.get("error") in ("option_unavailable", "bad_request"), (extra, refused_reply)
             assert refused(conn.call(op="session.create", kind="agy", cwd=str(folder), account="someone"))

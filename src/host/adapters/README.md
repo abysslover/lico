@@ -50,3 +50,8 @@ the one-shot yes at once and writes `[auto-allowed] <prompt>` first. Either way 
 offered none), never an `always` option, and a request the turn left unanswered is over with the turn. The mode is the session's own (`session.create`, `session.mode`); the program is never
 started with the flag that skips its permissions. In the simulator the mode `fixture` waits for the host's answer to the request and the mode `hostile` never does.
 
+Since M25-P04 `session.create kind=agy` takes `resume_id`, the id of a conversation of the program (the text every provider id is checked as): the session starts by `session/resume` with that id
+(then `session/load` when the program cannot resume it) and never by `session/new`, and an id the program does not know ends as `[error] agy could not bring this conversation back; start a new
+session`. One session of the host holds a conversation at a time: a second create of the same id answers with it (`resumed`, `already_open`), a disconnected holder is resumed in place. The id is
+the registry's `provider_session`, so a host that was killed brings the session back disconnected and `session.resume` asks for the same conversation. `tests/test_agy_resume.py` tries it with the simulator, which keeps its conversations in `<received>.sessions`.
+

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::core::{find, session_resume, start_session, Reply, Shared};
 use crate::folders::Settings;
-use crate::session::{obj, Session};
+use crate::session::{obj, Session, State};
 
 pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64, size: usize, account: Option<&str>, mode: &str, chosen: crate::folders::Settings) -> Reply {
     let mode: &'static str = if mode == "default" { "default" } else { "auto" };
@@ -34,11 +34,21 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     let mut note: Option<String> = None;
     let mut others: Option<Value> = None;
     // an explicit chat id is checked the same way: a chat that another program is writing is not resumed from here (SES-07)
-    if let (Some(sid), Some(folder), false) = (chosen.resume_id.as_deref(), chosen.cwd.as_deref(), asked_latest) {
+    let driver_kind = crate::driver::get(kind).is_some();
+    if let (Some(sid), Some(folder), false, false) = (chosen.resume_id.as_deref(), chosen.cwd.as_deref(), asked_latest, driver_kind) {
         let chat_account = bound.as_ref().map(|(id, _)| id.clone()).or_else(|| crate::native::id_of(kind).map(str::to_string));
         let ssh_host = chat_account.as_deref().and_then(|id| shared.accounts.lock().unwrap().ssh_host(id));
         if crate::chats::live_reason_of(shared, chat_account.as_deref(), folder, ssh_host.as_deref(), sid).ok().flatten().is_some() {
             return Err("chat_running_elsewhere");
+        }
+    }
+    if let (Some(conversation), true) = (chosen.resume_id.as_deref(), driver_kind) {
+        // a conversation of a program in a folder is held by one session at a time: a running one is shown again, a disconnected one is resumed in place
+        if let Some((open, state)) = holder_of(shared, kind, conversation) {
+            if let Some(mut reply) = reopen(shared, &open, state)? {
+                reply.extend([("resumed".to_string(), json!(true)), ("already_open".to_string(), json!(true))]);
+                return Ok(reply);
+            }
         }
     }
     if asked_latest {
@@ -90,6 +100,20 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     };
     let reply = obj(json!({"session": id, "generation": generation}));
     Ok(if asked_latest { with_resumed(reply, resumed.as_ref(), false, note.as_deref(), others) } else { reply })
+}
+
+/// The session of `kind` that holds `conversation` and is still there (running, or disconnected and to be resumed in place), with its state as `reopen` names it.
+fn holder_of(shared: &Shared, kind: &str, conversation: &str) -> Option<(String, &'static str)> {
+    let sessions = shared.sessions.read().unwrap();
+    sessions.iter().find_map(|found| {
+        let s = found.lock().unwrap();
+        let held = s.provider == kind && !s.purged && s.codex_thread.as_deref() == Some(conversation);
+        match s.state {
+            State::Running if held => Some((s.id.clone(), "running")),
+            State::Disconnected if held => Some((s.id.clone(), "disconnected")),
+            _ => None,
+        }
+    })
 }
 
 /// The tab that already holds the latest chat: a running one is shown again (a closed tab is reopened), a disconnected one is resumed in place;
@@ -163,12 +187,16 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
     }
 }
 
-/// What `session.create` may ask for of a driver kind, checked before anything starts. None takes a worktree, an effort or a provider chat to resume.
-/// A program in a folder (`agy`) takes the folder, checked as for a provider, and has its own model; any other kind has no folder and takes a model and a target.
+/// What `session.create` may ask for of a driver kind, checked before anything starts. None takes a worktree or an effort.
+/// A program in a folder (`agy`) takes the folder, checked as for a provider, the id of a conversation of its own to bring back (as one of a provider is) and has its own model;
+/// any other kind has no folder, no conversation and takes a model and a target.
 fn prepare_driver_kind(shared: &Shared, driver: &dyn crate::driver::Driver, mut chosen: Settings) -> Result<Settings, &'static str> {
     let in_folder = driver.takes_folder();
-    if chosen.worktree_branch.is_some() || chosen.effort.is_some() || chosen.resume_id.is_some() || if in_folder { chosen.model.is_some() || chosen.target.is_some() } else { chosen.cwd.is_some() } {
+    if chosen.worktree_branch.is_some() || chosen.effort.is_some() || if in_folder { chosen.model.is_some() || chosen.target.is_some() } else { chosen.cwd.is_some() || chosen.resume_id.is_some() } {
         return Err("option_unavailable");
+    }
+    if chosen.resume_id.as_deref().is_some_and(|id| !crate::provider_record::valid_provider_session(id)) {
+        return Err("bad_request");
     }
     if let Some(folder) = &chosen.cwd {
         chosen.cwd = Some(crate::folders::check_folder(shared, folder)?);
@@ -192,6 +220,7 @@ fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, ch
         s.text_mode = true;
         s.mode = mode; // a program that asks (`agy`) asks in `default` and is answered by the host in `auto`; one that asks nothing (`local`) ignores it
         s.provider = driver.kind();
+        s.codex_thread = chosen.resume_id.clone(); // the conversation the driver brings back (`agy`), else none
         s.settings = chosen;
     }
     if let Err(code) = crate::core::start_driver(&driver, shared, &session) {
@@ -204,7 +233,7 @@ fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, ch
     }
     shared.sessions.write().unwrap().push(session.clone());
     crate::registry::save(shared);
-    let last = crate::folders::last_of(kind, None, "auto", &session.lock().unwrap().settings);
+    let last = crate::folders::last_of(kind, None, mode, &session.lock().unwrap().settings);
     crate::folders::remember(shared, last); // what the new-session form offers again
     Ok(session)
 }
