@@ -1,6 +1,6 @@
 # M24-P11h Plan — The Time Beside Each Block Also On A Narrower Window
 
-- Status: in_progress (2026-11-26)
+- Status: done (2026-11-26), code `1ed6542`; not pushed (published with the release 0.8.2)
 - Version: 1.0.0
 - Branch: `phase/M24-P11h-time-on-narrow-windows` from `phase/M24-P11d-theme-button` (P07 to P11d are not pushed yet, they go out with the release 0.8.2)
 - Milestone: [M24](../../../milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md), a follow-up row (content of the release 0.8.2)
@@ -40,14 +40,25 @@ The seconds are never dropped. A window that is wide enough for the long form sh
 
 ## Steps
 
-1. [ ] **Tests first, run red**: `blocks_tests.rs` (the forms, the rule at each edge in columns and in pixels at 10 px and 9.6 px, no overflow, a column of no width, `of_gutter`), `times_tests.rs` (the form that is drawn at three widths, the texts of the rows, the dump key), the scroll oracle (a narrower window: a scroll step draws the same pixels as a full repaint with the Short and Clock forms, at the scales 1, 1.25 and 2), a window test (a real window at a width that gives each form).
-2. [ ] **The change** in `blocks.rs`, `times.rs` (and the joined lines of `ui.rs`).
-3. [ ] **Mutation checks**, one edit at a time on `blocks.rs` and the lines added to `times.rs`.
-4. [ ] **Other tests**: the existing window, oracle and unit tests, the suite.
-5. [ ] **Words**: the guide (a section on the time beside each block).
-6. [ ] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
+1. [x] **Tests first, run red**: `blocks_tests.rs` (the forms, the rule at each edge in columns and in pixels at 10 px and 9.6 px, no overflow, a column of no width, `of_gutter`), `times_tests.rs` (the form that is drawn at three widths, the texts of the rows, the dump key), the scroll oracle (a narrower window: a scroll step draws the same pixels as a full repaint with the Short and Clock forms, at the scales 1, 1.25 and 2), a window test (a real window at a width that gives each form).
+2. [x] **The change** in `blocks.rs`, `times.rs` (and the joined lines of `ui.rs`).
+3. [x] **Mutation checks**, one edit at a time on `blocks.rs` and the lines added to `times.rs`.
+4. [x] **Other tests**: the existing window, oracle and unit tests, the suite.
+5. [x] **Words**: the guide (a section on the time beside each block).
+6. [x] `cargo xtask check` and `graph`, the hook, `~/bin/lico` rebuilt, the report.
 
 ## Not decided here (the owner's, written in the report)
 
 - A window under 70 columns of text still shows no time (the time would cost the text its room); the person widens the window or closes the list on the left.
 - The Short and Clock forms lose the year, or the date, of the time. The full time of a block can be read in the longer forms; a hover that says it in the bottom line is a later small phase if the owner wants it.
+
+## Results (2026-11-26)
+
+- **Tests first**: the pure tests (the forms, the rule at each edge in columns and in pixels, `of_gutter`, the stamps of the three forms) and the drawing tests were written before the code and run red on stubs (`stamp_form` returning nothing, `form_for` returning none): nine failed; then green.
+- **The commit** `1ed6542`: `gui/blocks.rs` (`Form`, `stamp_form`, `form_for`, `gutter_px`, `TEXT_MIN_COLS`, `GUTTER_COLS`), `gui/times.rs` (the form told from the gutter that was kept, the text of the form, the dump key `form`), `gui/times_oracle.rs` (new: the scroll step against a full repaint in the three forms, at the scales 1, 1.25 and 2, dark and light, and across a resize), `tests/test_stamps_window.py`. `ui.rs` is untouched.
+- **Tests now**: unit: 9 new (`blocks` 4: the three texts, the rule at each edge in columns and in pixels at 10 and at 8.5 pixels a column, the gutter in whole pixels, a form told from the gutter that was kept; `times` 3: the form that is drawn at seven widths, the short and clock texts of the rows, a new session keeping the form; the scroll oracle 2: each form against a full repaint at the scales 1, 1.25 and 2 in dark and in light, and across a resize), one old test (the 101-column rule) replaced, the numbers of others changed (the room of a window of 70 columns); the window test `tests/test_stamps_window.py` has one more test that resizes a real window to the width of each form and of none. The whole binary: 1,346 unit tests pass (12 ignored)
+- **Mutation checks**: **46 mutants** of the new code (`blocks.rs`: the constants, the characters and the air of each form, the words, the order of the forms, `px`, `of_gutter`, `form_for`, `gutter_px`, the texts of the three forms; `times.rs`: the form told from the gutter, the form's text, the offset, the dump, the reset on a new session), each one edit on a restored tree whose files were checked by their sha256 after each; the unit tests of `blocks`, `times` and the scroll oracle run against each. The first run: 41 killed, 5 survived (one more did not compile, a match arm made unreachable, redone). The survivors: **`px` rounded instead of rounded up** (no test had a column whose 21 columns end under a half pixel: now `gutter_px(1000, 10.2) == 215` and `gutter_px(780, 10.2) == 164`), **the form dropped when a new session starts the range again** (a test of its own: the dump keeps the form and the gutter the last frame drew until the next frame), **the short form with the year** (my mutant added `0 * year` to the seconds, an identity; redone as the real edit, the form of the year in front: killed), and the redone arm (killed). The second run of these four: 4 of 4 killed. **Two are written down, not killed, as equivalent**: `form_for` with the guard on a column that is no number (`col_px <= 0.0` against `!(col_px > 0.0)`: a column that is not a number gives 0 columns by the cast, and no form either way), and the full form's year written with two digits instead of four (`{:02}` against `{:04}`: no unix time of a person's life has a year under 1,000)
+- **The commit hook**: the first run passed the suite (277 tests in 85 files, 154.8 s) and was **refused on the build's peak memory, 1937.8 MiB over the bound of 1536 MiB**, as the runs of P09 to P11d were; the bound stays (never raised or bypassed), the second run, which reuses the receipts, passed (277 passed, 140.7 s, peak 893.1 MiB of the workers) and accepted the commit
+- **Measured, not looked at**: the window test resizes a real window (xdotool `windowsize`) to the width of each form and of none and reads the dump (`times.form`, the texts of the rows); no screenshot was taken for this phase.
+- **The owner's window**: `~/bin/lico` is rebuilt from this tree; the window has to be restarted (`lico gui`).
+- **Next**: P11g (the top icons level with the two rows at the left), P11f (the status line only at the bottom, a border for the chat), P11e (a file under the pointer), then the release `0.8.2`.
