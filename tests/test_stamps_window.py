@@ -5,6 +5,7 @@ block in it (`drawn`: top, bottom and text of each). A private Xvfb and the simu
 from __future__ import annotations
 
 import re
+import subprocess
 import time
 from pathlib import Path
 
@@ -84,3 +85,56 @@ def test_the_window_learns_when_the_lines_it_holds_were_written_and_follows_new_
             assert after["asked"] > asked and after["asked"] == after["answered"]
             assert after["lo"] == t["lo"] and after["newest"] > t["newest"], "the old range stays and the new lines have a later time"
             assert after["runs"] > t["runs"]
+
+
+def test_a_narrower_window_shows_the_time_in_a_shorter_form_and_none_when_it_cannot_keep_sixty_columns():
+    """`M24-P11h`: the text keeps 60 columns at the least; the full time needs 81 columns of text, the one without the year 76, the clock 70. The window is resized with the
+    window system (`xdotool windowsize`) and the dump says the form and the text of every time that is drawn."""
+    with usual_umask(), private_dir() as directory:
+        root = Path(directory)
+        log_dir = root / "logs"
+        args, _received = claude_args(root)
+        made: dict[str, object] = {}
+
+        def setup(w: ProductWindow) -> None:
+            conn = Conn(w.socket)
+            acc = account(conn, "Work", "claude")
+            sid, gen = new_claude(conn, account=acc, mode="auto", name="narrow")
+            assert conn.call(op="input", session=sid, generation=gen, request_id="q1", text="First question")["ok"] == 1
+            wait_for(lambda: status_of(conn, sid)["activity"] == "idle" and "[turn completed]" in records(log_dir, sid))
+            made.update(sid=sid)
+
+        with ProductWindow(host_binary=LICO, host_args=[*args, "--log-dir", str(log_dir)], before_window=setup) as w:
+            w.proc.stdin.write("load\n")
+            w.proc.stdin.flush()
+            u0 = wait_for(lambda: (u := w.ui()) and len(u["tabs"]["items"]) == 1 and u)
+            tab0 = u0["tabs"]["items"][0]
+            w.click((tab0["rect"][0] + tab0["close_rect"][0]) / 2.0, (tab0["rect"][1] + tab0["rect"][3]) / 2.0)
+            wait_for(lambda: (u := w.ui())["selected"] == made["sid"] and len(u["shown_lines"]) >= 2 and u)
+
+            def form_now(width: int, form: str, chars: int):
+                subprocess.run(["xdotool", "windowsize", w.window_id(), str(width), "700"], env=w.env, check=True)
+
+                def ready():
+                    t = w.ui()["times"]
+                    if t["form"] != form:
+                        return None
+                    return t if form == "none" or t["drawn"] else None
+                t = wait_for(ready, timeout=15)
+                texts = [row[2] for row in t["drawn"]]
+                assert all(len(text) == chars for text in texts), (width, form, texts)
+                assert (t["gutter"] > 0) == (form != "none"), (width, t["gutter"])
+                return t
+
+            # the list is 330 pixels wide, a column 8.5 pixels and the padding 8: 1100 pixels hold 89 columns, 1000 hold 77, 960 hold 73, 900 hold 66
+            wide = form_now(1100, "full", 19)
+            assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", wide["drawn"][0][2])
+            short = form_now(1000, "short", 14)
+            assert re.fullmatch(r"\d\d-\d\d \d\d:\d\d:\d\d", short["drawn"][0][2])
+            clock = form_now(960, "clock", 8)
+            assert re.fullmatch(r"\d\d:\d\d:\d\d", clock["drawn"][0][2])
+            assert clock["gutter"] < short["gutter"] < wide["gutter"], "the narrower the window the smaller the gutter"
+            none = form_now(900, "none", 0)
+            assert none["drawn"] == []
+            again = form_now(1100, "full", 19)
+            assert again["gutter"] == wide["gutter"], "the same window gives the same gutter again"

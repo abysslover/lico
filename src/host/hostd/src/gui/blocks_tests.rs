@@ -68,13 +68,49 @@ fn the_text_of_a_time_is_a_date_and_a_time_to_the_second_in_the_local_offset() {
 }
 
 #[test]
-fn the_gutter_is_kept_only_when_the_area_holds_a_hundred_and_one_columns() {
-    assert_eq!(gutter_px(1010, 10.0), 210, "101 columns of 10 pixels: 21 columns of gutter");
-    assert_eq!(gutter_px(1009, 10.0), 0, "100 columns: none");
+fn the_three_forms_of_a_time_keep_the_seconds_and_drop_the_year_then_the_date() {
+    let at = 1_764_000_000; // 2025-11-24 16:00:00 UTC
+    assert_eq!(stamp_form(Form::Full, at, 0), "2025-11-24 16:00:00");
+    assert_eq!(stamp_form(Form::Short, at, 0), "11-24 16:00:00");
+    assert_eq!(stamp_form(Form::Clock, at, 0), "16:00:00");
+    assert_eq!((stamp_form(Form::Short, at, 9 * 3600), stamp_form(Form::Clock, at, 9 * 3600)), ("11-25 01:00:00".to_string(), "01:00:00".to_string()), "east of UTC the day can be the next one");
+    assert_eq!(stamp_form(Form::Short, 1_735_689_599, 1), "01-01 00:00:00", "the year turns, the short form shows the new month and day");
+    assert_eq!(stamp_form(Form::Short, 951_782_400, 0), "02-29 00:00:00", "a leap day");
+    for secs in [0, 5, 86_399, 1_764_000_000, u64::MAX] {
+        assert_eq!(stamp_form(Form::Full, secs, 0), stamp_text(secs, 0), "the full form is the time of M24-P11b");
+        for form in Form::ALL {
+            assert_eq!(stamp_form(form, secs, 14 * 3600).len(), form.chars(), "always the width of its form: it stands in a gutter of a fixed width");
+        }
+    }
+}
+
+#[test]
+fn the_form_is_the_longest_one_that_leaves_the_text_sixty_columns() {
+    for (cols, want) in [(500, Some(Form::Full)), (101, Some(Form::Full)), (81, Some(Form::Full)), (80, Some(Form::Short)), (76, Some(Form::Short)), (75, Some(Form::Clock)), (70, Some(Form::Clock)), (69, None), (1, None), (0, None)] {
+        assert_eq!(form_for(cols * 10, 10.0), want, "{cols} columns of 10 pixels");
+    }
+    assert_eq!((form_for(809, 10.0), form_for(810, 10.0)), (Some(Form::Short), Some(Form::Full)), "80 columns and nine tenths are 80; 81 are the edge of the full form");
+    assert_eq!((form_for(759, 10.0), form_for(760, 10.0)), (Some(Form::Clock), Some(Form::Short)), "76 columns are the edge of the short form");
+    assert_eq!((form_for(699, 10.0), form_for(700, 10.0)), (None, Some(Form::Clock)), "70 columns are the edge of the clock");
+    assert_eq!((form_for(688, 8.5), form_for(689, 8.5)), (Some(Form::Short), Some(Form::Full)), "a column of 8.5 pixels: 81 columns are 688.5 pixels");
+    assert_eq!((form_for(645, 8.5), form_for(646, 8.5)), (Some(Form::Clock), Some(Form::Short)), "76 columns are 646 pixels");
+    assert_eq!((form_for(594, 8.5), form_for(595, 8.5)), (None, Some(Form::Clock)), "70 columns of 8.5 pixels are 595 pixels");
+    assert_eq!(form_for(2000, 0.0), None, "a column that has no width is no layout");
+    assert_eq!(form_for(2000, -3.0), None);
+    assert_eq!(form_for(2000, f32::NAN), None);
+    assert_eq!(form_for(usize::MAX, 10.0), Some(Form::Full), "no overflow");
+    assert_eq!(form_for(0, 10.0), None);
+}
+
+#[test]
+fn the_gutter_is_the_room_of_the_form_in_whole_pixels() {
+    assert_eq!((gutter_px(810, 10.0), gutter_px(809, 10.0), gutter_px(760, 10.0), gutter_px(759, 10.0), gutter_px(700, 10.0), gutter_px(699, 10.0)), (210, 160, 160, 100, 100, 0));
     assert_eq!(gutter_px(5000, 10.0), 210, "a wide window keeps the same gutter, not a wider one");
     assert_eq!(gutter_px(1000, 9.6), 202, "a column of 9.6 pixels: 21 of them, rounded up to whole pixels (201.6)");
-    assert_eq!(gutter_px(969, 9.6), 0, "100 columns of 9.6 pixels is 960 pixels, 101 is 969.6");
-    assert_eq!(gutter_px(970, 9.6), 202);
+    assert_eq!(gutter_px(777, 9.6), 154, "80 columns of 9.6 pixels: the short form, 16 columns (153.6)");
+    assert_eq!(gutter_px(778, 9.6), 202, "81 columns: the full form");
+    assert_eq!(gutter_px(1000, 10.2), 215, "21 columns of 10.2 pixels are 214.2: the room is rounded up, never down, or the last digit would stand in the next column");
+    assert_eq!(gutter_px(780, 10.2), 164, "76 columns of 10.2 pixels: the short form, 16 columns are 163.2");
     assert_eq!(gutter_px(0, 10.0), 0);
     assert_eq!(gutter_px(2000, 0.0), 0, "a column that has no width is no layout");
     assert_eq!(gutter_px(2000, -3.0), 0);
@@ -82,9 +118,31 @@ fn the_gutter_is_kept_only_when_the_area_holds_a_hundred_and_one_columns() {
 }
 
 #[test]
+fn a_form_is_told_from_the_gutter_that_was_kept() {
+    for col in [8.5f32, 10.0, 9.6, 17.0, 12.75] {
+        for form in Form::ALL {
+            assert_eq!(Form::of_gutter((form.cols() as f32 * col).ceil() as usize, col), Some(form), "the gutter of {form:?} at {col} pixels a column");
+        }
+    }
+    assert_eq!(Form::of_gutter(0, 8.5), None, "no gutter, no form");
+    assert_eq!((Form::of_gutter(84, 8.5), Form::of_gutter(85, 8.5)), (None, Some(Form::Clock)), "less than the room of the clock is no form");
+    assert_eq!(Form::of_gutter(90, 8.5), Some(Form::Clock), "a gutter that is not any form's own is the longest form that fits in it");
+    assert_eq!(Form::of_gutter(137, 8.5), Some(Form::Short));
+    assert_eq!(Form::of_gutter(5000, 8.5), Some(Form::Full));
+    assert_eq!((Form::of_gutter(100, 0.0), Form::of_gutter(100, -1.0), Form::of_gutter(100, f32::NAN)), (None, None, None));
+    for form in Form::ALL {
+        assert_eq!(Form::of_word(form.word()), Some(form));
+    }
+    assert_eq!(Form::of_word("none"), None);
+}
+
+#[test]
 fn the_constants_are_what_the_plan_says() {
-    assert_eq!((GUTTER_COLS, MIN_COLS), (21, 101));
+    assert_eq!((GUTTER_COLS, TEXT_MIN_COLS), (21, 60));
+    assert_eq!(Form::ALL.map(|f| (f.chars(), f.cols())), [(19, 21), (14, 16), (8, 10)]);
+    assert_eq!(Form::ALL.map(Form::word), ["full", "short", "clock"]);
     assert_eq!(stamp_text(0, 0).len() + 2, GUTTER_COLS, "a date and time and two columns of air");
+    assert_eq!(Form::Full.cols(), GUTTER_COLS);
 }
 
 #[test]

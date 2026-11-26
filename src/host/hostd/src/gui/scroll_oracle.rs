@@ -712,3 +712,7 @@ fn a_block_that_is_folded_draws_the_same_pixels_with_the_scroll_step_as_with_a_f
 #[cfg(test)]
 #[path = "theme_oracle.rs"]
 mod light;
+
+#[cfg(test)]
+#[path = "times_oracle.rs"]
+mod times_oracle;

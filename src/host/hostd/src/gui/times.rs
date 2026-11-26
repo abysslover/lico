@@ -22,6 +22,7 @@ pub(crate) struct Times {
     asked: u64,
     answered: u64,
     gutter: usize,                    // the pixels the last frame kept for the gutter (0: none), for the dump
+    form: Option<super::blocks::Form>, // the form of the times of the last frame, for the dump
     rows: Vec<(f32, f32, String)>,    // what the last frame drew in it: the top and bottom of the line and the text of its time
 }
 
@@ -50,7 +51,7 @@ impl Times {
             return None;
         }
         let range = if self.session != session || self.lo >= self.hi || end < self.lo || first > self.hi {
-            *self = Times { session: session.to_string(), asked: self.asked, answered: self.answered, gutter: self.gutter, rows: std::mem::take(&mut self.rows), ..Times::default() };
+            *self = Times { session: session.to_string(), asked: self.asked, answered: self.answered, gutter: self.gutter, form: self.form, rows: std::mem::take(&mut self.rows), ..Times::default() };
             ((end - SPAN).max(first), end)
         } else if end > self.hi {
             (self.hi, end.min(self.hi + SPAN))
@@ -89,7 +90,7 @@ impl Times {
         json!({
             "session": self.session, "lo": self.lo, "hi": self.hi, "runs": self.stamps.len(), "first": self.at(self.lo), "newest": self.at(self.hi - 1),
             "last_run": self.stamps.last().map(|(seq, secs)| json!([seq, secs])), "asked": self.asked, "answered": self.answered, "pending": self.pending.is_some(),
-            "gutter": self.gutter, "drawn": self.rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
+            "gutter": self.gutter, "form": self.form.map_or("none", super::blocks::Form::word), "drawn": self.rows.iter().map(|r| json!([r.0, r.1, r.2])).collect::<Vec<_>>(),
         })
     }
 }
@@ -132,11 +133,15 @@ pub(super) fn gutter_draw(controls: &mut super::controls::Controls, fs: &mut cos
 }
 
 impl Times {
-    /// Draws the times of the lines on the screen (the gutter of each was cleared before the text) and remembers what it drew, for the dump. `gutter` 0 draws nothing.
+    /// Draws the times of the lines on the screen (the gutter of each was cleared before the text) in the form the gutter was kept for (`blocks::Form::of_gutter`) and remembers what it drew, for the dump. `gutter` 0 draws nothing.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn paint(&mut self, controls: &mut super::controls::Controls, fs: &mut cosmic_text::FontSystem, swash: &mut cosmic_text::SwashCache, buf: &mut [u32], size: (usize, usize), gutter: usize, col_px: f32, area: (i32, i32), hit: &[(f32, f32, usize, u16)], seq_of: &dyn Fn(usize) -> Option<i64>) {
         self.gutter = gutter;
-        self.rows = if gutter == 0 { Vec::new() } else { stamp_rows(hit, seq_of, &|seq| self.at(seq), &|secs| super::blocks::stamp_text(secs, crate::transfer::utc_offset(secs as i64))) };
+        self.form = if gutter == 0 { None } else { super::blocks::Form::of_gutter(gutter, col_px) };
+        self.rows = match self.form {
+            None => Vec::new(),
+            Some(form) => stamp_rows(hit, seq_of, &|seq| self.at(seq), &|secs| super::blocks::stamp_form(form, secs, crate::transfer::utc_offset(secs as i64))),
+        };
         gutter_draw(controls, fs, swash, buf, size.0, size.1, gutter, col_px, area.0, area.1, &self.rows);
     }
 }

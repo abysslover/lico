@@ -192,6 +192,16 @@ fn the_counters_go_on_when_the_view_starts_again() {
     assert_eq!((times.json()["asked"].as_u64(), times.json()["answered"].as_u64()), (Some(2), Some(2)));
 }
 
+#[test]
+fn a_new_session_keeps_the_form_and_the_gutter_the_last_frame_drew_until_the_next_frame() {
+    let mut times = known(0, 10, &[(0, 5)]);
+    times.gutter = 100;
+    times.form = Some(crate::gui::blocks::Form::Clock);
+    assert!(times.next("other", Some((0, 10)), 50).is_some(), "another session starts the range again");
+    let json = times.json();
+    assert_eq!((json["gutter"].as_u64(), json["form"].as_str()), (Some(100), Some("clock")), "the dump says what the last frame drew, not a blank, until the next frame draws again");
+}
+
 mod drawing {
     use super::super::*;
     use crate::gui::transcript::{ROLE_BOX, ROLE_BOX_TOP, ROLE_USER_BG, STYLE_AGENT, STYLE_CMD, STYLE_CMD_OUT, STYLE_USER};
@@ -368,8 +378,52 @@ mod room {
     #[test]
     fn the_padding_counts_when_the_columns_are_counted() {
         let app = app(1.0, false);
-        assert_eq!((app.times_gutter(866, 1.0).0 > 0, app.times_gutter(867, 1.0).0 > 0), (false, true), "101 columns of 8.5 pixels and the 8 of padding: 866 pixels are 100 columns, 867 are 101");
-        assert_eq!((app.times_gutter(1732, 2.0).0 > 0, app.times_gutter(1733, 2.0).0 > 0), (false, true), "at scale 2 the padding and the column are twice as wide");
+        assert_eq!((app.times_gutter(602, 1.0).0 > 0, app.times_gutter(603, 1.0).0 > 0), (false, true), "70 columns of 8.5 pixels and the 8 of padding: 602 pixels are 69 columns, 603 are 70, the room the shortest form needs");
+        assert_eq!((app.times_gutter(1205, 2.0).0 > 0, app.times_gutter(1206, 2.0).0 > 0), (false, true), "at scale 2 the padding and the column are twice as wide");
+    }
+
+    /// The first two lines of a session drawn into a window of `main_w` pixels at the right of a list: the state dump of the times.
+    fn drawn_json(main_w: usize) -> (usize, Value) {
+        let app = app(1.0, false);
+        let (gutter, col_px) = app.times_gutter(main_w, 1.0);
+        let mut times = Times::seeded("s", 0, 10, &[(0, 1_795_000_000)]);
+        let mut fs = crate::gui::fonts::system(false);
+        let mut swash = cosmic_text::SwashCache::new();
+        let mut controls = crate::gui::controls::Controls::default();
+        controls.begin(1.0, 14.0);
+        let mut buf = vec![7u32; 2400 * 100];
+        let hit = [(0.0, 18.0, 0usize, 0u16), (18.0, 36.0, 1, crate::gui::transcript::ROLE_USER_BG | crate::gui::transcript::STYLE_USER)];
+        times.paint(&mut controls, &mut fs, &mut swash, &mut buf, (2400, 100), gutter, col_px, (0, 100), &hit, &|raw| Some(raw as i64));
+        let left = buf.chunks(2400).flat_map(|row| row.iter().enumerate().filter(|(_, &p)| p != 7).map(|(x, _)| x)).min();
+        assert!(left.map_or(true, |x| x >= 2400 - gutter), "no pixel of a time is left of its gutter ({left:?}, gutter {gutter})");
+        (gutter, times.json())
+    }
+
+    #[test]
+    fn the_form_of_the_time_that_is_drawn_follows_the_width_of_the_window() {
+        for (main_w, want) in [(2200, Some(("full", 19))), (697, Some(("full", 19))), (696, Some(("short", 14))), (654, Some(("short", 14))), (653, Some(("clock", 8))), (603, Some(("clock", 8))), (602, None)] {
+            let (gutter, json) = drawn_json(main_w);
+            let rows = json["drawn"].as_array().unwrap();
+            match want {
+                Some((word, chars)) => {
+                    assert!(gutter > 0, "a gutter at {main_w}");
+                    assert_eq!(json["form"], word, "the form at {main_w}");
+                    assert_eq!(rows.len(), 2, "the first line and the person's line each carry a time at {main_w}");
+                    assert!(rows.iter().all(|r| r[2].as_str().map(str::len) == Some(chars)), "every time has the {chars} characters of the {word} form: {rows:?}");
+                }
+                None => assert_eq!((gutter, json["form"].as_str(), rows.len()), (0, Some("none"), 0), "nothing at {main_w}"),
+            }
+        }
+    }
+
+    #[test]
+    fn the_short_and_the_clock_forms_are_the_full_time_without_its_year_and_its_date() {
+        let secs = 1_795_000_000;
+        let full = crate::gui::blocks::stamp_text(secs, crate::transfer::utc_offset(secs as i64));
+        for (main_w, from) in [(2200, 0), (696, 5), (603, 11)] {
+            let (_, json) = drawn_json(main_w);
+            assert_eq!(json["drawn"][0][2].as_str(), Some(&full[from..]), "at {main_w} the time is the full one from character {from}");
+        }
     }
 
     #[test]
@@ -378,7 +432,8 @@ mod room {
         let (px, col) = wide.times_gutter(2200, 1.0);
         assert_eq!((col, px), (wide.char_w(), crate::gui::blocks::gutter_px(2200 - 8, wide.char_w())));
         assert!(px >= 21 * 8, "a window wide enough keeps the room");
-        assert_eq!(wide.times_gutter(800, 1.0).0, 0, "a window with fewer than 101 columns keeps none");
+        assert_eq!(wide.times_gutter(500, 1.0).0, 0, "a window with fewer than 70 columns keeps none");
+        assert!(wide.times_gutter(800, 1.0).0 > 0, "93 columns keep the full form (the first rule wanted 101)");
         assert_eq!(wide.times_gutter(2200, 2.0).1, wide.char_w() * 2.0, "the column is as wide as the window draws it");
         let mut empty = app(1.0, false);
         empty.session.clear();
