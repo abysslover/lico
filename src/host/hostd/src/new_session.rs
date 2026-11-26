@@ -78,7 +78,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     } else if kind == "codex" || kind == "claude" {
         crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
     } else if crate::driver::get(kind).is_some() {
-        start_driver_session(shared, kind, chosen)
+        start_driver_session(shared, kind, mode, chosen)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -183,14 +183,14 @@ fn prepare_driver_kind(shared: &Shared, driver: &dyn crate::driver::Driver, mut 
 
 /// A session of a driver kind (`local`, `agy`): no account; the driver does the work, in a folder when it takes one (`agy`).
 /// Nothing of one that never became ready remains: no process, no log and no scratch workspace.
-fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
+fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
     let driver = crate::driver::get(kind).ok_or("bad_request")?;
     let id = format!("s{}", crate::core::random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
     {
         let mut s = session.lock().unwrap();
         s.text_mode = true;
-        s.mode = "auto";
+        s.mode = mode; // a program that asks (`agy`) asks in `default` and is answered by the host in `auto`; one that asks nothing (`local`) ignores it
         s.provider = driver.kind();
         s.settings = chosen;
     }

@@ -4,7 +4,9 @@
 //! Three parts: `map.rs` (what the program says becomes transcript lines, the rules of `lico_protocol/agy_mapping.py`), `conn.rs` (the order of the protocol, with no input or
 //! output of its own) and this file (the process, its threads, and the application of what the conversation decides to the session). The program runs as the person, in the folder
 //! the person chose (or in a scratch workspace), with a minimal environment: no token and no key of the host or of another provider reaches it, and Lico never reads what it keeps
-//! for its own sign-in (`~/.gemini`). A permission request is refused in this phase (the person is asked from the next one).
+//! for its own sign-in (`~/.gemini`). A permission request is put to the person as an approval of the session (the session's mode `default`), or answered with the one-shot
+//! yes at once and said in the transcript (the mode `auto`, the host's own default for every session); an answer is never wider than one request, and the program is never
+//! started with the flag that skips its permissions.
 
 mod conn;
 mod map;
@@ -13,6 +15,7 @@ use serde_json::Value;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex};
@@ -22,7 +25,7 @@ use std::time::Instant;
 use crate::core::Shared;
 use crate::driver::{Driver, Link, Opaque, Target};
 use crate::lines::{self, Line};
-use crate::session::{InputState, Session, State};
+use crate::session::{InputState, Session, State, MAX_APPROVALS};
 use conn::{Conn, Effect};
 use map::Rec;
 
@@ -65,15 +68,20 @@ impl Agy {
 
 enum Msg {
     Input { request_id: String, text: String },
+    Answer { request_id: Value, allow: bool },
     Line(Line),
     Closed,
     Stop,
 }
 
+/// The approvals of the session that were put to the person: the number the session lists, and the request of the program it stands for.
+type Asked = Arc<Mutex<BTreeMap<i64, Value>>>;
+
 struct Handle {
     tx: SyncSender<Msg>,
     alive: Arc<AtomicBool>,
     pending: Arc<AtomicUsize>,
+    asked: Asked,
 }
 
 impl Link for Handle {
@@ -102,6 +110,21 @@ impl Link for Handle {
 
     fn alive(&self) -> bool {
         self.alive.load(Ordering::SeqCst)
+    }
+
+    fn answer(&mut self, approval_id: i64, allow: bool) -> Result<(), &'static str> {
+        if !self.alive.load(Ordering::SeqCst) {
+            return Err("session_disconnected");
+        }
+        let mut asked = self.asked.lock().unwrap();
+        let request_id = asked.get(&approval_id).cloned().ok_or("unknown_approval")?;
+        match self.tx.try_send(Msg::Answer { request_id, allow }) {
+            Ok(()) => {
+                asked.remove(&approval_id); // one approval, one answer
+                Ok(())
+            }
+            Err(error) => Err(if matches!(error, mpsc::TrySendError::Full(_)) { "busy" } else { "session_disconnected" }),
+        }
     }
 }
 
@@ -154,6 +177,7 @@ impl Driver for Agy {
         let (wtx, wrx) = mpsc::sync_channel::<String>(QUEUE);
         let alive = Arc::new(AtomicBool::new(true));
         let pending = Arc::new(AtomicUsize::new(0));
+        let asked: Asked = Arc::new(Mutex::new(BTreeMap::new()));
         let mut stdin = stdin;
         thread::spawn(move || {
             for line in wrx {
@@ -178,10 +202,11 @@ impl Driver for Agy {
             writer: wtx,
             alive: alive.clone(),
             pending: pending.clone(),
-            conn: Conn::new(workspace.to_string_lossy().into_owned(), stored, false), // the mode of the session will decide whether a person is asked (P03)
+            asked: asked.clone(),
+            conn: Conn::new(workspace.to_string_lossy().into_owned(), stored, true), // a request is held for the person; the mode of the session decides who answers it (`apply`)
         };
         thread::spawn(move || actor.run(child, rx));
-        Ok(Box::new(Handle { tx, alive, pending }))
+        Ok(Box::new(Handle { tx, alive, pending, asked }))
     }
 }
 
@@ -192,6 +217,7 @@ struct Actor {
     writer: SyncSender<String>,
     alive: Arc<AtomicBool>,
     pending: Arc<AtomicUsize>,
+    asked: Asked,
     conn: Conn,
 }
 
@@ -206,6 +232,7 @@ impl Actor {
             };
             let (effects, heard) = match got {
                 Ok(Msg::Input { request_id, text }) => (self.conn.input(&request_id, &text), false),
+                Ok(Msg::Answer { request_id, allow }) => (self.conn.answer(&request_id, allow), false),
                 Ok(Msg::Line(Line::Text { text, bytes })) => match serde_json::from_str::<Value>(&text) {
                     Ok(message) => (self.conn.agent(Instant::now(), &message, lines::has_cut(&message)), true),
                     Err(_) if bytes > MAX_LINE => (self.conn.omitted(bytes), true), // too long to hold, and what was held is not a whole message
@@ -218,6 +245,7 @@ impl Actor {
             fatal = self.apply(effects, heard);
         }
         self.alive.store(false, Ordering::SeqCst);
+        self.asked.lock().unwrap().clear(); // nobody is left to answer
         let tail = self.conn.closed(); // what was said and not yet ended as a line
         self.apply(tail, false);
         unsafe { kill(-(self.pid as i32), 9) }; // its output ended (or it is to end): nothing of it, helpers included, is kept alive
@@ -242,7 +270,8 @@ impl Actor {
     /// purge, a resume after it) changes nothing.
     fn apply(&mut self, effects: Vec<Effect>, heard: bool) -> bool {
         let mut fatal = false;
-        let mut refused = Vec::new();
+        let mut answers: Vec<(Value, bool)> = Vec::new();
+        let mut asked_of = None;
         let mut peer_done = None;
         let mut turn_ended: Option<(String, Option<String>, Option<String>)> = None;
         {
@@ -276,6 +305,8 @@ impl Actor {
                         if !more {
                             s.set_busy(false);
                         }
+                        s.drop_program_approvals(); // a request the turn left unanswered is over with it
+                        self.asked.lock().unwrap().clear();
                         if ok {
                             let label = crate::transfer::session_label(&s);
                             let sid = s.id.clone();
@@ -287,7 +318,18 @@ impl Actor {
                         crate::calls::flush_deferred(&mut s);
                         turn_ended = Some((s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
                     }
-                    Effect::Approval(approval) => refused.push(approval.request_id), // nobody is asked in this phase: it is refused below
+                    Effect::Approval(approval) if s.mode == "auto" => {
+                        s.append(format!("[auto-allowed] {}", approval.prompt).into_bytes()); // the mode is the person's choice; what was allowed is said
+                        answers.push((approval.request_id, true));
+                    }
+                    Effect::Approval(approval) if s.approvals.len() >= MAX_APPROVALS => answers.push((approval.request_id, false)), // too many are waiting: this one is denied once
+                    Effect::Approval(approval) => {
+                        s.approval_counter += 1;
+                        let number = s.approval_counter;
+                        self.asked.lock().unwrap().insert(number, approval.request_id);
+                        s.add_approval(number, approval.prompt);
+                        asked_of = Some((s.id.clone(), s.settings.name.clone(), s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone())));
+                    }
                     Effect::Fatal => fatal = true,
                 }
             }
@@ -296,9 +338,12 @@ impl Actor {
         if let Some((id, name, cwd)) = turn_ended {
             crate::notify::on_turn_finished(&self.shared, &id, name.as_deref(), cwd.as_deref());
         }
-        for request_id in refused {
-            let answers = self.conn.answer(&request_id, false);
-            fatal |= self.apply(answers, false);
+        if let Some((id, name, cwd)) = asked_of {
+            crate::notify::on_approval_needed(&self.shared, &id, name.as_deref(), cwd.as_deref());
+        }
+        for (request_id, allow) in answers {
+            let effects = self.conn.answer(&request_id, allow);
+            fatal |= self.apply(effects, false);
         }
         fatal
     }

@@ -39,6 +39,11 @@ pub trait Link: Send {
     fn alive(&self) -> bool {
         true
     }
+    /// The person's answer (`allow` or not) to a request of the program that the session lists as an approval; the work answers the program with exactly that and nothing wider.
+    /// Never blocks and never takes the session's lock. A kind that puts nothing to the person has no approval to answer.
+    fn answer(&mut self, _approval_id: i64, _allow: bool) -> Result<(), &'static str> {
+        Err("unknown_approval")
+    }
 }
 
 pub trait Driver: Send + Sync {
@@ -200,6 +205,7 @@ mod tests {
     fn a_driver_takes_no_folder_and_a_link_is_alive_unless_it_says_otherwise() {
         assert!(!Dummy("port-test-c").takes_folder());
         assert!(Idle.alive());
+        assert_eq!(Idle.answer(1, true), Err("unknown_approval"));
     }
 
     #[test]

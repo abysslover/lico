@@ -4,7 +4,13 @@
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
+
 use super::conn::{Conn, Effect, INIT_WAIT, OPEN_WAIT, PROTOCOL};
+use super::{Asked, Handle, Msg};
+use crate::driver::Link;
 use super::map::{answer, approval_prompt, map_stream, request_id_ok, valid_options, Approval, Mapped, Mapper, Rec, MAX_PENDING, MAX_PROMPT, MAX_RECORD, MAX_TOOLS, SIGN_IN_WORDS};
 
 const FIXTURES: [(&str, &str); 3] = [
@@ -493,6 +499,41 @@ fn a_request_of_the_program_is_refused_and_a_permission_request_is_held_until_th
     ready(&mut quiet, now);
     let said = quiet.agent(now, &ask(json!(8))["msg"], false);
     assert!(!said.iter().any(|e| matches!(e, Effect::Approval(_))) && sent(&said).len() == 1 && lines_of(&said).len() == 2, "nobody is asked: refused with a line");
+}
+
+#[test]
+fn a_request_the_turn_left_unanswered_is_over_with_the_turn() {
+    let now = Instant::now();
+    let mut conn = Conn::new("/w".into(), None, true);
+    ready(&mut conn, now);
+    let prompt = sent(&conn.input("r1", "go")).remove(0);
+    let asked = conn.agent(now, &ask(json!(100))["msg"], false);
+    assert!(asked.iter().any(|e| matches!(e, Effect::Approval(_))));
+    let ended = conn.agent(now, &reply(&prompt["id"], json!({"stopReason": "cancelled"})), false);
+    assert!(ended.iter().any(|e| matches!(e, Effect::Turn { ok: false, .. })));
+    assert!(conn.answer(&json!(100), true).is_empty(), "nothing is sent for a request the program does not wait for any more");
+    let again = conn.agent(now, &ask(json!(100))["msg"], false);
+    assert!(again.iter().any(|e| matches!(e, Effect::Approval(_))), "the id is free again");
+}
+
+#[test]
+fn an_answer_of_the_person_goes_to_the_conversation_once_and_only_for_an_approval_that_was_put_to_them() {
+    let (tx, rx) = mpsc::sync_channel::<Msg>(1);
+    let asked: Asked = Arc::new(Mutex::new([(3, json!(100)), (4, json!("r-4"))].into_iter().collect()));
+    let alive = Arc::new(AtomicBool::new(true));
+    let mut handle = Handle { tx, alive: alive.clone(), pending: Arc::new(AtomicUsize::new(0)), asked: asked.clone() };
+    assert_eq!(handle.answer(9, true), Err("unknown_approval"), "a number that was never put to the person");
+    assert_eq!(handle.answer(3, false), Ok(()));
+    assert!(matches!(rx.try_recv(), Ok(Msg::Answer { request_id, allow: false }) if request_id == json!(100)), "the request of the program, and the person's no");
+    assert_eq!(handle.answer(3, true), Err("unknown_approval"), "one answer to one approval");
+    assert_eq!(handle.answer(4, true), Ok(()));
+    assert_eq!(handle.answer(4, true), Err("unknown_approval"));
+    asked.lock().unwrap().insert(5, json!(7));
+    assert_eq!(handle.answer(5, true), Err("busy"), "the queue is full: the approval stays, and can be answered again");
+    assert!(asked.lock().unwrap().contains_key(&5));
+    alive.store(false, Ordering::SeqCst);
+    assert_eq!(handle.answer(5, true), Err("session_disconnected"), "nothing is left to answer");
+    assert!(handle.asked.lock().unwrap().contains_key(&5));
 }
 
 #[test]

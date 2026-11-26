@@ -45,3 +45,8 @@ the tests pass the interpreter and the simulator this way); `--dangerously-skip-
 directories. The simulator logs how it was started (`argv`, the folder, the NAMES of the environment, never a value) as the first line of its `--received` file, and
 `<received>.hang` makes it never answer `initialize`. `tests/test_agy_session.py` tries the session with it; the real program's turns are not verified (the owner's hands-on check).
 
+Since M25-P03 a permission request of the program is an approval of the session: in the mode `default` the person is asked (`ev: approval`, `approval.answer`), in the mode `auto` the host answers
+the one-shot yes at once and writes `[auto-allowed] <prompt>` first. Either way the answer is the `allow_once` or `reject_once` option of that one request (`cancelled` when the program
+offered none), never an `always` option, and a request the turn left unanswered is over with the turn. The mode is the session's own (`session.create`, `session.mode`); the program is never
+started with the flag that skips its permissions. In the simulator the mode `fixture` waits for the host's answer to the request and the mode `hostile` never does.
+

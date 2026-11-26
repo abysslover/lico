@@ -729,6 +729,8 @@ pub fn approval_answer(shared: &Arc<Shared>, session: &str, generation: i64, app
         crate::codex::answer(&mut s, approval_id, answer == "allow")?;
     } else if s.claude.is_some() {
         crate::claude::answer(&mut s, approval_id, answer == "allow")?;
+    } else if let Some(link) = s.driver.as_mut() {
+        link.answer(approval_id, answer == "allow")?; // a session of a driver kind that asks the person (`agy`)
     } else {
         match s.input_tx.as_ref().map(|tx| tx.try_send(format!("P {approval_id} {answer}"))) {
             Some(Ok(())) => {}

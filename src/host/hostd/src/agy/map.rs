@@ -39,6 +39,7 @@ pub enum Rec {
     Note(String),
 }
 
+#[cfg(test)]
 impl Rec {
     pub fn text(&self) -> &str {
         match self {
@@ -426,6 +427,11 @@ impl Mapper {
         } else if let (true, Some(ident)) = (message.get("result").is_some(), ident) {
             self.pending.remove(&ident.to_string()); // the host answered a permission request
         }
+    }
+
+    /// A turn ended: the permission requests it left unanswered are over.
+    pub fn forget_pending(&mut self) {
+        self.pending.clear();
     }
 
     /// Whether a permission request of the program waits for the person.

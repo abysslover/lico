@@ -307,6 +307,8 @@ impl Conn {
     }
 
     fn end_turn(&mut self, out: &mut Vec<Effect>, ok: bool) {
+        self.held.clear(); // a request the turn left unanswered is over with it: the program does not wait for it any more
+        self.mapper.forget_pending();
         out.push(Effect::Turn { ok, more: !self.queue.is_empty() });
         self.pump(out);
     }

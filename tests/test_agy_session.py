@@ -1,7 +1,7 @@
-"""M25-P02: an agy session in the host, tried with the simulator of `agy acp` (`src/host/adapters/agy/simulator.py`), never the real program.
+"""M25-P02 and P03: an agy session in the host, tried with the simulator of `agy acp` (`src/host/adapters/agy/simulator.py`), never the real program.
 
 What the unit tests of `agy::` cannot see is here: the process (its folder, its arguments, the names of its environment), the threads, the session record, the states of an input,
-the refused permission request reaching the program as an answer, the sign-in words, a program that dies or says nothing, and nothing left behind by a refused start.
+the permission request as an approval of the session (asked in the mode `default`, answered by the host in `auto`) and the answer reaching the program as one option of one request, the sign-in words, a program that dies or says nothing, and nothing left behind by a refused start.
 The real program's turns are not verified (the record of what was observed is `src/host/adapters/agy/capabilities.json`): the owner's hands-on check is gate G3.
 """
 
@@ -18,7 +18,6 @@ from tests.test_codex_adapter import agent_pid, usual_umask, wait_for
 SIM = REPO / "src" / "host" / "adapters" / "agy" / "simulator.py"
 FIXTURE = REPO / "tests" / "fixtures" / "agy_acp" / "turn_with_permission.json"
 SIGNED_OUT = "[error] agy is not signed in: open a Terminal tab, run agy, sign in, then send the message again"
-NOT_ASKED = "> not run: this version of Lico does not pass the question to you yet"
 KEPT = {"PATH", "LANG", "HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "LC_CTYPE"}   # LC_CTYPE is what the interpreter itself adds
 
 
@@ -127,26 +126,118 @@ def test_a_session_runs_in_its_folder_with_the_fixed_arguments_and_a_cleaned_env
             host.stop()
 
 
-def test_a_permission_request_is_refused_to_the_program_and_never_held_and_the_words_say_so():
+def approvals_of(conn, sid):
+    return status_of(conn, sid).get("approvals", [])
+
+
+def answer(conn, sid, generation, number, what):
+    return conn.call(op="approval.answer", session=sid, generation=generation, approval_id=number, answer=what)
+
+
+def events_seen(watcher):
+    seen = []
+    watcher.sock.settimeout(0.5)
+    try:
+        while True:
+            seen.append(watcher.read())
+    except Exception:
+        pass
+    return seen
+
+
+def test_in_the_mode_default_a_permission_request_is_an_approval_and_the_answer_is_one_option_of_that_one_request():
     with private_dir() as directory:
         folder = folder_in(directory)
         host, log, received = agy_host(directory)
         try:
             conn = Conn(host.socket)
-            sid, generation = new_agy(conn, folder)
+            sid, generation = new_agy(conn, folder, mode="default")
+            watcher = Conn(host.socket)
+            watcher.call(op="subscribe", session=sid, after=-1, snapshot=True)
             say(conn, sid, generation, "fx", "fixture")
-            wait_for(lambda: NOT_ASKED in records(log, sid))
-            wait_for(lambda: any(r == "The command was not run." for r in records(log, sid)))
-            assert wait_for(lambda: status_of(conn, sid).get("activity") == "idle")
-            assert not status_of(conn, sid).get("approvals")                        # nothing waits for a person: this version does not ask
+            first = wait_for(lambda: approvals_of(conn, sid))
+            assert first[0]["prompt"] == "run: ls -la"
+            number = first[0]["approval_id"]
+            assert answers(received) == [], "nothing is answered before the person does"
+            # forged, stale and repeated answers send nothing to the program
+            assert answer(conn, sid, generation, number + 50, "allow")["error"] == "unknown_approval"
+            assert answer(conn, sid, generation + 1, number, "allow")["error"] == "stale_generation"
+            assert answers(received) == []
+            done = answer(conn, sid, generation, number, "allow")
+            assert done["ok"] == 1 and done["state"] == "answered"
+            assert answer(conn, sid, generation, number, "allow")["error"] == "unknown_approval"
+            wait_for(lambda: "[turn completed]" in records(log, sid))
+            assert "Done: a.txt and b.txt." in records(log, sid)
             given = answers(received)
             assert len(given) == 1 and given[0]["id"] == 100
-            outcome = given[0]["result"]["outcome"]
-            assert outcome["outcome"] == "selected" and outcome["optionId"] == "reject"      # the narrowest refusal of the options the program offered
-            assert records(log, sid).index("[tool error]") < records(log, sid).index(NOT_ASKED)       # the failed call, then why
-            # the program is not held: another turn works
-            say(conn, sid, generation, "next", "after")
-            wait_for(lambda: "echo: after" in records(log, sid))
+            assert given[0]["result"]["outcome"] == {"outcome": "selected", "optionId": "allow"}      # the one-shot yes of the options the program offered, never an `always`
+            assert wait_for(lambda: status_of(conn, sid).get("activity") == "idle") and not approvals_of(conn, sid)
+            # a second turn: the number is new, and a no is the one-shot no
+            say(conn, sid, generation, "fx2", "fixture")
+            second = wait_for(lambda: approvals_of(conn, sid))
+            assert second[0]["approval_id"] > number
+            assert answer(conn, sid, generation, second[0]["approval_id"], "deny")["ok"] == 1
+            wait_for(lambda: "The command was not run." in records(log, sid))
+            assert records(log, sid).count("The command was not run.") == 1       # (the program's tool call id repeats in this fixture, so no second failure line is drawn)
+            assert answers(received)[-1]["result"]["outcome"] == {"outcome": "selected", "optionId": "reject"}
+            assert wait_for(lambda: status_of(conn, sid).get("activity") == "idle")
+            assert len([e for e in events_seen(watcher) if e.get("ev") == "approval"]) == 2, "the viewers were told of both"
+        finally:
+            host.stop()
+
+
+def test_in_the_mode_auto_the_host_answers_the_one_shot_yes_and_says_so_and_a_switch_to_default_makes_it_ask_again():
+    with private_dir() as directory:
+        folder = folder_in(directory)
+        host, log, received = agy_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_agy(conn, folder, mode="auto")
+            say(conn, sid, generation, "fx", "fixture")
+            wait_for(lambda: "[turn completed]" in records(log, sid))
+            lines = records(log, sid)
+            assert lines.index("[auto-allowed] run: ls -la") < lines.index("Done: a.txt and b.txt.")      # said before the program went on
+            given = answers(received)
+            assert len(given) == 1 and given[0]["result"]["outcome"] == {"outcome": "selected", "optionId": "allow"}
+            assert not approvals_of(conn, sid), "nobody was asked"
+            # the person's switch: the next request is asked, and the switch is refused while one is waiting
+            assert wait_for(lambda: status_of(conn, sid).get("activity") == "idle")
+            switched = conn.call(op="session.mode", session=sid, generation=generation, mode="default")
+            assert switched["ok"] == 1 and switched["mode"] == "default" and switched["generation"] == generation      # the program is not restarted
+            say(conn, sid, generation, "fx2", "fixture")
+            asked = wait_for(lambda: approvals_of(conn, sid))
+            assert conn.call(op="session.mode", session=sid, generation=generation, mode="auto")["error"] == "busy"
+            assert answer(conn, sid, generation, asked[0]["approval_id"], "allow")["ok"] == 1
+            wait_for(lambda: records(log, sid).count("[turn completed]") == 2)
+            assert records(log, sid).count("[auto-allowed] run: ls -la") == 1
+        finally:
+            host.stop()
+
+
+def test_a_repeated_or_unclean_request_is_one_approval_at_most_and_a_request_the_turn_left_unanswered_goes_with_the_turn_and_so_does_the_program():
+    with private_dir() as directory:
+        folder = folder_in(directory)
+        host, log, received = agy_host(directory)
+        try:
+            conn = Conn(host.socket)
+            sid, generation = new_agy(conn, folder, mode="default")
+            watcher = Conn(host.socket)
+            watcher.call(op="subscribe", session=sid, after=-1, snapshot=True)
+            say(conn, sid, generation, "bad", "hostile")           # 20 requests on one id, one with a boolean id, a read of a file, 300 tool calls; the turn ends at once
+            wait_for(lambda: "[turn completed]" in records(log, sid))
+            assert wait_for(lambda: status_of(conn, sid).get("activity") == "idle")
+            assert len([e for e in events_seen(watcher) if e.get("ev") == "approval"]) == 1
+            assert not approvals_of(conn, sid), "the turn ended with the request unanswered: it is over"
+            assert answer(conn, sid, generation, 1, "allow")["error"] == "unknown_approval"
+            replies = [m for m in lines_of(received) if "method" not in m and "argv" not in m and m.get("id") not in (1, 2, 3)]
+            assert [m["id"] for m in replies] == [7] and replies[0]["error"]["code"] == -32601, "only the read of a file was answered, and refused"
+            # a request that waits for the person when the program ends is gone with it, and its answer is refused
+            say(conn, sid, generation, "fx", "fixture")
+            waiting = wait_for(lambda: approvals_of(conn, sid))
+            os.kill(agent_pid(conn, sid), 9)
+            wait_for(lambda: status_of(conn, sid)["state"] == "disconnected")
+            assert not approvals_of(conn, sid)
+            assert refused(answer(conn, sid, generation, waiting[0]["approval_id"], "allow"))
         finally:
             host.stop()
 
