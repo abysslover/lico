@@ -9,6 +9,19 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## 0.9.0 — unreleased (`M25`)
+
+Draft written in M25-P07; the release (P08) fills in the commit, the pull request and what was measured.
+
+- **Milestone**: [M25 agy as a Lico session](doc/milestones/202611/20261126/20261126_01_M25_agy_as_a_lico_session_milestone.md); a minor release (level C of the owner's order: `agy` becomes a session of Lico's, not a program in a terminal).
+- **Highlights**:
+  - **agy is a session** (M25-P01 to P05): the host runs `agy acp` (the Agent Client Protocol on the program's standard input and output) as a driver kind of its own, with its own transcript; the **agy** picture of New session starts one at once in the folder the left lists (no account step, no model), a card of an agy conversation in Chats resumes it by its id (never a new conversation in its place, one session per conversation), the tab begins with `A` and the strip, the header and the list say `agy` with no account word. The terminal path of levels A and B for a conversation is gone; the Terminal picture and typing `agy` in a terminal stay.
+  - **You decide what it may do** (M25-P03): every permission request of the program is an approval of the session in the mode `default` (the window's start mode); in `auto` the host answers each request with the narrowest yes the request offers and writes `[auto-allowed] ...` first, never an `always` choice; the flag that skips the program's permissions is never passed. The child gets seven names of the host's environment and `--disable-telemetry`.
+  - **A peer like the others** (M25-P06): Send to, an `@name` of the person and a Call Room work between an agy session and a Claude, a Codex or another agy session; the program has no tool of Lico's, so its answer's paragraphs that begin with `@name` at the start of the line are the sends (the same approval and limits as a tool's `send`).
+  - **The guide** (`doc/manual_end_to_end.md` `1.36.0`, the section *agy sessions*) and **the security note** ([Security of an agy session](doc/plans/202611/20261126/20261126_14_agy_session_security_note.md)) say all of this and what Lico does not do: the program is not fenced, runs as you and decides which actions ask.
+- **Not verified by any test**: a real turn of the real program (the sign-in, an answer, a real permission request, a real resume, the conversation id in the program's files being the protocol's session id). The tests use a simulator of `agy acp` and fixtures read from the program's documented shapes; this is the owner's hands-on check (gate G3).
+- **Known limits**: text only (no attachment); a whole conversation cannot be handed over; a turn cannot be stopped from the window (`session/cancel` is not sent); a spawn failure is told as `busy`; a conversation whose folder is gone resumes in a workspace of the host.
+
 ## 0.8.2 — 2026-11-26 (`M24`)
 
 - **Milestone**: [M24 One touch to start, few words, and every pane can be driven by an agent](doc/milestones/202611/20261124/20261124_01_M24_one_touch_window_and_every_pane_driven_milestone.md) ([release report](doc/reports/202611/20261126/20261126_07_M24-P12_release_0_8_2_report.md)); a patch release by the owner's rule of 2026-11-24 (the minor moves with level C, `0.9.0`); it carries everything since `0.8.1` (M24-P07 to P11e, fourteen code commits); the version is in `3f171b3`, the last code commit is `c466657`; the file of the release build is recorded in the release report (`0.8.1`: `11,233,248` bytes).
