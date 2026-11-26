@@ -2,7 +2,7 @@
 //!
 //! The fold of the cards of commands and tools lives in `tool_fold.rs`: a card is folded to begin with and the keys that are in the set are the ones the person opened. Here it is the other way
 //! round: a block of the person, of a peer or of the agent is open to begin with, and the set holds the keys `(session, seq of the first line)` of the blocks the person folded. A folded block is one
-//! line of the visible transcript, `▸ the first words  · 12 lines`, with the raw index, the seq and the colour of the block's first line, so that its time (P11b) is the first line's.
+//! line of the visible transcript, `▸ the first words  / 12 lines`, with the raw index, the seq and the colour of the block's first line, so that its time (P11b) is the first line's.
 
 use std::collections::HashSet;
 
@@ -40,7 +40,7 @@ pub(super) fn foldable(block: &[Entry]) -> bool {
 /// The line a folded block shows: `▸ ` and the first words, then how many lines are folded.
 pub(super) fn pill(head: &str, lines: usize) -> String {
     let head = clip_chars(head.trim(), PILL_HEAD_CHARS);
-    format!("\u{25b8} {head}  \u{00b7} {lines} line{}", if lines == 1 { "" } else { "s" })
+    format!("\u{25b8} {head}  / {lines} line{}", if lines == 1 { "" } else { "s" })
 }
 
 /// The visible lines with the blocks that are in `folded` (for `session`) made one line each.

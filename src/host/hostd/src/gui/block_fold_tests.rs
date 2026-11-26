@@ -42,7 +42,7 @@ mod pure {
         assert_eq!(out[0], conversation()[0], "the block before is as it was");
         assert_eq!(out[2], conversation()[4], "and the one after");
         let (raw, seq, text, role) = &out[1];
-        assert_eq!((*raw, *seq, text.as_str()), (1, 11, "▸ Reply line one  · 3 lines"), "the raw index and seq of the first line: its time is the block's");
+        assert_eq!((*raw, *seq, text.as_str()), (1, 11, "▸ Reply line one  / 3 lines"), "the raw index and seq of the first line: its time is the block's");
         assert_ne!(role & ROLE_BLOCK_FOLDED, 0);
         assert_eq!(kind_of(*role), Kind::Response, "who spoke is still said by the colour");
         assert_eq!(role & (ROLE_BOX_TOP | ROLE_BOX_BOT), 0, "the agent's band has no card borders");
@@ -53,7 +53,7 @@ mod pure {
         let entries = vec![e(0, 5, ">> first line of a long message", USER), e(1, 6, ">> second line", USER), e(2, 7, "Answer", STYLE_AGENT)];
         let out = apply(entries, &set(&[("s1", 5)]), "s1");
         assert_eq!(out.len(), 2);
-        assert_eq!(out[0].2, "▸ >> first line of a long message  · 2 lines");
+        assert_eq!(out[0].2, "▸ >> first line of a long message  / 2 lines");
         assert_eq!((out[0].3 & (STYLE_USER | ROLE_USER_BG), out[0].3 & ROLE_BLOCK_FOLDED != 0), (STYLE_USER | ROLE_USER_BG, true));
         assert_eq!(out[1].2, "Answer");
         assert_eq!(out[0].3 & (ROLE_BOX_TOP | ROLE_BOX_BOT), 0, "the person's band has no card borders");
@@ -70,7 +70,7 @@ mod pure {
         let role = out[0].3;
         assert_eq!(kind_of(role), Kind::Peer);
         assert_eq!((role & ROLE_BOX_TOP != 0, role & ROLE_BOX_BOT != 0, role & ROLE_BLOCK_FOLDED != 0), (true, true, true), "a card of one row has both its borders");
-        assert!(out[0].2.ends_with("  · 3 lines"), "{}", out[0].2);
+        assert!(out[0].2.ends_with("  / 3 lines"), "{}", out[0].2);
     }
 
     #[test]
@@ -92,7 +92,7 @@ mod pure {
         let out = apply(entries, &set(&[("s1", 1)]), "s1");
         assert_eq!(out.len(), 2);
         assert!(out[0].2.starts_with("▸ word word word"), "{}", out[0].2);
-        assert!(out[0].2.ends_with("…  · 1 line"), "the words are cut and the count is singular: {}", out[0].2);
+        assert!(out[0].2.ends_with("…  / 1 line"), "the words are cut and the count is singular: {}", out[0].2);
     }
 
     #[test]
@@ -103,18 +103,18 @@ mod pure {
             e(3, 4, "b1", STYLE_AGENT), e(4, 5, "b2", STYLE_AGENT),
         ];
         let out = apply(entries.clone(), &set(&[("s1", 4)]), "s1");
-        assert_eq!(out.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["a1", "a2", "$ ls", "▸ b1  · 2 lines"], "the second reply folds, the first stays");
+        assert_eq!(out.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["a1", "a2", "$ ls", "▸ b1  / 2 lines"], "the second reply folds, the first stays");
         let both = apply(entries, &set(&[("s1", 1), ("s1", 4)]), "s1");
-        assert_eq!(both.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["▸ a1  · 2 lines", "$ ls", "▸ b1  · 2 lines"]);
+        assert_eq!(both.iter().map(|x| x.2.as_str()).collect::<Vec<_>>(), ["▸ a1  / 2 lines", "$ ls", "▸ b1  / 2 lines"]);
     }
 
     #[test]
     fn a_block_that_is_folded_has_a_count_that_follows_it() {
         let mut entries = vec![e(0, 1, "a1", STYLE_AGENT), e(1, 2, "a2", STYLE_AGENT)];
         let folded = set(&[("s1", 1)]);
-        assert_eq!(apply(entries.clone(), &folded, "s1")[0].2, "▸ a1  · 2 lines");
+        assert_eq!(apply(entries.clone(), &folded, "s1")[0].2, "▸ a1  / 2 lines");
         entries.push(e(2, 3, "a3", STYLE_AGENT));
-        assert_eq!(apply(entries, &folded, "s1")[0].2, "▸ a1  · 3 lines", "a reply that goes on growing keeps its key");
+        assert_eq!(apply(entries, &folded, "s1")[0].2, "▸ a1  / 3 lines", "a reply that goes on growing keeps its key");
     }
 
     #[test]
@@ -128,18 +128,18 @@ mod pure {
         assert!(foldable(&one(&"한".repeat(85))));
         assert!(foldable(&[e(0, 1, "a", STYLE_AGENT), e(1, 2, "b", STYLE_AGENT)]));
         assert!(!foldable(&[]));
-        assert!(foldable(&[e(0, 1, "▸ short  · 3 lines", STYLE_AGENT | ROLE_BLOCK_FOLDED)]), "a block that is folded can be opened, whatever its pill says");
+        assert!(foldable(&[e(0, 1, "▸ short  / 3 lines", STYLE_AGENT | ROLE_BLOCK_FOLDED)]), "a block that is folded can be opened, whatever its pill says");
     }
 
     #[test]
     fn the_pill_says_how_many_lines_were_folded() {
-        assert_eq!(pill("head", 3), "▸ head  · 3 lines");
-        assert_eq!(pill("head", 2), "▸ head  · 2 lines");
-        assert_eq!(pill("head", 1), "▸ head  · 1 line");
-        assert_eq!(pill("  padded  ", 2), "▸ padded  · 2 lines", "the spaces around the words go");
+        assert_eq!(pill("head", 3), "▸ head  / 3 lines");
+        assert_eq!(pill("head", 2), "▸ head  / 2 lines");
+        assert_eq!(pill("head", 1), "▸ head  / 1 line");
+        assert_eq!(pill("  padded  ", 2), "▸ padded  / 2 lines", "the spaces around the words go");
         let cut = pill(&"x".repeat(100), 2);
-        assert_eq!(cut, format!("▸ {}…  · 2 lines", "x".repeat(83)), "84 characters of the head at most, the last of them the ellipsis");
-        assert_eq!(pill(&"x".repeat(84), 2), format!("▸ {}  · 2 lines", "x".repeat(84)), "84 fit");
+        assert_eq!(cut, format!("▸ {}…  / 2 lines", "x".repeat(83)), "84 characters of the head at most, the last of them the ellipsis");
+        assert_eq!(pill(&"x".repeat(84), 2), format!("▸ {}  / 2 lines", "x".repeat(84)), "84 fit");
     }
 }
 
@@ -206,9 +206,9 @@ mod click {
         let mut w = Window::new(&CONVERSATION);
         w.click(2);
         w.click(2);
-        assert_eq!(w.shown(), [">> hello there", "▸ Reply line one  · 3 lines", ">> thanks"]);
+        assert_eq!(w.shown(), [">> hello there", "▸ Reply line one  / 3 lines", ">> thanks"]);
         assert_eq!(w.app.ui.sel, Some((1, 1)), "the block is the selection still, as one line");
-        assert_eq!(w.app.selection_text().as_deref(), Some("▸ Reply line one  · 3 lines"));
+        assert_eq!(w.app.selection_text().as_deref(), Some("▸ Reply line one  / 3 lines"));
         w.click(1);
         assert_eq!(w.shown(), CONVERSATION, "a click on the folded line opens the block");
         assert_eq!(w.app.ui.sel, Some((1, 3)), "and the whole block is selected again");
@@ -326,10 +326,10 @@ mod click {
         let mut w = Window::new(&[">> question", "Reply line one", "Reply line two", "Reply line three"]);
         w.click(2);
         w.click(2);
-        assert_eq!(w.shown(), [">> question", "▸ Reply line one  · 3 lines"]);
+        assert_eq!(w.shown(), [">> question", "▸ Reply line one  / 3 lines"]);
         w.app.push_line(20, "Reply line four".into());
         w.frame();
-        assert_eq!(w.shown(), [">> question", "▸ Reply line one  · 4 lines"]);
+        assert_eq!(w.shown(), [">> question", "▸ Reply line one  / 4 lines"]);
     }
 
     #[test]
@@ -364,7 +364,7 @@ mod look {
     fn a_folded_block_is_in_the_dim_ink_of_a_folded_card_whoever_spoke_and_an_open_one_is_not() {
         let base = AttrsList::new(&Attrs::new());
         for role in [STYLE_AGENT, USER, STYLE_USER | ROLE_PEER_BG | ROLE_BOX_TOP | ROLE_BOX_BOT] {
-            let pill = tint_role(base.clone(), "▸ words  · 2 lines", role | ROLE_BLOCK_FOLDED);
+            let pill = tint_role(base.clone(), "▸ words  / 2 lines", role | ROLE_BLOCK_FOLDED);
             assert_eq!(pill.defaults().color_opt, Some(TOOL_FOLD_INK), "role {role:#x}");
         }
         let open = [(STYLE_AGENT, AGENT_INK), (USER, USER_INK), (STYLE_USER | ROLE_PEER_BG, PEER_INK)];

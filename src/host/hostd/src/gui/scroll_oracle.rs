@@ -688,7 +688,7 @@ fn a_block_that_is_folded_draws_the_same_pixels_with_the_scroll_step_as_with_a_f
         // the folded reply grows: its count changes and nothing else
         p.push(&["Reply 7 line d".into()]);
         p.step("the folded reply grows");
-        assert!(p.on.app.shown_lines_dump().last().is_some_and(|l| l.ends_with("· 4 lines")), "{:?}", p.on.app.shown_lines_dump().last());
+        assert!(p.on.app.shown_lines_dump().last().is_some_and(|l| l.ends_with("/ 4 lines")), "{:?}", p.on.app.shown_lines_dump().last());
         for n in 0..6 {
             p.push(&[format!(">> more {n}"), format!("An answer {n}")]);
             p.step(&format!("lines {n} after a folded block"));

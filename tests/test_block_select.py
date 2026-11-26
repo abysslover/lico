@@ -15,7 +15,7 @@ from tests.test_new_session_screen import claude_args
 
 QUESTION = ">> First line of a question\n>> second line of it\n>> third line of it"
 REPLY = "echo: First line of a question\nsecond line of it\nthird line of it"
-PILL = "▸ echo: First line of a question  · 3 lines"
+PILL = "▸ echo: First line of a question  / 3 lines"
 
 
 def test_a_click_selects_a_whole_block_a_second_one_folds_it_and_a_third_opens_it():

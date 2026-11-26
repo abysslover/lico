@@ -11,7 +11,7 @@
 | | Before | Now |
 |---|---|---|
 | A click on a line of your message, a peer's card or the agent's reply | selects that one line | **selects the whole block** (from its first row to its last, the room with the time included); nothing is copied by the click |
-| A second click on the block that is selected | selects the same line again | **folds it** to one row, `▸ the first words  · 12 lines`, in the dim ink of the tool cards' rows; the time beside it is the first line's |
+| A second click on the block that is selected | selects the same line again | **folds it** to one row, `▸ the first words  / 12 lines`, in the dim ink of the tool cards' rows; the time beside it is the first line's |
 | A click on the folded row | | **opens it** again (and the block is selected) |
 | A command or tool card | one click folds or opens it | the same |
 | A drag, a shift-click, a panel, the call room, the internal-events view | as they were | as they were |
@@ -41,5 +41,5 @@ A block is foldable when it has two lines or more, or one line longer than 84 ch
 - A block that is folded and selected copies as its row (as the cards' rows do); to copy the text of a block, select it with the first click and copy before the second.
 - A double click is two clicks: it selects and then folds (there is no word selection in the transcript).
 - Nothing is folded by the window by itself to spare memory (a block is folded only by the person); the screenful is the only part that is shaped already.
-- The ink of the folded row and its form (`▸ ` and `  · N lines`) are the lead's choice, one place each in `gui/block_fold.rs` and `gui/transcript.rs`.
+- The ink of the folded row and its form (`▸ ` and `  / N lines`) are the lead's choice, one place each in `gui/block_fold.rs` and `gui/transcript.rs`.
 - The theme button (P11d) and the file under the pointer (P11e) come next; the release is `0.8.2`.
