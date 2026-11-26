@@ -9,6 +9,7 @@ use std::collections::VecDeque;
 
 use cosmic_text::{AttrsList, Color};
 
+use super::theme::tone;
 use super::App;
 
 pub const USER_INK: Color = Color::rgb(0x82, 0xCA, 0xFF);
@@ -474,18 +475,18 @@ pub fn paint_transcript_decorations(
             }
             let row_start = py as usize * width;
             if role & ROLE_USER_BG != 0 {
-                buf[row_start + x0..row_start + edge].fill(USER_BG);
+                buf[row_start + x0..row_start + edge].fill(tone(USER_BG));
             } else if reply {
-                buf[row_start + x0..row_start + edge].fill(RESPONSE_BG);
+                buf[row_start + x0..row_start + edge].fill(tone(RESPONSE_BG));
             } else if role & ROLE_PEER_BG != 0 {
                 if bx0 < bx1 {
                     let top_edge = (role & ROLE_BOX_TOP != 0) && py == raw_r0;
                     let bot_edge = (role & ROLE_BOX_BOT != 0) && py == raw_r1 - 1;
-                    buf[row_start + bx0..row_start + bx1].fill(if top_edge || bot_edge { PEER_BORDER } else { PEER_BG });
+                    buf[row_start + bx0..row_start + bx1].fill(tone(if top_edge || bot_edge { PEER_BORDER } else { PEER_BG }));
                     let rx1 = (bx0 + rail_w).min(bx1);
-                    buf[row_start + bx0..row_start + rx1].fill(PEER_RAIL);
+                    buf[row_start + bx0..row_start + rx1].fill(tone(PEER_RAIL));
                     if bx1 > bx0 + 1 {
-                        buf[row_start + bx1 - 1] = PEER_BORDER;
+                        buf[row_start + bx1 - 1] = tone(PEER_BORDER);
                     }
                 }
             } else if role & ROLE_BOX != 0 && bx0 < bx1 {
@@ -506,7 +507,7 @@ pub fn paint_transcript_decorations(
                 } else {
                     CMD_BG
                 };
-                buf[row_start + bx0..row_start + bx1].fill(fill_col);
+                buf[row_start + bx0..row_start + bx1].fill(tone(fill_col));
                 let rx1 = (bx0 + rail_w).min(bx1);
                 let rail_col = if err_row {
                     CMD_ERR_RAIL
@@ -515,9 +516,9 @@ pub fn paint_transcript_decorations(
                 } else {
                     CMD_RAIL
                 };
-                buf[row_start + bx0..row_start + rx1].fill(rail_col);
+                buf[row_start + bx0..row_start + rx1].fill(tone(rail_col));
                 if bx1 > bx0 + 1 {
-                    buf[row_start + bx1 - 1] = bdr;
+                    buf[row_start + bx1 - 1] = tone(bdr);
                 }
             }
         }

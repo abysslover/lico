@@ -38,9 +38,31 @@ struct Side {
     size: (usize, usize),
 }
 
+thread_local! {
+    /// The windows this thread makes are in the light look (`M24-P11d`: `theme_oracle.rs` runs the oracle again in it).
+    static LIGHT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `f` with every window of this thread made in the light look; the thread is dark again after it, whether `f` ends or panics.
+fn in_light(f: impl FnOnce()) {
+    struct Dark;
+    impl Drop for Dark {
+        fn drop(&mut self) {
+            LIGHT.with(|l| l.set(false));
+        }
+    }
+    LIGHT.with(|l| l.set(true));
+    let _dark = Dark;
+    f();
+}
+
 impl Side {
     fn new(size: (usize, usize), scale: f32, no_scroll_step: bool) -> Side {
-        Side { app: app(scale, no_scroll_step), buf: vec![GARBAGE; size.0 * size.1], age: 0, size }
+        let mut app = app(scale, no_scroll_step);
+        if LIGHT.with(std::cell::Cell::get) {
+            app.ui.theme.choice = super::theme::Choice::Light;
+        }
+        Side { app, buf: vec![GARBAGE; size.0 * size.1], age: 0, size }
     }
 
     fn causes(&self) -> [u64; Cause::ALL.len()] {
@@ -514,12 +536,17 @@ fn drawn(side: &Side) -> (u64, usize) {
     (dump["gutter"].as_u64().unwrap_or(0), dump["drawn"].as_array().map_or(0, Vec::len))
 }
 
+/// A colour of the dark look as this window paints it (the helpers below compare pixels with the constants of the window, in whichever look it is in).
+fn look(side: &Side, color: u32) -> u32 {
+    super::theme::tone_with(side.app.ui.theme.mode(), color)
+}
+
 /// Whether the gutter of every line on the screen is the plain background.
 fn gutter_plain(side: &Side) -> bool {
     let gutter = drawn(side).0 as usize;
     let (width, height) = side.size;
     side.app.ui.hit_lines.iter().all(|&(y0, y1, _, _)| {
-        (y0.floor().max(0.0) as usize..(y1.ceil() as usize).min(height)).all(|y| side.buf[y * width + width - gutter..(y + 1) * width].iter().all(|&px| px == BACKGROUND))
+        (y0.floor().max(0.0) as usize..(y1.ceil() as usize).min(height)).all(|y| side.buf[y * width + width - gutter..(y + 1) * width].iter().all(|&px| px == look(side, BACKGROUND)))
     })
 }
 
@@ -532,12 +559,12 @@ fn band_ends(side: &Side) -> (usize, usize) {
     for &(y0, y1, _, role) in &side.app.ui.hit_lines {
         let px = side.buf[((y0 + y1) / 2.0) as usize * width + width - gutter - 1];
         if role & super::transcript::ROLE_BOX != 0 {
-            assert_eq!(px, BACKGROUND, "a command box ends before the gutter, a little short of it");
+            assert_eq!(px, look(side, BACKGROUND), "a command box ends before the gutter, a little short of it");
         } else if role & ROLE_USER_BG != 0 {
-            assert_eq!(px, USER_BG, "the band of the person's line ends at the gutter");
+            assert_eq!(px, look(side, USER_BG), "the band of the person's line ends at the gutter");
             people += 1;
         } else if kind_of(role) == Kind::Response {
-            assert_eq!(px, RESPONSE_BG, "the reply has its band, to the gutter");
+            assert_eq!(px, look(side, RESPONSE_BG), "the reply has its band, to the gutter");
             replies += 1;
         }
     }
@@ -681,3 +708,7 @@ fn a_block_that_is_folded_draws_the_same_pixels_with_the_scroll_step_as_with_a_f
         assert_eq!(p.on.app.shown_lines_dump().iter().filter(|l| l.starts_with('▸')).count(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "theme_oracle.rs"]
+mod light;

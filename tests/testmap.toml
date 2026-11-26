@@ -92,6 +92,7 @@
 "tests/test_install_seam_absent.py" = ["host"]
 "tests/test_memory_guard_window.py" = ["gui", "host"]
 "tests/test_block_select.py" = ["gui", "host"]
+"tests/test_theme.py" = ["gui", "host"]
 "tests/test_size_ratchet.py" = []
 "tests/test_stale_host.py" = ["cli", "gui", "host", "synth"]
 "tests/test_stamps.py" = ["host"]

@@ -31,6 +31,10 @@ pub(crate) enum Icon {
     Star,
     Trash,
     TrashX,
+    /// A crescent (the theme is dark), a sun (light) and a disc that is solid on its left half and a ring on its right (system): the three states of the theme button (`M24-P11d`).
+    Moon,
+    Sun,
+    Auto,
 }
 
 impl Icon {
@@ -54,6 +58,9 @@ impl Icon {
             Icon::Star => "star",
             Icon::Trash => "trash",
             Icon::TrashX => "trash_x",
+            Icon::Moon => "moon",
+            Icon::Sun => "sun",
+            Icon::Auto => "auto",
         }
     }
 
@@ -68,7 +75,7 @@ impl Icon {
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 17] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload];
+    pub(crate) const ALL: [Icon; 20] = [Icon::Plus, Icon::House, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload, Icon::Moon, Icon::Sun, Icon::Auto];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -291,6 +298,38 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
                 put(cx + side * 0.15 - 1.0, a, cx + side * 0.15 + 1.0, b, ground);
             }
         }
+        Icon::Moon => {
+            // a crescent: a disc of ink with a second disc of the button's colour taken out of its upper right (the tips are at the top and at the bottom; the whole is nudged right so that it is centred)
+            let (c, r1) = ((cx + side * 0.035, cy), side * 0.46);
+            disc(&mut put, c, r1, ink);
+            disc(&mut put, (c.0 + side * 0.26, c.1 - side * 0.14), side * 0.40, ground);
+        }
+        Icon::Sun => {
+            // a disc and eight rays round it, thinner than the stroke of the others so that the nine pieces stay nine
+            let tc = (side * 0.09).round().max(2.0);
+            disc(&mut put, (cx, cy), side * 0.20, ink);
+            for k in 0..8 {
+                let a = (k as f32 * 45.0).to_radians();
+                let at = |d: f32| (cx + d * a.cos(), cy - d * a.sin());
+                stroke(&mut put, at(side * 0.32), at(side * 0.5 - tc * 0.5), tc, ink);
+            }
+        }
+        Icon::Auto => {
+            // a disc whose left half is solid and whose right half is a ring: the dark and the light of the desktop in one picture
+            let (rad, ring) = (side * 0.46, (side * 0.16).round().max(2.0));
+            let inner = rad - ring;
+            for i in 0..(2.0 * rad).ceil() as usize {
+                let y = (cy - rad).round() + i as f32;
+                let dy = y + 0.5 - cy;
+                let outer = (rad * rad - dy * dy).max(0.0).sqrt();
+                put((cx - outer).round(), y, cx.round(), y + 1.0, ink);
+                if dy.abs() < inner {
+                    put((cx + (inner * inner - dy * dy).sqrt()).round(), y, (cx + outer).round(), y + 1.0, ink);
+                } else {
+                    put(cx.round(), y, (cx + outer).round(), y + 1.0, ink);
+                }
+            }
+        }
     }
 }
 
@@ -415,7 +454,7 @@ mod tests {
     #[test]
     fn the_pictures_have_the_pieces_they_are_made_of() {
         // at a size the pieces can be told apart: the code brackets are a `<`, a slash and a `>`
-        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Agy, 2), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1)];
+        let want = [(Icon::Plus, 1), (Icon::House, 1), (Icon::Browser, 1), (Icon::Account, 2), (Icon::Claude, 1), (Icon::Codex, 3), (Icon::Local, 1), (Icon::Terminal, 1), (Icon::Agy, 2), (Icon::Back, 1), (Icon::Forward, 1), (Icon::Reload, 1), (Icon::Moon, 1), (Icon::Sun, 9), (Icon::Auto, 1)];
         for (icon, n) in want {
             let (buf, _) = canvas_n(icon, 128);
             assert_eq!(pieces(&buf, 128), n, "{icon:?}");
@@ -487,6 +526,40 @@ mod tests {
         assert!(!high.is_empty() && high.iter().all(|&x| x < 64), "the gap is on the right: {high:?}");
         assert!(row(&reload, 41).iter().any(|&x| (56..72).contains(&x)), "the arc passes over the top");
         assert!(pieces(&reload, 128) == 1, "the arc and its arrowhead are one piece");
+    }
+
+    #[test]
+    fn the_moon_is_a_crescent_the_sun_a_disc_with_eight_rays_and_the_auto_picture_a_half_solid_disc() {
+        let row = |buf: &[u32], y: usize| (0..128).filter(|&x| buf[y * 128 + x] == INK).collect::<Vec<usize>>();
+        let col = |buf: &[u32], x: usize| (0..128).filter(|&y| buf[y * 128 + x] == INK).collect::<Vec<usize>>();
+        // the moon: its tips are at the top and the bottom, its belly is on the left, and the middle row is a bar at the left only (the right is cut away)
+        let (moon, _) = canvas_n(Icon::Moon, 128);
+        let mid = row(&moon, 64);
+        assert!(!mid.is_empty() && mid.iter().all(|&x| x < 64), "the crescent's belly is at the left of the middle row: {mid:?}");
+        let px = inked_n(&moon, 128);
+        let (min_y, max_y) = (px.iter().map(|p| p.1).min().unwrap(), px.iter().map(|p| p.1).max().unwrap());
+        assert!(max_y - min_y + 1 >= 52, "the tips reach the top and the bottom of the box: {min_y}..{max_y}");
+        assert!(row(&moon, min_y + 1).iter().all(|&x| x > 64 - 16) && !row(&moon, min_y + 1).is_empty(), "the upper tip is near the middle");
+        let (min_x, max_x) = (px.iter().map(|p| p.0).min().unwrap(), px.iter().map(|p| p.0).max().unwrap());
+        assert!((min_x + max_x).abs_diff(128) <= 4, "the crescent as a whole is in the middle of the box, not hung on the left: {min_x}..{max_x}");
+        // the sun: a disc in the middle, a ray up, down, left and right and one in each corner, and clear ground between the disc and the rays
+        let (sun, _) = canvas_n(Icon::Sun, 128);
+        assert!(sun[64 * 128 + 64] == INK, "the disc");
+        for (x, y) in [(64usize, 36usize), (64, 92), (36, 64), (92, 64), (44, 44), (84, 44), (44, 84), (84, 84)] {
+            assert!(sun[y * 128 + x] == INK, "a ray passes {x},{y}");
+        }
+        assert!(sun[64 * 128 + 78] == BTN && sun[49 * 128 + 64] == BTN, "the gap between the disc and a ray is the colour of the button");
+        let rays = inked_n(&sun, 128);
+        let (lo, hi) = (rays.iter().map(|p| p.0.min(p.1)).min().unwrap(), rays.iter().map(|p| p.0.max(p.1)).max().unwrap());
+        assert!(lo >= 12 && hi < 128 - 12, "no ray leaves the box of the icon: {lo}..{hi}");
+        assert!((33..=37).contains(&lo) && (91..=95).contains(&hi), "the rays end where they are drawn to end, short of the box's edge: {lo}..{hi}");
+        // the auto picture: a disc that is solid on the left of its middle line and hollow (a ring) on the right
+        let (auto, _) = canvas_n(Icon::Auto, 128);
+        assert!(auto[64 * 128 + 50] == INK && auto[64 * 128 + 62] == INK, "the left half is solid");
+        assert!(auto[64 * 128 + 80] == BTN, "the right half is hollow");
+        let right = row(&auto, 64).into_iter().filter(|&x| x >= 64).collect::<Vec<_>>();
+        assert!(!right.is_empty() && right.len() < 14, "the ring on the right is thin: {right:?}");
+        assert!(col(&auto, 80).len() >= 2 && col(&auto, 80).iter().any(|&y| y < 50) && col(&auto, 80).iter().any(|&y| y > 78), "the ring closes at the top and the bottom");
     }
 
     #[test]

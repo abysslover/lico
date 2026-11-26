@@ -46,6 +46,8 @@ pub struct Patch<'a> {
     pub dir_bookmarks: Option<&'a Vec<Value>>,
     pub native_claude: Option<&'a str>, // `on`, `off`, or `ask` (take the choice back)
     pub native_codex: Option<&'a str>,
+    /// The window's look (`M24-P11d`): `dark`, `light` or `system`.
+    pub theme: Option<&'a str>,
 }
 
 impl<'a> Patch<'a> {
@@ -66,6 +68,7 @@ impl<'a> Patch<'a> {
             dir_bookmarks: map.get("dir_bookmarks").and_then(Value::as_array),
             native_claude: map.get("native_claude").and_then(Value::as_str),
             native_codex: map.get("native_codex").and_then(Value::as_str),
+            theme: map.get("theme").and_then(Value::as_str),
         }
     }
 }
@@ -254,6 +257,15 @@ pub fn native_value(handoff_dir: &Path, provider: &str) -> Option<&'static str> 
     }
 }
 
+/// The window's look in `lico gui` (`M24-P11d`).
+pub fn theme_value(path: &Path) -> &'static str {
+    match read_object(path).and_then(|map| map.get("theme").and_then(Value::as_str).map(str::to_string)).as_deref() {
+        Some("light") => "light",
+        Some("system") => "system",
+        _ => "dark", // the look the window has always had: also for a word that is none of the three
+    }
+}
+
 /// Logical text size in `lico gui` (`12..=20`, default `14`).
 pub fn font_px_value(path: &Path) -> i64 {
     read_object(path)
@@ -321,6 +333,10 @@ pub fn status_json(handoff_dir: &Path) -> Value {
     });
     if show_hidden_enabled(&path) {
         out["show_hidden"] = Value::Bool(true);
+    }
+    let theme = theme_value(&path);
+    if theme != "dark" {
+        out["theme"] = Value::String(theme.into()); // only when it is not the default, so that what an older window reads does not change
     }
     if let PanesState::Paused { secs_left } = agent_panes_state(&path) {
         out["agent_panes_paused"] = json!(secs_left); // only while paused; `agent_panes` is false then, which is what an older window reads
@@ -399,6 +415,7 @@ pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> cra
         && patch.dir_bookmarks.is_none()
         && patch.native_claude.is_none()
         && patch.native_codex.is_none()
+        && patch.theme.is_none()
     {
         return Err("bad_request");
     }
@@ -409,6 +426,9 @@ pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> cra
         if !matches!(group, "account" | "workspace") {
             return Err("bad_request");
         }
+    }
+    if patch.theme.is_some_and(|word| !matches!(word, "dark" | "light" | "system")) {
+        return Err("bad_request");
     }
     if let Some(px) = patch.font_px {
         if !(MIN_FONT_PX..=MAX_FONT_PX).contains(&px) {
@@ -486,6 +506,15 @@ pub fn update_settings_at(handoff_dir: &Path, patch: Patch<'_>, now: u64) -> cra
     }
     if let Some(group) = patch.group_by {
         map.insert("group_by".into(), Value::String(group.into()));
+    }
+    match patch.theme {
+        Some("dark") => {
+            map.remove("theme"); // the default: the file is what it was before the person chose
+        }
+        Some(word) => {
+            map.insert("theme".into(), Value::String(word.into()));
+        }
+        None => {}
     }
     if let Some(px) = patch.font_px {
         map.insert("font_px".into(), json!(px));

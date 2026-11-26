@@ -120,6 +120,7 @@ impl App {
         self.ui.agent_panes_off = settings["agent_panes"] == json!(false) && self.ui.agent_panes_paused.is_none();
         self.ui.notifications_off = settings["notifications"] == json!(false);
         self.ui.show_hidden = settings["show_hidden"] == json!(true);
+        self.sync_theme(settings);
         let ws = settings["group_by"] == json!("workspace");
         if ws != self.ui.group_by_workspace {
             self.ui.group_by_workspace = ws;

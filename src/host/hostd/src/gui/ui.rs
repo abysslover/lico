@@ -102,7 +102,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
-    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>, pub block_fold: super::block_fold::State,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>, pub block_fold: super::block_fold::State, pub theme: super::theme_host::State,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -213,7 +213,7 @@ impl App {
     pub(crate) fn ui_tick(&mut self) {
         self.ui.ticks += 1;
         self.panel_tick();
-        self.card_tick(); self.times_tick();
+        self.card_tick(); self.times_tick(); self.theme_tick();
         self.send("{\"op\":\"status\"}");
         if self.ui.ticks % 5 == 1 {
             self.send("{\"op\":\"account.list\"}");
@@ -591,7 +591,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
-        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json(); dump["blocks"] = self.ui.block_fold.json(&self.session, self.ui.sel);
+        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json(); dump["blocks"] = self.ui.block_fold.json(&self.session, self.ui.sel); dump["theme"] = self.ui.theme.json();
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)
@@ -635,7 +635,7 @@ impl App {
     /// Composes the window into `buf` (`age` as softbuffer says it: 1 when the buffer still holds the last presented frame) and says when the layout
     /// was done and the painting; none when nothing could be drawn. The scroll step (see scroll.rs) lives here.
     pub(crate) fn compose(&mut self, buf: &mut [u32], width: usize, height: usize, age: u8) -> Option<(Instant, Instant)> {
-        let mut buf = buf;
+        let mut buf = buf; let _theme = super::theme::scoped(self.ui.theme.mode()); // M24-P11d: every colour of this frame goes through the theme
         if self.page_active() {
             self.ui.composed = None; // the page is painted over the frame: every frame is a full repaint
         }
@@ -868,7 +868,7 @@ impl App {
                 keep_rows(buf, width, list_w, shift, &cleared);
                 self.ui.stats.kept_rows += (shift.hi - shift.lo) as u64;
             }
-            Err(_) => buf.fill(BACKGROUND),
+            Err(_) => buf.fill(super::theme::tone(BACKGROUND)),
         }
         if self.ui.markers {
             // two 16-pixel squares (session and sequence colour) that the pixel-latency harness reads; the product window has none
@@ -879,7 +879,7 @@ impl App {
             for y in (side_top as usize)..height {
                 let idx = y * width + list_w - 1;
                 if let Some(px) = buf.get_mut(idx) {
-                    *px = 0xFF30_3840;
+                    *px = super::theme::tone(0xFF30_3840);
                 }
             }
         }
@@ -984,10 +984,10 @@ fn keep_rows(buf: &mut [u32], width: usize, list_w: usize, shift: &scroll::Shift
         buf.copy_within(shift.lo as usize * width..shift.hi as usize * width, (shift.lo + shift.dy) as usize * width);
     }
     for &(a, b) in cleared {
-        buf[a as usize * width..b as usize * width].fill(BACKGROUND);
+        buf[a as usize * width..b as usize * width].fill(super::theme::tone(BACKGROUND));
     }
     for y in (shift.lo + shift.dy) as usize..(shift.hi + shift.dy) as usize {
-        buf[y * width..y * width + list_w.min(width)].fill(BACKGROUND);
+        buf[y * width..y * width + list_w.min(width)].fill(super::theme::tone(BACKGROUND));
     }
 }
 
@@ -1021,7 +1021,7 @@ pub(super) struct Lines<'a> {
     pub extents: &'a mut [Extent],
 }
 
-pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h: i32, color: u32) {
+pub(super) fn rect(buf: &mut [u32], width: usize, height: usize, x: i32, y: i32, w: i32, h: i32, color: u32) { let color = super::theme::tone(color); // M24-P11d: the colour as the theme paints it
     for row in y.max(0)..(y + h).min(height as i32) {
         for col in x.max(0)..(x + w).min(width as i32) {
             if let Some(px) = buf.get_mut(row as usize * width + col as usize) {
@@ -1048,7 +1048,7 @@ pub(super) fn blit_with(buffer: &mut Buffer, fs: &mut FontSystem, swash: &mut Sw
         }
         for glyph in run.glyphs {
             let physical = glyph.physical((0., run.line_y), 1.0);
-            let ink = glyph.color_opt.unwrap_or(ink);
+            let ink = super::theme::tone_ink(glyph.color_opt.unwrap_or(ink));
             let Some(image) = swash.get_image(fs, physical.cache_key).as_ref() else { continue };
             let (gw, gh) = (image.placement.width as i32, image.placement.height as i32);
             let (x0, y0) = (physical.x + image.placement.left + ox, physical.y - image.placement.top + oy);

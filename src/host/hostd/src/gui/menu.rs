@@ -59,6 +59,8 @@ pub enum Cmd {
     FontLarger,
     FontSmaller,
     FontReset,
+    /// The theme button's press (`M24-P11d`): dark, light, system, and round again. It has no line in a menu, as the other buttons of the bar that are pictures.
+    CycleTheme,
     ToggleClipWrite,
     TogglePanes,
     ToggleNotifications,
@@ -139,6 +141,7 @@ pub(crate) fn place_of(cmd: Cmd) -> Place {
         | Cmd::ToggleSidebar
         | Cmd::FindConversation
         | Cmd::SearchAll
+        | Cmd::CycleTheme
         | Cmd::Older
         | Cmd::Newer
         | Cmd::Newest => Place::Key,
@@ -367,6 +370,7 @@ impl App {
             Cmd::NewGlobalSession => self.form_open_wizard(true),
             Cmd::NewBrowser => self.browser_prompt(false),
             Cmd::NewLocalBrowser => self.browser_prompt(true),
+            Cmd::CycleTheme => self.cycle_theme(),
             Cmd::ReopenTab => self.browser_reopen(),
             Cmd::ForgetPages => self.browser_forget_pages(),
             Cmd::Accounts => self.panel_open(Step::Accounts),

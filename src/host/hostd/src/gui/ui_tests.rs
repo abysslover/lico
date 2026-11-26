@@ -93,7 +93,7 @@ fn local_exit_and_quit_slash_commands_dismiss_tab_without_sending_input_and_tool
     // the toolbar is the account icon and the three others (and Copy while lines are selected); Send to session is the Session menu's entry (M22-P04)
     let send = |app: &super::super::App| app.menu_entries(1).into_iter().find(|e| e.cmd == super::super::menu::Cmd::SendTo).map(|e| e.reason);
     let btns = app.toolbar_entries();
-    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["accounts", "new_session", "new_home", "new_browser"]);
+    assert_eq!(btns.iter().map(|b| b.id).collect::<Vec<_>>(), ["accounts", "new_session", "new_home", "new_browser", "theme"]);
     assert_eq!(send(&app), Some(Some("nothing to send: type in the input box or select lines")));
 
     app.ui.sel = Some((0, 0));

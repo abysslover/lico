@@ -41,9 +41,9 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
 
             # the toolbar: four icon buttons (the account first), square, with their words in the state; the text buttons are not drawn
             buttons = u["toolbar"]["buttons"]
-            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser"], [b["id"] for b in buttons]
-            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser"]
-            assert [b["label"] for b in buttons] == ["Accounts", "New session", "New Home session", "Open browser"]
+            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser", "theme"], [b["id"] for b in buttons]
+            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser", "moon"]
+            assert [b["label"] for b in buttons] == ["Accounts", "New session", "New Home session", "Open browser", "Theme: dark"]
             assert all(b["enabled"] and b["rect"] for b in buttons)
             # M24-P09: each icon is a square of TWICE the old side (one text line and a pixel), at any text size or scale: the menu bar's height is (line + 4) x scale, so the old side is
             # (menu bar - 3 x scale) and the scale is the menu bar's height over (font + 8)

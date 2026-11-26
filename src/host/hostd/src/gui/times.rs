@@ -117,7 +117,7 @@ pub(super) fn gutter_clear(buf: &mut [u32], width: usize, height: usize, gutter:
     for &(y0, y1, _, _) in hit {
         let (from, to) = ((y0.floor() as i32).max(top_y).max(0), (y1.ceil() as i32).min(hint_y).min(height as i32)); // whole rows that the line touches, inside the text area
         for y in from..to {
-            buf[y as usize * width + left..(y as usize + 1) * width].fill(super::BACKGROUND);
+            buf[y as usize * width + left..(y as usize + 1) * width].fill(super::theme::tone(super::BACKGROUND));
         }
     }
 }

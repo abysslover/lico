@@ -21,6 +21,8 @@ mod agent_panes_tests;
 #[cfg(test)]
 mod open_tests;
 #[cfg(test)]
+mod theme_tests;
+#[cfg(test)]
 mod write_tests;
 #[cfg(test)]
 mod tests;

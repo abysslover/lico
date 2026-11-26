@@ -96,7 +96,7 @@ pub(super) fn icon_fit(full: f32, least: f32, icons: usize, text_widths: f32, te
 }
 
 impl App {
-    /// The toolbar (`M22-P04`, `M22-P04b`): four icon buttons, Accounts (a person), New session (a plus), New Home session (a house) and Open browser (a browser window). Everything else is in the
+    /// The toolbar (`M22-P04`, `M22-P04b`, `M24-P11d`): five icon buttons, Accounts (a person), New session (a plus), New Home session (a house), Open browser (a browser window) and the Theme (a moon, a sun or a half disc). Everything else is in the
     /// menus. The account icon is lit while the host says there is no account at all (it is the first step); the plus and the house are never greyed, because Local LLM needs no account
     /// (the wizard greys the Claude and Codex icons itself). With the Files panel open the panel's own buttons follow the icons: they act on what the panel shows.
     pub(crate) fn toolbar_entries(&self) -> Vec<ToolBtn> {
@@ -109,6 +109,7 @@ impl App {
             icon_btn("New session", "new_session", Cmd::NewSession, Icon::Plus),
             icon_btn("New Home session", "new_home", Cmd::NewGlobalSession, Icon::House),
             icon_btn("Open browser", "new_browser", Cmd::NewBrowser, Icon::Browser),
+            icon_btn(&self.ui.theme.label(), "theme", Cmd::CycleTheme, self.ui.theme.icon()),
         ];
         let in_files = self.ui.panel.as_ref().is_some_and(|p| p.step == super::super::panel::Step::Files);
         if in_files {
@@ -149,6 +150,7 @@ impl App {
                 Cmd::NewSession
                     | Cmd::NewGlobalSession
                     | Cmd::Accounts
+                    | Cmd::CycleTheme
                     | Cmd::Files
                     | Cmd::RefreshFiles
                     | Cmd::NewInViewedDir

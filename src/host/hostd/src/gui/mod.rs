@@ -34,7 +34,7 @@ mod newchat_draw;
 mod chatcard; mod sidebar_chats; mod terminal; // the Chats tab: the list and its fetch, and what a card says and draws
 mod sidebar_tabs;
 mod sidebar_render;
-mod tool_fold; mod times; mod blocks; mod block_fold; // when each line was written (`M24-P11a`), the blocks and the gutter (`M24-P11b`), a click selects a whole block and a second one folds it (`M24-P11c`)
+mod tool_fold; mod times; mod blocks; mod block_fold; mod theme; mod theme_host; // when each line was written (`M24-P11a`), the blocks and the gutter (`M24-P11b`), a click selects a whole block and a second one folds it (`M24-P11c`)
 mod transcript;
 mod ui;
 mod update;
@@ -72,7 +72,7 @@ const BURST_DRAWS: usize = 8; // draws within a second that count as a flood
 const MIN_FRAME: std::time::Duration = std::time::Duration::from_millis(100); // 10 frames a second while flooded (one frame of the first view takes about 35 ms of software drawing)
 
 enum Ev {
-    Sock(String),
+    Sock(String), Theme(Option<bool>), // the desktop's answer to `system` (`M24-P11d`)
     Cmd(String),
     Tick, // once a second in the first view: ask the host for the sessions again
     Paste(picture::Pasted), // the answer to a paste key: the selection's text or a picture, or why there is none
@@ -618,6 +618,7 @@ impl ApplicationHandler<Ev> for App {
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => self.draw(),
+            WindowEvent::ThemeChanged(theme) => self.on_window_theme(theme),
             WindowEvent::Resized(_) => {
                 if let Some(w) = &self.window {
                     w.request_redraw();
@@ -696,7 +697,7 @@ impl ApplicationHandler<Ev> for App {
         match event {
             Ev::Sock(line) => self.on_sock_line(&line),
             Ev::Cmd(line) => self.handle_command(&line, event_loop),
-            Ev::Tick => self.ui_tick(),
+            Ev::Tick => self.ui_tick(), Ev::Theme(dark) => self.on_system_theme(dark),
             Ev::Paste(answer) => self.on_paste_answer(answer),
             Ev::Async(done) => self.on_async_done(done),
             Ev::Host(update::Update::Line(line)) => {

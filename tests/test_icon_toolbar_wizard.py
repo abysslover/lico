@@ -81,9 +81,9 @@ def test_the_account_icon_leads_the_toolbar_it_is_lit_while_there_is_no_account_
         with ProductWindow(**kwargs) as w:
             _ready(w)
             buttons = wait_for(lambda: (b := w.ui()["toolbar"]["buttons"]) and b[0]["active"] and b)  # the host has answered: there is no account
-            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser"], [b["id"] for b in buttons]
-            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser"]
-            assert buttons[0]["label"].startswith("Accounts: none yet") and [b["active"] for b in buttons] == [True, False, False, False]
+            assert [b["id"] for b in buttons] == ["accounts", "new_session", "new_home", "new_browser", "theme"], [b["id"] for b in buttons]
+            assert [b["icon"] for b in buttons] == ["account", "plus", "house", "browser", "moon"]
+            assert buttons[0]["label"].startswith("Accounts: none yet") and [b["active"] for b in buttons] == [True, False, False, False, False]
             assert all(b["enabled"] and b["reason"] is None and b["rect"] for b in buttons), "the plus and the house are not greyed: Local LLM needs no account"
             assert all(a["rect"][2] <= b["rect"][0] for a, b in zip(buttons, buttons[1:])), "left to right, the account first"
             # drawn: the lit icon's box is not the colour of the one beside it
