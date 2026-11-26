@@ -251,6 +251,11 @@ impl App {
     }
 
     pub(crate) fn files_open_sidebar_preview(&mut self, ssh_host: Option<String>, cwd: &str, full_path: &str) {
+        self.files_open_preview_from(ssh_host, cwd, full_path, true);
+    }
+
+    /// The viewer on one file; with `delegate_binary` a file that is not text goes to the system's program, without it the viewer says so (a name an agent wrote is never handed on).
+    pub(crate) fn files_open_preview_from(&mut self, ssh_host: Option<String>, cwd: &str, full_path: &str, delegate_binary: bool) {
         let ssh_hosts = self.fetch_ssh_host_aliases();
         self.panel_open(Step::Files);
         if let Some(p) = self.ui.panel.as_mut() {
@@ -260,7 +265,7 @@ impl App {
         }
         if let Some(host) = ssh_host {
             self.files_start_remote_preview(&host, full_path, false);
-        } else if self.files_load_preview(full_path, true) {
+        } else if self.files_load_preview(full_path, delegate_binary) {
             let delegated_external = self
                 .ui
                 .panel
@@ -271,6 +276,14 @@ impl App {
                 self.panel_close();
                 self.sync_view_after_panel_close();
             }
+        }
+    }
+
+    /// The viewer of a file shows it from line `n` (what a long line that wraps above it takes is counted by the rows the viewer shows: it starts a little early), never past the last page.
+    pub(crate) fn files_preview_to_line(&mut self, n: u32) {
+        let page = calc_page_size(self.ui.panel_rows, true);
+        if let Some(pv) = self.ui.panel.as_mut().and_then(|p| p.files.as_mut()).and_then(|ex| ex.preview.as_mut()) {
+            pv.top = (n.max(1) as usize - 1).min(pv.lines.len().saturating_sub(page));
         }
     }
 

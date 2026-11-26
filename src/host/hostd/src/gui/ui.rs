@@ -36,7 +36,7 @@ mod tabs;
 mod telemetry;
 #[path = "toolbar.rs"]
 pub(super) mod toolbar;
-#[path = "statusline.rs"] mod statusline; use super::menu::MenuGeom;
+#[path = "statusline.rs"] mod statusline; #[path = "filelink.rs"] mod filelink; use super::menu::MenuGeom;
 use super::scroll::{self, Cause, Composed, Extent, LineRec, Overlay};
 use super::{clean, fill_rect, json_escape, App, BACKGROUND};
 
@@ -102,7 +102,7 @@ pub struct UiState {
     pub menu_sel: usize,
     pub menu_geom: MenuGeom,
     pub toolbar_geom: toolbar::ToolbarGeom,
-    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>, pub block_fold: super::block_fold::State, pub theme: super::theme_host::State,
+    pub tab_scroll: usize, pub tab_ensure_visible: bool, pub tabs_geom: tabs::TabsGeom, pub telemetry_geom: telemetry::TelemetryGeom, pub sidebar: super::sidebar::SidebarState, pub calls: super::call_view::CallViewState, pub mention: super::mention_popup::MentionPopupState, pub expanded_tools: std::collections::HashSet<(String, i64)>, pub block_fold: super::block_fold::State, pub theme: super::theme_host::State, pub links: filelink::State,
     pub ticks: u64,
     pub copied: u64,
     pub clip_tx: Option<mpsc::Sender<clip::Job>>,
@@ -360,7 +360,7 @@ impl App {
                 self.ui.mouse = (position.x, position.y);
                 self.browser_move(); self.terminal_drag();
                 self.browser_pointer();
-                self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved() | self.toolbar_hover_moved();
+                self.dirty |= self.hover_moved() | self.path_hover_moved() | self.window_btn_hover_moved() | self.toolbar_hover_moved() | self.file_link_moved();
                 if self.ed_mouse_drag(position.x as f32, position.y as f32) {
                     return true;
                 }
@@ -591,7 +591,7 @@ impl App {
             "start_screen": if self.ui.panel.is_none() && self.session.is_empty() && !self.active_call_open() { self.start_lines().join("\n") } else { String::new() },
             "layout": layout,
         });
-        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json(); dump["blocks"] = self.ui.block_fold.json(&self.session, self.ui.sel); dump["theme"] = self.ui.theme.json();
+        dump["browser"] = self.browser_json(); dump["terminal"] = self.terminal_json(); dump["times"] = self.ui.times.json(); dump["blocks"] = self.ui.block_fold.json(&self.session, self.ui.sel); dump["theme"] = self.ui.theme.json(); dump["links"] = self.file_link_json();
         println!("{dump}");
         let _ = std::io::stdout().flush();
         let _ = json_escape; // (kept for the line-oriented commands)
@@ -685,7 +685,7 @@ impl App {
         self.ui.bar = bar.clone();
         let status = self.status_line(panel_view.is_some());
         let rows_avail = area_rows.saturating_sub(3 + has_header as usize + search_bar.is_some() as usize + status.is_some() as usize + show_telem as usize + n_prompt - 1).saturating_sub(1); // one more row than before: the path bar
-        let is_tx = panel_view.is_none();
+        let is_tx = panel_view.is_none(); let link_ctx = self.file_link_ctx(panel_view.is_some());
         let browser_rows = if panel_view.is_none() && self.page_active() { Some(rows_avail) } else { None }; let on_bar = self.browser_active(); // (the browser view has its bar at the top: M22-P05a)
         let (lines, raw_end): (Vec<(usize, i64, String, u16)>, usize) = match &panel_view {
             Some((_, body)) => {
@@ -798,7 +798,7 @@ impl App {
             }
         }
         // the scroll step: what the frame is made of, and whether the last one can be kept in part
-        let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, chat_top as i32);
+        let (ox, oy) = (list_w as i32 + (4.0 * s) as i32, chat_top as i32); self.ui.links.frame(link_ctx, (ox as f32, oy as f32), &view.buffer, &self.ui.hit_lines, self.ui.mouse);
         let line_count = view.buffer.lines.len();
         self.ed.place(&view.buffer, (if on_bar { usize::MAX } else { line_count - n_prompt }, pv.rows.len(), pv.caret), [ox as f32, oy as f32, text_w as f32, s]);
         let mut recs: Vec<LineRec> = (0..line_count)
@@ -846,7 +846,7 @@ impl App {
             corner: if self.ui.markers { 16 } else { 0 },
             overlay: Overlay {
                 menu: overlay_menu,
-                selection: self.ui.sel.is_some() || !self.ed.sel_rects.is_empty(), search: self.ui.search.open || search_bar.is_some(),
+                selection: self.ui.sel.is_some() || !self.ed.sel_rects.is_empty() || self.ui.links.hover.is_some(), search: self.ui.search.open || search_bar.is_some(),
                 panel: panel_view.is_some(),
                 approval: bar.is_some(),
                 preedit: !self.preedit.is_empty(),
@@ -940,7 +940,7 @@ impl App {
             })
             .collect();
         let mut extents: Vec<Extent> = frame.lines.iter().zip(&modes).map(|(l, m)| if matches!(m, Mode::All) { Extent::EMPTY } else { l.ext }).collect();
-        blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents })); self.ui.times.paint(controls, fs, swash, &mut buf, (width, height), gutter, col_px, (oy, hint_row), &self.ui.hit_lines, &|raw| view.lines.get(raw).map(|l| l.0));
+        blit_with(&mut view.buffer, fs, &mut view.swash, &mut buf, width, height, ox, oy, i32::MAX, ink, Some(Lines { modes: &modes, extents: &mut extents })); self.ui.times.paint(controls, fs, swash, &mut buf, (width, height), gutter, col_px, (oy, hint_row), &self.ui.hit_lines, &|raw| view.lines.get(raw).map(|l| l.0)); self.ui.links.paint(&view.buffer, &mut buf, width, height, s, ink);
         for (line, extent) in frame.lines.iter_mut().zip(extents) {
             line.ext = extent;
         }

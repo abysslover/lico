@@ -532,7 +532,7 @@ impl super::super::App {
                 return;
             }
         } else if let Some((_, _, Some(idx), false)) = origin {
-            if !moved && !self.ui.mods.shift_key() && (self.try_toggle_tool_card(idx) || self.try_jump_call_from_line(idx) || self.try_block_click(idx)) {
+            if !moved && !self.ui.mods.shift_key() && (self.file_link_click() || self.try_toggle_tool_card(idx) || self.try_jump_call_from_line(idx) || self.try_block_click(idx)) {
                 return;
             }
         }

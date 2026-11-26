@@ -716,3 +716,7 @@ mod light;
 #[cfg(test)]
 #[path = "times_oracle.rs"]
 mod times_oracle;
+
+#[cfg(test)]
+#[path = "filelink_oracle.rs"]
+mod filelink_oracle;
