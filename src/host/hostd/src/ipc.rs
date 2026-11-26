@@ -154,7 +154,7 @@ pub fn valid_request(op: &str, request: &Map<String, Value>) -> bool {
             ("account.login.status", "check") => value.is_boolean(),
             ("account.login.input", "code") => matches!(value, Value::String(s) if !s.is_empty() && s.len() <= 4096 && !s.chars().any(char::is_control)),
             ("account.remove", "sessions") => matches!(value.as_str(), Some("detach" | "end")),
-            ("account.create", "provider") => matches!(value.as_str(), Some("codex" | "claude")),
+            ("account.create", "provider") => matches!(value.as_str(), Some("codex" | "claude" | "agy")),
             ("account.create", "ssh_host") => matches!(value, Value::Null) || matches!(value, Value::String(s) if crate::ssh::valid_ssh_host(s)),
             ("account.create" | "account.rename", "label") => valid_label(value),
             ("history", "before") => in_range(value, 0, i64::MAX),

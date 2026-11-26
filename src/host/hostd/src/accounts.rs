@@ -38,6 +38,7 @@ pub fn provider_variable(provider: &str) -> Option<&'static str> {
     match provider {
         "codex" => Some("CODEX_HOME"),
         "claude" => Some("CLAUDE_CONFIG_DIR"),
+        "agy" => Some("HOME"), // the program has no variable of its own: it keeps its sign-in and settings under the home it runs in (`M25-P11`)
         _ => None,
     }
 }
@@ -111,6 +112,9 @@ impl Accounts {
             Some(_) => return Err("bad_request"),
             None => None,
         };
+        if provider == "agy" && ssh_host.is_some() {
+            return Err("bad_request"); // the program is local, as an agy session is (`M25-P11`)
+        }
         if self.list.len() >= MAX_ACCOUNTS {
             return Err("busy");
         }
@@ -227,7 +231,10 @@ impl Accounts {
     fn homes_of(&self, id: &str, provider: &str) -> Option<Homes> {
         let variable = provider_variable(provider)?;
         let root = self.dir.join(id);
-        Some(Homes { home: root.join("home"), provider_home: root.join(provider), variable })
+        let home = root.join("home");
+        // the home of an account of agy is its provider's home: the program's own folder (`.gemini`) is made under it by the program
+        let provider_home = if provider == "agy" { home.clone() } else { root.join(provider) };
+        Some(Homes { home, provider_home, variable })
     }
 
     pub fn homes(&self, id: &str) -> Option<Homes> {
@@ -261,5 +268,24 @@ mod tests {
         let reloaded = Accounts::load(&dir).unwrap();
         assert_eq!(reloaded.ssh_host(&made.id), None);
         assert_eq!(reloaded.ssh_host(&remote.id).as_deref(), Some("gpu-box"));
+    }
+    #[test]
+    fn an_account_of_agy_has_one_private_home_that_is_the_programs_home_and_never_an_ssh_host() {
+        let scratch = Scratch::new("accounts_agy");
+        let dir = scratch.0.join("accounts");
+        let mut accounts = Accounts::load(&dir).unwrap();
+        let made = accounts.create("agy", "Google").unwrap();
+        assert_eq!(made.provider, "agy");
+        let homes = accounts.homes(&made.id).unwrap();
+        assert_eq!(homes.variable, "HOME", "the program looks for its sign-in under the home, there is no variable of its own");
+        assert_eq!(homes.provider_home, homes.home, "the provider's home is the home: its `.gemini` lands in the account");
+        assert_eq!((mode_of(&homes.home), mode_of(&dir.join(&made.id))), (0o700, 0o700));
+        assert_eq!(accounts.create_with("agy", "Far", Some("gpu-box")).err(), Some("bad_request"), "the program is local, as an agy session is");
+        assert_eq!(accounts.target_ssh_host("agy", Some(&made.id)), None);
+        assert!(accounts.any_for("agy") && accounts.default_for("agy").map(|a| a.id.as_str()) == Some(made.id.as_str()), "the first account of agy is its default, as for the others");
+        let reloaded = Accounts::load(&dir).unwrap();
+        assert_eq!(reloaded.get(&made.id).map(|a| a.provider.as_str()), Some("agy"));
+        assert!(reloaded.any_for("agy"));
+        assert_eq!(accounts.create("other", "No").err(), Some("bad_request"), "a provider the host does not know is still refused");
     }
 }

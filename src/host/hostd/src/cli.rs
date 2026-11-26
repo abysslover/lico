@@ -14,7 +14,7 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   status                         host and session status\n\
   resources                      host resource report\n\
   session list                   list sessions\n\
-  session create [--kind synthetic|codex|claude|local] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
+  session create [--kind synthetic|codex|claude|local|agy] [--account ID] [--mode auto|default] [--rate N] [--history N]\n\
                  [--cwd DIR] [--worktree BRANCH] [--name TEXT] [--model NAME] [--effort LEVEL] [--resume ID | --resume-latest]\n\
                  (--resume-latest: continue the latest chat of --cwd for the account, or make a new session and say so; the reply says which)\n\
                  (DIR: the folder it runs in; none = a scratch workspace; --worktree creates a new git worktree and branch)\n\
@@ -39,7 +39,7 @@ pub(crate) const USAGE: &str = "usage: lico [--socket PATH] <command>\n\
   session resume ID              bring a disconnected session back (a new generation)\n\
   session rebind ID ACCOUNT      move a session whose provider is gone to another account\n\
   session mode ID auto|default   switch a session's permission mode (restarts an idle Claude session cleanly)\n\
-  account create --provider codex|claude --label TEXT [--ssh-host HOST]\n\
+  account create --provider codex|claude|agy --label TEXT [--ssh-host HOST (not for agy)]\n\
   account rename ID LABEL        rename an account's label\n\
   account list | default ID | affected ID | credential ID REF | remove ID detach|end\n\
   account login ID [--device]    sign in with the provider's own login (shows the address, asks for a code when one is needed)\n\

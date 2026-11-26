@@ -26,10 +26,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     };
     chosen.resume_latest = false;
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
-    let bound = match resolve_account(shared, kind, account) {
-        Ok(bound) => bound,
-        Err(code) => return Err(code), // refused before anything starts
-    };
+    let bound = resolve_account(shared, kind, account, chosen.resume_id.is_some())?; // refused before anything starts
     let mut resumed: Option<Value> = None;
     let mut note: Option<String> = None;
     let mut others: Option<Value> = None;
@@ -88,7 +85,7 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     } else if kind == "codex" || kind == "claude" {
         crate::folders::start_provider_session(shared, kind, bound, mode, chosen)
     } else if crate::driver::get(kind).is_some() {
-        start_driver_session(shared, kind, mode, chosen)
+        start_driver_session(shared, kind, mode, chosen, bound)
     } else {
         start_session(shared, rate > 0, rate, history, size, false)
     };
@@ -156,8 +153,9 @@ fn with_resumed(mut reply: serde_json::Map<String, Value>, chat: Option<&Value>,
 }
 
 /// The account a new session is bound to: the one asked for, else the provider's default, else none
-/// (a session without an account runs with the host's own provider home, as before accounts existed).
-fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Result<Option<(String, u64)>, &'static str> {
+/// (a session without an account runs with the host's own provider home, as before accounts existed). `own_conversation`: the session brings back a conversation by its number; of `agy` that is
+/// a conversation of the person's own home, the one the Chats list reads, so with no account named it is brought back there and not into the default account's home (`M25-P11`).
+fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>, own_conversation: bool) -> Result<Option<(String, u64)>, &'static str> {
     // the provider's own default home (`Native`) is asked for by its reserved id, and only of its own provider and only once it is open
     if let Some(id) = requested.filter(|id| crate::native::provider_of(id).is_some()) {
         return if crate::native::provider_of(id) != Some(kind) {
@@ -180,6 +178,16 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
             // accounts exist but none is the default: never fall back to an unbound session (the host's own provider home)
             None if accounts.any_for(kind) => Err("unknown_account"),
             None if native_off => Err("native_off"), // the person turned the default home off and there is no other account
+            None => Ok(None),
+        },
+        ("agy", Some(id)) => match accounts.get(id) {
+            Some(a) if a.provider == "agy" => Ok(Some((a.id.clone(), a.credential_generation))),
+            _ => Err("unknown_account"),
+        },
+        ("agy", None) if own_conversation => Ok(None),
+        ("agy", None) => match accounts.default_for("agy") {
+            Some(a) => Ok(Some((a.id.clone(), a.credential_generation))),
+            None if accounts.any_for("agy") => Err("unknown_account"), // accounts of agy exist and none is the default: never the person's own home by accident
             None => Ok(None),
         },
         (_, Some(_)) => Err("bad_request"),
@@ -209,9 +217,9 @@ fn prepare_driver_kind(shared: &Shared, driver: &dyn crate::driver::Driver, mut 
     Ok(chosen)
 }
 
-/// A session of a driver kind (`local`, `agy`): no account; the driver does the work, in a folder when it takes one (`agy`).
+/// A session of a driver kind (`local`, `agy`): the driver does the work, in a folder when it takes one (`agy`); `bound` is the account of `agy` (`M25-P11`), never one of `local`.
 /// Nothing of one that never became ready remains: no process, no log and no scratch workspace.
-fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
+fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, chosen: Settings, bound: Option<(String, u64)>) -> Result<Arc<Mutex<Session>>, &'static str> {
     let driver = crate::driver::get(kind).ok_or("bad_request")?;
     let id = format!("s{}", crate::core::random_hex(8));
     let session = Arc::new(Mutex::new(Session::new(id, false, &shared.cfg.log_dir, shared.cfg.retain, shared.cfg.window)));
@@ -221,6 +229,9 @@ fn start_driver_session(shared: &Arc<Shared>, kind: &str, mode: &'static str, ch
         s.mode = mode; // a program that asks (`agy`) is answered by the host in `auto` (the default since `M25-P09`) and asks the person in `default`; one that asks nothing (`local`) ignores it
         s.provider = driver.kind();
         s.codex_thread = chosen.resume_id.clone(); // the conversation the driver brings back (`agy`), else none
+        if let Some((account, generation)) = bound {
+            (s.account, s.credential_generation) = (Some(account), generation); // the account's home is the program's home, for its whole life (the driver reads it at each start)
+        }
         s.settings = chosen;
     }
     if let Err(code) = crate::core::start_driver(&driver, shared, &session) {

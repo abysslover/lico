@@ -62,6 +62,7 @@ pub fn run(args: Vec<String>) {
     let log_dir = PathBuf::from(arg("--log-dir", base.join("lico-log").to_str().unwrap_or("lico-log")));
     // the session kind `agy` (M25): registered here, where its program is known, and before the sessions of an earlier run are recovered (a stored one needs its driver)
     crate::driver::register(Arc::new(crate::agy::Agy::new(PathBuf::from(arg("--agy", "agy")), args.windows(2).filter(|w| w[0] == "--agy-arg").map(|w| w[1].clone()).collect())));
+    crate::login::set_agy_program(PathBuf::from(arg("--agy", "agy"))); // the sign-in of an account of agy runs the same program (`M25-P11`)
     let agent_default = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-synth-agent"))).unwrap_or_default();
     let cfg = Config {
         log_dir: log_dir.clone(),

@@ -43,10 +43,10 @@ pub(crate) fn mode_word(mode: &str) -> Option<&'static str> {
     }
 }
 
-/// Who a session is run for, as the strip says it: `provider | account`; an agy session has no account of Lico's (the program signs in by itself, M25),
-/// so it is `agy` alone.
+/// Who a session is run for, as the strip says it: `provider | account`; an agy session of the person's own home (the program signs in by itself, M25) has no account of Lico's, so it is `agy`
+/// alone, and one that runs on an account of agy (M25-P11) says it like the others.
 fn who_part(row: &Row, label: &str) -> String {
-    if row.provider == "agy" { "agy".to_string() } else { format!("{} | {label}", row.provider) }
+    if row.provider == "agy" && row.account.is_empty() { "agy".to_string() } else { format!("{} | {label}", row.provider) }
 }
 
 /// What the top line said of the session, without what the strip says: `provider | account | state with its clock | mode | account issue`; a local

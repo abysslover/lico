@@ -508,8 +508,8 @@ pub fn session_rebind(shared: &Arc<Shared>, session: &str, generation: i64, acco
         if s.state != State::Disconnected || s.codex_thread.is_none() {
             return Err("busy");
         }
-        if bound.2 != s.provider {
-            return Err("unknown_account");
+        if bound.2 != s.provider || !matches!(s.provider, "claude" | "codex") {
+            return Err("unknown_account"); // an account of another provider, or a program (`agy`) whose session keeps the account it started with
         }
         let previous = (s.account.clone(), s.credential_generation, s.codex_thread.take());
         s.account = Some(bound.0.clone());

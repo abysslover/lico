@@ -32,6 +32,8 @@
 "tests/test_agy_chats.py" = ["gui", "host"]
 "tests/test_agy_adapter.py" = ["host"]
 "tests/test_agy_session.py" = ["host"]
+"tests/test_agy_accounts.py" = ["host"]
+"tests/test_agy_account_window.py" = ["gui", "host"]
 "tests/test_agy_resume.py" = ["host"]
 "tests/test_agy_peers.py" = ["host"]
 "tests/test_agy_tile.py" = ["gui", "host"]
@@ -352,7 +354,7 @@ reason = "the simulator of the Codex app server and its capabilities, started by
 
 [[sources]]
 glob = "src/host/adapters/agy/**"
-tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py", "tests/test_agy_resume.py", "tests/test_agy_peers.py"]
+tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py", "tests/test_agy_resume.py", "tests/test_agy_peers.py", "tests/test_agy_accounts.py", "tests/test_agy_account_window.py"]
 reason = "the simulator of agy acp and its capabilities, started or read by path"
 
 [[sources]]

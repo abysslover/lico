@@ -623,3 +623,16 @@ fn the_audit_line_names_the_tool_the_session_and_the_result_and_never_a_word_of_
     assert_eq!(line, format!("lico-host: call session={ONE} tool=create result=send_limit"));
     assert_eq!(audit_line(NEW, "created"), format!("lico-host: call session={NEW} tool=create result=created"));
 }
+
+#[test]
+fn a_session_of_agy_on_an_account_of_agy_makes_a_claude_session_that_does_not_carry_that_account() {
+    let w = room();
+    w.with(ONE, |s| {
+        s.provider = "agy";
+        s.account = Some("agy_acc".into());
+    });
+    let (seen, inbox) = (Mutex::default(), Mutex::default());
+    perform_with(&w.shared, ONE, "", "p", &starter(&w, NEW, &seen, &inbox)).unwrap();
+    let spec = seen.lock().unwrap()[0].clone();
+    assert_eq!((spec.kind, spec.account.as_deref()), ("claude", None), "the account of the program that asked belongs to that program: another provider is never given it");
+}

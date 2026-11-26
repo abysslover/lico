@@ -5,6 +5,7 @@
 use serde_json::json;
 use std::collections::HashMap;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::{ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -30,6 +31,23 @@ pub struct Login {
 
 pub type Logins = Mutex<HashMap<String, Arc<Mutex<Login>>>>;
 
+/// The program of the sign-in of `agy` (`M25-P11`): the one the host was told with `--agy`, which is also the program of its sessions. Set once when the host starts.
+static AGY: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+pub fn set_agy_program(program: PathBuf) {
+    *AGY.lock().unwrap() = Some(program);
+}
+
+fn agy_program() -> PathBuf {
+    AGY.lock().unwrap().clone().unwrap_or_else(|| PathBuf::from("agy"))
+}
+
+/// The words after the program for the sign-in of `agy`: its own (`agy acp --login`, the terminal sign-in of the Agent Client Protocol mode, which prints an address and asks for a code), with
+/// no telemetry as in a session, and no other way: a method that is not `browser` has none.
+fn agy_words(method: &str) -> Option<Vec<&'static str>> {
+    (method == "browser").then(|| vec!["acp", "--login", "--disable-telemetry"])
+}
+
 fn running(state: &str) -> bool {
     matches!(state, "waiting" | "browser" | "code")
 }
@@ -42,6 +60,8 @@ fn command_of(shared: &Shared, provider: &str, words: &[&str]) -> Command {
         c
     } else if provider == "claude" {
         Command::new(&shared.cfg.claude)
+    } else if provider == "agy" {
+        Command::new(agy_program())
     } else {
         Command::new(&shared.cfg.codex)
     };
@@ -126,7 +146,7 @@ fn address_of(raw: &str) -> Option<String> {
 /// Notes that the provider asks for a code (its wording, with or without a newline after it).
 fn asks_for_code(l: &mut Login, text: &str) -> bool {
     let text = strip_ansi(text).to_lowercase();
-    if text.contains("paste code") || text.contains("enter the code") {
+    if text.contains("paste code") || text.contains("enter the code") || text.contains("paste the authorization code") {
         l.needs_code = true;
         if running(l.state) {
             l.state = "code";
@@ -185,6 +205,7 @@ pub fn start(shared: &Arc<Shared>, account: &str, method: &str) -> Reply {
         ("codex", "browser") => vec!["login"],
         ("codex", "device") => vec!["login", "--device-auth"],
         ("claude", "browser") => vec!["login"],
+        ("agy", method) => agy_words(method).ok_or("bad_request")?,
         _ => return Err("bad_request"),
     };
     let mut table = shared.logins.lock().unwrap();
@@ -311,5 +332,38 @@ fn signed_in(shared: &Shared, account: &str) -> Option<bool> {
             return None;
         }
         std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fresh() -> Login {
+        Login { state: "waiting", url: None, needs_code: false, exit_code: None, started: Instant::now(), cancel: false, stdin: None }
+    }
+
+    #[test]
+    fn the_words_agy_asks_for_its_code_in_are_a_prompt_for_a_code_and_the_address_above_them_is_the_sign_in_address() {
+        let mut login = fresh();
+        let address_line = "https://accounts.google.com/o/oauth2/auth?client_id=x&state=y";
+        assert_eq!(address_of(address_line).as_deref(), Some(address_line));
+        assert!(!asks_for_code(&mut login, "Open this link in a browser to log in with Google:"), "the line above the address asks for nothing");
+        assert!(asks_for_code(&mut login, "Then paste the authorization code, or the full URL of the page you land on, and press Enter: "), "no newline follows the prompt");
+        assert!(login.needs_code && login.state == "code");
+        let mut again = fresh();
+        assert!(asks_for_code(&mut again, "\u{1b}[1mThen PASTE THE AUTHORIZATION CODE\u{1b}[0m"), "capitals and escapes do not hide it");
+        let mut claude = fresh();
+        assert!(asks_for_code(&mut claude, "Paste code here if prompted >"), "the words of the others still ask");
+        assert!(!asks_for_code(&mut fresh(), "authorization is pending"), "a sentence that only says authorization is no prompt");
+    }
+
+    #[test]
+    fn the_program_of_agys_sign_in_is_the_one_the_host_was_told_and_agy_signs_in_one_way_only() {
+        set_agy_program(PathBuf::from("/opt/agy-for-the-test"));
+        assert_eq!(agy_program(), PathBuf::from("/opt/agy-for-the-test"));
+        assert_eq!(agy_words("browser"), Some(vec!["acp", "--login", "--disable-telemetry"]), "the program's own sign-in (ACP terminal auth) and no telemetry, as a session");
+        assert_eq!(agy_words("device"), None, "no other way is supported");
+        assert!(!agy_words("browser").unwrap().iter().any(|w| w.contains("skip")), "no flag that skips anything");
     }
 }

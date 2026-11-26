@@ -17,6 +17,7 @@ does not replay; an unknown session answers `-32002` (load), `-32603` (resume) a
 While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
 While the file `<received>.hang` exists `initialize` is never answered (a program that started and says nothing).
 The first line of the log is `{"argv": [...], "cwd": ..., "env": [names]}`: the folder the program was started in and the NAMES of its environment (never a value).
+With `--mark-home` it writes the file `$HOME/.gemini/antigravity-cli/started` when it starts (where the real program keeps its own state), so that a test sees which home it was given.
 `--version` prints `1.5.18`.
 """
 
@@ -243,6 +244,7 @@ def main():
     parser.add_argument("--received")
     parser.add_argument("--fixture")
     parser.add_argument("--version", action="store_true")
+    parser.add_argument("--mark-home", action="store_true")
     args, rest = parser.parse_known_args()
     if args.version:
         print(VERSION)
@@ -252,6 +254,12 @@ def main():
             f.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(), "env": sorted(os.environ)}) + "\n")
         if os.path.exists(args.received + ".die"):
             sys.exit(1)
+    if args.mark_home:
+        # what the real program does with its home: its own state lives under `$HOME/.gemini/antigravity-cli/` (a test passes the flag only where its HOME is a private folder)
+        place = os.path.join(os.environ.get("HOME", "."), ".gemini", "antigravity-cli")
+        os.makedirs(place, exist_ok=True)
+        with open(os.path.join(place, "started"), "a", encoding="utf-8") as f:
+            f.write("1\n")
     fixture = None
     if args.fixture:
         with open(args.fixture, encoding="utf-8") as f:

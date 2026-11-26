@@ -207,7 +207,7 @@ fn ask(shared: &Shared, caller: &str, arguments: &Map<String, Value>, window: &M
         (
             provider,
             s.settings.worktree_repo.clone().or_else(|| s.settings.cwd.clone()),
-            s.account.clone(),
+            s.account.clone().filter(|_| provider == s.provider), // (the account of a program that is neither of the two, `agy`, is no account of the provider it is taken for)
             s.incoming_hops,
             s.settings.clone(),
         )
@@ -370,7 +370,7 @@ fn make(shared: &Arc<Shared>, caller: &str, target: &str, prompt: &str, start: &
         (
             provider,
             parent_cwd.clone(),
-            s.account.clone(),
+            s.account.clone().filter(|_| provider == s.provider), // (the account of a program that is neither of the two, `agy`, is no account of the provider it is taken for)
             s.incoming_hops,
             transfer::label(&s.id, s.settings.name.as_deref(), parent_cwd.as_deref()),
             s.settings.clone(),

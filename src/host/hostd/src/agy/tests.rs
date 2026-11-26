@@ -626,3 +626,19 @@ fn a_connection_is_started_once_hears_nothing_before_it_is_started_and_never_loa
     assert_eq!(lines_of(&end).last().map(String::as_str), Some("[error] agy could not bring this conversation back; start a new session"));
 }
 
+
+#[test]
+fn the_program_runs_in_the_home_of_its_account_with_the_path_and_no_other_place_of_the_person_and_with_no_account_as_before() {
+    let agy = super::Agy::new("agy".into(), Vec::new());
+    let workspace = std::path::Path::new("/");
+    let named = |command: &std::process::Command| -> std::collections::BTreeMap<String, String> {
+        command.get_envs().filter_map(|(k, v)| Some((k.to_string_lossy().into_owned(), v?.to_string_lossy().into_owned()))).collect()
+    };
+    let own = named(&agy.command(workspace, None));
+    assert!(own.keys().all(|k| super::KEPT_ENV.contains(&k.as_str())), "the person's own home: the seven names and nothing else: {own:?}");
+    let home = std::path::Path::new("/accounts/a1/home");
+    let account = named(&agy.command(workspace, Some(home)));
+    assert_eq!(account.get("HOME").map(String::as_str), Some("/accounts/a1/home"), "the account's home is the program's home");
+    assert!(account.keys().all(|k| ["PATH", "LANG", "HOME"].contains(&k.as_str())), "no XDG name of the person's reaches the program of an account: {account:?}");
+    assert_eq!(account.get("PATH"), own.get("PATH"), "the path is the host's, as for every program it starts");
+}

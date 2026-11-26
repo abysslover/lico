@@ -395,7 +395,7 @@ impl App {
                 let named = self.ui.rows.iter().find(|r| &r.provider == provider && &r.account == account).map_or_else(|| self.label_of(account), |r| self.row_label(r));
                 items.push(ListItem::Heading(match provider.as_str() {
                     "local" => "Local / this machine".to_string(),
-                    "agy" => "agy".to_string(), // no account of Lico's: the program signs in by itself
+                    "agy" if account.is_empty() => "agy".to_string(), // no account of Lico's: the program signs in by itself (one that runs on an account of agy is headed like the others)
                     _ => format!("{provider} / {named}{qtag}"),
                 }));
                 let mut group_rows: Vec<&Row> = self.ui.rows.iter().filter(|r| shown(r, &self.session) && &r.provider == provider && &r.account == account).collect();
@@ -456,6 +456,11 @@ mod tests {
         a.ui.rows.push(agy);
         a.refresh_list();
         assert!(a.ui.list_sig.contains("agy") && !a.ui.list_sig.contains("agy / "), "agy has a heading of its own, with no account word: {}", a.ui.list_sig);
+        let mut on_account = sample_row("s4", "work", None);
+        (on_account.provider, on_account.account) = ("agy".into(), "g1".into());
+        a.ui.rows.push(on_account);
+        a.refresh_list();
+        assert!(a.ui.list_sig.contains("agy / "), "a session on an account of agy is under that account, like the others: {}", a.ui.list_sig);
     }
 
     #[test]

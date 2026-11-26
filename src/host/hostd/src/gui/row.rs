@@ -198,7 +198,7 @@ impl Row {
         if self.provider == "local" {
             return format!("Local | {model} | {}{extra}", self.state_with_clock(now)); // no account, and no provider permission mode: the host asks for the person's decision per tool
         }
-        let who = if self.provider == "agy" { "agy".to_string() } else { format!("{} | {label}", self.provider) }; // agy has no account of Lico's
+        let who = if self.provider == "agy" && self.account.is_empty() { "agy".to_string() } else { format!("{} | {label}", self.provider) }; // an agy session of the person's own home has no account of Lico's
         format!("{who} | {model} | {}{mode}{issue}{extra}", self.state_with_clock(now))
     }
 
@@ -368,6 +368,9 @@ mod tests {
         // agy has an account of its own, not Lico's: no account in its header, and the mode words of the others
         let agy = Row { provider: "agy".into(), mode: "default".into(), ..shown_row() }.header_line("no account", 0, false, None);
         assert!(agy.starts_with("agy | llama3 | ") && !agy.contains("account") && agy.contains("mode: asks for approval"), "{agy}");
+        // an agy session on an account of agy (M25-P11) says the account like the others
+        let on_account = Row { provider: "agy".into(), account: "g1".into(), mode: "default".into(), ..shown_row() }.header_line("Google", 0, false, None);
+        assert!(on_account.starts_with("agy | Google | llama3 | "), "{on_account}");
         // the other providers keep their header
         let claude = Row { provider: "claude".into(), ..row }.header_line("Work", 0, false, None);
         assert!(claude.starts_with("claude | Work | llama3 | ") && claude.contains("mode: auto (permissions skipped)"), "{claude}");

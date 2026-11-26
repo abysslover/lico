@@ -53,13 +53,19 @@ impl Agy {
         Agy { program, args }
     }
 
-    fn command(&self, workspace: &std::path::Path) -> Command {
+    /// The command of one session. `home` is the home of the account the session is bound to (`M25-P11`): the program then runs in it, as the sign-in of that account does, and no place of the
+    /// person's own (the `XDG_*` names) reaches it, so that what it keeps under its home is the account's and nothing else is read. With no account the person's own places are passed as before.
+    fn command(&self, workspace: &std::path::Path, home: Option<&std::path::Path>) -> Command {
         let mut command = Command::new(&self.program);
         command.args(&self.args).args(FIXED_ARGS).current_dir(workspace).env_clear();
-        for key in KEPT_ENV {
+        let passed: &[&str] = if home.is_some() { &["PATH", "LANG"] } else { &KEPT_ENV };
+        for key in passed {
             if let Some(value) = std::env::var_os(key) {
                 command.env(key, value);
             }
+        }
+        if let Some(home) = home {
+            command.env("HOME", home);
         }
         command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
         command
@@ -152,7 +158,12 @@ impl Driver for Agy {
         }
         let workspace = crate::folders::working_dir(&shared, &session)?;
         let stored = session.lock().unwrap().codex_thread.clone();
-        let mut child = crate::procs::spawn_provider_process(self.command(&workspace)).map_err(|_| "busy")?;
+        let account = session.lock().unwrap().account.clone();
+        let home = match &account {
+            Some(id) => Some(shared.accounts.lock().unwrap().homes(id).ok_or("unknown_account")?.home), // an account that was removed under a session: it is not started in another home
+            None => None,
+        };
+        let mut child = crate::procs::spawn_provider_process(self.command(&workspace, home.as_deref())).map_err(|_| "busy")?;
         let pid = child.id();
         let stop = |child: &mut Child| {
             unsafe { kill(-(pid as i32), 9) };

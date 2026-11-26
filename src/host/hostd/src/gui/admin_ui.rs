@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::super::{clean, App};
 use super::confirm::{Act, Ask};
-use super::{Panel, Step};
+use super::{Panel, Step, PROVIDER_LINES};
 
 impl App {
     pub(crate) fn acct_display(&self, a: &(String, String, String, bool)) -> String {
@@ -36,10 +36,10 @@ impl App {
         }
     }
 
-    pub(super) fn cycle_label_host(&mut self, by: isize) {
+    pub(crate) fn cycle_label_host(&mut self, by: isize) {
         let Some(p) = self.ui.panel.as_mut() else { return };
-        if p.ssh_hosts.is_empty() {
-            p.new_ssh_host = None;
+        if p.ssh_hosts.is_empty() || p.provider == "agy" {
+            p.new_ssh_host = None; // the program of agy runs on this machine only
             return;
         }
         let mut choices: Vec<Option<String>> = vec![None];
@@ -50,19 +50,13 @@ impl App {
         self.dirty = true;
     }
 
-    pub(super) fn toggle_label_provider(&mut self) {
-        if let Some(p) = self.ui.panel.as_mut() {
-            p.provider = if p.provider == "codex" { "claude".into() } else { "codex".into() };
-            self.dirty = true;
-        }
-    }
-
-    pub(super) fn open_add_account_from_accounts(&mut self) {
+    pub(crate) fn open_add_account_from_accounts(&mut self) {
         self.load_ssh_hosts();
         let _ = self.ed.take();
         self.preedit.clear();
+        self.agy_look(); // is there an `agy` on this machine: the picture of it is grey when there is none
         if let Some(p) = self.ui.panel.as_mut() {
-            if p.provider.is_empty() {
+            if !matches!(p.provider.as_str(), "claude" | "agy" | "codex") || (p.provider == "agy" && !p.agy) {
                 p.provider = "claude".into();
             }
             p.new_ssh_host = None;
@@ -77,17 +71,16 @@ impl App {
         match p.step {
             Step::Label => {
                 if p.form.is_none() {
-                    match line {
-                        0 => {
-                            self.toggle_label_provider();
-                            return true;
-                        }
-                        1 => {
-                            self.cycle_label_host(1);
-                            return true;
-                        }
-                        _ => return false,
+                    // the blank lines under the three pictures are no click; then the line of the provider, then the line of the host (none for the program of agy, which runs here only)
+                    if line == PROVIDER_LINES {
+                        self.cycle_label_provider(1);
+                        return true;
                     }
+                    if line == PROVIDER_LINES + 1 && p.provider != "agy" {
+                        self.cycle_label_host(1);
+                        return true;
+                    }
+                    return false;
                 } else if line == 0 {
                     self.cycle_label_host(1);
                     return true;
@@ -166,7 +159,7 @@ impl App {
             None => Some("no session is open"),
             Some(r) if r.provider.is_empty() => Some("not a provider session"),
             Some(r) if r.provider == "local" => Some("a local session has no account"),
-            Some(r) if r.provider == "agy" => Some("an agy session has no account of Lico's"),
+            Some(r) if r.provider == "agy" => Some("an agy session keeps the account it started with"),
             Some(r) if r.state == "running" => Some("close the session first"),
             Some(r) if r.state != "disconnected" => Some("the session has ended"),
             Some(_) => None,
@@ -318,7 +311,7 @@ mod local_tests {
         assert_eq!(a.rebind_reason(), Some("a local session has no account"));
         assert_eq!(a.mode_reason(), Some("a local session has no permission mode"));
         a.ui.rows[0].provider = "agy".into();
-        assert_eq!(a.rebind_reason(), Some("an agy session has no account of Lico's"), "the program has its own sign-in");
+        assert_eq!(a.rebind_reason(), Some("an agy session keeps the account it started with"), "its account is the home it runs in: no switch");
         assert_eq!(a.mode_reason(), None, "but its permission mode is the person's to switch");
         a.ui.rows[0].provider = "claude".into();
         assert_eq!(a.rebind_reason(), None);

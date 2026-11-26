@@ -12,6 +12,10 @@ use winit::keyboard::{Key, NamedKey};
 
 use super::App;
 
+/// How many blank lines the first screen of a new account (`Step::Label`, opened from the list) keeps for the three pictures of the providers: the pictures are painted over them, the text
+/// (the line of the provider, then the host) follows them (`M25-P11`; the wizard's first step keeps as many for its five).
+pub(crate) const PROVIDER_LINES: usize = 6;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Step {
     NewSession,
@@ -228,13 +232,16 @@ impl App {
             }
             Step::Label => {
                 if p.form.is_none() {
-                    body.push(format!("Provider: < {} >   (Tab or click to switch)", p.provider));
+                    body.extend((0..PROVIDER_LINES).map(|_| " ".to_string())); // blank lines (an empty one has no height) for the pictures of Claude, agy and Codex
+                    body.push(format!("Provider: < {} >   (click a picture, or Tab)", p.provider));
                 }
                 let host_txt = p.new_ssh_host.as_deref().map_or_else(
                     || "local (this machine)".to_string(),
                     |h| format!("ssh: {h} (authenticates & runs on {h})"),
                 );
-                if p.ssh_hosts.is_empty() {
+                if p.provider == "agy" {
+                    // the program runs on this machine only: no host to choose
+                } else if p.ssh_hosts.is_empty() {
                     body.push(format!("Target:   < {host_txt} >   (no hosts in ~/.ssh/config)"));
                 } else {
                     body.push(format!("Target:   < {host_txt} >   (Up/Down or click to switch SSH host)"));
@@ -552,7 +559,7 @@ impl App {
                 true
             }
             Key::Named(NamedKey::Tab) if step == Step::Label => {
-                self.toggle_label_provider();
+                self.cycle_label_provider(if self.ui.mods.shift_key() { -1 } else { 1 });
                 true
             }
             Key::Named(NamedKey::Enter) if step == Step::Send => {

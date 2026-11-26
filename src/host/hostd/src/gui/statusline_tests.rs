@@ -22,6 +22,7 @@ fn the_state_part_says_provider_account_state_mode_and_issue_and_the_border_is_s
     assert_eq!(state_part(&r, "Home", 1_000), "codex | Home | working 37 s | mode asks | account issue: login needed", "the clock of an open turn, the issue last");
     assert_eq!(state_part(&running("local", "", "idle", "auto"), "no account", 1_000), "Local | idle", "a local session has no account and no provider mode");
     assert_eq!(state_part(&running("agy", "", "idle", "default"), "no account", 1_000), "agy | idle | mode asks", "an agy session has no account of Lico's: the program signs in by itself");
+    assert_eq!(state_part(&running("agy", "g1", "idle", "default"), "Google", 1_000), "agy | Google | idle | mode asks", "an agy session on an account of agy says it, like the others");
     assert_eq!((edge(true, 1.0), edge(true, 2.0), edge(false, 2.0)), (6.0, 12.0, 0.0), "a rule of 2 and a margin of 4, none without the bars");
     assert_eq!(rule_rows(100.0, 1.5), [100.0, 103.0]);
 }
