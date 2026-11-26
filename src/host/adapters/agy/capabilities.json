@@ -1,0 +1,94 @@
+{
+ "schema": "lico.provider_capabilities.v1",
+ "provider": "agy",
+ "path": "agy acp over standard input and output (the Agent Client Protocol: JSON-RPC 2.0, one JSON object per line)",
+ "version": {
+  "cli": "1.5.17",
+  "pinned": true,
+  "checked": "2026-11-26",
+  "how": "the installed binary run with a private empty home and a minimal environment: no sign-in, no model turn",
+  "fixtures_recorded_with": "hand-made from the ACP documentation; initialize and session/new follow what the installed program answered"
+ },
+ "launch": {
+  "argv": ["agy", "acp", "--disable-telemetry"],
+  "never": ["--dangerously-skip-permissions"],
+  "flags_seen": ["--add-dir", "--agent", "--app-data-dir", "--cli_log_file", "--disable-telemetry", "--gemini-dir", "--login", "--process-per-session", "--sandbox", "--dangerously-skip-permissions"],
+  "version_command": "agy --version prints the bare version"
+ },
+ "handshake": ["initialize", "session/new (or session/resume, or session/load)"],
+ "client_capabilities_offered": {"fs": {"readTextFile": false, "writeTextFile": false}, "terminal": false},
+ "observed_without_credentials": {
+  "initialize": {
+   "protocolVersion": 1,
+   "loadSession": true,
+   "promptCapabilities": {"image": true, "audio": false, "embeddedContext": true},
+   "sessionCapabilities": ["additionalDirectories", "close", "list", "load", "resume"],
+   "agentInfo": {"name": "Antigravity ACP Server", "version": "1.5.17"},
+   "authMethods": ["agent-platform", "gemini-api-key", "oauth-business", "oauth-personal"]
+  },
+  "session/new": {
+   "works_signed_out": true,
+   "result_keys": ["_meta", "configOptions", "models", "modes", "sessionId"],
+   "models_keys": ["availableModels", "currentModelId"],
+   "model_entry_keys": ["modelId", "name"],
+   "modes": {"currentModeId": "default", "ids": ["accept-edits", "default", "plan"]},
+   "notifications_after": ["available_commands_update", "usage_update"],
+   "not_recorded": "the account tier that the answer's _meta names: it is the program's, not data of this record"
+  },
+  "session/list": {"empty_home_answers": {"sessions": []}},
+  "errors": {
+   "session/load of an unknown session": -32002,
+   "session/resume of an unknown session": -32603,
+   "session/prompt to an unknown session": -32602,
+   "an unknown method": -32601
+  }
+ },
+ "client_requests": {
+  "initialize": "sent once at the start with protocolVersion 1 and the client capabilities above",
+  "session/new": "mapped: `[session started] model=<currentModelId>`; the sessionId is kept in the registry as the provider session",
+  "session/resume": "mapped (P04): preferred when the program advertises it, no replay; `[provider reconnected]`",
+  "session/load": "mapped (P04): used when resume is not advertised or fails; the replay it sends is not copied",
+  "session/prompt": "mapped: one text block per input; the answer's stopReason ends the turn",
+  "session/cancel": "mapped (a notification): a stopped session cancels the turn it is in"
+ },
+ "agent_requests": {
+  "session/request_permission": "mapped to an approval (P03): the prompt is the command or the title; allow answers the allow_once option, deny the reject_once option, and either answers cancelled when the option is not offered (never widened to an always option)",
+  "fs/read_text_file": "refused -32601: not offered",
+  "fs/write_text_file": "refused -32601: not offered",
+  "terminal/*": "refused -32601: not offered"
+ },
+ "session_updates": {
+  "agent_message_chunk": "mapped: a fragment of text; a line is a record when it is complete, the rest when the turn or a tool call ends",
+  "tool_call": "mapped: `$ command` for an execute call with a command, otherwise `[tool] title`",
+  "tool_call_update": "mapped on completed or failed: `[tool error]` for failed, up to 20 lines of text as `> line`, up to 8 diffs as `[patch] path`",
+  "agent_thought_chunk": "ignored (not shown)",
+  "user_message_chunk": "ignored (the host records the person's inputs itself; also what a load replays)",
+  "plan": "ignored in 0.9.0",
+  "available_commands_update": "ignored",
+  "usage_update": "ignored",
+  "current_mode_update": "ignored",
+  "config_option_update": "ignored"
+ },
+ "stop_reasons": {
+  "end_turn": "`[turn completed]`",
+  "cancelled": "`[turn stopped]`",
+  "max_tokens": "`[turn failed] max_tokens`",
+  "max_turn_requests": "`[turn failed] max_turn_requests`",
+  "refusal": "`[turn failed] refusal`"
+ },
+ "unsupported": [
+  {"feature": "client capabilities fs/* and terminal/*", "reason": "the program does its own file and shell work in its own process, as in a terminal; only its permission requests reach the person"},
+  {"feature": "authenticate", "reason": "Lico never signs in for the person and never reads the program's credentials; the person signs in with agy itself"},
+  {"feature": "a model, effort or mode switch (session/set_model, session/set_mode)", "reason": "out of scope for 0.9.0: the program's own default, shown in the header"},
+  {"feature": "images in a prompt", "reason": "offered by the program; a later phase"},
+  {"feature": "--dangerously-skip-permissions", "reason": "every permission request is shown to the person"}
+ ],
+ "unverified": [
+  "the updates of a turn (agent_message_chunk, tool_call, tool_call_update) and their fields",
+  "the permission request, its tool call fields (kind, rawInput.command) and the option kinds the program sends",
+  "the stop reasons and the error of a prompt without a sign-in (the reference reads code -32000 or the words auth, sign in, login, credential, api key)",
+  "that session/load replays the conversation as updates before its answer, and that session/resume does not",
+  "what a cancel does to a permission request that waits",
+  "how long a prompt may stay silent"
+ ]
+}

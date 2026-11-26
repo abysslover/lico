@@ -30,3 +30,12 @@ documentation, not from a recording; `tests/fixtures/claude_stream/` says so, an
 request subtype it uses (`can_use_tool`) is an assumption the documentation does not confirm.
 `claude/simulator.py` stands in for `claude -p --input-format stream-json` in tests. The adapter
 (`hostd/src/claude.rs`) must produce the records `lico_protocol/claude_mapping.py` produces.
+
+## `agy` (third adapter, M25)
+
+`agy/capabilities.json` pins `agy 1.5.17` and speaks the Agent Client Protocol (`agy acp`, JSON-RPC 2.0, one object per line). What is observed with the installed program (a private
+empty home, no sign-in, no turn) is the `initialize` answer, the keys of the `session/new` answer (it works signed out) and the error codes; every shape of a turn is from the ACP
+documentation and on the record's **unverified** list. `src/lico_protocol/agy_mapping.py` is the reference mapping (a line is emitted when it is complete, what `session/load`
+replays is not copied, an answer is never wider than the person's, a stop reason is a plain note), `tests/fixtures/agy_acp/` holds three hand-made sequences with their records, and
+`agy/simulator.py` stands in for `agy acp` in tests. The adapter (`hostd/src/agy/`, a driver kind of `driver.rs`) must produce the records the reference produces.
+

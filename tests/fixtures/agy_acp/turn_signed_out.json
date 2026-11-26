@@ -1,0 +1,155 @@
+{
+ "name": "turn_signed_out",
+ "source": "Hand-made from the Agent Client Protocol documentation; initialize and session/new follow what agy 1.5.17 answered in a private empty home (no sign-in, no turn). Everything from the first session/prompt on is unverified.",
+ "unverified": [
+  "the updates of a turn (agent_message_chunk, tool_call, tool_call_update)",
+  "the permission request and its option kinds",
+  "the stop reasons",
+  "the error of a prompt without a sign-in"
+ ],
+ "stream": [
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+     "protocolVersion": 1,
+     "clientCapabilities": {
+      "fs": {
+       "readTextFile": false,
+       "writeTextFile": false
+      },
+      "terminal": false
+     },
+     "clientInfo": {
+      "name": "lico",
+      "version": "0"
+     }
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "protocolVersion": 1,
+     "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+       "image": true,
+       "audio": false,
+       "embeddedContext": true
+      },
+      "sessionCapabilities": {
+       "resume": {},
+       "close": {},
+       "load": {},
+       "list": {},
+       "additionalDirectories": {}
+      }
+     },
+     "agentInfo": {
+      "name": "Antigravity ACP Server",
+      "version": "1.5.17"
+     },
+     "authMethods": [
+      {
+       "id": "oauth-personal",
+       "name": "Log in with Google",
+       "description": "Log in with your Google account"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session/new",
+    "params": {
+     "cwd": "/work",
+     "mcpServers": []
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+     "sessionId": "s-1",
+     "models": {
+      "currentModelId": "gemini-4-neon-high",
+      "availableModels": [
+       {
+        "modelId": "gemini-4-neon-high",
+        "name": "Gemini 4 Neon (High)"
+       }
+      ]
+     },
+     "modes": {
+      "currentModeId": "default",
+      "availableModes": [
+       {
+        "id": "default",
+        "name": "Default"
+       },
+       {
+        "id": "accept-edits",
+        "name": "Accept edits"
+       },
+       {
+        "id": "plan",
+        "name": "Plan"
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "session/prompt",
+    "params": {
+     "sessionId": "s-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "hello"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "error": {
+     "code": -32000,
+     "message": "Authentication required"
+    }
+   }
+  }
+ ],
+ "records": [
+  "[session started] model=gemini-4-neon-high",
+  "[turn failed]",
+  "[error] Authentication required",
+  "[error] agy is not signed in: open a Terminal tab, run agy, sign in, then send the message again"
+ ],
+ "approvals": [],
+ "answers": {},
+ "ignored": {}
+}

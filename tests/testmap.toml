@@ -30,6 +30,7 @@
 "tests/test_pane_tool.py" = ["host"]
 "tests/test_pane_switch_window.py" = ["gui", "host"]
 "tests/test_agy_chats.py" = ["gui", "host"]
+"tests/test_agy_adapter.py" = ["host"]
 "tests/test_agy_tile.py" = ["gui", "host"]
 "tests/test_picture_input.py" = ["host"]
 "tests/test_picture_paste.py" = ["gui", "host"]
@@ -344,6 +345,16 @@ reason = "a line of agent text and the record it becomes: the reference mapping 
 glob = "src/host/adapters/codex/**"
 tests = ["tests/test_codex_adapter.py"]
 reason = "the simulator of the Codex app server and its capabilities, started by path"
+
+[[sources]]
+glob = "src/host/adapters/agy/**"
+tests = ["tests/test_agy_adapter.py"]
+reason = "the simulator of agy acp and its capabilities, started or read by path"
+
+[[sources]]
+glob = "tests/fixtures/agy_acp/*.json"
+tests = ["tests/test_agy_adapter.py"]
+reason = "the sequences of an ACP conversation and the records they become: the test reads them by path (the Rust adapter of P02 reads them as well)"
 
 [[sources]]
 glob = "src/host/adapters/claude/**"

@@ -1,0 +1,180 @@
+{
+ "name": "resume_with_replay",
+ "source": "Hand-made from the Agent Client Protocol documentation; initialize and session/new follow what agy 1.5.17 answered in a private empty home (no sign-in, no turn). Everything from the first session/prompt on is unverified.",
+ "unverified": [
+  "the updates of a turn (agent_message_chunk, tool_call, tool_call_update)",
+  "the permission request and its option kinds",
+  "the stop reasons",
+  "the error of a prompt without a sign-in",
+  "that session/load replays the conversation as updates before its answer"
+ ],
+ "stream": [
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+     "protocolVersion": 1,
+     "clientCapabilities": {
+      "fs": {
+       "readTextFile": false,
+       "writeTextFile": false
+      },
+      "terminal": false
+     },
+     "clientInfo": {
+      "name": "lico",
+      "version": "0"
+     }
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+     "protocolVersion": 1,
+     "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+       "image": true,
+       "audio": false,
+       "embeddedContext": true
+      },
+      "sessionCapabilities": {
+       "resume": {},
+       "close": {},
+       "load": {},
+       "list": {},
+       "additionalDirectories": {}
+      }
+     },
+     "agentInfo": {
+      "name": "Antigravity ACP Server",
+      "version": "1.5.17"
+     },
+     "authMethods": [
+      {
+       "id": "oauth-personal",
+       "name": "Log in with Google",
+       "description": "Log in with your Google account"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session/load",
+    "params": {
+     "sessionId": "s-1",
+     "cwd": "/work",
+     "mcpServers": []
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "s-1",
+     "update": {
+      "sessionUpdate": "user_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "an old question"
+      }
+     }
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "s-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "an old answer"
+      }
+     }
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": null
+   }
+  },
+  {
+   "dir": "host",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "session/prompt",
+    "params": {
+     "sessionId": "s-1",
+     "prompt": [
+      {
+       "type": "text",
+       "text": "go on"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "method": "session/update",
+    "params": {
+     "sessionId": "s-1",
+     "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "content": {
+       "type": "text",
+       "text": "a new answer"
+      }
+     }
+    }
+   }
+  },
+  {
+   "dir": "agent",
+   "msg": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+     "stopReason": "end_turn"
+    }
+   }
+  }
+ ],
+ "records": [
+  "[provider reconnected]",
+  "a new answer",
+  "[turn completed]"
+ ],
+ "approvals": [],
+ "answers": {},
+ "ignored": {
+  "replayed": 2
+ }
+}
