@@ -31,6 +31,7 @@
 "tests/test_pane_switch_window.py" = ["gui", "host"]
 "tests/test_agy_chats.py" = ["gui", "host"]
 "tests/test_agy_adapter.py" = ["host"]
+"tests/test_agy_session.py" = ["host"]
 "tests/test_agy_tile.py" = ["gui", "host"]
 "tests/test_picture_input.py" = ["host"]
 "tests/test_picture_paste.py" = ["gui", "host"]
@@ -215,6 +216,7 @@ pages_tests = ["host"]
 terminal = ["host"]
 terminal_cli = ["host"]
 local = ["host"]
+agy = ["host"]
 lines = ["host"]
 login = ["host"]
 marks = ["host"]
@@ -348,13 +350,14 @@ reason = "the simulator of the Codex app server and its capabilities, started by
 
 [[sources]]
 glob = "src/host/adapters/agy/**"
-tests = ["tests/test_agy_adapter.py"]
+tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py"]
 reason = "the simulator of agy acp and its capabilities, started or read by path"
 
 [[sources]]
 glob = "tests/fixtures/agy_acp/*.json"
-tests = ["tests/test_agy_adapter.py"]
-reason = "the sequences of an ACP conversation and the records they become: the test reads them by path (the Rust adapter of P02 reads them as well)"
+tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py"]
+cargo = ["agy::"]
+reason = "the sequences of an ACP conversation and the records they become: the tests read them by path, and the unit tests of the Rust adapter include them"
 
 [[sources]]
 glob = "src/host/adapters/claude/**"

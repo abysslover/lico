@@ -217,18 +217,6 @@ pub fn check_folder(shared: &Shared, text: &str) -> Result<String, &'static str>
 /// What a `session.create` may ask for, checked before anything starts: the folder (and made canonical), and the
 /// model and effort, which only a Claude Code session has (the efforts must be the ones the program lists).
 pub fn prepare(shared: &Shared, kind: &str, mut chosen: Settings) -> Result<Settings, &'static str> {
-    if let Some(driver) = crate::driver::get(kind) {
-        // a session of a driver kind has no folder, no worktree, no effort and no provider chat to resume: only a model and a target
-        if chosen.cwd.is_some() || chosen.worktree_branch.is_some() || chosen.effort.is_some() || chosen.resume_id.is_some() {
-            return Err("option_unavailable");
-        }
-        driver.accepts(chosen.target.as_ref())?;
-        if chosen.target.as_ref().map(|t| Some(&t.model)) != Some(chosen.model.as_ref()) {
-            return Err("bad_request");
-        }
-        chosen.name = chosen.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
-        return Ok(chosen);
-    }
     if let Some(folder) = &chosen.cwd {
         if kind == "synthetic" {
             return Err("option_unavailable");
@@ -437,7 +425,7 @@ fn parse_record(text: &str) -> (Vec<String>, Map<String, Value>) {
     let list = parsed["folders"].as_array().cloned().unwrap_or_default();
     let folders = list.iter().filter_map(Value::as_str).filter(|f| valid_path_shape(f) && Path::new(f).is_absolute()).take(RECENT).map(str::to_string).collect();
     let checks: [(&str, fn(&str) -> bool); 8] = [
-        ("kind", |s| matches!(s, "claude" | "codex" | "local")),
+        ("kind", |s| matches!(s, "claude" | "codex" | "local" | "agy")),
         ("endpoint", |s| crate::driver::parse_endpoint(s).is_some()),
         ("api", |s| crate::driver::parse_api(s).is_some()),
         ("account", |s| !s.is_empty() && s.chars().count() <= 64 && !s.chars().any(char::is_control)),
@@ -689,6 +677,10 @@ mod tests {
         assert_eq!(parse_record(&text(bad)).1, Map::new());
         assert_eq!(parse_record(&text(json!({"kind": 1, "model": ["opus"], "effort": null}))).1, Map::new());
         assert_eq!(parse_record("not json"), (Vec::new(), Map::new()));
+        for kind in ["claude", "codex", "local", "agy"] {
+            assert_eq!(parse_record(&json!({"last": {"kind": kind}}).to_string()).1, obj(json!({"kind": kind})), "{kind}");
+        }
+        assert_eq!(parse_record(&json!({"last": {"kind": "Agy"}}).to_string()).1, Map::new());
         assert_eq!(parse_record(&json!({"folders": (0..30).map(|n| format!("/f{n}")).collect::<Vec<_>>()}).to_string()).0.len(), RECENT);
     }
 

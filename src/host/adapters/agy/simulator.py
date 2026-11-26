@@ -15,6 +15,8 @@ Modes are chosen by the text of the prompt:
 `session/load` replays what the session said (the conversations are kept in `<received>.sessions`, so a new process knows the sessions of an earlier one); `session/resume`
 does not replay; an unknown session answers `-32002` (load), `-32603` (resume) and `-32602` (prompt), as `agy` did.
 While the file `<received>.die` exists the program ends at once when it starts (after it has logged its arguments): a session that cannot come back.
+While the file `<received>.hang` exists `initialize` is never answered (a program that started and says nothing).
+The first line of the log is `{"argv": [...], "cwd": ..., "env": [names]}`: the folder the program was started in and the NAMES of its environment (never a value).
 `--version` prints `1.5.17`.
 """
 
@@ -107,6 +109,8 @@ class Sim:
     def handle(self, message):
         method, ident, params = message["method"], message.get("id"), message.get("params") or {}
         if method == "initialize":
+            if self.received and os.path.exists(self.received + ".hang"):
+                return
             self.send({"id": ident, "result": INIT_RESULT})
         elif method == "session/new":
             sid = str(uuid.uuid4())
@@ -245,7 +249,7 @@ def main():
         return
     if args.received:
         with open(args.received, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"argv": sys.argv[1:]}) + "\n")
+            f.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(), "env": sorted(os.environ)}) + "\n")
         if os.path.exists(args.received + ".die"):
             sys.exit(1)
     fixture = None

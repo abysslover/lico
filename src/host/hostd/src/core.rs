@@ -548,6 +548,12 @@ pub(crate) fn start_driver(driver: &Arc<dyn crate::driver::Driver>, shared: &Arc
     let (shared_handle, session_handle): (crate::driver::Opaque, crate::driver::Opaque) = (shared.clone(), session.clone());
     let link = driver.start(&shared_handle, &session_handle)?;
     let mut s = session.lock().unwrap();
+    if !link.alive() {
+        // the program ended before the link was kept: its own end has been told (it saw no link to take), so the session is not made to look running
+        s.set_state(State::Disconnected);
+        s.set_busy(false);
+        return Ok(());
+    }
     s.driver = Some(link);
     s.set_state(State::Running);
     s.set_busy(false);

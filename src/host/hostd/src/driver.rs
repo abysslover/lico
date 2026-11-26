@@ -35,6 +35,10 @@ pub trait Link: Send {
     fn stop(&mut self);
     /// Removes what the driver keeps for the session on disk (the session is deleted).
     fn purge(&mut self);
+    /// Whether the work is still there: a driver whose program ended before the host kept the link says no, and the host then does not take the session for a running one.
+    fn alive(&self) -> bool {
+        true
+    }
 }
 
 pub trait Driver: Send + Sync {
@@ -42,6 +46,10 @@ pub trait Driver: Send + Sync {
     fn kind(&self) -> &'static str;
     /// Whether the person's choices are enough to make a session (the code is the answer of `session.create`).
     fn accepts(&self, target: Option<&Target>) -> Result<(), &'static str>;
+    /// Whether a session of this kind runs in a folder, as a provider session does: the one the person chose, else a scratch workspace of its own. Then it takes no target and no model.
+    fn takes_folder(&self) -> bool {
+        false
+    }
     /// Starts the session's work (also after a restart or a resume); `shared` and `session` are the host's `Arc<Shared>` and `Arc<Mutex<Session>>`.
     fn start(&self, shared: &Opaque, session: &Opaque) -> Result<Box<dyn Link>, &'static str>;
 }
@@ -185,6 +193,13 @@ mod tests {
         assert_eq!(DRIVERS.lock().unwrap().iter().filter(|d| d.kind() == "port-test-a").count(), 1);
         let started = second.start(&(Arc::new(0u8) as Opaque), &(Arc::new(0u8) as Opaque));
         assert!(started.is_ok());
+    }
+
+    /// A driver that says nothing of a folder takes none, and a link that says nothing of its process is alive: the older kinds are unchanged.
+    #[test]
+    fn a_driver_takes_no_folder_and_a_link_is_alive_unless_it_says_otherwise() {
+        assert!(!Dummy("port-test-c").takes_folder());
+        assert!(Idle.alive());
     }
 
     #[test]

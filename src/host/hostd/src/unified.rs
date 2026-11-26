@@ -5,6 +5,7 @@
 
 mod accounts;
 mod admin;
+mod agy;
 mod broker;
 mod call_room;
 mod calls;

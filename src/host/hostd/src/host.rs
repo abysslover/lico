@@ -49,7 +49,7 @@ pub fn run(args: Vec<String>) {
     let arg = |name: &str, default: &str| args.windows(2).rfind(|w| w[0] == name).map_or(default.to_string(), |w| w[1].clone());
     let socket = arg("--socket", "");
     if socket.is_empty() {
-        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--text | --realistic-text] [--http-port P|auto --http-token-file FILE]");
+        eprintln!("usage: lico-host --socket PATH [--log-dir DIR] [--agent PATH] [--sessions N] [--producing N] [--rate R] [--history N] [--retain N] [--window N] [--queue-bytes N] [--payload N] [--max-connections N] [--max-sessions N] [--codex PATH] [--codex-arg ARG]... [--agy PATH] [--agy-arg ARG]... [--text | --realistic-text] [--http-port P|auto --http-token-file FILE]");
         std::process::exit(2);
     }
     let socket_dir = std::path::Path::new(&socket).parent().map(|p| p.to_path_buf()).unwrap_or_default();
@@ -60,6 +60,8 @@ pub fn run(args: Vec<String>) {
     }
     let base = if state_dir.is_empty() { socket_dir.clone() } else { PathBuf::from(&state_dir) };
     let log_dir = PathBuf::from(arg("--log-dir", base.join("lico-log").to_str().unwrap_or("lico-log")));
+    // the session kind `agy` (M25): registered here, where its program is known, and before the sessions of an earlier run are recovered (a stored one needs its driver)
+    crate::driver::register(Arc::new(crate::agy::Agy::new(PathBuf::from(arg("--agy", "agy")), args.windows(2).filter(|w| w[0] == "--agy-arg").map(|w| w[1].clone()).collect())));
     let agent_default = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.join("lico-synth-agent"))).unwrap_or_default();
     let cfg = Config {
         log_dir: log_dir.clone(),

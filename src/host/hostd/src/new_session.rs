@@ -19,7 +19,11 @@ pub fn session_create(shared: &Arc<Shared>, kind: &str, rate: u64, history: u64,
     if asked_latest && (chosen.resume_id.is_some() || chosen.cwd.is_none()) {
         return Err("bad_request"); // a chat id and "the latest" exclude each other, and the latest is of a folder
     }
-    let mut chosen = crate::ssh_remote::prepare_session(shared, kind, account, chosen)?; // the folder, the model and the effort are checked before anything starts
+    // the folder, the model and the effort are checked before anything starts: a driver kind by its own rules, a provider by `prepare_session`
+    let mut chosen = match crate::driver::get(kind) {
+        Some(driver) => prepare_driver_kind(shared, driver.as_ref(), chosen)?,
+        None => crate::ssh_remote::prepare_session(shared, kind, account, chosen)?,
+    };
     chosen.resume_latest = false;
     // a bounded number of sessions, and so of agent processes; concurrent creators reserve a slot first
     let bound = match resolve_account(shared, kind, account) {
@@ -159,7 +163,26 @@ fn resolve_account(shared: &Shared, kind: &str, requested: Option<&str>) -> Resu
     }
 }
 
-/// A session of a driver kind (`local`): no program, no folder and no account; the driver does the work. Nothing of one that never became ready remains.
+/// What `session.create` may ask for of a driver kind, checked before anything starts. None takes a worktree, an effort or a provider chat to resume.
+/// A program in a folder (`agy`) takes the folder, checked as for a provider, and has its own model; any other kind has no folder and takes a model and a target.
+fn prepare_driver_kind(shared: &Shared, driver: &dyn crate::driver::Driver, mut chosen: Settings) -> Result<Settings, &'static str> {
+    let in_folder = driver.takes_folder();
+    if chosen.worktree_branch.is_some() || chosen.effort.is_some() || chosen.resume_id.is_some() || if in_folder { chosen.model.is_some() || chosen.target.is_some() } else { chosen.cwd.is_some() } {
+        return Err("option_unavailable");
+    }
+    if let Some(folder) = &chosen.cwd {
+        chosen.cwd = Some(crate::folders::check_folder(shared, folder)?);
+    }
+    driver.accepts(chosen.target.as_ref())?;
+    if !in_folder && chosen.target.as_ref().map(|t| Some(&t.model)) != Some(chosen.model.as_ref()) {
+        return Err("bad_request");
+    }
+    chosen.name = chosen.name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    Ok(chosen)
+}
+
+/// A session of a driver kind (`local`, `agy`): no account; the driver does the work, in a folder when it takes one (`agy`).
+/// Nothing of one that never became ready remains: no process, no log and no scratch workspace.
 fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> Result<Arc<Mutex<Session>>, &'static str> {
     let driver = crate::driver::get(kind).ok_or("bad_request")?;
     let id = format!("s{}", crate::core::random_hex(8));
@@ -174,7 +197,9 @@ fn start_driver_session(shared: &Arc<Shared>, kind: &str, chosen: Settings) -> R
     if let Err(code) = crate::core::start_driver(&driver, shared, &session) {
         let mut s = session.lock().unwrap();
         s.purged = true;
+        s.stop_process();
         s.purge_log();
+        crate::folders::remove_own(shared, &s.id, s.settings.cwd.is_none()); // the scratch workspace a program in a folder was given
         return Err(code);
     }
     shared.sessions.write().unwrap().push(session.clone());

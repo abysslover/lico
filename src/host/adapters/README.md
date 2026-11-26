@@ -39,3 +39,9 @@ documentation and on the record's **unverified** list. `src/lico_protocol/agy_ma
 replays is not copied, an answer is never wider than the person's, a stop reason is a plain note), `tests/fixtures/agy_acp/` holds three hand-made sequences with their records, and
 `agy/simulator.py` stands in for `agy acp` in tests. The adapter (`hostd/src/agy/`, a driver kind of `driver.rs`) must produce the records the reference produces.
 
+The adapter exists since M25-P02: `map.rs` is the Rust port of the reference (the unit tests read the same three fixtures), `conn.rs` is the order of the protocol with no input or
+output of its own, `mod.rs` is the process and the session. The host takes `--agy PATH` (default `agy`) and `--agy-arg ARG` (repeatable, put before the fixed `acp --disable-telemetry`;
+the tests pass the interpreter and the simulator this way); `--dangerously-skip-permissions` is never passed, and the child gets only `PATH`, `LANG`, `HOME` and the `XDG_*`
+directories. The simulator logs how it was started (`argv`, the folder, the NAMES of the environment, never a value) as the first line of its `--received` file, and
+`<received>.hang` makes it never answer `initialize`. `tests/test_agy_session.py` tries the session with it; the real program's turns are not verified (the owner's hands-on check).
+
