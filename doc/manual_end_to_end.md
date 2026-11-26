@@ -1,6 +1,6 @@
-# Owner end-to-end guide (`lico 0.9.0`)
+# Owner end-to-end guide (`lico 0.9.1`)
 
-Version: 1.40.0
+Version: 1.41.0
 
 This guide is for the account owner administering Lico on Linux. Lico never reads a provider's login files and never stores a provider secret in plaintext; application-owned credentials live only in the OS keyring (`lico cred`, failing closed when the store is locked or missing), and each account owns a private directory (`0700`) that the provider itself populates when you sign in. A live provider session may incur provider usage charges.
 
