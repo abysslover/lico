@@ -11,7 +11,7 @@ impl App {
         self.ui.ssh_hosts.get(&a.0).map_or_else(|| a.2.clone(), |h| format!("{} [ssh: {h}]", a.2))
     }
 
-    pub(super) fn account_name(&self, p: &Panel) -> String {
+    pub(crate) fn account_name(&self, p: &Panel) -> String {
         p.accounts
             .iter()
             .find(|a| a.0 == p.account)

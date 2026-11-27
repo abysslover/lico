@@ -149,6 +149,7 @@ impl App {
         match action {
             Action::AccountAct(key) => self.panel_choice(Step::Actions, *key),
             Action::ProviderPick(i) => self.provider_pick(*i),
+            Action::LoginAct(key) => self.login_act(*key),
             _ => return false,
         }
         self.dirty = true;
@@ -159,15 +160,19 @@ impl App {
     pub(super) fn account_paint(&mut self, buf: &mut [u32], width: usize, height: usize, list_w: usize, s: f32) {
         self.ui.toolbar_geom.acct.clear();
         let step = self.ui.panel.as_ref().map(|p| p.step);
+        if step != Some(Step::Login) {
+            self.ui.toolbar_geom.login.clear();
+        }
         match step {
             Some(Step::Accounts) => self.account_list_paint(buf, width, height, list_w, s),
             Some(Step::Actions) => self.account_page_paint(buf, width, height, list_w, s),
             Some(Step::Label) => self.provider_paint(buf, width, height, list_w, s),
+            Some(Step::Login) => self.login_paint(buf, width, height, list_w, s),
             _ => {}
         }
     }
 
-    fn line_range(&self, line: usize) -> Option<(f32, f32)> {
+    pub(super) fn line_range(&self, line: usize) -> Option<(f32, f32)> {
         self.ui.hit_lines.iter().find(|l| l.2 == line).map(|l| (l.0, l.1))
     }
 
@@ -299,7 +304,7 @@ impl App {
             .enumerate()
             .map(|(i, b)| json!({"provider": b.provider, "icon": b.icon.name(), "word": b.word, "chosen": b.chosen, "enabled": b.enabled, "rect": rect(self.ui.toolbar_geom.tiles.get(i))}))
             .collect();
-        json!({"cards": cards, "buttons": buttons, "providers": providers})
+        json!({"cards": cards, "buttons": buttons, "providers": providers, "login": self.login_json()})
     }
 }
 

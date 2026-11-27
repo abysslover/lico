@@ -12,6 +12,11 @@ from tests.test_first_view import start_client, ui, xdo
 from tests.test_login import FAKE, URL, home_of
 
 
+def step_title(panel):
+    """The wizard's step as the state says it (the title of the panel is only the name of what is made)."""
+    return (((panel or {}).get("form") or {}).get("wizard") or {}).get("title", "")
+
+
 def panel_host(directory):
     received = f"{directory}/received.jsonl"
     extra = ["--codex", sys.executable, "--codex-arg", "-I", "--codex-arg", str(SIM), "--codex-arg", "--received", "--codex-arg", received,
@@ -37,7 +42,7 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             assert ui(client)["panel"] is None                                # nothing is open until a person asks
             xdo(xvfb.display, "key", "ctrl+n")                                # M22-P04b: the wizard, three icons first
             screen = panel_of(client, lambda p: p["form"] is not None)
-            assert screen["title"].startswith("New session - step 1 of 3") and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
+            assert step_title(screen).startswith("New session - step 1 of 3") and screen["form"]["provider"] == "codex" and screen["form"]["account"] == first
             assert [t["provider"] for t in screen["form"]["tiles"]][1] == "agy"                                  # M23-P04c: the second picture; whether it is grey depends on the machine's PATH, which this test does not own
             assert [t["enabled"] for t in screen["form"]["tiles"] if t["provider"] != "agy"] == [False, True, True, True]      # no Claude account here; Codex, Local LLM and Terminal can be chosen
             xdo(xvfb.display, "key", "shift+Return")                          # the icon with the focus (Codex, the last provider) is chosen with the options (a plain Enter starts at once, M24-P02)
@@ -66,7 +71,7 @@ def test_new_session_screen_creates_a_session_bound_to_the_chosen_account():
             assert panel_of(client, lambda p: p["text_entry"] and p["form"] is not None)["title"] == "New codex account"
             xdo(xvfb.display, "type", "Home")
             xdo(xvfb.display, "key", "Return")
-            back = panel_of(client, lambda p: p["title"].startswith("New session - step 2 of 3") and p["form"]["account"] != "")["form"]
+            back = panel_of(client, lambda p: step_title(p).startswith("New session - step 2 of 3") and p["form"]["account"] != "")["form"]
             home = [a["account"] for a in conn.call(op="account.list")["accounts"] if a["label"] == "Home"]
             assert back["focus"] == "SignIn" and [back["account"]] == home
             assert sorted(a["label"] for a in conn.call(op="account.list")["accounts"]) == ["Home", "Other", "Work"]

@@ -54,6 +54,8 @@ pub enum Action {
     AccountAct(char),
     /// A click on picture `.0` of the providers (Claude, agy, Codex) on the screen of a new account (`M25-P11`).
     ProviderPick(usize),
+    /// A click on a button of the sign-in screen, which is the key `.0` (`o` open the address, `c` copy it, `v` paste, `g` send the code, `r` try again; `M25-P13`).
+    LoginAct(char),
     /// A click on box `.1` of the row at line `.0` of the wizard's second or third step (`M22-P07`).
     WizardChoose(usize, usize),
     SidebarFilter,

@@ -213,6 +213,19 @@ impl App {
         self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession).and_then(|p| p.form.as_ref()).and_then(|f| f.wiz).map(|w| w.page)
     }
 
+    /// The line over a panel: its title, then the host's notice and the message after a `|`. The wizard's title stands alone (the owner's words of 2026-11-27): the notices are not its state.
+    pub(crate) fn panel_header(&self, title: String) -> String {
+        if self.wizard_open() {
+            return title;
+        }
+        [self.ui.host_notice.as_ref(), self.ui.flash.as_ref()].into_iter().flatten().fold(title, |text, n| format!("{text} | {n}"))
+    }
+
+    /// True while the wizard of New session is the open panel.
+    pub(crate) fn wizard_open(&self) -> bool {
+        self.ui.panel.as_ref().is_some_and(|p| p.step == Step::NewSession && p.form.as_ref().is_some_and(|f| f.wiz.is_some()))
+    }
+
     /// The icons of the first step; none on another step.
     pub(crate) fn wizard_tiles(&self) -> Option<Vec<Tile>> {
         let p = self.ui.panel.as_ref().filter(|p| p.step == Step::NewSession)?;
@@ -368,8 +381,14 @@ impl App {
         true
     }
 
-    /// The text of the title: the step and what it asks for.
+    /// The text of the title: only what is being made. An icon of the first step makes the session at once, so no step is counted in the title (the owner's words of 2026-11-27); the step stays in the state (`step_title`).
     pub(crate) fn form_title(&self, p: &Panel) -> String {
+        let Some((w, _)) = p.form.as_ref().and_then(|f| Some((f.wiz?, f))) else { return "New session".into() };
+        (if w.home { "New Bot session" } else { "New session" }).into()
+    }
+
+    /// The step and what it asks for, as the state says it (`wizard.title`, `wizard.name`): the window does not draw it.
+    pub(crate) fn step_title(&self, p: &Panel) -> String {
         let Some((w, f)) = p.form.as_ref().and_then(|f| Some((f.wiz?, f))) else { return "New session".into() };
         let name = match w.page {
             0 => "Choose",
@@ -378,7 +397,7 @@ impl App {
             1 => "Account and folder",
             _ => "Options and start",
         };
-        format!("{} - step {} of {STEPS} - {name}", if w.home { "New Bot session" } else { "New session" }, w.page + 1)
+        format!("{} - step {} of {STEPS} - {name}", self.form_title(p), w.page + 1)
     }
 
     /// The text of a row of the wizard's own.
@@ -542,7 +561,7 @@ impl App {
     /// What the state says of the wizard: the step, how many there are, whether it is a Bot session, the name of the step.
     pub(super) fn wizard_json(&self, p: &Panel, f: &Form) -> Value {
         let Some(w) = f.wiz else { return Value::Null };
-        json!({"page": w.page, "pages": STEPS, "home": w.home, "title": self.form_title(p), "name": self.form_title(p).rsplit(" - ").next().unwrap_or("")})
+        json!({"page": w.page, "pages": STEPS, "home": w.home, "title": self.step_title(p), "name": self.step_title(p).rsplit(" - ").next().unwrap_or("")})
     }
 
     /// The icons of the first step as the state says them, with the rectangle the window drew each in.

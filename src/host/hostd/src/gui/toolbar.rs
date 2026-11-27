@@ -17,6 +17,8 @@ mod picker;
 mod wizard_cards;
 #[path = "account_cards.rs"]
 mod account_cards;
+#[path = "login_cards.rs"]
+mod login_cards;
 #[cfg(test)]
 #[path = "toprows_tests.rs"]
 mod toprows_tests;
@@ -44,6 +46,8 @@ pub struct ToolbarGeom {
     pub cards: Vec<(usize, Vec<[f32; 4]>)>,
     /// The cards of the account list as the window drew them last (`M24-P03`); the pictures of an account's page are in `tiles`.
     pub acct: Vec<[f32; 4]>,
+    /// The boxes and buttons of the sign-in screen as the window drew them last, by name (`M25-P13`, see `login_cards.rs`); empty when it painted none.
+    pub login: Vec<(&'static str, [f32; 4])>,
 }
 
 /// The height of a text button of the toolbar (the Files panel's words): one line and a pixel, as the icons were before `M24-P09`.

@@ -402,7 +402,7 @@ impl App {
                             Some(Action::Allow) => self.answer_approval(true),
                             Some(Action::Deny) => self.answer_approval(false),
                             Some(Action::ReadCard) => self.card_open(),
-                            Some(Action::AccountAct(_) | Action::ProviderPick(_) | Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::WizardPick(_) | Action::WizardChoose(..) | Action::PathCopy | Action::WindowMax) => {}
+                            Some(Action::AccountAct(_) | Action::LoginAct(_) | Action::ProviderPick(_) | Action::ModalBackdrop | Action::SidebarNewChat | Action::NewChatAccount(_) | Action::NewChatMode(_) | Action::NewChatOk | Action::NewChatCancel | Action::NewChatOptions | Action::LlmScan | Action::LlmClose | Action::LlmAllUsers | Action::LlmMore | Action::LlmPick(_) | Action::WizardPick(_) | Action::WizardChoose(..) | Action::PathCopy | Action::WindowMax) => {}
                             Some(Action::StopRealScreen) => self.stop_real_screen(),
                             Some(Action::Item(..) | Action::HostItem(..) | Action::SidebarHostItem(..) | Action::SidebarTab(..) | Action::SidebarHost | Action::SidebarDotfiles | Action::SidebarRefresh | Action::SidebarNewHere | Action::SidebarFilter | Action::SidebarFilterClear | Action::SidebarGlobal | Action::SidebarActiveDir | Action::SidebarJumpActive | Action::SidebarParent | Action::SidebarEntry(..) | Action::SidebarChatEntry(..) | Action::SidebarPage(..) | Action::SidebarNavBack | Action::SidebarNavForward | Action::SidebarBookmarkToggle | Action::SidebarBookmarksBtn | Action::SidebarBookmarkItem(..) | Action::SidebarBookmarkRemove(..) | Action::DirMenuItem(..)) => {}
                             None if x < self.effective_list_w(self.ui.scale) as f32 => {}
@@ -661,15 +661,7 @@ impl App {
         if self.ui.panel.is_some() { (self.ui.panel_rows, self.ui.panel_cols) = (area_rows.saturating_sub(4 + n_prompt), cols); }
         let panel_view = self.panel_view();
         let show_telem = self.show_telemetry_bar(); let has_header = !self.status_at_bottom(panel_view.is_some()); // M24-P11f: the status of a conversation stands in the strip at the bottom, not in a line at its top
-        let mut header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| v.0.clone());
-        if panel_view.is_some() {
-            if let Some(n) = &self.ui.host_notice {
-                header = format!("{header} | {n}");
-            }
-            if let Some(flash) = &self.ui.flash {
-                header = format!("{header} | {flash}");
-            }
-        }
+        let header = panel_view.as_ref().map_or_else(|| self.header_text(), |v| self.panel_header(v.0.clone()));
         let menu_open = self.ui.menu_open;
         let sb_mode = self.sidebar_shown();
         let overlay_menu = menu_open.is_some() || self.files_host_popup_open() || self.sidebar_host_popup_open() || self.sidebar_bookmarks_popup_open() || self.active_call_open() || self.mention_popup_shown();

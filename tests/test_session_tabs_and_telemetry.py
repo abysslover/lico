@@ -18,6 +18,11 @@ from tests.test_new_session_screen import claude_args
 from tests.test_reconnect_window import codex_args
 
 
+def step_title(panel):
+    """The wizard's step as the state says it (the title of the panel is only the name of what is made)."""
+    return (((panel or {}).get("form") or {}).get("wizard") or {}).get("title", "")
+
+
 def _centre(rect: list[float]) -> tuple[float, float]:
     return (rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0
 
@@ -110,7 +115,7 @@ def test_maximized_launch_global_sessions_top_tabs_and_live_telemetry_bar():
             uf = wait_for(
                 lambda: (u := w.ui())
                 and u["panel"]
-                and u["panel"]["title"] == "New Bot session - step 1 of 3 - Choose"
+                and step_title(u["panel"]) == "New Bot session - step 1 of 3 - Choose"
                 and u["panel"]["form"]["wizard"]["home"] is True
                 and u
             )

@@ -19,6 +19,11 @@ from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
 
 
+def step_title(panel):
+    """The wizard's step as the state says it (the title of the panel is only the name of what is made)."""
+    return (((panel or {}).get("form") or {}).get("wizard") or {}).get("title", "")
+
+
 def _shift_click(w: ProductWindow, x: float, y: float) -> None:
     """A click with Shift held: M24-P02 made a plain click on a picture start the session at once, and Shift is the way into the second and third step (the options)."""
     wid = w.window_id()
@@ -117,7 +122,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
             # step one: five icons and nothing else; Codex has no account here and agy is not on the window's PATH, so they are grey, and Local LLM and Terminal never are
             first = _step(w, 0)
             form = first["form"]
-            assert first["title"] == "New session - step 1 of 3 - Choose" and first["text_entry"] is False
+            assert step_title(first) == "New session - step 1 of 3 - Choose" and first["text_entry"] is False
             assert [t["provider"] for t in form["tiles"]] == ["claude", "agy", "codex", "local", "terminal"] and [t["enabled"] for t in form["tiles"]] == [True, False, False, True, True]
             assert [t["icon"] for t in form["tiles"]] == ["claude", "agy", "codex", "local", "terminal"] and [t["word"] for t in form["tiles"]] == ["Claude", "agy", "Codex", "Local LLM", "Terminal"]
             said = "\n".join(first["body"])
@@ -157,7 +162,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
 
             # step two: the account and the folder (what the form's rows say), Back and Next
             second = _step(w, 1)
-            assert second["title"] == "New session - step 2 of 3 - Account and folder" and second["text_entry"] and second["form"]["focus"] == "Folder"
+            assert step_title(second) == "New session - step 2 of 3 - Account and folder" and second["text_entry"] and second["form"]["focus"] == "Folder"
             assert (second["form"]["provider"], second["form"]["account"]) == ("claude", made["Work"])
             assert [line.lstrip("> ").split()[0] for line in second["body"][:5] if line.strip()] == ["Account", "Folder", "Sign", "Back", "Next"], second["body"]
             assert not any(line.lstrip("> ").startswith(("Name", "Model", "Effort", "Permission")) for line in second["body"]), "the options are the next step"
@@ -166,7 +171,7 @@ def test_the_plus_shows_three_icons_one_is_grey_without_an_account_and_each_step
 
             # step three: the options and the start; Esc goes back with what was typed kept, and the name is asked here
             third = _step(w, 2)
-            assert third["title"] == "New session - step 3 of 3 - Options and start" and third["form"]["focus"] == "Name" and third["form"]["folder"] == str(project)
+            assert step_title(third) == "New session - step 3 of 3 - Options and start" and third["form"]["focus"] == "Name" and third["form"]["folder"] == str(project)
             assert any(line.lstrip("> ").startswith("Start session") for line in third["body"]) and any(line.lstrip("> ").startswith("Back") for line in third["body"])
             w.key("Escape")
             back = _step(w, 1)
@@ -218,7 +223,7 @@ def test_local_llm_needs_no_account_and_looks_at_this_machine_as_soon_as_its_ico
                 wait_for(lambda: w.ui()["panel"]["form"]["scanned"])
                 form = w.ui()["panel"]["form"]
                 assert server.connections > 0, "choosing the Local LLM icon looked at this machine"
-                assert second["title"] == "New session - step 2 of 3 - Local LLM server" and len(form["servers"]) == 1 and "openai" in form["servers"][0], form["servers"]
+                assert step_title(second) == "New session - step 2 of 3 - Local LLM server" and len(form["servers"]) == 1 and "openai" in form["servers"][0], form["servers"]
                 assert form["focus"] == "Server" and form["local_model"] == "tiny-llama" and form["problem"] is None, form
                 body = w.ui()["panel"]["body"]
                 assert any(line.startswith("> 127.0.0.1:") and "openai" in line for line in body) and any("Found 1 server" in line for line in body), body
@@ -231,7 +236,7 @@ def test_local_llm_needs_no_account_and_looks_at_this_machine_as_soon_as_its_ico
                 assert w.bright(int(look[2]) + 14, int(look[1]), 1190, int(look[3]), 90) == 0, "the text of the row (the server's line, much longer than the card) is covered: nothing is left beside the card"
                 w.click(*centre(two["Next"]["items"][0]["rect"]))  # Next
                 third = _step(w, 2)
-                assert third["title"] == "New session - step 3 of 3 - Options and start" and not any(line.lstrip("> ").startswith(("Folder", "Account")) for line in third["body"]), third["body"]
+                assert step_title(third) == "New session - step 3 of 3 - Options and start" and not any(line.lstrip("> ").startswith(("Folder", "Account")) for line in third["body"]), third["body"]
                 three = _boxes(w, 2)
                 assert [i["text"] for i in three["Model"]["items"]] == ["tiny-llama", "qwen-small"] and "Effort" not in three and "Permission" not in three
                 w.click(*centre(three["Model"]["items"][1]["rect"]))
@@ -253,10 +258,10 @@ def test_the_house_opens_the_same_wizard_for_a_home_session_with_no_folder_and_s
             _ready(w)
             w.click(*centre(_button(w, "new_bot")["rect"]))
             first = _step(w, 0)
-            assert first["title"] == "New Bot session - step 1 of 3 - Choose" and first["form"]["wizard"]["home"] is True
+            assert step_title(first) == "New Bot session - step 1 of 3 - Choose" and first["form"]["wizard"]["home"] is True
             _shift_click(w, *centre(first["form"]["tiles"][0]["rect"]))
             second = _step(w, 1)
-            assert second["title"] == "New Bot session - step 2 of 3 - Account" and second["form"]["focus"] == "Account" and second["text_entry"] is False, second["title"]
+            assert step_title(second) == "New Bot session - step 2 of 3 - Account" and second["form"]["focus"] == "Account" and second["text_entry"] is False, second["title"]
             assert not any(line.lstrip("> ").startswith(("Folder", "Recent")) for line in second["body"]), second["body"]
             assert any("Bot session" in line and "scratch workspace" in line for line in second["body"]), second["body"]
             w.key("Return")  # Next

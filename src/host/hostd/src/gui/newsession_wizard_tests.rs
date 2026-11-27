@@ -58,7 +58,8 @@ fn the_wizard_opens_on_step_one_with_five_icons_and_no_text_row() {
     let app = both();
     assert_eq!(page(&app), 0);
     assert_eq!(rows(&app), ["Pick(0)", "Pick(1)", "Pick(2)", "Pick(3)", "Pick(4)"]);
-    assert_eq!(title(&app), "New session - step 1 of 3 - Choose");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 1 of 3 - Choose");
     let tiles = app.wizard_tiles().unwrap();
     assert_eq!(tiles.iter().map(|t| (t.provider, t.enabled)).collect::<Vec<_>>(), [("claude", true), ("agy", false), ("codex", true), ("local", true), ("terminal", true)]);
     assert!(!app.text_mode(), "no row takes text on the first step");
@@ -96,7 +97,8 @@ fn choosing_claude_goes_to_step_two_with_the_account_and_folder_rows() {
     assert_eq!(form(&app)["focus"], "Folder");
     assert!(app.text_mode(), "the folder takes text");
     assert_eq!((form(&app)["provider"].as_str().unwrap(), form(&app)["account"].as_str().unwrap()), ("claude", "a1"));
-    assert_eq!(title(&app), "New session - step 2 of 3 - Account and folder");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 2 of 3 - Account and folder");
     let (_, body) = app.panel_view().unwrap();
     assert!(body[0].starts_with("  Account") && body[1].starts_with("> Folder") && body.iter().any(|l| l.contains("Next")), "{body:?}");
     assert!(!body.iter().any(|l| l.starts_with("  Name") || l.starts_with("  Model") || l.starts_with("  Effort")), "the options are the next step: {body:?}");
@@ -137,7 +139,8 @@ fn next_is_refused_while_the_step_has_a_problem_and_goes_on_when_it_has_none() {
     app.wizard_next();
     assert_eq!(page(&app), 2);
     assert_eq!(rows(&app), ["Name", "Model", "Effort", "Permission", "Back", "Start"]);
-    assert_eq!(title(&app), "New session - step 3 of 3 - Options and start");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 3 of 3 - Options and start");
     assert_eq!(form(&app)["folder"], "/work/one", "the folder went into the form when the step was left");
     assert_eq!(form(&app)["focus"], "Name");
     assert!(notice(&app).is_empty(), "{}", notice(&app));
@@ -211,11 +214,13 @@ fn app_with_form() -> App {
 #[test]
 fn the_home_session_leaves_the_folder_out_of_the_steps_and_of_the_request() {
     let mut app = opened(true, &[("a1", "claude")]);
-    assert_eq!(title(&app), "New Bot session - step 1 of 3 - Choose");
+    assert_eq!(title(&app), "New Bot session");
+    assert_eq!(form(&app)["wizard"]["title"], "New Bot session - step 1 of 3 - Choose");
     assert_eq!(form(&app)["wizard"]["home"], true);
     app.wizard_pick(0);
     assert_eq!(rows(&app), ["Account", "SignIn", "Back", "Next"]);
-    assert_eq!(title(&app), "New Bot session - step 2 of 3 - Account");
+    assert_eq!(title(&app), "New Bot session");
+    assert_eq!(form(&app)["wizard"]["title"], "New Bot session - step 2 of 3 - Account");
     assert_eq!(form(&app)["focus"], "Account");
     let (_, body) = app.panel_view().unwrap();
     assert!(body.iter().any(|l| l.contains("Bot session") && l.contains("scratch workspace")), "the step says what a Bot session is: {body:?}");
@@ -275,7 +280,8 @@ fn local_llm_looks_at_this_machine_when_chosen_and_not_again_when_the_step_is_le
     app.wizard_pick(3);
     assert_eq!(page(&app), 1);
     assert_eq!(rows(&app), ["Server", "Back", "Next"]);
-    assert_eq!(title(&app), "New session - step 2 of 3 - Local LLM server");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 2 of 3 - Local LLM server");
     assert_eq!(form(&app)["focus"], "Server", "the server row has the focus: it is the only choice of the step");
     assert!(notice(&app).contains("Could not look for servers"), "the one look was made at once (no host answers here): {}", notice(&app));
     app.on_local_scan(0, json!({"ok": 1, "endpoints": [
@@ -300,7 +306,8 @@ fn local_llm_goes_on_to_the_model_and_the_name_and_starts_with_the_servers_reque
     app.wizard_next();
     assert_eq!(page(&app), 2);
     assert_eq!(rows(&app), ["Model", "Name", "Back", "Start"]);
-    assert_eq!(title(&app), "New session - step 3 of 3 - Options and start");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 3 of 3 - Options and start");
     let p = app.ui.panel.as_ref().unwrap();
     let request = request_of(p, p.form.as_ref().unwrap());
     assert_eq!(request["kind"], "local");
@@ -517,7 +524,8 @@ fn another_icon_is_still_a_step_and_the_focus_returns_to_it_on_back() {
     app.wizard_pick(0);
     assert_eq!(page(&app), 1);
     assert_eq!(rows(&app).first().map(String::as_str), Some("Account"), "Claude: its own rows");
-    assert_eq!(title(&app), "New session - step 2 of 3 - Account and folder");
+    assert_eq!(title(&app), "New session");
+    assert_eq!(form(&app)["wizard"]["title"], "New session - step 2 of 3 - Account and folder");
     assert!(app.wizard_escape());
     assert_eq!((page(&app), form(&app)["focus"].as_str().unwrap()), (0, "Pick(0)"), "the focus is on the icon that was chosen");
 }
@@ -711,4 +719,20 @@ fn a_click_beside_the_chips_of_a_row_is_no_choice_and_not_a_click_on_the_hidden_
     assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().model, "default", "and it changed nothing: the row's text, which cycled on a click, is hidden");
     assert!(app.wizard_click(&Action::WizardChoose(model.line, 2)));
     assert_eq!(app.ui.panel.as_ref().unwrap().form.as_ref().unwrap().model, "sonnet");
+}
+
+#[test]
+fn the_wizards_title_stands_alone_and_another_panels_title_has_the_notice_and_the_message_after_a_bar() {
+    let mut app = both();
+    app.ui.host_notice = Some("Restarted the host (new build abc, was def); resumed 0 sessions".into());
+    app.ui.flash = Some("Account added.".into());
+    assert_eq!(app.panel_header(title(&app)), "New session", "the wizard says what is made and nothing else");
+    app.panel_close();
+    app.panel_open(Step::Accounts);
+    let shown = app.panel_header(title(&app));
+    assert_eq!(shown, "Accounts | Restarted the host (new build abc, was def); resumed 0 sessions | Account added.", "the other panels keep their notices");
+    app.ui.host_notice = None;
+    assert_eq!(app.panel_header("Accounts".into()), "Accounts | Account added.");
+    app.ui.flash = None;
+    assert_eq!(app.panel_header("Accounts".into()), "Accounts");
 }

@@ -13,6 +13,11 @@ from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_icon_toolbar_wizard import _button, _ready, _rig, _shift_click, _step
 
 
+def step_title(panel):
+    """The wizard's step as the state says it (the title of the panel is only the name of what is made)."""
+    return (((panel or {}).get("form") or {}).get("wizard") or {}).get("title", "")
+
+
 def _window(root: Path, project: Path):
     """The window of the rig with one Claude account, whose last folder is `project` (so that the left lists it)."""
     kwargs, made, _received = _rig(root, [("Work", "claude")])
@@ -80,5 +85,5 @@ def test_shift_with_the_click_is_the_old_way_the_second_step_and_nothing_is_star
             w.click(*centre(_button(w, "new_session")["rect"]))
             _shift_click(w, *centre(_step(w, 0)["form"]["tiles"][0]["rect"]))
             second = _step(w, 1)
-            assert second["title"] == "New session - step 2 of 3 - Account and folder", second["title"]
+            assert step_title(second) == "New session - step 2 of 3 - Account and folder", second["title"]
             assert conn.call(op="status")["sessions"] == [], "choosing with Shift starts nothing"

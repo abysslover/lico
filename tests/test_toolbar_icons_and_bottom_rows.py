@@ -14,6 +14,11 @@ from tests.test_codex_adapter import usual_umask, wait_for
 from tests.test_new_session_screen import claude_args
 from tests.test_running_elsewhere_window import _centre
 
+
+def step_title(panel):
+    """The wizard's step as the state says it (the title of the panel is only the name of what is made)."""
+    return (((panel or {}).get("form") or {}).get("wizard") or {}).get("title", "")
+
 LEFT_OVER_TAB_BUTTONS = ("new_rect", "new_global_rect", "new_browser_rect", "new_browser_local_rect")
 
 
@@ -74,12 +79,12 @@ def test_the_toolbar_is_four_icon_buttons_the_tab_row_has_none_and_no_word_says_
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[1]["rect"]))
-            home = wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            home = wait_for(lambda: (x := w.ui()) and x["panel"] and step_title(x["panel"]) == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
             assert not any("Global" in line for line in home["panel"]["body"]) and "Global" not in home["panel"]["title"], home["panel"]
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[2]["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New session - step 1 of 3 - Choose" and x)
+            wait_for(lambda: (x := w.ui()) and x["panel"] and step_title(x["panel"]) == "New session - step 1 of 3 - Choose" and x)
             w.key("Escape")
             wait_for(lambda: w.ui()["panel"] is None)
             w.click(*_centre(buttons[3]["rect"]))
@@ -104,7 +109,7 @@ def test_a_home_session_has_the_caption_h_and_a_telemetry_strip_that_says_home_a
             assert bar["text"] != "" and bar["source"] != "none", bar
 
             w.click(*_centre(next(b for b in u["toolbar"]["buttons"] if b["id"] == "new_bot")["rect"]))
-            wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["title"] == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
+            wait_for(lambda: (x := w.ui()) and x["panel"] and step_title(x["panel"]) == "New Bot session - step 1 of 3 - Choose" and x["panel"]["form"]["folder"] == "" and x)
             w.key("shift+Return")  # the icon that has the focus, with the options (a plain Enter starts the Bot session at once, M24-P02)
             wait_for(lambda: (x := w.ui()) and x["panel"] and x["panel"]["form"]["wizard"]["page"] == 1 and x)
             w.key("Return")  # Next

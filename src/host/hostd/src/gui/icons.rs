@@ -35,6 +35,11 @@ pub(crate) enum Icon {
     Moon,
     Sun,
     Auto,
+    /// A tick (a step of the sign-in is done), a cross (it failed), two sheets (copy the address) and a clipboard with a line of text on it (paste the code): the four pictures of the sign-in screen (`M25-P13`).
+    Check,
+    Cross,
+    Copy,
+    Paste,
 }
 
 impl Icon {
@@ -61,6 +66,10 @@ impl Icon {
             Icon::Moon => "moon",
             Icon::Sun => "sun",
             Icon::Auto => "auto",
+            Icon::Check => "check",
+            Icon::Cross => "cross",
+            Icon::Copy => "copy",
+            Icon::Paste => "paste",
         }
     }
 
@@ -75,7 +84,7 @@ impl Icon {
     }
 
     #[cfg(test)]
-    pub(crate) const ALL: [Icon; 20] = [Icon::Plus, Icon::Bot, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload, Icon::Moon, Icon::Sun, Icon::Auto];
+    pub(crate) const ALL: [Icon; 24] = [Icon::Plus, Icon::Bot, Icon::Browser, Icon::Account, Icon::Claude, Icon::Codex, Icon::Local, Icon::Terminal, Icon::Agy, Icon::Key, Icon::Pencil, Icon::Star, Icon::Trash, Icon::TrashX, Icon::Back, Icon::Forward, Icon::Reload, Icon::Moon, Icon::Sun, Icon::Auto, Icon::Check, Icon::Cross, Icon::Copy, Icon::Paste];
 }
 
 type Put<'a> = dyn FnMut(f32, f32, f32, f32, u32) + 'a;
@@ -262,6 +271,38 @@ pub(crate) fn draw(buf: &mut [u32], width: usize, height: usize, icon: Icon, r: 
             let (tip, wing) = ((end.0 + side * 0.04, end.1 - side * 0.34), side * 0.26);
             stroke(&mut put, tip, (end.0 - wing, end.1 - side * 0.04), t, ink);
             stroke(&mut put, tip, (end.0 + wing, end.1 - side * 0.04), t, ink);
+        }
+        Icon::Check => {
+            // a tick: a short stroke down to the bottom, then a long one up to the top right
+            stroke(&mut put, (x0 + side * 0.06, y0 + side * 0.54), (x0 + side * 0.38, y0 + side * 0.86), t, ink);
+            stroke(&mut put, (x0 + side * 0.38, y0 + side * 0.86), (x1 - side * 0.04, y0 + side * 0.18), t, ink);
+        }
+        Icon::Cross => {
+            // two strokes across the square
+            stroke(&mut put, (x0 + side * 0.12, y0 + side * 0.12), (x1 - side * 0.12, y1 - side * 0.12), t, ink);
+            stroke(&mut put, (x1 - side * 0.12, y0 + side * 0.12), (x0 + side * 0.12, y1 - side * 0.12), t, ink);
+        }
+        Icon::Copy => {
+            // two sheets, one behind the other: the back one only as an L (its top and left edges), the front one a frame with a hole of the button's colour
+            let (w, h) = (side * 0.62, side * 0.74);
+            put(x1 - w, y0, x1, y0 + t, ink);
+            put(x1 - w, y0, x1 - w + t, y0 + side * 0.22, ink);
+            put(x1 - t, y0, x1, y0 + side * 0.22, ink);
+            let (fx0, fy0) = (x0, y1 - h);
+            put(fx0, fy0, fx0 + w, y1, ink);
+            put(fx0 + t, fy0 + t, fx0 + w - t, y1 - t, ground);
+        }
+        Icon::Paste => {
+            // a clipboard: a board with a clip on its top edge, and two lines of text on it in the button's colour
+            let top = y0 + side * 0.12;
+            put(x0 + side * 0.08, top, x1 - side * 0.08, y1, ink);
+            put(cx - side * 0.20, y0, cx + side * 0.20, top + side * 0.14, ink);
+            put(cx - side * 0.20 + t * 0.7, y0 + t * 0.7, cx + side * 0.20 - t * 0.7, top + side * 0.14 - t * 0.5, ground);
+            let (lx0, lx1) = (x0 + side * 0.24, x1 - side * 0.24);
+            for k in 0..2 {
+                let ly = (top + side * 0.34 + side * 0.22 * k as f32).round();
+                put(lx0, ly, lx1, ly + t * 0.7, ground);
+            }
         }
         Icon::Key => {
             // a ring with a hole of the button's colour at the left, a shaft to the right and two teeth hanging from the shaft's end

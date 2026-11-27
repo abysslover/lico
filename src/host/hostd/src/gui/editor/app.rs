@@ -28,7 +28,7 @@ impl App {
         if self.terminal_active() {
             line(self.terminal_status_row()) // the one row under the grid: what the keys do, or that the shell ended
         } else if self.code_entry() {
-            line(format!("> {}", self.shown_input()))
+            line(if self.login_pictured() { " ".into() } else { format!("> {}", self.shown_input()) }) // the painted box is where a code is pasted (`M25-P13`)
         } else if self.browser_active() {
             self.ui.browser.row = self.header_text(); // the one row under the page: where typing goes, the page's state, the notices; the address is the bar at the top (M22-P05a)
             line(self.ui.browser.row.clone())

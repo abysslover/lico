@@ -9,6 +9,12 @@ below are measured on the Linux `hostd` + hand-drawn native client build
 `<= +10 MiB`), and two clean clones build byte-for-byte identical release
 binaries (`python3 -m lico_measure.suite acceptance`).
 
+## Unreleased, after 0.9.1 — 2026-11-27 (`M25-P13`)
+
+- **The sign-in is a screen of pictures for every provider** (M25-P13, the owner's words of 2026-11-27 after an agy account had been signed in): the steps are pictures of the wizard's size (Open, Sign in, Code; a tick on the ones done, the ring on the one to do, grey for the rest; Codex has no Code picture until its program asks for a code), the address stands in a box with two buttons (open, copy), the code is pasted or typed into a box with two buttons (paste, send) and drawn as stars, and a sign-in that ended without success shows a cross and a picture, Again, that starts it again. The text lines under it stay the model (the dump, the keys, the tests); the host and the protocol are unchanged. Four new icons: `check`, `cross`, `copy`, `paste`.
+- **The wizard's title is only what is made** (M25-P13): `New session` or `New Bot session`; the step is in the state (`panel.form.wizard.title`) and not drawn, and the host's notice and the message are not added after a `|` while the wizard is open.
+- **Guide**: `doc/manual_end_to_end.md` `1.42.0`.
+
 ## 0.9.1 — 2026-11-27 (`M25`)
 
 - **Milestone**: [M25 agy as a Lico session](doc/milestones/202611/20261126/20261126_01_M25_agy_as_a_lico_session_milestone.md) ([release report](doc/reports/202611/20261127/20261127_01_M25-P12_release_0_9_1_report.md)); a patch release after the owner tried `0.9.0` (the patch moves first, the minor only with level C); it carries everything since `0.9.0` (M25-P09 to P11); the version is in `1414845`, the last code commit is `4da4303`; the file of the release build is `11,529,256` bytes (`0.9.0`: `11,545,760`).

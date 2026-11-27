@@ -73,6 +73,7 @@
 "tests/test_login.py" = ["cli", "host"]
 "tests/test_login_real_shape.py" = ["gui", "host"]
 "tests/test_login_window.py" = ["gui", "host"]
+"tests/test_login_screen.py" = ["gui", "host"]
 "tests/test_new_session_screen.py" = ["gui", "host"]
 "tests/test_mask_code_line.py" = ["gui", "host"]
 "tests/test_menu_bar.py" = ["gui", "host"]
@@ -354,7 +355,7 @@ reason = "the simulator of the Codex app server and its capabilities, started by
 
 [[sources]]
 glob = "src/host/adapters/agy/**"
-tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py", "tests/test_agy_resume.py", "tests/test_agy_peers.py", "tests/test_agy_accounts.py", "tests/test_agy_account_window.py"]
+tests = ["tests/test_agy_adapter.py", "tests/test_agy_session.py", "tests/test_agy_resume.py", "tests/test_agy_peers.py", "tests/test_agy_accounts.py", "tests/test_agy_account_window.py", "tests/test_login_screen.py"]
 reason = "the simulator of agy acp and its capabilities, started or read by path"
 
 [[sources]]

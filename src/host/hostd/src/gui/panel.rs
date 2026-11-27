@@ -60,7 +60,7 @@ pub struct Panel {
 }
 
 /// The window opens the sign-in address by itself unless this is set (read by the window only; the tests set it where no browser is wanted).
-fn auto_open_off() -> bool {
+pub(crate) fn auto_open_off() -> bool {
     std::env::var_os("LICO_NO_AUTO_OPEN").is_some()
 }
 
@@ -254,22 +254,9 @@ impl App {
                 }
             }
             Step::Login => {
-                let state = p.login["state"].as_str().unwrap_or("starting");
-                body.push(format!("state: {state}"));
-                if let Some(h) = self.ui.ssh_hosts.get(&p.account) {
-                    body.push(format!("host: ssh:{h} (runs login on {h}; remote connects directly to provider)"));
-                }
-                if let Some(url) = p.login["url"].as_str() {
-                    body.push("Open this address and sign in:".into());
-                    body.push(url.to_string());
-                    body.push(if auto_open_off() { "Ctrl+C  copy the address    Ctrl+O  open it in the browser" } else { "Opening the browser. Ctrl+O opens it again, Ctrl+C copies the address." }.into());
-                }
-                if p.login["needs_code"] == json!(true) {
-                    body.push("The provider asks for a code: paste it below and press Enter.".into());
-                } else if p.provider == "codex" && p.login["state"] != json!("succeeded") {
-                    body.push("D  use the device-code sign-in instead".into());
-                }
-                format!("Sign in: {}", self.account_name(p))
+                let (heading, lines) = self.login_body(p);
+                body.extend(lines);
+                heading
             }
             Step::Accounts => {
                 for (i, a) in p.accounts.iter().enumerate() {
@@ -378,6 +365,10 @@ impl App {
             if finished {
                 p.step = if p.form.is_some() { Step::NewSession } else { Step::Actions }; // back to where the sign-in was asked for
                 p.notice = "Signed in.".into();
+            } else if matches!(p.login["state"].as_str(), Some("failed" | "timed_out" | "cancelled")) {
+                if p.notice == "Code sent." {
+                    p.notice.clear(); // the sign-in ended without success: the sentence of the screen says so, "Code sent." is no news
+                }
             } else if p.login["url"].is_string() && !p.opened {
                 p.opened = true; // once per attempt, however often the state is polled
                 open_now = true;
@@ -392,7 +383,7 @@ impl App {
         self.dirty = true;
     }
 
-    fn start_login(&mut self, method: &str) {
+    pub(crate) fn start_login(&mut self, method: &str) {
         let account = self.ui.panel.as_ref().map(|p| p.account.clone()).unwrap_or_default();
         self.host_call(json!({"op": "account.login.cancel", "account": account}));
         for _ in 0..20 {
@@ -595,7 +586,7 @@ impl App {
         self.confirm_click(line) || self.send_click(line) || self.files_click(line) || self.accounts_or_label_click(line)
     }
 
-    fn submit_text(&mut self, step: Step, text: &str) {
+    pub(crate) fn submit_text(&mut self, step: Step, text: &str) {
         if text.is_empty() && step != Step::Rename {
             return; // an empty name is a name taken away; the other lines have nothing to send
         }
@@ -704,7 +695,7 @@ impl App {
     }
 
     /// The login address, on the person's request only: onto the clipboard, or to the browser.
-    fn login_address(&mut self, copy: bool) {
+    pub(crate) fn login_address(&mut self, copy: bool) {
         let Some(url) = self.ui.panel.as_ref().and_then(|p| p.login["url"].as_str().map(str::to_string)) else { return };
         if copy {
             self.copy_text(url);
